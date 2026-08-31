@@ -51,7 +51,7 @@ import { errorResponse } from './http/error-response.ts';
  *      strategy is added without updating this array, the type resolves
  *      to the missing member's literal and the assignment errors out.
  */
-const RESOLUTION_OPTIONS = [
+export const RESOLUTION_OPTIONS = [
   'mine',
   'theirs',
   'content',
@@ -175,4 +175,50 @@ export function respondDocInConflict(
       resolutionOptions: RESOLUTION_OPTIONS,
     },
   });
+}
+
+/**
+ * Typed throw when a submitted resolution still carries a complete conflict
+ * block. A permanent rejection of the caller's bytes, not a failure of ours —
+ * which is the whole reason it needs its own type. Thrown bare, it landed in
+ * the resolve handler's generic catch and became a 500: it moved the 5xx
+ * alerting signal, and told an agent — whose own `resolve_conflict` contract
+ * reads "500 indicates commit failure … the file may have been resolved by
+ * another session" — that a permanent input error was a transient one worth
+ * retrying.
+ */
+export class ConflictMarkersInContentError extends Error {
+  readonly file: string;
+  override readonly name = 'ConflictMarkersInContentError' as const;
+
+  constructor(opts: { file: string }) {
+    super(`Resolution for ${opts.file} still contains conflict markers`);
+    this.file = opts.file;
+  }
+}
+
+/**
+ * Typed throw when the store tracks no conflict for the requested path —
+ * resolved by another session, or simply the wrong path.
+ *
+ * Bare, it reached the resolve handler's generic catch as a 500, which reads to
+ * an agent as a transient commit failure worth retrying and moves the 5xx
+ * alerting signal for what is a caller-side path error. `handleSyncConflictContent`
+ * already answers this exact condition with 404 `no-conflict-tracked`; typing the
+ * throw lets the resolve path say the same thing.
+ *
+ * Typing it also makes guard ORDER stop mattering. While `!entry` threw bare,
+ * checking it before the marker validation turned a permanent content error into
+ * a transient-looking 500, and checking it after told a caller with a stale path
+ * to fix bytes that were never the problem. With both errors typed, each
+ * ordering reports something true.
+ */
+export class NoConflictTrackedError extends Error {
+  readonly file: string;
+  override readonly name = 'NoConflictTrackedError' as const;
+
+  constructor(opts: { file: string }) {
+    super(`[conflicts] no conflict tracked for file: ${opts.file}`);
+    this.file = opts.file;
+  }
 }

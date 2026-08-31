@@ -253,6 +253,7 @@
     "2XQ8Ww": ["Abrir a pré-visualização quando o agente editar"],
     "2YOwme": ["Reiniciado — agora rodando a v", ["appRuntime"], "."],
     "2YZwPB": ["A resposta de links de saída não tinha o formato esperado."],
+    "2Yt22K": ["Ocultar original"],
     "2hYmUH": ["eu@email.com"],
     "2hpdRq": ["Ocultar o painel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Digite uma URL válida (por exemplo https://api.openai.com/v1)."],
@@ -416,6 +417,7 @@
     "4Vgtaz": [
       "Não foi possível acessar o quadro. Ele pode não existir, ou o servidor pode estar offline."
     ],
+    "4_-TKi": ["Aceitar ambas as versões para o conflito ", ["0"]],
     "4buZWd": ["Herdado de ", ["path"]],
     "4c_a6S": ["Ainda não há nada definido."],
     "4d0VYJ": ["Criaremos um ID de tema seguro a partir deste nome."],
@@ -452,6 +454,7 @@
     "4v2Yyz": [
       "Seleciona todas as linhas visíveis da árvore de arquivos quando o foco está na barra lateral Arquivos."
     ],
+    "4vn1gP": ["Todos os conflitos resolvidos. Aplique as alterações para salvar."],
     "4xtLTl": ["Pasta “", ["basename"], "” oculta"],
     "4zGlN_": ["Cole a URL da imagem ou clique em enviar"],
     "4z_1j2": ["Renderizado"],
@@ -749,17 +752,6 @@
     ],
     "8AjnFz": ["\"", ["0"], "\" já tinha sido importado (conteúdo idêntico)."],
     "8F1i42": ["Página não encontrada"],
-    "8FqTCr": [
-      [
-        "chunksRemaining",
-        "plural",
-        {
-          "one": ["#", " trecho não resolvido"],
-          "many": ["#", " trechos não resolvidos"],
-          "other": ["#", " trechos não resolvidos"]
-        }
-      ]
-    ],
     "8Gzz2G": ["worktree de ", ["worktreeOf"]],
     "8HvJlU": [
       "Uma habilidade DIFERENTE com nome parecido com esta fica em ",
@@ -996,6 +988,7 @@
     ],
     "Aif3E7": ["Ativar a busca semântica"],
     "AkA6DO": ["Faz parte do plugin ", ["0"], " — somente leitura; abra-o para editar uma cópia"],
+    "Al8HPP": ["Aceitar a versão atual para o conflito ", ["0"]],
     "Am78jY": ["Arraste ", ["keyName"], " para reordenar"],
     "ApeA0n": [["dropCount"], " edições desfeitas em ", ["docName"]],
     "Aq-O0x": ["status"],
@@ -1851,6 +1844,7 @@
       ["componentName"],
       "> não é um componente conhecido. Copie o código para usá-lo em outro lugar ou exclua o bloco."
     ],
+    "KhNkCq": ["Aceitar ambos"],
     "Khxcyu": ["O acesso ao terminal não está ativado neste projeto."],
     "KjTmeO": ["Atualize o OpenKnowledge para abrir este compartilhamento."],
     "KkEAud": ["Cria um arquivo a partir do documento ou da pasta atual."],
@@ -1934,7 +1928,6 @@
     "LaskKp": ["Enviar para o chat (", ["0"], ")"],
     "Lbl6KA": ["Não deu para instalar a partir de ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Não é seguro editar a configuração desta ferramenta"],
-    "Lcehxn": ["Salvar a resolução"],
     "LdABLa": ["Não foi possível abrir ", ["target"], ". Tente abrir manualmente."],
     "LdKIHS": ["Redigir uma especificação"],
     "LeGeTf": ["OpenKnowledge no GitHub"],
@@ -1947,6 +1940,7 @@
     ],
     "LhWYpm": ["Há outros caminhos OK rastreados no remoto:"],
     "Li4U-T": ["Saiba mais sobre ", ["title"]],
+    "LkQRL8": ["Mostrar original"],
     "LlHqdU": ["Inicializando o projeto"],
     "LlJ8LD": [
       "O compartilhamento da configuração não mudou: ",
@@ -2128,6 +2122,7 @@
     "Ni4b7h": [
       "Os plugins de projeto são o padrão de autoria do seu projeto — ligue ou desligue aqui. Cada plugin ativado ganha uma página própria em Plugins, na barra lateral de configurações."
     ],
+    "NjnHNV": ["Aceitar a versão recebida para o conflito ", ["0"]],
     "NjrIak": ["Arquivo: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Editar ", ["tag"]],
     "NkXEFS": ["Falha ao restaurar — o documento não mudou"],
@@ -2137,6 +2132,7 @@
     "NnQapF": ["Abrir com a IA ", ["targetDisplayName"]],
     "NoY1k4": ["Estrutura da resposta do servidor inválida"],
     "NpC29w": ["Cria um novo item de lista a partir do item atual."],
+    "NpRLRj": ["Desfaça suas resoluções para alterar isto."],
     "NrFwux": ["Falha ao salvar as regras de conteúdo — ", ["0"]],
     "Ns0z5o": [
       "Quando você instala uma habilidade publicada, o diretório de habilidades (skills.sh) é avisado para que a contagem de instalações fique correta. São enviados o nome da habilidade, o repositório de origem dela e para quais ferramentas de IA ela foi — nunca o conteúdo dos arquivos, e nunca no caso de uma habilidade de origem privada, local ou digitada à mão. Uma vez por habilidade, por computador."
@@ -2195,6 +2191,7 @@
     "OLBz-_": ["Falha ao renderizar o diagrama do Mermaid."],
     "OLIKgw": ["Arraste o item ", ["0"], " para reordenar"],
     "ONPvOb": ["Carregando a atividade do agente"],
+    "ONUgxB": ["Esse conflito não está mais disponível."],
     "ONWvwQ": ["Enviar"],
     "ONchxy": ["total"],
     "ONgEZF": ["Carregando os títulos de ", ["pageTarget"]],
@@ -2278,6 +2275,7 @@
     "PVSwOe": ["Redirecionando — aguardando a execução atual parar…"],
     "PVUn_c": ["Abrir pasta"],
     "PVggyD": ["Esquemas de frontmatter"],
+    "PWh9Ii": ["Aplicar alterações"],
     "PWqtgd": ["Carregando o chat"],
     "PXaT32": ["O servidor retornou uma resposta de destinos de habilidades incompleta."],
     "PYmp-0": ["Importar como modelo"],
@@ -2368,6 +2366,7 @@
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
+    "QVk3SK": ["Este arquivo foi excluído no ramo recebido (conflito modify-delete)."],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
@@ -2791,6 +2790,7 @@
     ],
     "VIwCaD": ["Entrada"],
     "VJaBca": ["Escolha uma pasta de habilidade"],
+    "VL6VsE": ["Aceitar atual"],
     "VM7H66": ["Este arquivo é binário e não pode ser mostrado como texto."],
     "VMlRqi": ["Ocultar detalhes"],
     "VNNRfN": ["tornar fonte"],
@@ -3043,7 +3043,7 @@
       "Não deu para reiniciar o servidor — outro processo está com ele. Feche as outras janelas do OpenKnowledge deste projeto e tente de novo."
     ],
     "Xv_ijG": ["https://github.com/dono/repo ou dono/repo"],
-    "XyOUTJ": ["Sair da mesclagem"],
+    "XzL7x7": ["Reabra ", ["filePath"], " para continuar editando."],
     "Xzy0s0": ["Remover ", ["fullLabel"], " do contexto"],
     "Y-Urt2": ["Equação matemática em bloco renderizada com KaTeX a partir de código LaTeX."],
     "Y1QMlM": ["Comece agora"],
@@ -3085,6 +3085,7 @@
     "YSFv5w": ["Sem repositório git — o compartilhamento de configuração não se aplica aqui."],
     "YTLmTM": ["Excluir a pasta <0>.git</0> acima"],
     "YW7Q86": ["As configurações de busca ainda não carregaram — tente de novo em instantes"],
+    "YWK2zy": ["Diferenças do conflito em ", ["fileName"]],
     "Y_GpJd": ["A requisição de download de ", ["0"], " expirou."],
     "Y_ZQ6l": ["Instalando ", ["agentName"], "…"],
     "Y_iImT": ["Não foi possível resolver o arquivo ", ["identity"], ". Ir para a referência."],
@@ -3267,6 +3268,7 @@
       "Você escolheu sua pasta pessoal. O OpenKnowledge vai indexar toda a sua árvore pessoal — é grande e pode trazer à tona arquivos pessoais."
     ],
     "_SDGzH": ["Continuar no navegador"],
+    "_SkqfM": ["Aceitar recebido"],
     "_TDESN": ["Erro de rede - ", ["kind"], " \"", ["createdPath"], "\" ainda existe no disco"],
     "_TF8ep": ["Falha ao renderizar o PDF"],
     "_W-elG": ["(em linha)"],
@@ -3819,7 +3821,6 @@
         }
       ]
     ],
-    "g3UF2V": ["Aceitar"],
     "g4WlQK": [
       "O gerenciamento das ferramentas de IA do projeto só está disponível no app de desktop do OpenKnowledge."
     ],
@@ -3838,6 +3839,7 @@
     ],
     "g9Nj4l": ["// nota"],
     "gAhHu7": ["A correção automática só vale para problemas com uma correção mecânica conhecida."],
+    "gBCeDq": ["Sem ancestral comum: os dois ramos adicionaram este arquivo (conflito add/add)."],
     "gBbxn_": ["Verificando o estado da sessão"],
     "gDkNHk": ["Tem certeza de que deseja excluir \"", ["name"], "\"?"],
     "gGVP4q": ["Clique em <0>+</0> <1/> <2>Criar habilidade</2> <3/> <4>Enviar habilidade</4>."],
@@ -3928,6 +3930,7 @@
       "Mantenha um registro escrito de como seu produto é construído. Um lugar para propor ideias, registrar decisões, escrever especificações e anotar o que você aprendeu depois que algo quebrou."
     ],
     "hCattk": ["OpenKnowledge importou ", ["source"]],
+    "hCghAK": ["Este conflito foi resolvido."],
     "hDEaQu": ["Conecte o OpenKnowledge às outras ferramentas que você usa."],
     "hDKtoF": ["há ", ["diffHrs"], " h"],
     "hDoLrm": ["Remover ", ["projectName"], " dos projetos recentes"],
@@ -4154,6 +4157,11 @@
       "Incorpora uma página externa em um iframe embutido (documentação, demos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Ativar Automático (somente Pull)"],
+    "jTdrn1": [
+      "Não foi possível verificar se ",
+      ["filePath"],
+      " ainda está em conflito — tentando novamente."
+    ],
     "jWzDfC": ["Verificando quais ferramentas de IA você tem"],
     "jZ_E5M": ["Falha ao buscar — veja os logs do servidor para os detalhes."],
     "j_Z6g7": ["Padrão compartilhado"],
@@ -4358,7 +4366,6 @@
       "Um caminho dentro da habilidade — qualquer pasta serve (ex.: references/notes.md). As pastas do caminho são criadas para você."
     ],
     "lPkjpD": ["Enviado ", ["pushed"]],
-    "lPzyrU": ["Todos os trechos resolvidos"],
     "lS83Sg": ["Não foi possível acessar a área de transferência."],
     "lScd1O": ["Os slides do Slidev abrem apenas no aplicativo de desktop do OpenKnowledge."],
     "lT6wjt": ["Expandir o quadro"],
@@ -4446,6 +4453,7 @@
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
+    "mR3uQg": ["Este arquivo foi excluído no ramo atual (conflito delete-modify)."],
     "mToVM9": ["Enviar mensagem para ", ["agentName"]],
     "mU3j1b": ["Remover o item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflito)"],
@@ -4730,6 +4738,9 @@
       " foi aberta porque contém uma pasta .git"
     ],
     "pZAs1T": ["Falha ao carregar os links de saída"],
+    "pZaMLc": [
+      "Este arquivo contém linhas que parecem marcadores de conflito, então os limites do conflito não podem ser lidos de forma confiável. Resolva-o manualmente ou com Perguntar à IA."
+    ],
     "paCw0z": ["tudo dentro das pastas ", ["0"], "/ que estão em ", ["1"], "/"],
     "pajIrl": ["Não foi possível desligar o terminal: ", ["0"]],
     "pbwTg6": ["há ", ["seconds"], " s"],
@@ -5353,6 +5364,7 @@
     "wU8WyK": ["Campos do elemento"],
     "wVa83H": ["Não deu para criar o relatório"],
     "wWtVYd": ["Digite uma porta entre 1 e 65535."],
+    "wXFalZ": ["Pré-visualização de ", ["filename"]],
     "wXO4Tg": ["há ", ["hrs"], " h"],
     "wXw19Y": [
       "\"",
@@ -5472,6 +5484,7 @@
     "y46m5r": ["O app de desktop não está respondendo. Atualize e tente de novo."],
     "y5FUYi": ["Menu de sugestões aberto"],
     "y5UgU8": ["Desativar ", ["0"]],
+    "y6HGwM": ["Conflitos restantes: ", ["liveRemaining"], "."],
     "y8B54M": ["Não deu para enviar seu prompt — tente de novo."],
     "yCX4jp": [" Não foi possível restaurar sua seleção."],
     "yDlK9k": ["Resolva o conflito em ", ["files"], " antes de excluir."],

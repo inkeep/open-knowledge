@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { recordContributor, swapContributors } from './contributor-tracker.ts';
 import { applyExternalChange } from './external-change.ts';
+import { claimExternalChange, clearExternalChangeClaims } from './external-change-attribution.ts';
 import { createServer } from './server-factory.ts';
 import { FILE_SYSTEM_WRITER, initShadowRepo, shadowGit } from './shadow-repo.ts';
 
@@ -165,6 +166,64 @@ describe('persistence L2 fan-out (US-014)', () => {
     // Commit subject should use reconcile: prefix
     const subject = (await sg.raw('log', '-1', '--format=%s', 'refs/wip/main/file-system')).trim();
     expect(subject).toBe('reconcile: fs-writer-doc');
+  });
+
+  test('a claimed external change commits on the actor ref, not file-system', async () => {
+    // A merge-conflict resolution reaches the Y.Doc through the watcher like
+    // any other disk edit, so without a claim it lands on `file-system` and the
+    // history cannot say who chose. The claim is what moves it to the actor.
+    clearExternalChangeClaims();
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const historyHandle = await initShadowRepo(projectDir);
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      contentRoot: 'content',
+      quiet: true,
+      debounce: 60_000,
+      shadowRepo: historyHandle,
+    });
+    await server.ready;
+
+    const conn = await server.hocuspocus.openDirectConnection('claimed-doc');
+    await conn.transact((doc) => {
+      const xmlFragment = doc.getXmlFragment('default');
+      const paragraph = new Y.XmlElement('paragraph');
+      paragraph.insert(0, [new Y.XmlText('initial content')]);
+      xmlFragment.insert(0, [paragraph]);
+    });
+
+    const writerId = 'principal-33333333-3333-3333-3333-333333333333';
+    claimExternalChange('claimed-doc', {
+      writerId,
+      displayName: 'Alice',
+      colorSeed: writerId,
+    });
+
+    applyExternalChange(
+      server.durabilityState,
+      server.hocuspocus,
+      'claimed-doc',
+      '# Resolved by a person\n',
+    );
+
+    const doc = server.hocuspocus.documents.get('claimed-doc');
+    doc?.removeDirectConnection();
+
+    await server.destroy();
+
+    const sg = shadowGit(historyHandle);
+    const actorRef = (await sg.raw('rev-parse', `refs/wip/main/${writerId}`)).trim();
+    expect(actorRef).toBeTruthy();
+
+    // And nothing was credited to the file system for this doc.
+    const fsRefs = (
+      await sg.raw('for-each-ref', '--format=%(refname)', 'refs/wip/main/file-system')
+    ).trim();
+    expect(fsRefs).toBe('');
   });
 
   test('concurrent agent + file-watcher → two commits sharing tree SHA', async () => {

@@ -524,10 +524,6 @@ msgstr "{boldName}은 이 프로젝트 외부의 <0>{source}</0>에 있습니다
 msgid "{chars, plural, one {char} other {chars}}"
 msgstr "{chars, plural, other {#자}}"
 
-#: src/components/DiffView.tsx
-msgid "{chunksRemaining, plural, one {# unresolved hunk} other {# unresolved hunks}}"
-msgstr "{chunksRemaining, plural, other {해결되지 않은 변경 블록 #개}}"
-
 #: src/editor/utils/editor-strings.ts
 msgid "{componentLabel} (empty)"
 msgstr "{componentLabel} (비어 있음)"
@@ -1331,9 +1327,32 @@ msgstr "{appName} 정보"
 msgid "Above"
 msgstr "위"
 
-#: src/components/DiffView.tsx
-msgid "Accept"
-msgstr "수락"
+#: src/components/ConflictView.tsx
+msgid "Accept both"
+msgstr "둘 다 적용"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept both versions for conflict {0}"
+msgstr "충돌 {0}에 두 버전 모두 적용"
+
+#: src/components/ConflictView.tsx
+msgid "Accept current"
+msgstr "현재 항목 적용"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept current version for conflict {0}"
+msgstr "충돌 {0}에 현재 버전 적용"
+
+#: src/components/ConflictView.tsx
+msgid "Accept incoming"
+msgstr "수신 항목 적용"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept incoming version for conflict {0}"
+msgstr "충돌 {0}에 수신 버전 적용"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Accept their deletion"
@@ -1671,6 +1690,10 @@ msgstr "{editor} 버전을 소스와 맞췄습니다(바이트를 백업했습�
 msgid "All"
 msgstr "모두"
 
+#: src/components/ConflictView.tsx
+msgid "All conflicts resolved. Apply changes to save."
+msgstr "모든 충돌이 해결되었습니다. 변경 사항을 적용하여 저장하세요."
+
 #: src/components/FolderOverview.tsx
 msgid "All files"
 msgstr "모든 파일"
@@ -1678,10 +1701,6 @@ msgstr "모든 파일"
 #: src/components/FileTreeFilteredToZeroNotice.tsx
 msgid "All files are hidden by view filters."
 msgstr "보기 필터로 모든 파일이 숨겨져 있습니다."
-
-#: src/components/DiffView.tsx
-msgid "All hunks resolved"
-msgstr "모든 변경 블록 해결됨"
 
 #: src/components/CommandPalette.tsx
 msgid "All tags"
@@ -1841,6 +1860,10 @@ msgstr "이 대화를 다시 시작할 때 적용됩니다"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "적용하고 프로젝트 서버 재시작"
+
+#: src/components/ConflictView.tsx
+msgid "Apply changes"
+msgstr "변경 사항 적용"
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
@@ -3128,6 +3151,10 @@ msgstr "충돌"
 msgid "Conflict"
 msgstr "충돌"
 
+#: src/components/ConflictView.tsx
+msgid "Conflict diff for {fileName}"
+msgstr "{fileName}의 충돌 차이"
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicted files"
 msgstr "충돌한 파일"
@@ -3140,6 +3167,10 @@ msgstr "충돌하는 파일: {0}."
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "충돌"
+
+#: src/components/ConflictView.tsx
+msgid "Conflicts remaining: {liveRemaining}."
+msgstr "남은 충돌: {liveRemaining}개."
 
 #: src/components/AuthModal.tsx
 msgid "Connect"
@@ -3631,6 +3662,10 @@ msgstr "댓글 추가에 실패했습니다."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "변경사항을 적용하지 못했습니다: {0}"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Couldn't check whether {filePath} is still conflicted — retrying."
+msgstr "{filePath}에 아직 충돌이 있는지 확인하지 못했습니다 — 다시 시도합니다."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -5447,10 +5482,6 @@ msgstr "종료"
 msgid "exit {0}"
 msgstr "exit {0}"
 
-#: src/components/DiffView.tsx
-msgid "Exit merge"
-msgstr "병합 종료"
-
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "Expand {keyName}"
@@ -6562,6 +6593,10 @@ msgstr "폴더 가리기"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Hide HTML preview"
 msgstr "HTML 미리보기 숨기기"
+
+#: src/components/ConflictView.tsx
+msgid "Hide original"
+msgstr "원본 숨기기"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide Others"
@@ -8559,6 +8594,10 @@ msgstr "이 프로젝트에 아직 댓글이 없습니다. 구절에 댓글 남�
 msgid "No comments yet. Select text in the document to add one."
 msgstr "아직 댓글 없음. 문서에서 텍스트 선택 후 댓글 추가"
 
+#: src/components/ConflictView.tsx
+msgid "No common ancestor — both branches added this file (add/add conflict)."
+msgstr "공통 조상이 없습니다 — 두 브랜치가 이 파일을 각각 추가했습니다 (add/add 충돌)."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "이 버전에서 내용 변경 없음."
@@ -10151,6 +10190,10 @@ msgstr "위의 사용자 지정에서 태양 또는 달을 눌러 이 테마를 
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
 msgstr "미리보기 브라우저에서는 자동 복사가 지원되지 않습니다. 위 URL에서 Cmd/Ctrl+C를 사용하거나 데스크톱 앱에서 OK를 여세요."
 
+#: src/components/ConflictFilePreview.tsx
+msgid "Preview of {filename}"
+msgstr "{filename} 미리 보기"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Preview of the screenshot"
 msgstr "스크린샷 미리보기"
@@ -10568,6 +10611,7 @@ msgid "Recycle Bin"
 msgstr "휴지통"
 
 #: src/components/AppMenubar.tsx
+#: src/components/ConflictView.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
 msgstr "다시 실행"
@@ -10604,7 +10648,6 @@ msgid "Reinstalling"
 msgstr "재설치 중"
 
 #: src/components/acp/PlanChecklist.tsx
-#: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "거부"
 
@@ -10853,6 +10896,10 @@ msgstr "렌더링됨"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "다시 열기"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Reopen {filePath} to keep editing."
+msgstr "계속 편집하려면 {filePath}을(를) 다시 여세요."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11330,10 +11377,6 @@ msgstr "저장 실패: {error}"
 #: src/components/acp/ThreadView.tsx
 msgid "Save queued message"
 msgstr "대기 중인 메시지 저장"
-
-#: src/components/DiffView.tsx
-msgid "Save resolution"
-msgstr "해결 결과 저장"
 
 #: src/comments/ThreadCard.tsx
 msgid "Save this comment (Enter)"
@@ -12094,6 +12137,10 @@ msgstr "파일 표시 또는 숨기기"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Terminal"
 msgstr "터미널 표시 또는 숨기기"
+
+#: src/components/ConflictView.tsx
+msgid "Show original"
+msgstr "원본 표시"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -13100,6 +13147,10 @@ msgstr "보고서 감사합니다!"
 msgid "That branch is already open in another worktree."
 msgstr "해당 브랜치는 다른 워크트리에서 이미 열려 있습니다."
 
+#: src/components/ConflictView.tsx
+msgid "That conflict is no longer available."
+msgstr "해당 충돌은 더 이상 사용할 수 없습니다."
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "That did not go through. Check the server logs and try again."
 msgstr "처리되지 않았습니다. 서버 로그를 확인한 뒤 다시 시도하세요."
@@ -13570,6 +13621,10 @@ msgstr "Settings > AI tools & CLI에서 설정 가능"
 msgid "This comment is on the whole property"
 msgstr "이 댓글, 속성 전체에 적용됨"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "This conflict is resolved."
+msgstr "이 충돌은 해결되었습니다."
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "이 문서"
@@ -13610,6 +13665,10 @@ msgstr "이 필드에는 편집기에 표시되지 않는 추가 스키마 키�
 msgid "This file can't be opened in the text editor."
 msgstr "이 파일은 텍스트 편집기에서 열 수 없습니다."
 
+#: src/components/ConflictView.tsx
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
+msgstr "이 파일에는 충돌 마커처럼 보이는 줄이 있어 충돌 경계를 정확히 읽을 수 없습니다. 직접 해결하거나 AI에게 묻기를 사용하세요."
+
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
 msgstr "이 파일을 찾을 수 없습니다."
@@ -13621,6 +13680,14 @@ msgstr "이 파일은 바이너리라 텍스트로 표시할 수 없습니다."
 #: src/components/use-viewer-text.ts
 msgid "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
 msgstr "이 파일은 기본 제공 텍스트 편집기에서 열기에는 너무 큽니다(1MB 제한). 아래의 파일 열기를 사용해 다른 앱에서 여세요."
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the current branch (delete-modify conflict)."
+msgstr "이 파일은 현재 브랜치에서 삭제되었습니다 (delete-modify 충돌)."
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the incoming branch (modify-delete conflict)."
+msgstr "이 파일은 수신 브랜치에서 삭제되었습니다 (modify-delete 충돌)."
 
 #: src/lib/share/receive-flow.ts
 msgid "This folder doesn't contain a git repository. Pick a different folder?"
@@ -14202,7 +14269,7 @@ msgstr "{docName}에서 마지막 편집을 실행 취소했습니다."
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
-#: src/components/DiffView.tsx
+#: src/components/ConflictView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -14231,6 +14298,10 @@ msgstr "협업자와 에이전트의 편집은 유지하면서 직접 편집한 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Undo to this edit?"
 msgstr "이 편집으로 되돌리시겠습니까?"
+
+#: src/components/ConflictView.tsx
+msgid "Undo your resolutions to change this."
+msgstr "이 설정을 바꾸려면 해결을 실행 취소하세요."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."

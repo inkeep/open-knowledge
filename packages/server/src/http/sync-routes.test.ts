@@ -25,6 +25,8 @@ import { createSyncRoutes } from './sync-routes.ts';
 function buildGroup() {
   return createSyncRoutes({
     projectDir: undefined,
+    contentDir: '/tmp/ok-sync-routes-test',
+    getPrincipal: undefined,
     hocuspocus: new Hocuspocus({ quiet: true }),
     log: loggerFactory.getLogger('test'),
     checkLocalOpSecurity: () => true,
@@ -74,6 +76,8 @@ describe('conflict-content working-tree ours-read errno discrimination', () => {
     } as unknown as SyncEngine;
     return createSyncRoutes({
       projectDir,
+      contentDir: '/tmp/ok-sync-routes-test',
+      getPrincipal: undefined,
       hocuspocus: new Hocuspocus({ quiet: true }),
       log: loggerFactory.getLogger('test'),
       checkLocalOpSecurity: () => true,

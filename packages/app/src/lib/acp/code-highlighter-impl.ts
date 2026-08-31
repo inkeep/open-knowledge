@@ -1,7 +1,7 @@
 /**
  * The heavy half of the code highlighter: shiki core, the JavaScript regex
- * engine (no oniguruma wasm), the curated grammars, and the github theme
- * pair. Loaded only via the dynamic import in `code-highlighter.ts` — a
+ * engine (no oniguruma wasm), the curated grammars, and the shared
+ * `--syntax-*` theme. Loaded only via the dynamic import in `code-highlighter.ts` — a
  * static import from anywhere else would drag every grammar into the main
  * bundle and re-break the size budget. Grammar list must stay in sync with
  * `LANGUAGES` in `code-highlighter.ts`.
@@ -26,10 +26,9 @@ import langSql from '@shikijs/langs/sql';
 import langToml from '@shikijs/langs/toml';
 import langTsx from '@shikijs/langs/tsx';
 import langYaml from '@shikijs/langs/yaml';
-import themeGithubDark from '@shikijs/themes/github-dark';
-import themeGithubLight from '@shikijs/themes/github-light';
 import { createHighlighterCore, type HighlighterCore, type TokensResult } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
+import { OK_SYNTAX_THEME_NAME, okSyntaxTheme } from '@/lib/ok-syntax-theme';
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 
@@ -38,7 +37,7 @@ function getHighlighter(): Promise<HighlighterCore> {
   // forever — `??=` would otherwise pin the rejected promise and disable
   // highlighting for the rest of the session.
   highlighterPromise ??= createHighlighterCore({
-    themes: [themeGithubLight, themeGithubDark],
+    themes: [okSyntaxTheme],
     langs: [
       langCss,
       langDiff,
@@ -66,12 +65,16 @@ function getHighlighter(): Promise<HighlighterCore> {
   return highlighterPromise;
 }
 
-/** Dual-theme token stream in the same shape `@streamdown/code` produced. */
+/**
+ * Single-theme token stream. `okSyntaxTheme` resolves its colors to the
+ * `--syntax-*` custom properties, which already flip with the app's mode, so
+ * one theme covers light and dark — a light/dark pair would ask Shiki to
+ * resolve the mode a second time off a palette that no longer varies by it.
+ * Streamdown reads the resulting per-token `color` into its own
+ * `--sdm-c` and paints through it.
+ */
 export async function tokenize(code: string, language: string): Promise<TokensResult> {
   const highlighter = await getHighlighter();
   const resolved = highlighter.getLoadedLanguages().includes(language) ? language : 'text';
-  return highlighter.codeToTokens(code, {
-    lang: resolved,
-    themes: { light: 'github-light', dark: 'github-dark' },
-  });
+  return highlighter.codeToTokens(code, { lang: resolved, theme: OK_SYNTAX_THEME_NAME });
 }

@@ -78,7 +78,6 @@ import { isNoteWindow } from '@/lib/note-window-mode';
 import { mark, ProfilerBoundary } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
 import { cn } from '@/lib/utils';
-import { DiffViewBoundary } from './DiffViewBoundary';
 import { DocumentBoundary } from './DocumentBoundary';
 import { DocumentErrorBoundary } from './DocumentErrorBoundary';
 import { EditorSkeleton } from './EditorSkeleton';
@@ -97,6 +96,16 @@ import {
   shouldRecordScrollPosition,
 } from './scroll-restore';
 import { Button } from './ui/button';
+
+// The conflict surface only mounts when a doc's `lifecycle.status` is
+// `conflict`, so `@pierre/diffs` — and the whole rendered-diff engine behind it
+// — has no business in the eager editor chunk. Same reasoning and same shape as
+// the version-diff panes in EditorArea: conditionally mounted, so code-split.
+// The boundary pulls ConflictView and ConflictFilePreview with it.
+const LazyDiffViewBoundary = lazy(async () => {
+  const mod = await import('./DiffViewBoundary');
+  return { default: mod.DiffViewBoundary };
+});
 
 // Lazy-loaded: the skill/template identity panel (+ SkillProperties /
 // TemplateProperties + their rename/move APIs) only mounts for managed-artifact
@@ -700,6 +709,7 @@ export function ScrollPreservingContainer({
   mode,
   initialScrollTop,
   bodyAnchorRef,
+  hasToolbar = true,
   children,
 }: {
   isActive: boolean;
@@ -733,6 +743,13 @@ export function ScrollPreservingContainer({
    * existing behavior is unchanged whenever nothing above the body moved.
    */
   bodyAnchorRef?: RefObject<HTMLElement | null>;
+  /**
+   * Whether `EditorToolbar` is actually overlaying this scroller. False leaves
+   * the top inset off: the toolbar returns null for a conflicted document, and
+   * an unconditional reserve would then hold 3.5rem of empty space above a
+   * conflict view that draws its own header.
+   */
+  hasToolbar?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -1152,7 +1169,10 @@ export function ScrollPreservingContainer({
       // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Seven
       // load-bearing constants must move together if the toolbar height changes:
       //   - `pt-14` (here): initial-paint content reserve so doc content doesn't
-      //     start behind the absolute-positioned EditorToolbar overlay.
+      //     start behind the absolute-positioned EditorToolbar overlay. Applied
+      //     only when that overlay is actually mounted (`hasToolbar`) — EditorArea
+      //     returns null from it for a conflicted doc, and the reserve would
+      //     otherwise strand 3.5rem above a view drawing its own header.
       //   - `scroll-pt-14` (here): scroll-padding-top for native
       //     Element.scrollIntoView alignment — TiptapEditor outline-click +
       //     wiki-link anchor navigation, and editor/extensions/footnote-anchor-scroll.ts.
@@ -1182,7 +1202,7 @@ export function ScrollPreservingContainer({
       // The toolbar itself: components/EditorToolbar.tsx.
       className={cn(
         'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',
-        isNoteWindow() ? 'pt-0 scroll-pt-0' : 'pt-14 scroll-pt-14',
+        isNoteWindow() || !hasToolbar ? 'pt-0 scroll-pt-0' : 'pt-14 scroll-pt-14',
       )}
       style={{ overflowAnchor: 'auto' }}
     >
@@ -1536,6 +1556,7 @@ function ActivityEntry({
         mode={effectiveIsSourceMode ? 'source' : 'wysiwyg'}
         initialScrollTop={warmSnapshot?.scrollTop}
         bodyAnchorRef={bodyAnchorRef}
+        hasToolbar={!isConflict}
       >
         {recoveryView ? (
           <ServerRestartRecoveryPanel view={recoveryView} />
@@ -1584,7 +1605,16 @@ function ActivityEntry({
                        #18(b) hybrid render tree preserved — we swap children,
                        not boundaries). Y.Doc identity is unchanged across
                        the swap, so Y.Text content + undo history survive. */
-                    <DiffViewBoundary docName={entry.docName} provider={entry.provider} />
+                    /* Its own Suspense, matching the Excalidraw branch below:
+                       the nearest boundary otherwise is the per-Activity one
+                       wrapping DocumentBoundary itself, so the first render of
+                       this lazy element suspends the whole subtree — the
+                       fallback replaces the pane and DocumentBoundary's
+                       syncPromise gate unmounts and remounts when the chunk
+                       lands, on a transition that is already a jarring switch. */
+                    <Suspense fallback={<EditorSkeleton />}>
+                      <LazyDiffViewBoundary docName={entry.docName} provider={entry.provider} />
+                    </Suspense>
                   ) : isMermaid ? (
                     /* Standalone Mermaid doc: dedicated diagram (wysiwyg) + editable
                        source editor, both bound to this doc's Y.Text('source').

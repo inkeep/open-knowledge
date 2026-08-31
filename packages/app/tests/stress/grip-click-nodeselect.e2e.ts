@@ -34,14 +34,14 @@
  * `mousedown → mousemove → dragstart-or-click` decision, and the platform
  * drag threshold are not faithful in happy-dom / jsdom.
  *
- * Excluded from CI's fixed `test:e2e` subset; runs under
- * `bunx playwright test` for pre-push coverage (mirrors
- * jsx-backspace-delete.e2e.ts policy).
+ * Runs in CI's fixed `test:e2e` subset (listed in packages/app/package.json),
+ * so it gates the merge queue — which is why its image bytes are stubbed
+ * rather than fetched.
  */
 
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { expect, stubRemoteImages, test } from './_helpers';
 
 interface ApiSeed {
   seedDocs: (docs: Array<{ name: string; markdown: string }>) => Promise<void>;
@@ -216,6 +216,10 @@ test('AC22: grip click NodeSelects an Accordion (composite)', async ({ page, api
 });
 
 test('AC22: grip click NodeSelects an img (self-closing leaf)', async ({ page, api }) => {
+  // Same third-party-CDN hazard as `jsx-image-body-click`: the grip is only
+  // reachable once the image has laid out, so unfetched bytes fail this as a
+  // grip bug. Stub them.
+  await stubRemoteImages(page);
   await setupDoc(page, api, '<img src="https://picsum.photos/200" alt="test image" />\n\nafter\n');
   await resetSelectionToDocStart(page);
 

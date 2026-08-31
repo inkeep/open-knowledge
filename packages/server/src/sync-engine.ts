@@ -2429,12 +2429,19 @@ export class SyncEngine {
         throw e;
       }
       if (wasWorkingTree) {
-        // The pull-only conflict lifecycle's terminal event: a user picked a
-        // side in the resolver (`strategy` is bounded — mine/theirs/content/
-        // delete). Merge-native resolutions are a separate lifecycle.
         log.info({ choice: strategy }, '[sync] pull-only: conflict resolved by choice');
-        await this.notifyContentConflictsResolved([file]);
       }
+      // Fires for BOTH variants. Merge-native was previously left to the
+      // file-watcher's reconcile, which clears the lifecycle only for a doc
+      // that is loaded and only once the reconcile lands — so a resolve whose
+      // watcher event computed `noop`, or arrived while the doc was not open,
+      // left `lifecycle.status = 'conflict'` standing with no conflict behind
+      // it, which is what keeps the conflict view on screen with nothing to
+      // show. The clear is idempotent: `clearLifecycleConflict` returns early
+      // when the doc is not marked, and refuses while the engine still holds a
+      // standing conflict for it, so the redundant call on the paths the
+      // watcher already covers is a no-op rather than a race.
+      await this.notifyContentConflictsResolved([file]);
       this.conflictCount = this.conflictStore.count();
       // Ledger-keyed, not state-keyed: B1 leaves the engine at `idle` while its
       // conflicts sit in the ledger, so gating on `state === 'conflict'` skips

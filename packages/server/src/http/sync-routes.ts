@@ -13,8 +13,9 @@
 
 import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
+import type { Principal } from '@inkeep/open-knowledge-core';
 import {
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
@@ -27,9 +28,17 @@ import {
   SyncTriggerSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
+import {
+  ConflictMarkersInContentError,
+  NoConflictTrackedError,
+  RESOLUTION_OPTIONS,
+} from '../conflict-errors.ts';
 import type { ResolveStrategy } from '../conflict-storage.ts';
 import { isShareableOkArtifact } from '../content-filter.ts';
 import { stripDocExtension } from '../doc-extensions.ts';
+import { claimExternalChange, releaseExternalChangeClaim } from '../external-change-attribution.ts';
+import { extractActorIdentity } from '../extract-actor-identity.ts';
+import { pathToDocName } from '../file-watcher.ts';
 import type { PinoLogger } from '../logger.ts';
 import { assertRealpathWithinDir } from '../symlink-guard.ts';
 import type { SyncEngine } from '../sync-engine.ts';
@@ -55,8 +64,20 @@ function ytextHasConflictMarkers(text: string): boolean {
   return /^<{7} /m.test(text) && /^={7}$/m.test(text) && /^>{7} /m.test(text);
 }
 
+/**
+ * How long a conflict-resolution attribution claim stays live.
+ *
+ * The write it describes lands within milliseconds when it lands at all, so
+ * this is sized to the ingest rather than to the worst case — an unconsumed
+ * claim is the one that mis-credits the next unrelated edit.
+ */
+const RESOLVE_ATTRIBUTION_WINDOW_MS = 3_000;
+
 export interface SyncRouteDeps {
   projectDir: string | undefined;
+  contentDir: string;
+  /** Server-side principal resolver — the only trusted actor source (precedent #24). */
+  getPrincipal: (() => Principal | null) | undefined;
   hocuspocus: Hocuspocus;
   log: PinoLogger;
   /** The extension's shared local-op security gate (emits RFC 9457 on refusal). */
@@ -71,7 +92,16 @@ export interface SyncRouteDeps {
 }
 
 export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
-  const { projectDir, hocuspocus, log, checkLocalOpSecurity, getSyncEngine, serializeDoc } = deps;
+  const {
+    projectDir,
+    contentDir,
+    getPrincipal,
+    hocuspocus,
+    log,
+    checkLocalOpSecurity,
+    getSyncEngine,
+    serializeDoc,
+  } = deps;
 
   async function handleSyncStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!checkLocalOpSecurity(req, res, { handler: 'sync-status' })) return;
@@ -281,6 +311,45 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
         return;
       }
       const { file, strategy, content } = body;
+      // Resolving a conflict is a decision, not a file sync. The write reaches
+      // the Y.Doc through the watcher, which would otherwise credit the
+      // Timeline row to "File System" — claim it for the actor first so the
+      // history says who chose. Applies to every strategy: picking a side is
+      // as much a decision as hand-merging.
+      //
+      // `extractActorIdentity` is the mandated resolver for actor-attributed
+      // handlers (precedent #24); body `principalId` is ignored by contract,
+      // the server's `getPrincipal()` being the only trusted source. An
+      // anonymous caller yields no writer and simply keeps today's behaviour.
+      const actor = extractActorIdentity(body as unknown as Record<string, unknown>, getPrincipal);
+      let claimedDocName: string | undefined;
+      if (projectDir && (actor.kind === 'agent' || actor.kind === 'principal')) {
+        // `pathToDocName` matches the watcher's own derivation for ordinary
+        // paths. A conflicted file reached through a symlink resolves by a
+        // different name there, so its claim goes unconsumed and the row falls
+        // back to "File System" — attribution lost, never misattributed.
+        claimedDocName = pathToDocName(resolve(projectDir, file), contentDir);
+        // Short window on purpose. Only a loaded doc whose bytes actually
+        // changed consumes a claim, and several ordinary successes never do:
+        // `mine` on a working-tree conflict writes nothing, `delete` emits a
+        // delete rather than an update, an all-"accept current" resolve can
+        // reconcile to a noop, and resolving from the sidebar or via an agent
+        // usually touches a doc nobody has open. At the default window each of
+        // those left a live claim waiting to credit this actor for whoever
+        // edited the file next. The write is milliseconds away when it happens
+        // at all, so an ingest slower than this loses attribution rather than
+        // misplacing it.
+        claimExternalChange(
+          claimedDocName,
+          {
+            writerId: actor.writerId,
+            displayName: actor.displayName,
+            colorSeed: actor.colorSeed,
+          },
+          Date.now(),
+          RESOLVE_ATTRIBUTION_WINDOW_MS,
+        );
+      }
       try {
         await engine.resolveConflict(file, strategy as ResolveStrategy, content);
         successResponse(
@@ -293,6 +362,49 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
           },
         );
       } catch (e) {
+        // The claim was filed ahead of a write that never landed. Left
+        // standing it would be consumed by whatever genuinely edits this doc
+        // next inside the TTL, crediting the actor for someone else's change.
+        if (claimedDocName) releaseExternalChangeClaim(claimedDocName);
+        // A permanent rejection of the caller's bytes, not a failure of ours.
+        // As a 500 it moved the 5xx alerting signal and, worse, matched the
+        // `resolve_conflict` contract's description of a transient commit
+        // failure — so an agent was told to retry something that can only fail
+        // the same way.
+        // The store tracks nothing at this path — resolved by another session,
+        // or the path is wrong. Caller-side, so not a 5xx, and the remediation
+        // is to re-read the list rather than to touch the bytes. Mirrors the
+        // 404 `handleSyncConflictContent` already returns for this condition.
+        if (e instanceof NoConflictTrackedError) {
+          errorResponse(
+            res,
+            404,
+            'urn:ok:error:no-conflict-tracked',
+            'No conflict is tracked for this path.',
+            {
+              handler: 'sync-resolve-conflict',
+              detail:
+                'This file has no tracked conflict — it may have been resolved by another session, or the path may be stale. Re-read conflicts({ kind: "list" }) before retrying.',
+              extensions: { file: e.file },
+            },
+          );
+          return;
+        }
+        if (e instanceof ConflictMarkersInContentError) {
+          errorResponse(
+            res,
+            422,
+            'urn:ok:error:unresolved-conflict-markers',
+            'Resolution still contains conflict markers.',
+            {
+              handler: 'sync-resolve-conflict',
+              detail:
+                'The submitted content still contains a `<<<<<<< … >>>>>>>` block. Resolve every region, or use strategy "mine" / "theirs" to take one side wholesale.',
+              extensions: { file: e.file, resolutionOptions: RESOLUTION_OPTIONS },
+            },
+          );
+          return;
+        }
         // Surface the underlying error (typically the git commit stderr
         // wrapped by `ConflictStore.resolveConflict`) on the RFC 9457
         // `detail` field so operators + UI toasts + agent tools have the

@@ -7,8 +7,8 @@ import { useEffect, useRef } from 'react';
  * Cross-file contract with BottomComposer + globals.css: the floating Ask AI
  * composer anchors its bottom to this var (the counterpart of the composer's
  * own `--ask-composer-height`) so it stacks ABOVE the conflict controls —
- * the both-modified footer inside DiffView and the delete-vs-modify footers
- * inside DiffViewBoundary — instead of covering them.
+ * the both-modified footer inside ConflictView and the delete-vs-modify
+ * footers inside DiffViewBoundary — instead of covering them.
  *
  * Root-level var: at most one conflict footer has live EFFECTS at a time.
  * Hidden Activity entries in EditorActivityPool keep their DOM, but React
@@ -54,7 +54,9 @@ export function useConflictFooterHeightVar(enabled: boolean) {
     // the footer DOM node cannot change while `enabled` stays true (ref
     // mutations don't re-run effects, so a swapped node would leave the
     // observer on a detached element). Both call sites guarantee this —
-    // DiffView's conflictMode is stable for the mount, and DiffViewBoundary's
+    // ConflictView passes a literal `true` and owns a footer node that stays
+    // mounted for the life of the component (it renders even while empty, so
+    // the composer has a height to anchor against), and DiffViewBoundary's
     // setSides(null) reset forces enabled false→true across kind switches.
   }, [enabled]);
 

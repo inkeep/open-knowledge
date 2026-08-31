@@ -79,6 +79,27 @@ export function containsConflictMarkers(content: string): boolean {
   return CONFLICT_MARKER_RE.test(content);
 }
 
+/**
+ * Detect a COMPLETE unresolved conflict block: a `<<<<<<< ` start marker with a
+ * `>>>>>>> ` end marker after it.
+ *
+ * `containsConflictMarkers` above answers "might this be conflicted?" and is
+ * deliberately loose — a false positive there costs a slower path and nothing
+ * else. Refusing to write needs the opposite bias, because seven `=` is both a
+ * separator and a Markdown setext H1 underline: the loose predicate rejects the
+ * ordinary document `Release Notes\n=======\n`, and a rejected resolution
+ * leaves the user with no way to resolve that file at all.
+ *
+ * Still refuses a document that quotes a whole conflict block inside a fence.
+ * That is rarer than a setext heading and, unlike it, genuinely ambiguous from
+ * the bytes alone.
+ */
+export function containsUnresolvedConflictBlock(content: string): boolean {
+  const start = /^<{7} /m.exec(content);
+  if (!start) return false;
+  return /^>{7} /m.test(content.slice(start.index + start[0].length));
+}
+
 // ─── Block splitting ─────────────────────────────────────────────────────────
 
 /**

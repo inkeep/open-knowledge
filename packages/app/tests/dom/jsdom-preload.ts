@@ -69,7 +69,10 @@ if (domWindow) {
 }
 
 // jsdom doesn't ship `ResizeObserver`; Radix's Select/Popper collections read it
-// from globalThis on mount.
+// from globalThis on mount. It deliberately never fires its callback: a firing
+// observer re-runs resize-driven effects in every component that listens for
+// one, so a suite that installs it globally makes unrelated suites see a resize
+// they never asked for. A suite that needs delivery installs it for itself.
 class MinimalResizeObserver {
   observe() {}
   unobserve() {}

@@ -16624,6 +16624,8 @@ export function createApiExtension(
   });
   const syncRoutes = createSyncRoutes({
     projectDir,
+    contentDir,
+    getPrincipal,
     hocuspocus,
     log,
     checkLocalOpSecurity,

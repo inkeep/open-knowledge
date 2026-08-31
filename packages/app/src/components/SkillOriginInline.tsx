@@ -1,13 +1,19 @@
 import type { SkillScope } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, RefreshCw, Undo2 } from 'lucide-react';
-import { useState } from 'react';
-import { SkillUpdateConflictDialog } from '@/components/SkillUpdateConflictDialog';
+import { lazy, Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useSkillOrigin } from '@/hooks/use-skill-origin';
+
+// Pulls `@pierre/diffs/react` with it, and only ever renders when an update
+// actually conflicts — so it has no claim on the eager chunk.
+const LazySkillUpdateConflictDialog = lazy(async () => {
+  const mod = await import('@/components/SkillUpdateConflictDialog');
+  return { default: mod.SkillUpdateConflictDialog };
+});
 
 /**
  * Import provenance for the active skill tab, rendered inline on the LEFT of the
@@ -189,17 +195,19 @@ export function SkillOriginInline({ scope, name }: { scope: SkillScope; name: st
         </Tooltip>
       ) : null}
       {conflict ? (
-        <SkillUpdateConflictDialog
-          open
-          onOpenChange={(o) => {
-            if (!o) setConflict(null);
-          }}
-          skillName={name}
-          localBody={conflict.localBody}
-          upstreamBody={conflict.upstreamBody}
-          applying={reimporting}
-          onTakeUpstream={() => void onTakeUpstream()}
-        />
+        <Suspense fallback={null}>
+          <LazySkillUpdateConflictDialog
+            open
+            onOpenChange={(o) => {
+              if (!o) setConflict(null);
+            }}
+            skillName={name}
+            localBody={conflict.localBody}
+            upstreamBody={conflict.upstreamBody}
+            applying={reimporting}
+            onTakeUpstream={() => void onTakeUpstream()}
+          />
+        </Suspense>
       ) : null}
     </div>
   );

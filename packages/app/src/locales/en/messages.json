@@ -231,6 +231,7 @@
     "2XQ8Ww": ["Open preview when agent edits"],
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
     "2YZwPB": ["Forward-links response did not match expected shape."],
+    "2Yt22K": ["Hide original"],
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Hide panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Enter a valid URL (for example https://api.openai.com/v1)."],
@@ -365,6 +366,7 @@
     "4Sxexw": ["Source undo or redo"],
     "4TzU0n": ["Initialize"],
     "4Vgtaz": ["The board could not be reached. It may not exist, or the server may be offline."],
+    "4_-TKi": ["Accept both versions for conflict ", ["0"]],
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
     "4d0VYJ": ["We’ll create a safe theme ID from this name."],
@@ -389,6 +391,7 @@
     "4sUdTJ": ["themed preview"],
     "4uNLmk": ["Pulling"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
+    "4vn1gP": ["All conflicts resolved. Apply changes to save."],
     "4xtLTl": ["Hidden folder “", ["basename"], "”"],
     "4zGlN_": ["Paste image URL or click upload"],
     "4z_1j2": ["Rendered"],
@@ -647,13 +650,6 @@
     ],
     "8AjnFz": ["\"", ["0"], "\" was already imported (identical content)."],
     "8F1i42": ["Page not found"],
-    "8FqTCr": [
-      [
-        "chunksRemaining",
-        "plural",
-        { "one": ["#", " unresolved hunk"], "other": ["#", " unresolved hunks"] }
-      ]
-    ],
     "8Gzz2G": ["worktree of ", ["worktreeOf"]],
     "8HvJlU": [
       "A DIFFERENT skill named like this one lives at ",
@@ -863,6 +859,7 @@
     ],
     "Aif3E7": ["Enable semantic search"],
     "AkA6DO": ["Part of the ", ["0"], " plugin — read-only; open it to edit a copy"],
+    "Al8HPP": ["Accept current version for conflict ", ["0"]],
     "Am78jY": ["Drag ", ["keyName"], " to reorder"],
     "ApeA0n": ["Undid ", ["dropCount"], " edits on ", ["docName"]],
     "Aq-O0x": ["status"],
@@ -1610,6 +1607,7 @@
       ["componentName"],
       "> isn't a known component. Copy the source to use it elsewhere, or delete the block."
     ],
+    "KhNkCq": ["Accept both"],
     "Khxcyu": ["Terminal access isn't enabled for this project."],
     "KjTmeO": ["Update OpenKnowledge to open this share."],
     "KkEAud": ["Create a file from the current document or folder context."],
@@ -1686,7 +1684,6 @@
     "LaskKp": ["Send to chat (", ["0"], ")"],
     "Lbl6KA": ["Couldn't install from ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Can't safely edit this tool's config"],
-    "Lcehxn": ["Save resolution"],
     "LdABLa": ["Could not open ", ["target"], ". Try opening it manually."],
     "LdKIHS": ["Draft a spec"],
     "LeGeTf": ["OpenKnowledge on GitHub"],
@@ -1699,6 +1696,7 @@
     ],
     "LhWYpm": ["Other OK paths are tracked upstream:"],
     "Li4U-T": ["Learn more about ", ["title"]],
+    "LkQRL8": ["Show original"],
     "LlHqdU": ["Initializing project"],
     "LlJ8LD": [
       "Config sharing unchanged: ",
@@ -1860,6 +1858,7 @@
     "Ni4b7h": [
       "Project plugins are your project's authoring standard — turn them on or off here. Each enabled plugin gets its own page under Plugins in the settings sidebar."
     ],
+    "NjnHNV": ["Accept incoming version for conflict ", ["0"]],
     "NjrIak": ["File: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Edit ", ["tag"]],
     "NkXEFS": ["Restore failed — document unchanged"],
@@ -1869,6 +1868,7 @@
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
     "NoY1k4": ["Invalid server response shape"],
     "NpC29w": ["Create a new list item from the current list item."],
+    "NpRLRj": ["Undo your resolutions to change this."],
     "NrFwux": ["Failed to save content rules — ", ["0"]],
     "Ns0z5o": [
       "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
@@ -1923,6 +1923,7 @@
     "OLBz-_": ["Mermaid diagram failed to render."],
     "OLIKgw": ["Drag item ", ["0"], " to reorder"],
     "ONPvOb": ["Loading agent activity"],
+    "ONUgxB": ["That conflict is no longer available."],
     "ONWvwQ": ["Upload"],
     "ONchxy": ["total"],
     "ONgEZF": ["Loading headings for ", ["pageTarget"]],
@@ -2006,6 +2007,7 @@
     "PVSwOe": ["Steering — waiting for the current run to stop…"],
     "PVUn_c": ["Open folder"],
     "PVggyD": ["Frontmatter schemas"],
+    "PWh9Ii": ["Apply changes"],
     "PWqtgd": ["Loading the chat"],
     "PXaT32": ["Server returned an incomplete skill-targets response."],
     "PYmp-0": ["Import as template"],
@@ -2085,6 +2087,7 @@
     "QQbwzK": ["No agents available."],
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
+    "QVk3SK": ["This file was deleted on the incoming branch (modify-delete conflict)."],
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
@@ -2450,6 +2453,7 @@
     ],
     "VIwCaD": ["Entry"],
     "VJaBca": ["Choose a skill folder"],
+    "VL6VsE": ["Accept current"],
     "VM7H66": ["This file is binary and can't be shown as text."],
     "VMlRqi": ["Hide details"],
     "VNNRfN": ["make source"],
@@ -2657,7 +2661,7 @@
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
-    "XyOUTJ": ["Exit merge"],
+    "XzL7x7": ["Reopen ", ["filePath"], " to keep editing."],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
     "Y-Urt2": ["Block math equation rendered with KaTeX from a LaTeX source string."],
     "Y1QMlM": ["Get set up"],
@@ -2699,6 +2703,7 @@
     "YSFv5w": ["No git repository — config sharing does not apply here."],
     "YTLmTM": ["Remove the parent <0>.git</0> folder"],
     "YW7Q86": ["Search settings not yet loaded — try again in a moment"],
+    "YWK2zy": ["Conflict diff for ", ["fileName"]],
     "Y_GpJd": ["The ", ["0"], " download request timed out."],
     "Y_ZQ6l": ["Installing ", ["agentName"], "…"],
     "Y_iImT": ["Unresolvable file ", ["identity"], ". Go to reference."],
@@ -2872,6 +2877,7 @@
       "You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files."
     ],
     "_SDGzH": ["Continue in browser"],
+    "_SkqfM": ["Accept incoming"],
     "_TDESN": ["Network error - ", ["kind"], " \"", ["createdPath"], "\" still exists on disk"],
     "_TF8ep": ["Failed to render PDF"],
     "_W-elG": ["(inline)"],
@@ -3338,7 +3344,6 @@
         }
       ]
     ],
-    "g3UF2V": ["Accept"],
     "g4WlQK": ["Project AI tool management is only available in the OpenKnowledge desktop app."],
     "g4XBm0": ["Small section heading."],
     "g4e0hS": ["Ask ", ["agentName"]],
@@ -3355,6 +3360,7 @@
     ],
     "g9Nj4l": ["// note"],
     "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
+    "gBCeDq": ["No common ancestor — both branches added this file (add/add conflict)."],
     "gBbxn_": ["Checking sign-in status"],
     "gDkNHk": ["Are you sure you want to delete \"", ["name"], "\"?"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
@@ -3443,6 +3449,7 @@
       "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
     ],
     "hCattk": ["OpenKnowledge imported ", ["source"]],
+    "hCghAK": ["This conflict is resolved."],
     "hDEaQu": ["Connect OpenKnowledge to other tools you use."],
     "hDKtoF": [["diffHrs"], "h ago"],
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
@@ -3651,6 +3658,7 @@
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
     "jTUxaN": ["Enable Auto (Pull only)"],
+    "jTdrn1": ["Couldn't check whether ", ["filePath"], " is still conflicted — retrying."],
     "jWzDfC": ["Checking which AI tools you have"],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
@@ -3846,7 +3854,6 @@
       "A path inside the skill — any folder works (e.g. references/notes.md). Folders in the path are created for you."
     ],
     "lPkjpD": ["Pushed ", ["pushed"]],
-    "lPzyrU": ["All hunks resolved"],
     "lS83Sg": ["Couldn’t reach the clipboard."],
     "lScd1O": ["Slidev decks open in the OpenKnowledge desktop app only."],
     "lT6wjt": ["Expand board"],
@@ -3925,6 +3932,7 @@
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
     ],
     "mPzgTS": ["Open ", ["docName"]],
+    "mR3uQg": ["This file was deleted on the current branch (delete-modify conflict)."],
     "mToVM9": ["Message ", ["agentName"]],
     "mU3j1b": ["Remove item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflict)"],
@@ -4187,6 +4195,9 @@
       " because it contains a .git folder"
     ],
     "pZAs1T": ["Failed to load outgoing links"],
+    "pZaMLc": [
+      "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
+    ],
     "paCw0z": ["everything under ", ["0"], "/ folders inside ", ["1"], "/"],
     "pajIrl": ["Could not turn off the terminal: ", ["0"]],
     "pbwTg6": [["seconds"], "s ago"],
@@ -4742,6 +4753,7 @@
     "wU8WyK": ["Element fields"],
     "wVa83H": ["Couldn't create the report"],
     "wWtVYd": ["Enter a port between 1 and 65535."],
+    "wXFalZ": ["Preview of ", ["filename"]],
     "wXO4Tg": [["hrs"], "h ago"],
     "wXw19Y": [
       "Removed \"",
@@ -4859,6 +4871,7 @@
     "y46m5r": ["The desktop app isn't responding. Refresh and try again."],
     "y5FUYi": ["Suggestion menu open"],
     "y5UgU8": ["Disable ", ["0"]],
+    "y6HGwM": ["Conflicts remaining: ", ["liveRemaining"], "."],
     "y8B54M": ["Couldn't send your prompt — please try again."],
     "yCX4jp": [" Your selection could not be restored."],
     "yDlK9k": ["Resolve the conflict on ", ["files"], " before deleting."],

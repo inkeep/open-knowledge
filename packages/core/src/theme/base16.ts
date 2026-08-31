@@ -200,6 +200,10 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'lint-error-color': p.base08,
     'diff-added': p.base0B,
     'diff-removed': p.base08,
+    // base0D is the "functions / headings / links" blue. A three-way merge
+    // needs a third accent for the incoming side, and blue-against-green is
+    // the convention every merge tool converged on.
+    'diff-modified': p.base0D,
 
     // --- callouts ----------------------------------------------------------
     // Spread across all eight accents so adjacent types stay distinguishable;

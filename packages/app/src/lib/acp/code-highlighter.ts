@@ -20,6 +20,7 @@ import type {
   HighlightOptions,
   ThemeInput,
 } from 'streamdown';
+import { okSyntaxTheme } from '@/lib/ok-syntax-theme';
 
 /**
  * Fence labels mapped to the grammar the lazy impl actually loads. Ids must
@@ -54,7 +55,14 @@ const CANONICAL = new Map<string, string>(
   ]),
 );
 
-const THEMES: [ThemeInput, ThemeInput] = ['github-light', 'github-dark'];
+// Streamdown's plugin contract is a light/dark pair, but this highlighter is
+// single-theme: `okSyntaxTheme` paints from `--syntax-*`, which already flips
+// with the app's mode. Both slots name it so streamdown's memo key stays
+// stable — `highlight` below ignores `options.themes` and lets the impl pick.
+// The theme object rather than its name: streamdown's `ThemeInput` admits a
+// registration or a *bundled* theme id, and `ok-syntax` is neither bundled
+// nor registered in streamdown's own highlighter.
+const THEMES: [ThemeInput, ThemeInput] = [okSyntaxTheme, okSyntaxTheme];
 
 // Streaming re-highlights the whole block on every appended chunk, so the
 // cache sees one entry per growth step — bound it so a long session can't
@@ -73,8 +81,8 @@ export const codeHighlighter: CodeHighlighterPlugin = {
   type: 'code-highlighter',
   getSupportedLanguages: () => Array.from(CANONICAL.keys()) as BundledLanguage[],
   supportsLanguage: (language) => CANONICAL.has(language),
-  // The configured pair, not the caller's request: tokenize always renders
-  // github-light/github-dark (the only themes the lazy impl loads).
+  // The configured theme, not the caller's request: tokenize always renders
+  // `ok-syntax` (the only theme the lazy impl loads).
   getThemes: () => THEMES,
   highlight(options: HighlightOptions, callback?: (result: TokensResult) => void) {
     const language = CANONICAL.get(options.language) ?? 'text';

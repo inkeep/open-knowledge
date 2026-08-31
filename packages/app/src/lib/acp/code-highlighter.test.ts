@@ -22,7 +22,7 @@ describe('codeHighlighter facade', () => {
   test('canonicalizes fence aliases onto the loaded grammars', async () => {
     const callback = vi.fn();
     codeHighlighter.highlight(
-      { code: 'const a = 1;', language: 'ts', themes: ['github-light', 'github-dark'] },
+      { code: 'const a = 1;', language: 'ts', themes: ['ok-syntax', 'ok-syntax'] },
       callback,
     );
     await flush();
@@ -32,7 +32,7 @@ describe('codeHighlighter facade', () => {
 
   test('an unknown language tokenizes as plain text', async () => {
     codeHighlighter.highlight(
-      { code: 'hello', language: 'brainfuck', themes: ['github-light', 'github-dark'] },
+      { code: 'hello', language: 'brainfuck', themes: ['ok-syntax', 'ok-syntax'] },
       vi.fn(),
     );
     await flush();
@@ -44,7 +44,7 @@ describe('codeHighlighter facade', () => {
     const options = {
       code: 'print("hi")',
       language: 'python',
-      themes: ['github-light', 'github-dark'],
+      themes: ['ok-syntax', 'ok-syntax'],
     } as Parameters<typeof codeHighlighter.highlight>[0];
     expect(codeHighlighter.highlight(options, callback)).toBeNull();
     await flush();
@@ -62,7 +62,7 @@ describe('codeHighlighter facade', () => {
     const options = {
       code: 'SELECT 1;',
       language: 'sql',
-      themes: ['github-light', 'github-dark'],
+      themes: ['ok-syntax', 'ok-syntax'],
     } as Parameters<typeof codeHighlighter.highlight>[0];
     expect(codeHighlighter.highlight(options, failed)).toBeNull();
     await flush();
@@ -81,7 +81,7 @@ describe('codeHighlighter facade', () => {
     const options = {
       code: 'SELECT 2;',
       language: 'sql',
-      themes: ['github-light', 'github-dark'],
+      themes: ['ok-syntax', 'ok-syntax'],
     } as Parameters<typeof codeHighlighter.highlight>[0];
     expect(codeHighlighter.highlight(options, first)).toBeNull();
     expect(codeHighlighter.highlight(options, second)).toBeNull();
@@ -95,7 +95,7 @@ describe('codeHighlighter facade', () => {
   });
 
   test('cache eviction drops the oldest entries, not the whole cache', async () => {
-    const themes = ['github-light', 'github-dark'] as Parameters<
+    const themes = ['ok-syntax', 'ok-syntax'] as Parameters<
       typeof codeHighlighter.highlight
     >[0]['themes'];
     const opts = (i: number) =>
