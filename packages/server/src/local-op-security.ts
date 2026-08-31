@@ -331,7 +331,7 @@ export function checkLocalOpSecurity(
  *   if (!guard.tryAcquire('/api/local-op/clone')) { /* already in flight *\/ }
  *   try { … } finally { guard.release('/api/local-op/clone'); }
  */
-interface ConcurrencyGuard {
+export interface ConcurrencyGuard {
   tryAcquire(key: string): boolean;
   release(key: string): void;
 }

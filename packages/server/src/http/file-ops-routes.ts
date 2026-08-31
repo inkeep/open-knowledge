@@ -1308,7 +1308,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
         // restoreLifecycleFromConflictsJson disconnects them). Falling back
         // to ConflictStore via SyncEngine catches that eviction race —
         // mirrors the dual-source pattern used in handleSyncConflictContent's
-        // 404 gate.
+        // 404 gate (in `sync-routes.ts`).
         // Enumerate from disk (not the lagging file index) so the conflict
         // pre-check sees every on-disk child of the folder — same root cause
         // as the spine's `affectedDocNames`.
