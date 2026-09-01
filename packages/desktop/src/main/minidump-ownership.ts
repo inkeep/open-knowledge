@@ -202,6 +202,19 @@ const ANNOTATION_TYPE_STRING = 1;
 const AX_MODE_ANNOTATION_KEY = 'ax_mode';
 
 /**
+ * Chromium's crash key naming which kind of process the dump was written for.
+ * Its value tracks the `--type=` switch the process was launched with, so a
+ * GPU process records `gpu-process` and a renderer records `renderer`.
+ *
+ * What the browser process records here is NOT established: it is launched
+ * without that switch, and whether the key is then absent or carries some
+ * marker of its own has not been measured against a real main-process dump.
+ * So a null from this reader means only "this dump did not say", never "this
+ * was not a child process" — and no caller may read it as the latter.
+ */
+const PROCESS_TYPE_ANNOTATION_KEY = 'process_type';
+
+/**
  * Ceilings on every count read out of the file before any allocation. A
  * corrupt or hostile dump can name any u32 here, and a dump is untrusted input
  * for exactly the reason this module exists: it may have been written for a
@@ -808,6 +821,40 @@ function findModuleAnnotation(
 export function readMinidumpAccessibilityMode(dumpPath: string): MinidumpAccessibilityModeRead {
   const read = readDumpAnnotation(dumpPath, AX_MODE_ANNOTATION_KEY);
   return { mode: read.value, parseFailed: read.parseFailed };
+}
+
+export interface MinidumpProcessTypeRead {
+  /**
+   * Chromium's `process_type` crash key — `gpu-process`, `renderer`, `utility`
+   * and so on — or null when the dump carries none.
+   *
+   * Null is "the dump does not say", never "some other kind of process". The
+   * browser process carries no `--type=` switch and therefore no key, and a
+   * dump truncated before its Crashpad stream reads the same way.
+   */
+  processType: string | null;
+  /**
+   * The walk threw rather than declining, the same split the sibling readers
+   * carry: one absent field, two opposite conclusions.
+   */
+  parseFailed: boolean;
+}
+
+/**
+ * Read which kind of process `dumpPath` was written for.
+ *
+ * Read so that a death this app deliberately declined to prompt for can be
+ * paired with the dump it produced at the next boot, rather than that dump
+ * being mistaken for an unreported crash — see `crash-detection.ts`. The
+ * pairing is what keeps the retirement narrow: a GPU death that was swallowed
+ * on purpose retires a GPU dump and nothing else.
+ *
+ * Like `readMinidumpAppVersion`, only meaningful for a dump this app has not
+ * already disowned. Classify first.
+ */
+export function readMinidumpProcessType(dumpPath: string): MinidumpProcessTypeRead {
+  const read = readDumpAnnotation(dumpPath, PROCESS_TYPE_ANNOTATION_KEY);
+  return { processType: read.value, parseFailed: read.parseFailed };
 }
 
 /**

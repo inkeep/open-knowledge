@@ -54,6 +54,8 @@ const UNPARSEABLE_DUMP = Buffer.from('minidump-bytes-that-are-not-a-minidump');
  */
 const CRASHED_VERSION = '0.41.0';
 const DETECTING_VERSION = '0.46.1';
+/** A third version, for telling two dumps in one scan apart by their stamps. */
+const BLIP_VERSION = '0.44.2';
 
 interface Rig {
   deps: CrashDetectionDeps;
@@ -70,6 +72,12 @@ interface Rig {
    * it in, not the simple dictionary beside the version.
    */
   ownDumpWithAxMode(version: string, mode: string): Buffer;
+  /**
+   * Ours, carrying Chromium's `process_type` crash key and nothing else of
+   * note — the annotation that says which child died, in the dump's own
+   * vocabulary (`gpu-process`, `renderer`) rather than Electron's.
+   */
+  ownDumpWithProcessType(processType: string, version?: string): Buffer;
   /**
    * Ours, but captured by `CRASHPAD_SIMULATE_CRASH()` rather than by a fault —
    * what Chromium's GPU watchdog leaves behind for a process it then lets keep
@@ -143,6 +151,11 @@ function makeRig(): Rig {
         // A module carrying nothing comes first, as in a real dump, so a walk
         // that gave up at the first link would fail this.
         annotationObjects: [{}, { ax_mode: mode, process_type: 'renderer' }],
+      }),
+    ownDumpWithProcessType: (processType: string, version = CRASHED_VERSION) =>
+      buildMinidump(ownModules, {
+        annotations: { _productName: 'OpenKnowledge', _version: version, prod: 'Electron' },
+        annotationObjects: [{}, { process_type: processType }],
       }),
     setRendererAvailable(available: boolean) {
       rendererAvailable = available;
@@ -2646,5 +2659,379 @@ describe('the instant the install-kill question is asked in', () => {
     // crash eight hours into a session.
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+});
+
+/**
+ * Deaths the app deliberately declined to prompt for.
+ *
+ * A recoverable GPU death is swallowed on purpose — the process relaunches in
+ * about a second and the user sees nothing worth describing. The dump it wrote
+ * outlives the session anyway, and the next boot's scan has no way to tell it
+ * from the dump of a crash nobody was ever told about, so before this the app
+ * spent one session hiding a blip and the next one asking about it.
+ *
+ * The two-session shape is the rest of this file's. The cases are each other's
+ * controls: the same bytes, moved in time or given a different process type,
+ * must still reach the user.
+ */
+describe('dumps of deaths the app declined to prompt for', () => {
+  test('a swallowed GPU death does not come back as a boot prompt', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    expect(rig.emitted).toHaveLength(0);
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+    sessionB.markCleanQuit();
+
+    // And the boot after that, and every one after it. Nothing moves the scan
+    // floor without a prompt to answer, so the dump stays visible forever — a
+    // record that stopped applying once its dump had been seen would hand the
+    // user the same bogus prompt one launch later, intermittently, which is
+    // harder to report than never having suppressed it at all.
+    const sessionC = createCrashDetection(rig.deps);
+    expect(sessionC.detectBootCrash()).toBeNull();
+    sessionC.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('the same dump still prompts when no death was declined', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+  });
+
+  test('a renderer dump beside a declined GPU death is a different crash and still prompts', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    // The renderer commonly dies moments after the GPU process does, and that
+    // death is the one the user felt. Landing inside the declined death's
+    // window must not retire it.
+    seedMinidump(
+      rig,
+      'completed/renderer.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('renderer'),
+    );
+    sessionA.markCleanQuit();
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+  });
+
+  test('a GPU dump written long after the declined death is a separate incident', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    rig.advance(4 * 60_000);
+    seedMinidump(
+      rig,
+      'completed/gpu-later.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+  });
+
+  test('a dump that names no process type still prompts, because the main process names none', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    // The browser process is launched without a `--type=` switch and so records
+    // no process type at all. Reading that silence as consent would retire the
+    // dump of a native main-process crash that happened to land beside a GPU
+    // blip, which is the crash this whole scan exists to catch.
+    seedMinidump(rig, 'completed/unannotated.dmp', new Date(rig.nowMs()));
+    sessionA.markCleanQuit();
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+  });
+
+  test('a retired dump is still offered to a report the user opens themselves', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    // Retirement decides what the app ASKS about, never what it can attach.
+    // The report path and the boot dialog's attach question have to answer
+    // "is there a dump" the same way, or the checkbox goes missing while the
+    // file sits right there on disk.
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    expect(sessionB.newestMinidumpForReport().path).not.toBeNull();
+  });
+
+  test('a boot that arms for another reason still offers the retired dump', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    // No clean quit: the session died, and the sentinel arms this boot on its
+    // own. The GPU blip is not what is being asked about, but it is still the
+    // newest dump on disk, so the dialog's attach question and the report path
+    // have to agree that a dump exists.
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(armed.context.dirtyShutdown).toBe(true);
+    expect(armed.context.newMinidumps).toBe(0);
+    expect(armed.minidumpAvailable).toBe(true);
+  });
+
+  test('a threshold death that lost the invite slot still prompts at the next boot', () => {
+    const rig = makeRig();
+    const session = createCrashDetection(rig.deps);
+    expect(session.detectBootCrash()).toBeNull();
+    // Nothing can take the prompt, so the first invitation stays pending and
+    // holds the single slot against everything that follows.
+    rig.setRendererAvailable(false);
+
+    session.handleChildProcessGone({ type: 'utility', reason: 'crashed' });
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    // The third GPU death crossed the threshold, so it is written no record of
+    // its own — and it lost the slot, so it was never raised either. Its dump
+    // is the only thing still carrying it, and that dump lands inside the
+    // window of the two declines before it. Those records have to be gone by
+    // now, or they retire the one GPU failure the threshold exists to
+    // escalate. Forgetting them instead costs a prompt the user dismisses.
+    seedMinidump(
+      rig,
+      'completed/gpu-third.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    session.markCleanQuit();
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(armed.context.newMinidumps).toBe(1);
+  });
+
+  test('the version comes from the arming dump, not from a newer retired one', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    // The crash the user felt, stamped with the version that died.
+    const armingAt = new Date(rig.nowMs());
+    seedMinidump(rig, 'completed/renderer.dmp', armingAt, rig.ownDumpStamped(CRASHED_VERSION));
+    // Then a GPU blip the app swallows, whose dump is NEWER. Selecting the
+    // event's dump by ownership alone would take this one and stamp the report
+    // with a different death's version.
+    rig.advance(1_000);
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    // Stamped with a version the arming dump does not carry, so taking the
+    // wrong dump shows up as the wrong answer rather than the same one twice.
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process', BLIP_VERSION),
+    );
+    sessionA.markCleanQuit();
+
+    rig.setAppVersion(DETECTING_VERSION);
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(armed.context.newMinidumps).toBe(1);
+    expect(armed.eventId).toBe(`boot:dump:${armingAt.getTime()}`);
+    expect(armed.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('a record outlives the boot that used it, because its dump does too', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    seedMinidump(
+      rig,
+      'completed/gpu.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    // Pairing a record with its dump does not finish the record's job. The
+    // dump is still on disk and still above the scan floor, so only an
+    // acknowledgment — which never comes on a path where nothing is ever
+    // raised — retires the two of them together.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    const stored = JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as {
+      declinedDeaths: { processType: string }[];
+    };
+    expect(stored.declinedDeaths).toHaveLength(1);
+  });
+
+  test('the record list is capped, dropping the oldest first', () => {
+    const rig = makeRig();
+    const session = createCrashDetection(rig.deps);
+    expect(session.detectBootCrash()).toBeNull();
+
+    // Spaced beyond the relatedness window so every death counts as isolated
+    // and is declined — the path on which nothing ever drains the list. The
+    // first one's moment is read back while it is the only record, so it names
+    // the oldest entry whichever end eviction later comes off.
+    rig.advance(6 * 60_000);
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    const afterFirst = JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as {
+      declinedDeaths: { at: string }[];
+    };
+    expect(afterFirst.declinedDeaths).toHaveLength(1);
+    const oldestAt = afterFirst.declinedDeaths[0]?.at ?? '';
+
+    for (let i = 0; i < 24; i++) {
+      rig.advance(6 * 60_000);
+      session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    }
+
+    const stored = JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as {
+      declinedDeaths: { at: string }[];
+    };
+    expect(stored.declinedDeaths).toHaveLength(20);
+    // The newest records are the ones whose dumps are most likely still to be
+    // asked about, so eviction has to come off the front.
+    expect(stored.declinedDeaths.map((d) => d.at)).not.toContain(oldestAt);
+
+    // And the eviction has to mean something. A dump belonging to the record
+    // that fell off the front prompts again; one belonging to the newest
+    // surviving record is still retired, so exactly one of the two arms.
+    const evictedAt = new Date(Date.parse(oldestAt));
+    seedMinidump(
+      rig,
+      'completed/evicted.dmp',
+      evictedAt,
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    const survivingAt = new Date(Date.parse(stored.declinedDeaths.at(-1)?.at ?? ''));
+    seedMinidump(
+      rig,
+      'completed/surviving.dmp',
+      survivingAt,
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    session.markCleanQuit();
+
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+    expect(armed.context.newMinidumps).toBe(1);
+    expect(armed.eventId).toBe(`boot:dump:${evictedAt.getTime()}`);
+  });
+
+  test('acking drops the records the new baseline has already made moot', () => {
+    const rig = makeRig();
+    const session = createCrashDetection(rig.deps);
+    expect(session.detectBootCrash()).toBeNull();
+
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    const staleAt = new Date(rig.nowMs()).toISOString();
+    rig.advance(10 * 60_000);
+    session.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    const recentAt = new Date(rig.nowMs()).toISOString();
+    session.ack('crash:child:whatever');
+
+    // The baseline now sits at the ack. Dumps at or before it are filtered out
+    // of the next scan anyway, so a record older than the match window can
+    // never pair with anything again — while the one the baseline has only
+    // just passed still can.
+    const stored = JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as {
+      declinedDeaths: { at: string }[];
+    };
+    expect(stored.declinedDeaths.map((d) => d.at)).toEqual([recentAt]);
+    expect(stored.declinedDeaths.map((d) => d.at)).not.toContain(staleAt);
+  });
+
+  test('a GPU that crossed the invite threshold is still reported after an unanswered prompt', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    expect(sessionA.detectBootCrash()).toBeNull();
+
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    sessionA.handleChildProcessGone({ type: 'GPU', reason: 'crashed' });
+    // The third death is the one that finally invites. Its dump lands inside
+    // the window of the two that were declined, so the records those left
+    // must not survive to retire it: the user was told about this crash and
+    // never answered, and the next boot is the only place left to re-raise it.
+    expect(rig.emitted).toHaveLength(1);
+    seedMinidump(
+      rig,
+      'completed/gpu-third.dmp',
+      new Date(rig.nowMs()),
+      rig.ownDumpWithProcessType('gpu-process'),
+    );
+    sessionA.markCleanQuit();
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+  });
+
+  test('an ack store written before this field reads as no declined deaths, not as corruption', () => {
+    const rig = makeRig();
+    const baselineAt = new Date(rig.nowMs()).toISOString();
+    mkdirSync(dirname(rig.deps.ackStorePath), { recursive: true });
+    writeFileSync(
+      rig.deps.ackStorePath,
+      `${JSON.stringify({ ackedEventIds: [], minidumpBaselineAt: baselineAt })}\n`,
+    );
+    rig.advance(60_000);
+    seedMinidump(rig, 'completed/fresh.dmp', new Date(rig.nowMs()));
+
+    const detection = createCrashDetection(rig.deps);
+    // Rejecting the store would re-baseline to now and swallow this dump, so
+    // the prompt is what proves the older shape was accepted rather than
+    // repaired.
+    expect(bootInvite(detection.detectBootCrash()).context.dirtyShutdown).toBe(false);
+    detection.ack('boot:some-event');
+    expect(JSON.parse(readFileSync(rig.deps.ackStorePath, 'utf8')) as unknown).toMatchObject({
+      declinedDeaths: [],
+    });
   });
 });

@@ -62,9 +62,11 @@ import { asReportableAppVersion } from './crashed-app-version.ts';
 import {
   classifyMinidumpCrashKind,
   classifyMinidumpOwnership,
+  type MinidumpCrashKind,
   type MinidumpOwnership,
   readMinidumpAccessibilityMode,
   readMinidumpAppVersion,
+  readMinidumpProcessType,
 } from './minidump-ownership.ts';
 
 /**
@@ -78,6 +80,17 @@ const CRASH_REASONS = new Set(['crashed', 'oom', 'launch-failed', 'integrity-fai
 
 /** Electron's `details.type` for the GPU child process. */
 const GPU_PROCESS_TYPE = 'GPU';
+
+/**
+ * The same process, as Chromium's own `process_type` crash key spells it.
+ *
+ * Two vocabularies for one process: Electron reports `details.type` from its
+ * own table (`GPU`, `Utility`, `Zygote`), while Crashpad records the `--type=`
+ * switch the process was launched with. A declined death is recorded in the
+ * dump's vocabulary rather than Electron's, because the reader that has to
+ * match it later has only the dump.
+ */
+const GPU_DUMP_PROCESS_TYPE = 'gpu-process';
 
 /**
  * How many GPU deaths inside the window it takes before one is worth a prompt.
@@ -119,6 +132,46 @@ const INVITE_SUPERSEDE_AFTER_MS = 5 * 60_000;
  */
 const MAX_ACKED_EVENT_IDS = 50;
 
+/**
+ * How far a dump's mtime may sit from a death this app declined to prompt for
+ * and still be read as that death's dump.
+ *
+ * Not a guess at how related two crashes are — the far wider judgement
+ * `GPU_CRASH_WINDOW_MS` makes — but the width of one instant seen through two
+ * clocks. Crashpad writes the dump as the process dies and Electron delivers
+ * `child-process-gone` immediately after, so the two stamps describe the same
+ * moment; the window only has to absorb the flush and the coarseness of an
+ * mtime. Kept an order of magnitude below the relatedness window so it can
+ * never reach across two distinct incidents and retire the second one's dump.
+ *
+ * The two stamps come from two clocks — a wall-clock read here, an OS-stamped
+ * mtime there — so an NTP correction or a manual clock change between them can
+ * pull a genuine pair apart. Tolerated rather than corrected for: a missed
+ * pair costs one prompt the user dismisses, which is the direction this whole
+ * mechanism is built to fail in, and the pairing already demands a matching
+ * `process_type` before it drops anything.
+ */
+const DECLINED_DEATH_DUMP_MATCH_MS = 30_000;
+
+/**
+ * On the path where the user is never prompted, this IS the retention policy,
+ * not a safety net.
+ *
+ * A record cannot be dropped when its dump is found, because finding the dump
+ * changes nothing about how long that dump stays visible: the scan floor is
+ * the acknowledgment baseline and nothing else moves it, so the same dump is
+ * still there at the next boot and every boot after. Retiring it once and then
+ * forgetting why would hand the user the same bogus prompt one launch later —
+ * intermittently, which is worse than never having suppressed it. A record has
+ * to outlive its dump's visibility, and only an acknowledgment ends that.
+ *
+ * So on a run of isolated blips with no prompt in between, the list fills and
+ * this cap is what bounds it. Evicting oldest-first is the direction that
+ * matters: the newest record is the one whose dump is most likely still to be
+ * asked about.
+ */
+const MAX_DECLINED_DEATHS = 20;
+
 /** Crashpad nests dumps (`pending/`, `completed/`, `new/`) — walk a bounded depth. */
 const MINIDUMP_SCAN_DEPTH = 3;
 
@@ -141,11 +194,75 @@ interface CrashLogger {
   warn(payload: Record<string, unknown>, msg: string): void;
 }
 
+/**
+ * A death this app saw, classified, and deliberately chose not to tell the user
+ * about — today only a recoverable GPU death under the invite threshold.
+ *
+ * Recorded because the decision and its consequence are separated by a
+ * restart. The prompt is declined in-session, but the dump that death wrote
+ * outlives the session, and the boot scan that finds it has no other way to
+ * tell it from the dump of a crash nobody ever heard about. Without this the
+ * app swallows a GPU blip on purpose and then asks about it at the next
+ * launch, naming a crash the user never saw.
+ */
+interface DeclinedDeath {
+  /** When the death was declined, ISO-8601. */
+  at: string;
+  /** Chromium's `process_type` for the process that died — the dump's spelling. */
+  processType: string;
+}
+
+/**
+ * What the dump said when asked which kind of process it was written for.
+ *
+ * Three outcomes rather than a value and a failure flag, because the one that
+ * matters operationally is the middle one. `unnamed` covers every way the
+ * annotation can stop being where this app looks — renamed, relocated to the
+ * simple dictionary, or moved by a Chromium bump — all of which the reader
+ * reports as a clean "the dump does not say" rather than as a broken parse. It
+ * is the only observable that distinguishes a build where retirement has gone
+ * inert from one where nothing needed retiring, so it has to survive as its
+ * own state instead of collapsing into the failure flag, which sees only an
+ * OS-level read error.
+ */
+type ProcessTypeRead = 'named' | 'unnamed' | 'parse-failed' | 'not-asked';
+
+/** What the boot scan concluded about one dump's provenance. */
+interface DeclinedDeathMatch {
+  /** The declined death that wrote this dump, or null when none claimed it. */
+  matched: DeclinedDeath | null;
+  /** `not-asked` when no declined death was near enough to be worth a parse. */
+  read: ProcessTypeRead;
+}
+
+/**
+ * One dump from a boot scan, with everything the scan decided about it.
+ *
+ * Named rather than derived from the `.map()` that builds it because `arming`
+ * below is the load-bearing definition of "this dump makes the app ask", and a
+ * predicate whose domain can only be learned by jumping to a construction site
+ * is one the next reader will re-spell inline instead.
+ */
+interface ClassifiedDump {
+  entry: MinidumpEntry;
+  ownership: MinidumpOwnership;
+  /** Only asked of dumps that are ours; null otherwise. */
+  crashKind: MinidumpCrashKind | null;
+  declined: DeclinedDeathMatch;
+}
+
 /** Persisted acknowledgment state (userData JSON). */
 interface CrashAckStore {
   ackedEventIds: string[];
   /** Minidumps at or older than this instant are considered already handled. */
   minidumpBaselineAt: string;
+  /**
+   * Deaths declined in an earlier session whose dumps must not be read as
+   * unreported crashes. Add-only field: a store written by a build that
+   * predates it parses as an empty list rather than as corruption, since
+   * failing the parse would re-baseline and retire every real dump with it.
+   */
+  declinedDeaths: DeclinedDeath[];
 }
 
 /**
@@ -416,6 +533,29 @@ function epochMsOrNull(iso: string | null): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+/**
+ * Element-wise rather than trusted wholesale, and never fatal.
+ *
+ * This list is the newest field in a file read across app-version boundaries,
+ * so it is the one most likely to arrive absent or half-written — and rejecting
+ * the whole store for it would fail open to a fresh baseline, retiring every
+ * genuine dump on disk to salvage a record whose only job is to retire one.
+ * Anything unusable therefore reads as "no declined deaths recorded", which is
+ * exactly what an older build meant by leaving it out.
+ */
+function parseDeclinedDeaths(raw: unknown): DeclinedDeath[] {
+  if (!Array.isArray(raw)) return [];
+  const out: DeclinedDeath[] = [];
+  for (const value of raw) {
+    if (typeof value !== 'object' || value === null) continue;
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.at !== 'string' || !Number.isFinite(Date.parse(entry.at))) continue;
+    if (typeof entry.processType !== 'string' || entry.processType === '') continue;
+    out.push({ at: entry.at, processType: entry.processType });
+  }
+  return out;
+}
+
 function parseAckStore(raw: string): CrashAckStore | null {
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -425,7 +565,11 @@ function parseAckStore(raw: string): CrashAckStore | null {
     if (!p.ackedEventIds.every((id): id is string => typeof id === 'string')) return null;
     if (typeof p.minidumpBaselineAt !== 'string') return null;
     if (!Number.isFinite(Date.parse(p.minidumpBaselineAt))) return null;
-    return { ackedEventIds: p.ackedEventIds, minidumpBaselineAt: p.minidumpBaselineAt };
+    return {
+      ackedEventIds: p.ackedEventIds,
+      minidumpBaselineAt: p.minidumpBaselineAt,
+      declinedDeaths: parseDeclinedDeaths(p.declinedDeaths),
+    };
   } catch {
     return null;
   }
@@ -523,28 +667,136 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     if (parsed === null) {
       // Fresh baseline: minidumps that predate this store (from before the
       // feature existed, or from before the store was lost) never prompt.
-      store = { ackedEventIds: [], minidumpBaselineAt: deps.now().toISOString() };
+      store = {
+        ackedEventIds: [],
+        minidumpBaselineAt: deps.now().toISOString(),
+        declinedDeaths: [],
+      };
       storeNeedsInit = true;
     } else {
       store = parsed;
     }
   }
 
-  function persistStore(): void {
+  /**
+   * Which caller triggered the write, for the same reason `writeSentinel`
+   * carries one: the failures mean different things. A lost `ack` re-asks a
+   * question the user already answered, which is merely annoying. A lost
+   * `clear-declined-deaths` leaves on disk the very records that would retire
+   * the dump of the crash just escalated to the user, which is this file's
+   * fail-open posture inverted — and the two are indistinguishable on one
+   * flat line.
+   */
+  type StoreWriteContext = 'init' | 'ack' | 'record-declined-death' | 'clear-declined-deaths';
+
+  function persistStore(context: StoreWriteContext): void {
     try {
       mkdirSync(dirname(deps.ackStorePath), { recursive: true });
       writeFileSync(deps.ackStorePath, `${JSON.stringify(store)}\n`);
     } catch (err) {
-      // Detection stays usable in-session even when userData is unwritable;
-      // only the cross-restart memory degrades.
+      // Four of the five contexts degrade tolerably: detection stays usable
+      // in-session even when userData is unwritable, and only the
+      // cross-restart memory suffers. The fifth does not. A lost clear leaves
+      // on disk the records that will retire the dump of the crash just
+      // escalated, so the loss inverts this file's fail-open posture rather
+      // than merely blunting it — and no alert can separate the two when they
+      // share a level and a message. Not retried: this fails on ENOSPC or
+      // EPERM, and the process that would retry is the one about to die.
+      const failsClosed = context === 'clear-declined-deaths';
       deps.logger.warn(
-        {
-          event: 'crash-detection.store-write-failed',
-          err,
-        },
-        'could not persist crash acknowledgment state',
+        { event: 'crash-detection.store-write-failed', context, failsClosed, err },
+        failsClosed
+          ? 'could not forget declined deaths — the next boot may suppress the report for this crash'
+          : 'could not persist crash acknowledgment state',
       );
     }
+  }
+
+  /**
+   * Remember that this app chose not to prompt for a death, so the dump it
+   * wrote is not mistaken for an unreported crash at the next boot.
+   *
+   * Recorded against the clock rather than against the dump, because at this
+   * instant the dump may not exist yet: Crashpad can still be flushing when
+   * Electron delivers the death, which is the same race that makes the
+   * in-session `minidumpAvailable` signal best-effort. The moment is the
+   * durable half of the pairing; `declinedDeathForDump` supplies the
+   * other half once the file is on disk.
+   */
+  function recordDeclinedDeath(processType: string): void {
+    store.declinedDeaths.push({ at: deps.now().toISOString(), processType });
+    if (store.declinedDeaths.length > MAX_DECLINED_DEATHS) {
+      store.declinedDeaths.splice(0, store.declinedDeaths.length - MAX_DECLINED_DEATHS);
+    }
+    persistStore('record-declined-death');
+  }
+
+  /**
+   * Forget the declined deaths of one kind of process, because a death of that
+   * kind has now been raised with the user.
+   *
+   * The deaths a GPU invitation finally arms for are the ones it was counting
+   * all along, and they are minutes apart at most — so the dump of the death
+   * that crosses the threshold lands squarely inside the window of the ones
+   * that did not. Left on file, those earlier records would retire the dump of
+   * the very crash being reported, and an invitation the user never got to
+   * answer would find nothing left to re-raise at the next boot.
+   */
+  function clearDeclinedDeaths(processType: string): void {
+    const cleared = store.declinedDeaths.filter(
+      (declined) => declined.processType === processType,
+    ).length;
+    if (cleared === 0) return;
+    store.declinedDeaths = store.declinedDeaths.filter(
+      (declined) => declined.processType !== processType,
+    );
+    // Logged because this is a silent widening of what the next boot will ask
+    // about, and the only other trace of it is the absence of a retirement.
+    deps.logger.info(
+      { event: 'crash-detection.declined-deaths-cleared', processType, cleared },
+      'a death of this kind was raised, so its earlier declines no longer retire dumps',
+    );
+    persistStore('clear-declined-deaths');
+  }
+
+  /**
+   * Which death this app already decided to swallow, if any, wrote `entry`.
+   *
+   * Both factors are requirements. The moment narrows the field: a dump
+   * stamped within `DECLINED_DEATH_DUMP_MATCH_MS` of a declined death is a
+   * candidate for being that death's dump. The dump's own `process_type` then
+   * has to agree before anything is dropped.
+   *
+   * Demanding that annotation rather than treating its absence as consent is
+   * the difference between a wrong guess costing a prompt and a wrong guess
+   * costing a crash report. A dump that names nothing has not said it was a
+   * GPU death, and one of the things it can be is the main process crashing
+   * natively — the crash this whole scan exists to catch. A dump truncated by
+   * the fault that wrote it says nothing for a different reason again. So only
+   * a dump that positively names the kind of process this app declined to
+   * prompt for is retired; everything indeterminate still arms, which is the
+   * posture every other exclusion in this file takes.
+   *
+   * The cost is that retirement goes inert if Chromium ever moves the
+   * annotation, which is survivable — a prompt the user dismisses once — but
+   * only if it is noticed. A moved annotation reads as a clean "the dump does
+   * not say", never as a parse failure, so the thing to watch is the count of
+   * dumps that sat inside a declined death's window and named nothing at all.
+   */
+  function declinedDeathForDump(entry: MinidumpEntry): DeclinedDeathMatch {
+    const near = store.declinedDeaths.filter((declined) => {
+      const at = epochMsOrNull(declined.at);
+      return at !== null && Math.abs(entry.mtimeMs - at) <= DECLINED_DEATH_DUMP_MATCH_MS;
+    });
+    if (near.length === 0) return { matched: null, read: 'not-asked' };
+    const { processType, parseFailed } = readMinidumpProcessType(entry.path);
+    if (processType === null) {
+      return { matched: null, read: parseFailed ? 'parse-failed' : 'unnamed' };
+    }
+    return {
+      matched: near.find((declined) => declined.processType === processType) ?? null,
+      read: 'named',
+    };
   }
 
   function tryDeliver(): void {
@@ -775,7 +1027,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // inherited our exception handler, and an unrelated program aborting is
       // not this app crashing. Without this the app prompts "the previous
       // session crashed" after a perfectly clean quit.
-      const freshDumps = freshMinidumpEntries().map((entry) => {
+      const freshDumps: ClassifiedDump[] = freshMinidumpEntries().map((entry) => {
         const ownership = classifyDump(entry.path);
         return {
           entry,
@@ -784,6 +1036,12 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           // not this app's business, and asking would cost a second parse of a
           // file already excluded.
           crashKind: ownership === 'ours' ? crashKindOf(entry.path) : null,
+          // Asked on the same terms as the crash kind, and for the same
+          // reason: a foreign dump's provenance is settled already.
+          declined:
+            ownership === 'ours'
+              ? declinedDeathForDump(entry)
+              : { matched: null, read: 'not-asked' },
         };
       });
       const foreignDumpCount = freshDumps.filter((d) => d.ownership === 'foreign').length;
@@ -794,6 +1052,51 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // because it means something different to whoever reads the line —
       // detection worked perfectly and correctly declined to ask.
       const nonCrashDumpCount = freshDumps.filter((d) => d.crashKind === 'non-crash').length;
+      // Ours, a real fault, and already answered by a decision this app made
+      // in the session that died — a GPU death it swallowed on purpose. Given
+      // its own event rather than a count on the line below, because that line
+      // is about dumps this app could not claim and these are dumps it claimed
+      // and then set aside; and per dump rather than as a total, because an
+      // operator holding a report of "it crashed and never asked me" needs to
+      // see which death each retirement was paired with.
+      //
+      // Projected into pairs rather than filtered, so the death each line
+      // reports is carried by the type rather than re-tested at the point of
+      // use: a widened filter would then fail to compile instead of quietly
+      // emitting a retirement breadcrumb with the two fields it exists for
+      // both absent.
+      const retired = freshDumps.flatMap((d) =>
+        d.declined.matched === null ? [] : [{ entry: d.entry, declined: d.declined.matched }],
+      );
+      for (const { entry, declined } of retired) {
+        deps.logger.info(
+          {
+            event: 'crash-detection.dump-retired',
+            dumpMtimeAt: new Date(entry.mtimeMs).toISOString(),
+            declinedAt: declined.at,
+            processType: declined.processType,
+          },
+          'ignored a minidump written by a death this app declined to report',
+        );
+      }
+      // A dump that sat inside a declined death's window and named no process
+      // type at all. It still arms, and this is the ONLY trace of the case
+      // that would make retirement inert: a Chromium bump that moves the
+      // annotation reads here as silence, never as a parse failure, so a build
+      // where this rises while the retirements above stop appearing is one
+      // where the pairing no longer finds anything.
+      const unnamedNearDeclineCount = freshDumps.filter(
+        (d) => d.declined.read === 'unnamed',
+      ).length;
+      if (unnamedNearDeclineCount > 0) {
+        deps.logger.info(
+          {
+            event: 'crash-detection.dump-beside-decline-unnamed',
+            count: unnamedNearDeclineCount,
+          },
+          'a minidump beside a declined death named no process type, so it still arms',
+        );
+      }
       if (foreignDumpCount > 0 || unreadableDumpCount > 0 || nonCrashDumpCount > 0) {
         // Otherwise a suppressed prompt and a detection pipeline that never
         // ran are indistinguishable in the logs. The unreadable count is the
@@ -819,9 +1122,21 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // exception, and it is an exclusion by evidence rather than by default:
       // only a value a real crash cannot carry gets a dump dropped here.
       // Anything indeterminate still arms.
-      const newDumps = freshDumps
-        .filter((d) => d.ownership !== 'foreign' && d.crashKind !== 'non-crash')
-        .map((d) => d.entry.mtimeMs);
+      //
+      // A dump this app already declined to prompt for is the second
+      // exclusion by evidence, and the evidence is its own earlier decision
+      // rather than the dump's contents: the session that died looked at that
+      // death, judged it recovered, and said nothing on purpose. Asking about
+      // it now would raise a crash the user was deliberately never shown.
+      const arming = (d: ClassifiedDump): boolean =>
+        d.ownership !== 'foreign' && d.crashKind !== 'non-crash' && d.declined.matched === null;
+      const newDumps = freshDumps.filter(arming).map((d) => d.entry.mtimeMs);
+      // Deliberately NOT filtered by retirement, unlike arming. This one only
+      // asks whether a dump worth attaching exists, and it has to answer that
+      // the same way `newestMinidumpForReport` does — otherwise a boot that
+      // arms for an unrelated reason hides the attach-dump checkbox while the
+      // report path hands the same file straight over. Retirement decides what
+      // the app asks about, never what it can attach.
       const ownedDumpCount = freshDumps.filter(
         (d) => d.ownership === 'ours' && d.crashKind !== 'non-crash',
       ).length;
@@ -1027,20 +1342,20 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           // the process died, while the sentinel only names whichever session
           // happened to be running.
           //
-          // Skipping foreign dumps is load-bearing rather than tidiness.
-          // Crashpad stamps OUR annotations onto dumps it writes for
-          // descendant processes, so a foreign one carries the CURRENT version
-          // while describing an unrelated program's death — and, being newer,
-          // would sort ahead of ours. Skipping it is what makes the first
-          // entry of this newest-first list the same dump `newDumps` took the
-          // event id's maximum from.
+          // Selected by the same `arming` predicate the event id's maximum was
+          // taken over, which is what makes the first entry of this
+          // newest-first list that very dump. Any looser test can pick a
+          // different one: a foreign dump carries OUR annotations while
+          // describing an unrelated program's death (Crashpad stamps them onto
+          // dumps for descendant processes), and a non-crash or retired dump
+          // may be newer than the one that actually armed the event — either
+          // way the version, and the accessibility mode read below it, would
+          // describe a death other than the one being reported.
           //
           // Unknown stays unknown. Falling back to the running version here
           // would reproduce the misattribution this exists to remove, in a
           // form no reader could detect.
-          const eventDump = dumpDriven
-            ? freshDumps.find((d) => d.ownership !== 'foreign')
-            : undefined;
+          const eventDump = dumpDriven ? freshDumps.find(arming) : undefined;
           const dumpVersion =
             eventDump === undefined ? null : readMinidumpAppVersion(eventDump.entry.path);
           // Chromium's own record of whether an accessibility tree was live in
@@ -1145,7 +1460,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       }
 
       if (storeNeedsInit) {
-        persistStore();
+        persistStore('init');
         storeNeedsInit = false;
       }
 
@@ -1294,7 +1609,26 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         },
         'child process died abnormally',
       );
-      if (gpu?.suppressInvite === true) return;
+      if (gpu?.suppressInvite === true) {
+        // Written down rather than simply returned. The prompt is declined
+        // here, but the dump this death wrote outlives the session, and the
+        // next boot's scan has no way to tell it from a crash nobody was ever
+        // told about — so without this record the app swallows the blip on
+        // purpose and then asks about it at the next launch.
+        recordDeclinedDeath(GPU_DUMP_PROCESS_TYPE);
+        return;
+      }
+      // Deliberately not gated on whether the invitation below actually armed.
+      // What this records is class-level — a GPU death of this magnitude has
+      // been escalated, so GPU declines may no longer retire dumps — and that
+      // stays true when `armInvite` declines the slot to an invitation already
+      // pending. It is arguably MORE true then: this death gets no record of
+      // its own once the threshold is crossed, so leaving the earlier ones on
+      // file would let them retire its dump at the next boot and lose the one
+      // GPU failure the threshold exists to escalate. The other direction
+      // costs a prompt the user dismisses, which is the side this file fails
+      // toward everywhere else.
+      if (gpu !== null) clearDeclinedDeaths(GPU_DUMP_PROCESS_TYPE);
       if (
         armInvite({
           eventId: `crash:child:${deps.now().getTime()}:${runtimeSeq++}`,
@@ -1326,7 +1660,20 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // Advancing the baseline marks this crash's minidumps as handled, so the
       // boot-time scan never re-invites for an event the user already answered.
       store.minidumpBaselineAt = deps.now().toISOString();
-      persistStore();
+      // A declined death only exists to retire a dump the baseline scan can
+      // still see. Past the baseline that dump is filtered anyway, so keeping
+      // the record would only grow the file and widen the window in which an
+      // unrelated later dump could match a stale moment.
+      // The baseline is read unguarded here and in `freshMinidumpEntries`,
+      // because `parseAckStore` rejects a store whose baseline is not
+      // finite-parseable and the only other writer is the line above. Each
+      // `at` is guarded, because that one comes off the persisted list.
+      const baselineMs = Date.parse(store.minidumpBaselineAt);
+      store.declinedDeaths = store.declinedDeaths.filter((declined) => {
+        const at = epochMsOrNull(declined.at);
+        return at !== null && at + DECLINED_DEATH_DUMP_MATCH_MS > baselineMs;
+      });
+      persistStore('ack');
       if (active?.event.eventId === eventId) {
         active = null;
       }

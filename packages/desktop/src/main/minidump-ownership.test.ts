@@ -24,6 +24,7 @@ import {
   readMinidumpAccessibilityMode,
   readMinidumpAppVersion,
   readMinidumpDisplayLockState,
+  readMinidumpProcessType,
 } from './minidump-ownership.ts';
 
 const tmpDirs: string[] = [];
@@ -689,6 +690,39 @@ describe('classifyMinidumpCrashKind', () => {
     writeFileSync(dumpPath, buildMinidump([modulePath], { exceptionCode: SIMULATED }));
     expect(classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('ours');
     expect(classifyMinidumpCrashKind(dumpPath, 'darwin')).toBe('non-crash');
+  });
+});
+
+describe('readMinidumpProcessType', () => {
+  function processTypeOf(patch: MinidumpPatch): string | null {
+    const dir = makeDir();
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(dumpPath, buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], patch));
+    const read = readMinidumpProcessType(dumpPath);
+    expect(read.parseFailed).toBe(false);
+    return read.processType;
+  }
+
+  test('a child dump names the process kind in Chromium’s own vocabulary', () => {
+    // `gpu-process`, not Electron's `GPU`: the value is the `--type=` switch
+    // the process was launched with, and the crash-detection matcher records
+    // declined deaths in this spelling for exactly that reason.
+    expect(processTypeOf({ annotationObjects: [{ process_type: 'gpu-process' }] })).toBe(
+      'gpu-process',
+    );
+    expect(processTypeOf({ annotationObjects: [{}, { process_type: 'renderer' }] })).toBe(
+      'renderer',
+    );
+  });
+
+  test('a dump carrying no such key says nothing rather than guessing', () => {
+    // Null is "the dump does not say", never "this was not a child process" —
+    // a key that moved reads the same as a key that was never registered.
+    expect(processTypeOf({ annotationObjects: [{ max_idle_tasks: '0' }] })).toBeNull();
+  });
+
+  test('the simple dictionary is NOT where this lives either', () => {
+    expect(processTypeOf({ annotations: { process_type: 'gpu-process' } })).toBeNull();
   });
 });
 
