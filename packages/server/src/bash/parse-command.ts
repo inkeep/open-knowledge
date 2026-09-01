@@ -134,7 +134,8 @@ const SHELL_CONSTRUCT_OPS: ReadonlySet<string> = new Set([
 ]);
 
 const UNIVERSAL_FLAG_DENY: ReadonlySet<string> = new Set(['-o', '--output-file', '--output']);
-const UNIVERSAL_FLAG_PREFIX_DENY = ['-o=', '--output-file=', '--output='];
+const UNIVERSAL_FLAG_PREFIX_DENY = ['--output-file=', '--output='];
+const SORT_OUTPUT_FLAG_RE = /^-[a-zA-Z]*o/;
 
 const FIND_FLAG_DENY: ReadonlySet<string> = new Set([
   '-exec',
@@ -143,6 +144,7 @@ const FIND_FLAG_DENY: ReadonlySet<string> = new Set([
   '-fprint',
   '-fprintf',
   '-fprint0',
+  '-fls',
   '-ok',
   '-okdir',
 ]);
@@ -225,7 +227,11 @@ function checkStage(stage: Stage): ParseCommandError | null {
     };
   }
   for (const arg of stage.args.slice(1)) {
-    if (UNIVERSAL_FLAG_DENY.has(arg) || UNIVERSAL_FLAG_PREFIX_DENY.some((p) => arg.startsWith(p))) {
+    if (
+      UNIVERSAL_FLAG_DENY.has(arg) ||
+      UNIVERSAL_FLAG_PREFIX_DENY.some((p) => arg.startsWith(p)) ||
+      (stage.command === 'sort' && SORT_OUTPUT_FLAG_RE.test(arg))
+    ) {
       return {
         category: 'write_blocked',
         message: `Write operation blocked: '${arg}'. exec is read-only. For document changes, use the \`write\` or \`edit\` tool.`,

@@ -36,6 +36,23 @@ function literalDirPrefix(token: string): string {
   return slash >= 0 ? head.slice(0, slash) : SCAN_WHOLE_TREE;
 }
 
+const NON_PATH_VALUE_FLAGS: ReadonlySet<string> = new Set([
+  '--exclude',
+  '--exclude-dir',
+  '--include',
+  '--regexp',
+]);
+
+function isScanBase(value: string): boolean {
+  const trimmed = value.trim().replace(/\/+$/, '');
+  return trimmed === '' || trimmed === '.';
+}
+
+function carriesPathValue(arg: string): boolean {
+  const name = arg.includes('=') ? arg.slice(0, arg.indexOf('=')) : arg;
+  return !NON_PATH_VALUE_FLAGS.has(name);
+}
+
 export function deriveScanRoots(stages: Stage[]): string[] {
   const roots = new Set<string>();
   for (const stage of stages) {
@@ -83,9 +100,9 @@ export function deriveScanRoots(stages: Stage[]): string[] {
         candidates = positional;
     }
     const attached = args
-      .filter((a) => a.startsWith('-') && a.includes('='))
-      .map((a) => a.slice(a.indexOf('=') + 1))
-      .filter((v) => v.length > 0 && !GLOB_RE.test(v));
+      .filter((a) => a.startsWith('-') && a.length > 2 && carriesPathValue(a))
+      .map((a) => (a.includes('=') ? a.slice(a.indexOf('=') + 1) : a.slice(2)))
+      .filter((v) => v.length > 0 && !GLOB_RE.test(v) && !isScanBase(v));
     for (const c of [...candidates, ...attached]) {
       roots.add(GLOB_RE.test(c) ? literalDirPrefix(c) : c);
     }
