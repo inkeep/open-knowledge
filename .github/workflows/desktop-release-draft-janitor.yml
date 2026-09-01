@@ -26,6 +26,48 @@ name: Draft release janitor
 # body is safe to reap. Drafts on a not-yet-promoted cycle are left for a human
 # to re-run desktop-release.yml against or promote. The git TAG is always kept
 # (npm-provenance source ref + version lineage); only the Release object goes.
+#
+# The sweep covers stable drafts on the same gate. A stable draft strands the
+# same way (v0.65.0 and v0.66.0 sat draft with zero assets from 2026-08-27 to
+# 2026-09-01, swept by hand) but its body feeds no later changelog, so the
+# `cycle <= maxstable` gate is if anything more conservative for it than for a
+# beta. The selection lives in .github/scripts/select-stuck-drafts.mjs, which is
+# unit-tested; this workflow only acts on what that returns.
+#
+# The age gate reads the release OBJECT's timestamp, never `createdAt`: on a
+# GitHub Release `createdAt` is the TARGET COMMIT's date, so a draft created
+# from an older commit reads as already-aged the moment it exists and the gate
+# that is meant to spare an in-flight build would never fire. `publishedAt` is
+# no use either: it is null until the release leaves draft, which is every
+# release this job looks at. That leaves `updated_at`, which `gh release list`
+# cannot return, so the list comes from the REST endpoint instead.
+#
+# The gate must exceed desktop-release.yml's SEQUENTIAL CRITICAL PATH, not any
+# single job's timeout. build-macos deliberately does NOT need prepare (it is
+# self-contained, per its own comment), so those overlap and only the longer leg
+# counts: build-macos (75) -> publish-assets (20) -> finalize (15) = 110 minutes
+# worst case. publish-assets needs every build and finalize needs publish-assets;
+# build-windows and build-linux each finish at 30+45=75, inside the mac leg.
+# STUCK_DRAFT_MAX_AGE_SECONDS is 10800 (180 min), clearing 110 with margin for
+# cold caches and build-macos's one retry. An earlier 5400 was derived from
+# build-macos's 75-minute timeout alone and did not cover the path.
+#
+# The list is narrowed to drafts plus PUBLISHED STABLES, which is exactly what
+# the selector reads (drafts are the candidates, published stables set the
+# ceiling). The narrowing is gh's LOCAL --jq transform of the full paginated
+# response: the releases endpoint has no filter parameter, so every release
+# still crosses the wire; what is bounded is the payload handed to the module.
+# That matters because Published betas are dead weight and this repo has
+# hundreds: unnarrowed, the payload measured 90,670 bytes across 915 releases,
+# and it crosses execve's per-string MAX_ARG_STRLEN (131,072 on Linux, applying
+# to env as well as argv) at roughly 1,300 releases. Narrowed, the same snapshot
+# is 16,460 bytes across 175 entries and yields an identical sweep set.
+#
+# Age is a backstop, not the real protection: an in-flight cycle is kept by the
+# cycle gate whatever its age, and age is load-bearing only where a draft's
+# cycle EQUALS the just-published stable. It cannot cover an operator re-running
+# a days-old stranded build at all; the sweep cap and dry_run are the rails for
+# that case.
 
 on:
   schedule:
@@ -33,6 +75,11 @@ on:
     - cron: "37 */6 * * *"
   # Manual sweep, e.g. right after a known stuck-draft incident.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the sweep set without deleting anything."
+        type: boolean
+        default: false
 
 permissions:
   # contents: write is required to delete Release objects via the API.
@@ -46,60 +93,61 @@ jobs:
   sweep:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      MAX_SWEEP_PER_RUN: "5"
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+
       - name: Delete superseded stuck draft releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
 
-          ALL=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 300 \
-            --json tagName,isDraft,isPrerelease,createdAt)
+          RELEASES_JSON=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq '.[] | select(.draft or (.prerelease | not)) | {tagName: .tag_name, isDraft: .draft, isPrerelease: .prerelease, updatedAt: .updated_at}' \
+            | jq -sc '.')
+          export RELEASES_JSON
 
-          # Highest published STABLE (non-draft AND non-prerelease) version,
-          # bare (leading v stripped). We gate on a STABLE, not merely a newer
-          # beta: a stuck draft beta's body must survive until its cycle has
-          # been promoted to stable (see header). `sort -V` is GNU coreutils on
-          # ubuntu-latest; both operands here are bare X.Y.Z (no prerelease
-          # suffix), so version-sort ordering is unambiguous.
-          maxstable=$(printf '%s' "$ALL" \
-            | jq -r '.[] | select((.isDraft | not) and (.isPrerelease | not)) | .tagName' \
-            | sed 's/^v//' \
-            | sort -V | tail -n1)
-          if [ -z "${maxstable}" ]; then
-            echo "No published stable release yet; keeping all drafts (their bodies feed the first stable's changelog)."
-            exit 0
-          fi
-          echo "Highest published stable version: ${maxstable}"
+          sweep=$(node .github/scripts/select-stuck-drafts.mjs)
 
-          # Candidates: draft AND prerelease AND older than 90 min. The age
-          # gate must exceed desktop-release.yml's job budget (75 min) so a
-          # draft that a still-running per-tag build will promote is never
-          # swept — 5400s leaves margin above the timeout.
-          candidates=$(printf '%s' "$ALL" | jq -r --argjson maxage 5400 '
-            .[]
-            | select(.isDraft and .isPrerelease)
-            | select((now - (.createdAt | fromdateiso8601)) > $maxage)
-            | .tagName')
-
-          if [ -z "${candidates}" ]; then
-            echo "No stuck draft prereleases older than 90 min; nothing to sweep."
+          if [ -z "${sweep}" ]; then
+            echo "Nothing to sweep."
             exit 0
           fi
 
-          printf '%s\n' "${candidates}" | while IFS= read -r tag; do
-            [ -z "${tag}" ] && continue
-            base="${tag#v}"; base="${base%-beta.*}"   # vX.Y.Z-beta.N -> X.Y.Z
-            # Delete only once a published stable covers this beta's cycle,
-            # i.e. base <= maxstable. top==maxstable holds when base < maxstable
-            # (older closed cycle) and when base == maxstable (this cycle's
-            # stable exists). base > maxstable => cycle not yet promoted => keep.
-            top=$(printf '%s\n%s\n' "${base}" "${maxstable}" | sort -V | tail -n1)
-            if [ "${top}" = "${maxstable}" ]; then
-              echo "::notice::Sweeping stuck draft ${tag}: its ${base} cycle is closed (stable ${maxstable} exists), so its body is already aggregated. Git tag kept."
-              gh release delete "${tag}" --repo "$GITHUB_REPOSITORY" --yes
-            else
-              echo "Keeping ${tag}: cycle ${base} not yet promoted (newest stable ${maxstable}) — its body still feeds the future stable changelog. Re-run desktop-release.yml or promote it."
+          count=$(printf '%s\n' "${sweep}" | grep -c . || true)
+
+          # The dry run is checked BEFORE the cap so it can always preview,
+          # including an over-cap set; it deletes nothing, so the cap is
+          # information for it rather than a gate on it.
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            echo "Dry run: would sweep ${count} release(s), deleting nothing."
+            if [ "${count}" -gt "${MAX_SWEEP_PER_RUN}" ]; then
+              echo "Dry run: this set exceeds the per-run cap (${count} > ${MAX_SWEEP_PER_RUN}), so a real run would refuse it."
             fi
+            printf '%s\n' "${sweep}"
+            exit 0
+          fi
+
+          if [ "${count}" -gt "${MAX_SWEEP_PER_RUN}" ]; then
+            echo "::error::Refusing to sweep ${count} releases in one run (cap ${MAX_SWEEP_PER_RUN}). A healthy repo strands one or two at a time, so this is more likely a bad snapshot or a selector bug than a real backlog. Re-dispatch with dry_run to see the whole set; raising the cap itself is a code change to this workflow."
+            printf '%s\n' "${sweep}"
+            exit 1
+          fi
+
+          printf '%s\n' "${sweep}" | while IFS= read -r tag; do
+            [ -z "${tag}" ] && continue
+            gh release delete "${tag}" --repo "$GITHUB_REPOSITORY" --yes
+            echo "::notice::Swept stuck draft ${tag}: its cycle is closed. Git tag kept."
           done
           echo "Draft-release janitor sweep complete."
