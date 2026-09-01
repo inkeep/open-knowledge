@@ -55,7 +55,7 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "8.4 MB",
+      "limit": "8.8 MB",
       "gzip": true,
       "running": false
     },
@@ -87,7 +87,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@excalidraw/excalidraw": "0.18.1",
+    "@excalidraw/excalidraw": "0.18.0-abeeaeb",
     "@fellow/prosemirror-recreate-transform": "^1.2.3",
     "@floating-ui/dom": "^1.7.6",
     "@fontsource-variable/inter": "^5.2.8",

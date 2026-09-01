@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { hashFromDocName } from '@/lib/doc-hash';
 import '@/lib/excalidraw-env';
+import { type ExcalidrawScene, restoreScene } from '@/lib/excalidraw-scene.ts';
 import { createRetryingLoader } from '@/lib/retrying-loader.ts';
 import { cn } from '@/lib/utils.ts';
 import { useLiveDocText } from './live-doc-pool.ts';
@@ -15,7 +16,6 @@ import { releaseSnapshotUrl, retainSnapshotUrl } from './snapshot-url-pool.ts';
 import { useAppColorMode } from './use-app-color-mode.ts';
 
 type ExcalidrawModule = typeof import('@excalidraw/excalidraw');
-type ExcalidrawScene = ReturnType<ExcalidrawModule['restore']>;
 
 const loadExcalidraw = createRetryingLoader(() => import('@excalidraw/excalidraw'));
 
@@ -124,7 +124,7 @@ export function ExcalidrawEmbed({
         setError({ docName: boardDocName, kind: 'module-load' });
         return;
       }
-      const value = mod.restore(parsed as Parameters<ExcalidrawModule['restore']>[0], null, null);
+      const value = restoreScene(mod, parsed);
       if (cancelled) return;
       setScene({ docName: boardDocName, text: live.text, value });
       setError(null);

@@ -6,13 +6,10 @@ import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 const exportToSvg = vi.fn(async (_opts: Record<string, unknown>) =>
   document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
 );
-const restore = vi.fn((data: unknown) => ({
-  elements: (data as { elements?: unknown[] })?.elements ?? [],
-  appState: {},
-  files: {},
-}));
+const restoreElements = vi.fn((elements: unknown) => (elements as unknown[] | undefined) ?? []);
+const restoreAppState = vi.fn(() => ({}));
 
-vi.doMock('@excalidraw/excalidraw', () => ({ exportToSvg, restore }));
+vi.doMock('@excalidraw/excalidraw', () => ({ exportToSvg, restoreElements, restoreAppState }));
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -66,7 +63,8 @@ function snapshotImg(): HTMLImageElement | null {
 describe('ExcalidrawEmbed', () => {
   beforeEach(() => {
     exportToSvg.mockClear();
-    restore.mockClear();
+    restoreElements.mockClear();
+    restoreAppState.mockClear();
     useLiveDocText.mockClear();
     createObjectURL.mockClear();
     revokeObjectURL.mockClear();
@@ -86,11 +84,7 @@ describe('ExcalidrawEmbed', () => {
 
     await waitFor(() => expect(snapshotImg()).not.toBeNull());
     expect(useLiveDocText).toHaveBeenCalledWith('tests/board.excalidraw', 0);
-    expect(restore).toHaveBeenCalledWith(
-      expect.objectContaining({ elements: [{ id: 'a' }] }),
-      null,
-      null,
-    );
+    expect(restoreElements).toHaveBeenCalledWith([{ id: 'a' }], null);
     expect(exportToSvg.mock.calls.at(-1)?.[0]?.appState).toMatchObject({
       exportBackground: false,
       exportWithDarkMode: false,
@@ -104,7 +98,7 @@ describe('ExcalidrawEmbed', () => {
     renderEmbed({ src: '/tests/board.excalidraw' });
     await waitFor(() => expect(snapshotImg()).not.toBeNull());
     const exportsBefore = exportToSvg.mock.calls.length;
-    const parsesBefore = restore.mock.calls.length;
+    const parsesBefore = restoreElements.mock.calls.length;
     const firstUrl = snapshotImg()?.src;
 
     act(() => {
@@ -115,7 +109,7 @@ describe('ExcalidrawEmbed', () => {
     expect(exportToSvg.mock.calls.at(-1)?.[0]?.appState).toMatchObject({
       exportWithDarkMode: true,
     });
-    expect(restore.mock.calls.length).toBe(parsesBefore);
+    expect(restoreElements.mock.calls.length).toBe(parsesBefore);
     expect(snapshotImg()).not.toBeNull();
     await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith(firstUrl));
   });
@@ -133,8 +127,8 @@ describe('ExcalidrawEmbed', () => {
     );
 
     await waitFor(() => expect(exportToSvg.mock.calls.length).toBeGreaterThan(exportsBefore));
-    const scene = restore.mock.calls.at(-1)?.[0] as { elements?: unknown[] };
-    expect(scene.elements?.length).toBe(2);
+    const elements = restoreElements.mock.calls.at(-1)?.[0] as unknown[] | undefined;
+    expect(elements?.length).toBe(2);
   });
 
   test('an unreachable board surfaces the banner with fixed copy and a working retry', async () => {
@@ -180,7 +174,7 @@ describe('ExcalidrawEmbed', () => {
     );
     const { rerender } = render(view(false));
     await waitFor(() => expect(snapshotImg()).not.toBeNull());
-    const parses = restore.mock.calls.length;
+    const parses = restoreElements.mock.calls.length;
     const exports = exportToSvg.mock.calls.length;
     const urls = createObjectURL.mock.calls.length;
 
@@ -190,7 +184,7 @@ describe('ExcalidrawEmbed', () => {
     rerender(view(false));
     await act(async () => {});
 
-    expect(restore.mock.calls.length).toBe(parses);
+    expect(restoreElements.mock.calls.length).toBe(parses);
     expect(exportToSvg.mock.calls.length).toBe(exports);
     expect(createObjectURL.mock.calls.length).toBe(urls);
     expect(snapshotImg()).not.toBeNull();
@@ -267,7 +261,7 @@ describe('ExcalidrawEmbed', () => {
       const { rerender } = renderEmbed({ src: '/tests/board.excalidraw' });
       await waitFor(() => expect(resolvers.length).toBe(1));
 
-      let parses = restore.mock.calls.length;
+      let parses = restoreElements.mock.calls.length;
       for (const text of [
         JSON.stringify({ elements: [{ id: 'a' }, { id: 'b' }] }),
         JSON.stringify({ elements: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] }),
@@ -278,7 +272,7 @@ describe('ExcalidrawEmbed', () => {
             <ExcalidrawEmbed src="/tests/board.excalidraw" />
           </TooltipProvider>,
         );
-        await waitFor(() => expect(restore.mock.calls.length).toBe(parses + 1));
+        await waitFor(() => expect(restoreElements.mock.calls.length).toBe(parses + 1));
         parses += 1;
       }
       expect(resolvers.length).toBe(1);

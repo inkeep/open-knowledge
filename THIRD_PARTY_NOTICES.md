@@ -869,7 +869,7 @@ Homepage: https://github.com/gr2m/before-after-hook
 
 Copyright 2018 Gregor Martynus and other contributors.
 
-### `browser-fs-access@0.29.1`
+### `browser-fs-access@0.38.0`
 Homepage: https://github.com/GoogleChromeLabs/browser-fs-access#readme
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -1351,7 +1351,17 @@ Homepage: https://github.com/clauderic/dnd-kit
 
 Copyright (c) 2021, Claudéric Demers
 
-### `@excalidraw/excalidraw@0.18.1`
+### `@excalidraw/common@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/element@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/excalidraw@0.18.0-abeeaeb`
 Homepage: https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
@@ -1364,6 +1374,11 @@ Copyright (c) 2023 Excalidraw
 Homepage: https://github.com/danestves/markdown-to-text.git
 
 Copyright (c) 2020 Daniel Esteves
+
+### `@excalidraw/math@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
 ### `@excalidraw/mermaid-to-excalidraw@2.2.2`
 
@@ -4729,11 +4744,6 @@ Homepage: https://github.com/sindresorhus/open
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `open-color@1.9.1`
-Homepage: https://github.com/yeun/open-color
-
-Copyright (c) 2016 heeyeun
-
 ### `ora@8.2.0`
 Homepage: https://github.com/sindresorhus/ora
 
@@ -6634,7 +6644,7 @@ Copyright (c) 2015, Yeoman team
 
 The following packages are under licenses that do not require attribution (BlueOak-1.0.0, 0BSD, WTFPL, Unlicense, CC0-1.0). Listed for completeness and traceability.
 
-- `fractional-indexing@3.2.0` — CC0-1.0
+- `@excalidraw/fractional-indexing@0.18.0-abeeaeb` — CC0-1.0
 - `isexe@3.1.5` — BlueOak-1.0.0
 - `minimatch@10.2.5` — BlueOak-1.0.0
 - `robust-predicates@3.0.3` — Unlicense

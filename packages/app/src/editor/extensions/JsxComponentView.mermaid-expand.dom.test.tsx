@@ -8,11 +8,8 @@ vi.doMock('../components/live-doc-pool.ts', () => ({
 }));
 vi.doMock('@excalidraw/excalidraw', () => ({
   exportToSvg: async () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
-  restore: (data: unknown) => ({
-    elements: (data as { elements?: unknown[] })?.elements ?? [],
-    appState: {},
-    files: {},
-  }),
+  restoreElements: (elements: unknown) => (elements as unknown[] | undefined) ?? [],
+  restoreAppState: () => ({}),
 }));
 
 let blobUrlCounter = 0;

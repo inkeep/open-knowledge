@@ -1,4 +1,5 @@
-import { CaptureUpdateAction, Excalidraw, restore, serializeAsJSON } from '@excalidraw/excalidraw';
+import * as excalidraw from '@excalidraw/excalidraw';
+import { CaptureUpdateAction, Excalidraw } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { useLingui } from '@lingui/react/macro';
@@ -6,24 +7,22 @@ import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { replaceYText } from './MermaidDocEditor';
 
 import '@/lib/excalidraw-env';
+import { type ExcalidrawScene, restoreScene, serializeScene } from '@/lib/excalidraw-scene.ts';
 
 type ExcalidrawProps = ComponentProps<typeof Excalidraw>;
-type ExcalidrawImperativeAPI = Parameters<NonNullable<ExcalidrawProps['excalidrawAPI']>>[0];
-type RestoreResult = {
-  elements: ReturnType<typeof restore>['elements'];
-  appState: ReturnType<typeof restore>['appState'];
-  files: ReturnType<typeof restore>['files'];
-};
+type ExcalidrawImperativeAPI = NonNullable<
+  Parameters<NonNullable<ExcalidrawProps['onExcalidrawAPI']>>[0]
+>;
 
-type ParseOutcome = { ok: true; scene: RestoreResult } | { ok: false; scene: RestoreResult };
+type ParseOutcome = { ok: true; scene: ExcalidrawScene } | { ok: false; scene: ExcalidrawScene };
 
 function parseSnapshot(str: string): ParseOutcome {
-  if (str.trim() === '') return { ok: true, scene: restore(null, null, null) };
+  if (str.trim() === '') return { ok: true, scene: restoreScene(excalidraw, null) };
   try {
     const parsed: unknown = JSON.parse(str);
-    return { ok: true, scene: restore(parsed as Parameters<typeof restore>[0], null, null) };
+    return { ok: true, scene: restoreScene(excalidraw, parsed) };
   } catch {
-    return { ok: false, scene: restore(null, null, null) };
+    return { ok: false, scene: restoreScene(excalidraw, null) };
   }
 }
 
@@ -74,7 +73,7 @@ export function ExcalidrawDocEditor({ provider }: { provider: HocuspocusProvider
       if (elements.length === 0) return;
       blockBlankOverwriteRef.current = false;
     }
-    const str = serializeAsJSON(elements, appState, files, 'local');
+    const str = serializeScene(excalidraw, elements, appState, files);
     if (str === lastSavedRef.current) return;
     lastSavedRef.current = str;
     replaceYText(ytext, str);
@@ -88,7 +87,7 @@ export function ExcalidrawDocEditor({ provider }: { provider: HocuspocusProvider
     >
       <div className="absolute inset-0 z-0">
         <Excalidraw
-          excalidrawAPI={setExcalidrawAPI}
+          onExcalidrawAPI={setExcalidrawAPI}
           initialData={initialOutcome.scene}
           onChange={handleChange}
         />

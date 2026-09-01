@@ -403,8 +403,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.5)
       '@excalidraw/excalidraw':
-        specifier: 0.18.1
-        version: 0.18.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: 0.18.0-abeeaeb
+        version: 0.18.0-abeeaeb(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@fellow/prosemirror-recreate-transform':
         specifier: ^1.2.3
         version: 1.2.3
@@ -2262,17 +2262,30 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@excalidraw/excalidraw@0.18.1':
-    resolution: {integrity: sha512-6i5Gt7IDTOH//qa0Z315Ly5iVRhjWpu2whrlQFqkuwrkKUWgRsMk0P5qdE7bpyDpai7jeLeWYkyj1eVAfni1lw==}
+  '@excalidraw/common@0.18.0-abeeaeb':
+    resolution: {integrity: sha512-st3TJlmlR46yxoQ9IEOalL7MAUaGaA0RfwwHMjG33lx+sc6ZD2xUSs7oz2RFcY3JkHRWf2qsjXfjiUusaeavfA==}
+
+  '@excalidraw/element@0.18.0-abeeaeb':
+    resolution: {integrity: sha512-wwfWBB3XDAeY45DXtyGFCijlYAOuxwwfHZ9GqhFAMc3KORWjZKNqYTOwr5zFj6RPyhbTebMYFJ6Rvzx81FM7BQ==}
+
+  '@excalidraw/excalidraw@0.18.0-abeeaeb':
+    resolution: {integrity: sha512-0Lv/Fg27S+SyP+HEJTY1dWafMsW2IWiyR7Igxv1QVyu0rPKsqsnvyLENCn0yACbTGdK4ZTvE9cV+WFuBNYYkDQ==}
     peerDependencies:
       react: 19.2.5
       react-dom: 19.2.5
+
+  '@excalidraw/fractional-indexing@0.18.0-abeeaeb':
+    resolution: {integrity: sha512-BaNc4cPJKQ5bywsCeFqmegoXgvYQpGrpx02UGCyw94CDVTdkPGkbxyHCdXlnnwdCwq0J00pt7PPRuSSc6t+c3A==}
+    engines: {node: ^14.13.1 || >=16.0.0}
 
   '@excalidraw/laser-pointer@1.3.1':
     resolution: {integrity: sha512-psA1z1N2qeAfsORdXc9JmD2y4CmDwmuMRxnNdJHZexIcPwaNEyIpNcelw+QkL9rz9tosaN9krXuKaRqYpRAR6g==}
 
   '@excalidraw/markdown-to-text@0.1.2':
     resolution: {integrity: sha512-1nDXBNAojfi3oSFwJswKREkFm5wrSjqay81QlyRv2pkITG/XYB5v+oChENVBQLcxQwX4IUATWvXM5BcaNhPiIg==}
+
+  '@excalidraw/math@0.18.0-abeeaeb':
+    resolution: {integrity: sha512-Xc0vR/7KmHoEhZItjwEbMKSbEgcnZaNQWyQ87OFQ/L37Yr0OcWCdij4E80asrlhUvcs+6SqmhxidP+Euqx2+0A==}
 
   '@excalidraw/mermaid-to-excalidraw@2.2.2':
     resolution: {integrity: sha512-5VKQq5CdRocC82vOIUpQ5ufJOVV9FpBTdHGA+ULqazeIVV+cr299877omQCibsdS3Bpitz2fsnTwnIXEmLVDSg==}
@@ -6534,8 +6547,8 @@ packages:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
     engines: {node: '>=8'}
 
-  browser-fs-access@0.29.1:
-    resolution: {integrity: sha512-LSvVX5e21LRrXqVMhqtAwj5xPgDb+fXAIH80NsnCQ9xuZPs2xWsOREi24RKgZa1XOiQRbcmVrv87+ulOKsgjxw==}
+  browser-fs-access@0.38.0:
+    resolution: {integrity: sha512-JveqW2w6pEZqFEEfMgCszXzYpE89dG+nPsmOdcs741mFFAROeL+iqjGEpR07RI+s0YY0EFr+4KnOoACprJTpOw==}
 
   browserslist@4.28.6:
     resolution: {integrity: sha512-FQBYNK15VMslhLHpA7+n+n1GOlF1kId2xcCg7/j95f24AOF6VDYMNH4mFxF7KuaTdv627faazpOAjFzMrfJOUw==}
@@ -7798,10 +7811,6 @@ packages:
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
-
-  fractional-indexing@3.2.0:
-    resolution: {integrity: sha512-PcOxmqwYCW7O2ovKRU8OoQQj2yqTfEB/yeTYk4gPid6dN5ODRfU1hXd9tTVZzax/0NkO7AxpHykvZnT1aYp/BQ==}
-    engines: {node: ^14.13.1 || >=16.0.0}
 
   fresh@2.0.0:
     resolution: {integrity: sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A==}
@@ -9480,9 +9489,6 @@ packages:
 
   oniguruma-to-es@4.3.6:
     resolution: {integrity: sha512-csuQ9x3Yr0cEIs/Zgx/OEt9iBw9vqIunAPQkx19R/fiMq2oGVTgcMqO/V3Ybqefr1TBvosI6jU539ksaBULJyA==}
-
-  open-color@1.9.1:
-    resolution: {integrity: sha512-vCseG/EQ6/RcvxhUcGJiHViOgrtz4x0XbZepXvKik66TMGkvbmjeJrKFyBEx6daG5rNyyd14zYXhz0hZVwQFOw==}
 
   open@11.0.0:
     resolution: {integrity: sha512-smsWv2LzFjP03xmvFoJ331ss6h+jixfA4UUV/Bsiyuu4YJPfN+FIQGOIiv4w9/+MoHkfkJ22UIaQWRVFRfH6Vw==}
@@ -12652,20 +12658,35 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@excalidraw/excalidraw@0.18.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@excalidraw/common@0.18.0-abeeaeb':
+    dependencies:
+      tinycolor2: 1.6.0
+
+  '@excalidraw/element@0.18.0-abeeaeb':
+    dependencies:
+      '@excalidraw/common': 0.18.0-abeeaeb
+      '@excalidraw/fractional-indexing': 0.18.0-abeeaeb
+      '@excalidraw/math': 0.18.0-abeeaeb
+
+  '@excalidraw/excalidraw@0.18.0-abeeaeb(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@braintree/sanitize-url': 6.0.2
+      '@codemirror/commands': 6.10.4
+      '@codemirror/language': 6.12.4
+      '@codemirror/state': 6.7.1
+      '@codemirror/view': 6.43.3
+      '@excalidraw/common': 0.18.0-abeeaeb
+      '@excalidraw/element': 0.18.0-abeeaeb
       '@excalidraw/laser-pointer': 1.3.1
+      '@excalidraw/math': 0.18.0-abeeaeb
       '@excalidraw/mermaid-to-excalidraw': 2.2.2
       '@excalidraw/random-username': 1.1.0
-      '@radix-ui/react-popover': 1.1.17(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@radix-ui/react-tabs': 1.1.13(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      browser-fs-access: 0.29.1
+      '@lezer/highlight': 1.2.3
+      browser-fs-access: 0.38.0
       canvas-roundrect-polyfill: 0.0.1
       clsx: 1.1.1
       cross-env: 7.0.3
       es6-promise-pool: 2.5.0
-      fractional-indexing: 3.2.0
       fuzzy: 0.1.3
       image-blob-reduce: 3.0.1
       jotai: 2.11.0(@types/react@19.2.17)(react@19.2.5)
@@ -12673,7 +12694,6 @@ snapshots:
       lodash.debounce: 4.0.8
       lodash.throttle: 4.1.1
       nanoid: 3.3.18
-      open-color: 1.9.1
       pako: 2.0.3
       perfect-freehand: 1.2.0
       pica: 7.1.1
@@ -12682,6 +12702,7 @@ snapshots:
       png-chunks-extract: 1.0.0
       points-on-curve: 1.0.1
       pwacompat: 2.0.17
+      radix-ui: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
       roughjs: 4.6.4
@@ -12692,9 +12713,15 @@ snapshots:
       - '@types/react-dom'
       - immer
 
+  '@excalidraw/fractional-indexing@0.18.0-abeeaeb': {}
+
   '@excalidraw/laser-pointer@1.3.1': {}
 
   '@excalidraw/markdown-to-text@0.1.2': {}
+
+  '@excalidraw/math@0.18.0-abeeaeb':
+    dependencies:
+      '@excalidraw/common': 0.18.0-abeeaeb
 
   '@excalidraw/mermaid-to-excalidraw@2.2.2':
     dependencies:
@@ -16889,7 +16916,7 @@ snapshots:
     dependencies:
       fill-range: 7.1.1
 
-  browser-fs-access@0.29.1: {}
+  browser-fs-access@0.38.0: {}
 
   browserslist@4.28.6:
     dependencies:
@@ -18355,8 +18382,6 @@ snapshots:
       web-streams-polyfill: 4.0.0-beta.3
 
   forwarded@0.2.0: {}
-
-  fractional-indexing@3.2.0: {}
 
   fresh@2.0.0: {}
 
@@ -20458,8 +20483,6 @@ snapshots:
       oniguruma-parser: 0.12.2
       regex: 6.1.0
       regex-recursion: 6.0.2
-
-  open-color@1.9.1: {}
 
   open@11.0.0:
     dependencies:
