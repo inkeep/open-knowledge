@@ -1,4 +1,3 @@
-
 import { MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, type JSONContent } from '@tiptap/core';

@@ -1,4 +1,3 @@
-
 import { cleanup } from '@testing-library/react';
 import { Editor, getSchema } from '@tiptap/core';
 import type { MarkType, Node as PMNode } from '@tiptap/pm/model';

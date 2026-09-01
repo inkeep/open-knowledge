@@ -26,6 +26,7 @@ const workflowStep = (source, workflowName, name) => {
 };
 const bugLaneVerifyStep = (name) => workflowStep(bugLaneVerify, 'bug-lane-verify.yml', name);
 const selectBeta = read('select-beta-to-promote.yml');
+const linearRelease = read('linear-release.yml');
 
 function stepNames(source) {
   const names = [...source.matchAll(/^ {6}- name: (.+)$/gm)].map((m) => m[1].trim());
@@ -774,13 +775,17 @@ describe('every release-pipeline post prefers the releases webhook', () => {
       label: 'the fast-tier refusal',
       step: () => stepAfter(selectBeta, 'Record a fast-tier refusal'),
     },
+    {
+      label: "the Linear stamp's failure page",
+      step: () => stepAfter(linearRelease, 'Alert on failed stamping'),
+    },
   ]) {
     test(`${label} resolves the releases webhook first`, () => {
       const s = step();
       expect(s).toContain('SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}');
       expect(s).toContain(RESOLVED);
-      expect(s).toContain('"$WEBHOOK_URL"');
-      expect(s).not.toContain('--data "$payload" "$SLACK_WEBHOOK_URL"');
+      expect(s).toMatch(/--data "\$payload"[\s\\]*"\$WEBHOOK_URL"/);
+      expect(s).not.toMatch(/--data "\$payload"[\s\\]*"\$SLACK_WEBHOOK_URL"/);
       expect(s).not.toContain('if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then');
     });
   }
