@@ -351,6 +351,41 @@ describe('RotatingAppender (shared rotation primitive)', () => {
     expect(readFileSync(currentPath, 'utf-8')).toBe('1\n2\n3\n');
   });
 
+  // Backlog cap: when the sink can't keep up (span storm), appends beyond the
+  // cap are dropped with a rejection instead of queueing unboundedly. Each
+  // queued link pins its payload until all predecessors settle, so an
+  // unbounded backlog is a memory bug (multi-GB heap growth on large seeds).
+  // The dropped append must NOT enter the chain: later appends still land in
+  // order and the chain stays healthy.
+  test('drops appends past the pending cap; later appends still land in order', async () => {
+    const currentPath = join(tmp, 'backlog-cap', 'e-current.jsonl');
+    const previousPath = join(tmp, 'backlog-cap', 'e-prev.jsonl');
+    const appender = new RotatingAppender({
+      currentPath,
+      previousPath,
+      maxBytes: Number.MAX_SAFE_INTEGER,
+    });
+
+    // Fire 1500 appends synchronously — faster than serial disk writes can
+    // drain them, so the queue genuinely backs up past MAX_PENDING_APPENDS.
+    const settled = await Promise.allSettled(
+      Array.from({ length: 1500 }, (_, i) => appender.append(`line-${i}\n`)),
+    );
+
+    const dropped = settled.filter((s) => s.status === 'rejected');
+    const written = settled.filter((s) => s.status === 'fulfilled');
+    expect(written.length).toBeGreaterThan(0);
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(written.length + dropped.length).toBe(1500);
+    // Every written line is intact and in enqueue order — no corruption.
+    const lines = readFileSync(currentPath, 'utf-8').trim().split('\n');
+    expect(lines.length).toBe(1500 - dropped.length);
+    for (let i = 0; i < lines.length; i++) expect(lines[i]).toMatch(/^line-\d+$/);
+    // Chain still healthy: a post-storm append lands normally.
+    await appender.append('after\n');
+    expect(readFileSync(currentPath, 'utf-8').endsWith('after\n')).toBe(true);
+  });
+
   // Invariant A: rotation is safe across EVERY writer to a path, not just
   // within one appender instance. In production each getLogger(name) allocates
   // its own PinoFileSink → its own RotatingAppender on the shared log path, so

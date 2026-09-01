@@ -45,7 +45,20 @@ export interface RotatingAppenderOpts {
 interface PathWriteState {
   chain: Promise<unknown>;
   parentDirEnsured: boolean;
+  /** Appends enqueued but not yet written; bounded by MAX_PENDING_APPENDS. */
+  pending: number;
 }
+
+/**
+ * Ceiling on queued-but-unwritten appends per path. Under SimpleSpanProcessor a
+ * seed walk over tens of thousands of files ends spans faster than serial disk
+ * appends can drain them; each queued link holds its payload plus the promise
+ * chain, so an unbounded backlog grew into multi-GB heaps (DESAP10-class).
+ * Beyond the cap, appends are dropped: these sinks are local diagnostics, so
+ * losing records under sustained overload beats unbounded memory. This mirrors
+ * the SDK's own BatchSpanProcessor maxQueueSize drop policy.
+ */
+const MAX_PENDING_APPENDS = 1000;
 
 /**
  * Serialization state keyed by `currentPath`. Rotation must be serialized per
@@ -73,7 +86,7 @@ const pathWriteState = new Map<string, PathWriteState>();
 function getPathWriteState(currentPath: string): PathWriteState {
   let state = pathWriteState.get(currentPath);
   if (!state) {
-    state = { chain: Promise.resolve(), parentDirEnsured: false };
+    state = { chain: Promise.resolve(), parentDirEnsured: false, pending: 0 };
     pathWriteState.set(currentPath, state);
   }
   return state;
@@ -109,12 +122,27 @@ export class RotatingAppender {
    * underlying fs error if either step fails.
    */
   append(data: string | Uint8Array): Promise<void> {
+    // Drop instead of queue when the disk can't keep up: each queued link pins
+    // its payload + a promise-chain link until every predecessor's write
+    // settles, so an unbounded backlog under span storms is the memory bug this
+    // cap exists for. Diagnostics data, so loss beats unbounded heap growth.
+    if (this.#state.pending >= MAX_PENDING_APPENDS) {
+      return Promise.reject(
+        new Error(
+          `RotatingAppender: backlog over ${MAX_PENDING_APPENDS} appends for ${this.#currentPath}; append dropped`,
+        ),
+      );
+    }
+    this.#state.pending++;
     const next = this.#state.chain
       // Swallow prior errors so one bad write doesn't deadlock the chain;
       // the rejection still surfaced to that call's awaiter via its own
       // returned promise.
       .catch(() => undefined)
-      .then(() => this.#doAppend(data));
+      .then(() => this.#doAppend(data))
+      .finally(() => {
+        this.#state.pending--;
+      });
     this.#state.chain = next;
     return next;
   }
