@@ -53,29 +53,24 @@ describe('applyByPrefixSuffix', () => {
   });
 
   test('Unicode BMP boundary — 3-byte UTF-8 / 1-unit UTF-16 chars', () => {
-    // Characters like é (U+00E9), ñ (U+00F1), 日 (U+65E5) are BMP, 1 UTF-16 unit
     const ytext = setup('café日本語');
     applyByPrefixSuffix(ytext, 'café日本語', 'café中文字');
     expect(ytext.toString()).toBe('café中文字');
   });
 
   test('supplementary-plane boundary — surrogate pairs at prefix/suffix boundary', () => {
-    // 🚀 (U+1F680) is a surrogate pair in UTF-16: \uD83D\uDE80
-    // Verify the function does not split a surrogate pair
     const ytext = setup('hello🚀world');
     applyByPrefixSuffix(ytext, 'hello🚀world', 'hello🌍world');
     expect(ytext.toString()).toBe('hello🌍world');
   });
 
   test('supplementary-plane at prefix end', () => {
-    // Common prefix ends at a surrogate pair boundary
     const ytext = setup('🚀abc');
     applyByPrefixSuffix(ytext, '🚀abc', '🚀xyz');
     expect(ytext.toString()).toBe('🚀xyz');
   });
 
   test('supplementary-plane at suffix start', () => {
-    // Common suffix starts at a surrogate pair boundary
     const ytext = setup('abc🚀');
     applyByPrefixSuffix(ytext, 'abc🚀', 'xyz🚀');
     expect(ytext.toString()).toBe('xyz🚀');

@@ -1,14 +1,3 @@
-/**
- * DOM-substrate tests for TagPillInput's grammar-gate behaviors and
- * a11y-id wiring. Runs under `bun run test:dom` (jsdom + RTL).
- *
- * Covers the aria-describedby clobber, the hardcoded-id collision,
- * and the input-side rejection UX. These tests live here (rather
- * than the legacy `tag-pill-input.test.ts` source-text guards) to
- * satisfy the "Never assert raw source text for JSX / classes /
- * imports / hooks / props" rule for the grammar-gate additions.
- */
-
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -49,8 +38,6 @@ describe('TagPillInput — render-side invalid pill flagging', () => {
       value: ['showcase', '2026', 'has spaces', 'proj/team'],
     });
     const invalid = container.querySelectorAll('[data-tag-invalid="true"]');
-    // Only `has spaces` is invalid — the digit-leading `2026` (a year) is a
-    // valid frontmatter tag.
     expect(invalid).toHaveLength(1);
     const texts = Array.from(invalid).map((el) => el.textContent ?? '');
     expect(texts.some((t) => t.includes('2026'))).toBe(false);
@@ -137,8 +124,6 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('Enter on a digit-leading tag like a year (2026) commits', () => {
-    // Digit-leading tags are valid in frontmatter even though the inline
-    // `#tag` surface rejects them.
     const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -173,12 +158,6 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('input strips leading `#` before commit (Obsidian-shape paste tolerance)', () => {
-    // The grammar helper strips a single leading `#` for paste
-    // tolerance, so `#showcase` passes — but the committed list must
-    // hold canonical bare `showcase`. Without this, the next on-disk
-    // YAML parse would silently re-normalize the value (drifting
-    // display) and the dedup check would miss a `#showcase` / `showcase`
-    // pair.
     const onChange = vi.fn(() => {});
     const { container } = renderInput({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -191,9 +170,6 @@ describe('TagPillInput — input-side grammar gate', () => {
   });
 
   test('post-normalize dedup catches `#`x vs x (no double commit)', () => {
-    // Before the normalization fix, an author with `showcase` already
-    // in the list could re-add `#showcase` (the raw dedup check would
-    // miss it). Pin post-normalize dedup so this regression stays caught.
     const onChange = vi.fn(() => {});
     const { container } = renderInput({ value: ['showcase'], onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -232,9 +208,6 @@ describe('TagPillInput — free-text grammar', () => {
   }
 
   test('commits values the tag grammar rejects, verbatim — no leading-# strip', () => {
-    // markdownlint option lists hold values like MD043's `## Summary`:
-    // spaces fail the tag grammar and the leading `#` would be stripped
-    // by the frontmatter normalization. Free-text must preserve both.
     const onChange = vi.fn(() => {});
     const { container } = renderFreeText({ onChange });
     const input = container.querySelector('input') as HTMLInputElement;
@@ -277,10 +250,6 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('grammar-hint id is derived from the caller-supplied `id` prop (per-instance unique)', () => {
-    // Without this, two TagPillInputs on the same page would collide
-    // on a static `tag-pill-grammar-hint` id (HTML uniqueness + AT
-    // ambiguity). Verified by inducing a rejection on a caller-id'd
-    // instance and reading the helper's actual id.
     const { container } = renderInput({ id: 'my-tags-field' });
     const input = container.querySelector('input') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -290,9 +259,6 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('two TagPillInputs on the same page get distinct grammar-hint ids (no static collision)', () => {
-    // Pre-fix this test would have failed: both helpers would share
-    // the static `tag-pill-grammar-hint`. Now each instance gets a
-    // distinct id (caller-supplied or auto-generated via useId).
     const { container } = render(
       <TooltipProvider>
         <TagPillInput id="left" value={[]} onChange={() => {}} />
@@ -311,10 +277,6 @@ describe('TagPillInput — a11y id wiring (regression: PR #1288 review findings)
   });
 
   test('aria-describedby MERGES the caller id with the grammar-hint id (does not clobber)', () => {
-    // RHF wires field-level error messages through `aria-describedby`.
-    // Before the fix, a rejection during an active RHF error would
-    // silently drop the RHF pointer for AT. Now both ids coexist as
-    // a space-separated list.
     const { container } = renderInput({
       id: 'my-field',
       'aria-describedby': 'my-field-rhf-error',
@@ -385,10 +347,6 @@ describe('TagPillInput — pills read as authored', () => {
   });
 
   test('pills do not inherit the Badge uppercase transform', () => {
-    // Badge's base class uppercases; these entries are case-sensitive values
-    // (globs, tags, markdownlint option strings) and a pill that renders
-    // BLOG/** for `blog/**` reads as corruption of a pattern that is fine.
-    // twMerge resolves the conflict, so `uppercase` should be gone entirely.
     const { container } = render(
       <TooltipProvider>
         <TagPillInput value={['blog/**']} onChange={() => {}} grammar="free-text" />
@@ -450,10 +408,6 @@ describe('TagPillInput — per-entry problems', () => {
   });
 
   test('double-clicking a flagged entry lifts it into the input for correction', () => {
-    // The flagged path is structurally different from an unflagged pill: a
-    // flagged pill is tooltip-wrapped, so `[data-slot="badge"] button` cannot
-    // reach it. Query through the wrapper so this exercises the real flagged
-    // structure, not the unflagged one the double-click block covers.
     const { container } = renderWithProblems(
       [['specs/**', 'matches no docs in this project']],
       ['specs/**'],
@@ -468,8 +422,6 @@ describe('TagPillInput — per-entry problems', () => {
   });
 
   test('the tooltip on a flagged entry reports the problem detail', async () => {
-    // The tooltip is the only place the "why" of a problem now lives, so the
-    // detail text — not merely the presence of a tooltip — is the contract.
     const { container, findByRole } = renderWithProblems(
       [['specs/**', 'matches no docs in this project']],
       ['specs/**'],
@@ -480,9 +432,6 @@ describe('TagPillInput — per-entry problems', () => {
   });
 
   test('a flagged entry drops the native edit title so tooltips do not compete', () => {
-    // The flagged pill already shows a Radix tooltip with the problem detail;
-    // the native `title` on the edit button would stack a second, competing
-    // tooltip. Unflagged pills keep the affordance hint.
     const { container } = renderWithProblems(
       [['specs/**', 'matches no docs in this project']],
       ['docs/**', 'specs/**'],
@@ -507,8 +456,6 @@ describe('TagPillInput — double-click to edit', () => {
       </TooltipProvider>,
     );
     const input = result.container.querySelector('input') as HTMLInputElement;
-    // The pill label is a button (keyboard parity for the edit gesture); the
-    // sibling remove button has no text, so matching on textContent is exact.
     const label = (text: string) =>
       [...result.container.querySelectorAll('[data-slot="badge"] button')].find(
         (el) => el.textContent === text,
@@ -520,14 +467,11 @@ describe('TagPillInput — double-click to edit', () => {
     const { input, label, container } = renderEditable(['blog', 'docs/**']);
     fireEvent.doubleClick(label('blog'));
     expect(input.value).toBe('blog');
-    // The entry lives in the input now — showing both would read as a duplicate.
     expect(container.textContent).not.toMatch(/blog(?!\/)/);
     expect(document.activeElement).toBe(input);
   });
 
   test('commits in place so the entry keeps its position', () => {
-    // Order carries meaning for globs: an exclude only subtracts from the
-    // includes before it, so a corrected pattern must not jump to the end.
     const { input, label, onChange } = renderEditable(['blog', '!blog/drafts/**', 'docs/**']);
     fireEvent.doubleClick(label('blog'));
     fireEvent.change(input, { target: { value: 'blog/**' } });
@@ -570,8 +514,6 @@ describe('TagPillInput — double-click to edit', () => {
   });
 
   test('blur on an emptied edit box deletes the entry', () => {
-    // Pins the `|| editingEntry !== null` guard in onBlur. Simplifying that
-    // condition to `if (draft.trim())` would silently break delete-by-clearing.
     const { input, label, onChange } = renderEditable(['blog', 'docs/**']);
     fireEvent.doubleClick(label('blog'));
     fireEvent.change(input, { target: { value: '' } });
@@ -605,9 +547,6 @@ describe('TagPillInput — double-click to edit', () => {
   });
 
   test('Space activates the edit on a highlighted entry (keyboard parity with Enter)', () => {
-    // The changeset promises "Enter or Space does the same thing from the
-    // keyboard". Space must lift the highlighted entry into the input without
-    // inserting a stray space character.
     const { input } = renderEditable(['blog', 'docs/**']);
     fireEvent.keyDown(input, { key: 'ArrowLeft' });
     fireEvent.keyDown(input, { key: 'ArrowLeft' });
@@ -650,8 +589,6 @@ describe('TagPillInput — roving highlight', () => {
   }
 
   test('entries are not tab stops — the pill label is removed from the tab order', () => {
-    // The whole point of the roving model: reaching the input should not mean
-    // tabbing past every entry already in the list.
     const { container } = renderRoving(['a', 'b', 'c']);
     const labels = [...container.querySelectorAll('[data-slot="badge"] button')].filter(
       (el) => el.textContent !== '',
@@ -668,7 +605,6 @@ describe('TagPillInput — roving highlight', () => {
   });
 
   test('ArrowLeft does not leave the text while the caret is mid-draft', () => {
-    // Arrowing through what you are typing has to keep working.
     const { input, highlighted } = renderRoving(['a']);
     fireEvent.change(input, { target: { value: 'draft' } });
     input.setSelectionRange(3, 3);
@@ -723,7 +659,6 @@ describe('TagPillInput — roving highlight', () => {
   });
 
   test('Backspace with nothing highlighted still removes the last entry', () => {
-    // The pre-existing shortcut has to survive the new branch above it.
     const { input, onChange } = renderRoving(['a', 'b']);
     fireEvent.keyDown(input, { key: 'Backspace' });
     expect(onChange).toHaveBeenCalledWith(['a']);
@@ -755,9 +690,6 @@ describe('TagPillInput — abandoning an edit', () => {
   });
 
   test('a blur that fails the grammar gate returns the entry to the row', () => {
-    // The rejection path commits nothing. If `editingEntry` survived the blur,
-    // the render filter would keep hiding the entry while `value` still holds
-    // it — the pill would be invisible until the author clicked back in.
     const onChange = vi.fn(() => {});
     const { container } = render(
       <TooltipProvider>
@@ -779,8 +711,6 @@ describe('TagPillInput — abandoning an edit', () => {
   });
 
   test('Escape with only a highlight active keeps the typed draft', () => {
-    // Navigating away from the draft and back must not destroy it; Escape
-    // clears the selection, not the text.
     const { input, highlighted } = (() => {
       const result = render(
         <TooltipProvider>

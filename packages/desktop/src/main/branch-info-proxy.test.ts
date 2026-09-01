@@ -16,7 +16,6 @@ import {
   type ServerLockReadShape,
 } from './branch-info-proxy';
 
-/** Read a header value off a fetch init regardless of HeadersInit form. */
 function headerOf(init: RequestInit | undefined, name: string): string | undefined {
   const h = init?.headers;
   if (h instanceof Headers) return h.get(name) ?? undefined;
@@ -126,11 +125,6 @@ describe('proxyFetchBranchInfo', () => {
     expect(result).toEqual(validBranchInfo);
   });
 
-  // The branch-switch dialog probes branch-info with the share's kind so the
-  // server runs the kind-aware `isValidBranchInfoPath` / `computeBranchInfo`
-  // path. Omitting kind made the server default to 'doc', which 400s a
-  // content-root folder share (empty path) before the folder-root
-  // short-circuit can run.
   test('forwards kind=doc into the server query', async () => {
     let seenUrl = '';
     const fetchMock: typeof fetch = (async (input) => {
@@ -165,9 +159,6 @@ describe('proxyFetchBranchInfo', () => {
     expect(seenUrl).toMatch(/path=docs%2Fguides/);
   });
 
-  // Content-root folder share: empty path + kind=folder. The server's
-  // folder-root short-circuit returns shareTargetExists:true only when both
-  // arrive on the wire — a defaulted kind=doc would 400 on the empty path.
   test('forwards kind=folder with an empty path for a content-root folder share', async () => {
     let seenUrl = '';
     const fetchMock: typeof fetch = (async (input) => {
@@ -182,13 +173,9 @@ describe('proxyFetchBranchInfo', () => {
       buildDeps({ fetch: fetchMock }),
     );
     expect(seenUrl).toMatch(/[?&]kind=folder(&|$)/);
-    // Empty path serializes to a bare `path=` so the server reads `''`, not a
-    // missing param — `isValidBranchInfoPath('', 'folder')` is the success arm.
     expect(seenUrl).toMatch(/[?&]path=(&|$)/);
   });
 
-  // every main-process /api request carries the desktop-main version
-  // headers (v1 wire contract).
   test('sends client version headers (kind=desktop-main) on the branch-info GET', async () => {
     let seen: RequestInit | undefined;
     const fetchMock: typeof fetch = (async (_input, init) => {
@@ -269,7 +256,6 @@ describe('proxyRunCheckout', () => {
     expect(result).toEqual({ ok: true });
     expect(capturedBody).toBeDefined();
     expect(JSON.parse(capturedBody as string)).toEqual({ branch: 'feat/foo' });
-    // version headers ride alongside the preserved content-type on the POST.
     expect(headerOf(capturedInit, 'x-ok-client-kind')).toBe('desktop-main');
     expect(headerOf(capturedInit, 'content-type')).toBe('application/json');
   });
@@ -521,8 +507,6 @@ describe('AbortSignal cancellation', () => {
     const deps = buildDeps({
       readServerLock: () => {
         calls += 1;
-        // Abort after a couple of polls so the busy-wait can't hit the
-        // full deadline.
         if (calls === 2) controller.abort();
         return null;
       },
@@ -533,8 +517,6 @@ describe('AbortSignal cancellation', () => {
     const origin = await resolveProjectServerOrigin('/tmp/p', deps, controller.signal);
     const elapsed = Date.now() - start;
     expect(origin).toBeNull();
-    // The full deadline is 10s; aborting after ~2 polls should resolve in
-    // well under a second.
     expect(elapsed).toBeLessThan(500);
     expect(calls).toBeGreaterThanOrEqual(2);
   });

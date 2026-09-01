@@ -1,29 +1,3 @@
-/**
- * Shadow repo — attribution journal at `<gitdir>/ok/`.
- *
- * A bare repo (core.bare unset, core.worktree → project root) that stores
- * per-writer WIP refs and upstream-import commits. Isolated from the project
- * repo so user staging area and history are never touched.
- *
- * Path layout (worktree-aware; resolved via `resolveShadowDir`):
- *   - Main worktree: `<projectRoot>/.git/ok/` (`.git` is a directory).
- *   - Linked worktree: `<repo>/.git/worktrees/<name>/ok/` (`.git` is a pointer
- *     file; per-worktree shadow lives inside Git's per-worktree admin dir and
- *     is cleaned up automatically by `git worktree remove`).
- *   - Subfolder of an existing repo (no `<projectRoot>/.git`): walks up to the
- *     enclosing repo's gitdir and hosts the shadow at
- *     `<ancestorGitDir>/ok-<slug>/`, where `<slug>` is derived from the path
- *     from the ancestor down to `projectRoot`. The `ok-<slug>` namespace
- *     prevents two `.ok/` projects sharing one parent gitdir from colliding
- *     on refs / tree paths. The walk avoids materialising a shell `.git/`
- *     inside the subfolder, which would otherwise trick `ensureProjectGit`'s
- *     shell-repair branch on the next boot.
- *   - Projects without `.git/` get auto-init'd by `ensureProjectGit` before
- *     `initShadowRepo` runs (fail-fast).
- *   - Pre-spec integrated shadows at `.git/openknowledge/` (legacy path) are
- *     silently rename-migrated in-place once per repo (legacy-rename shim below).
- */
-
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -58,14 +32,11 @@ import { withSpan } from './telemetry.ts';
 
 const log = getLogger('shadow-repo');
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export interface ShadowHandle {
   gitDir: string;
   workTree: string;
 }
 
-/** Mutable ref to a ShadowHandle — allows deferred initialization after construction. */
 export interface ShadowRef {
   current: ShadowHandle | undefined;
 }
@@ -76,14 +47,6 @@ export interface WriterIdentity {
   email: string;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Per-op timeout for shadow-repo git invocations. Default 30s. Override via
- * `OK_GIT_TIMEOUT_MS` for slow storage (NFS, heavily-used filesystems) or
- * intentionally-low values in tests that exercise timeout failure paths.
- * Invalid / non-positive values fall back to the 30s default.
- */
 const GIT_TIMEOUT_MS = (() => {
   const raw = process.env.OK_GIT_TIMEOUT_MS;
   if (!raw) return 30_000;
@@ -91,14 +54,6 @@ const GIT_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
 })();
 
-/**
- * Dedicated long timeout for shadow-repo MAINTENANCE git ops (gc/repack/prune).
- * Default 10 min. A quiet `git gc` on a large backlog routinely runs longer than
- * the 30s block watchdog (`GIT_TIMEOUT_MS`); reusing that watchdog would kill the
- * pack mid-run and thrash kill-retry. Override via
- * `OK_SHADOW_MAINTENANCE_GC_TIMEOUT_MS`. Maintenance ops run off the write path
- * (coordinator-gated), so a long block here never stalls a user edit.
- */
 export const MAINTENANCE_GIT_TIMEOUT_MS = (() => {
   const raw = process.env.OK_SHADOW_MAINTENANCE_GC_TIMEOUT_MS;
   if (!raw) return 600_000;
@@ -106,19 +61,6 @@ export const MAINTENANCE_GIT_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 600_000;
 })();
 
-/**
- * Dedicated timeout for the corpus-staging `git add` calls (WIP tree build /
- * per-writer commit). simple-git's `block` watchdog kills a child that stays
- * SILENT for the window — and `git add` prints nothing until it finishes, so
- * the 30s default is a hard cap on total staging time. A COLD stage of a big
- * project (first flush after init, or an invalidated stat cache) legitimately
- * hashes the whole non-ignored corpus and can outlive 30s, especially while
- * boot-time scans compete for I/O; killing it then falls back to a throwaway
- * index and the persistent stat cache never establishes — every later skill
- * rename/move re-pays the full hash. These calls are gated + serialized off
- * the hot doc path, so a long ceiling stalls nothing else. Override via
- * `OK_SHADOW_STAGE_TIMEOUT_MS`.
- */
 const CORPUS_STAGE_GIT_TIMEOUT_MS = (() => {
   const raw = process.env.OK_SHADOW_STAGE_TIMEOUT_MS;
   if (!raw) return 300_000;
@@ -126,19 +68,8 @@ const CORPUS_STAGE_GIT_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
 })();
 
-/**
- * `gc.auto` threshold for the shadow repo. git only packs once
- * loose objects exceed this on an explicit `git gc --auto`. Shadow writes use
- * plumbing (commit-tree/update-ref), which never triggers git's built-in
- * auto-gc, so this threshold only governs the coordinator's explicit runs.
- */
 const SHADOW_GC_AUTO = 512;
 
-/**
- * Create a simple-git instance pointed at the shadow bare repo. Pass
- * `{ timeoutMs }` to use the dedicated maintenance timeout for gc/repack
- * (`MAINTENANCE_GIT_TIMEOUT_MS`); omit it for the default 30s op watchdog.
- */
 export function shadowGit(shadow: ShadowHandle, opts?: { timeoutMs?: number }) {
   return simpleGit({
     baseDir: shadow.workTree,
@@ -149,14 +80,6 @@ export function shadowGit(shadow: ShadowHandle, opts?: { timeoutMs?: number }) {
   });
 }
 
-/**
- * Write the shadow repo's gc config. Idempotent — runs on EVERY
- * boot (not just first init) so existing degraded repos pick up the config
- * post-upgrade. `gc.autoDetach=false` keeps the coordinator's gc in the
- * foreground so its `gc.log` latch is observable; `writeCommitGraph` +
- * `changedPaths` Bloom filters bound path-filtered history walks (the sparse-
- * file read cost that otherwise grows linearly with total commit count).
- */
 export async function configureShadowGc(shadow: ShadowHandle): Promise<void> {
   const sg = shadowGit(shadow);
   await sg.raw('config', 'gc.auto', String(SHADOW_GC_AUTO));
@@ -165,24 +88,14 @@ export async function configureShadowGc(shadow: ShadowHandle): Promise<void> {
   await sg.raw('config', 'commitGraph.changedPaths', 'true');
 }
 
-/** One WIP chain on a branch — its writer id, tip, classification, whether the
- *  tip is a park commit (branch-switch state that must never be folded), and the
- *  tip's committer time (for the TTL backstop's age check). */
 export interface WipChainInfo {
   writerId: string;
   tipSha: string;
   classification: WriterClassification;
   isPark: boolean;
-  /** Tip commit's committer time in ms since epoch (0 if unparseable). */
   committedAtMs: number;
 }
 
-/**
- * Enumerate every WIP chain on `branch` in ONE `for-each-ref`. The
- * tip subject comes straight from `%(contents:subject)`, so park detection costs
- * no extra git process per ref. Shared by the auto-consolidation path (filters to
- * dead agents) and the Save Version button (folds all non-park chains).
- */
 export async function enumerateWipChains(
   shadow: ShadowHandle,
   branch: string,
@@ -206,7 +119,6 @@ export async function enumerateWipChains(
   const out: WipChainInfo[] = [];
   for (const line of lines) {
     const [refname = '', tipSha = '', committerUnix = '', subject = ''] = line.split('\x00');
-    // refs/wip/<branch>/<writerId> — writerId may itself contain slashes.
     const writerId = refname.split('/').slice(3).join('/');
     if (!writerId) continue;
     const unix = Number.parseInt(committerUnix, 10);
@@ -221,46 +133,14 @@ export async function enumerateWipChains(
   return out;
 }
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-
-/**
- * Initialize the shadow bare repo at `<gitdir>/ok/` — worktree-aware. The
- * exact path resolves to `<projectRoot>/.git/ok/` for a main checkout and to
- * `<repo>/.git/worktrees/<name>/ok/` for a linked worktree. Path resolution
- * lives in `@inkeep/open-knowledge-core/shadow-repo-layout` so the CLI read
- * path and this server write path follow the same rule.
- *
- * Assumes the project already has a `.git/` (file or directory) —
- * `ensureProjectGit` is responsible for that guarantee upstream.
- *
- * Legacy migration: if a pre-rename `<projectRoot>/.git/openknowledge/` dir
- * exists from a pre-spec integrated-mode install, silently `renameSync` it to
- * the canonical `<gitdir>/ok/` path. One-shot, lossless — preserves all refs
- * and commits. Defensive: if BOTH directories are present (shouldn't happen),
- * log and no-op. The shim runs against the resolved shadow path, so a linked
- * worktree on its first boot post-upgrade will not see the legacy dir at the
- * common-dir location until the user next boots OK in the main worktree.
- */
 export async function initShadowRepo(
   projectRoot: string,
   opts?: {
-    /**
-     * Skip the every-boot `configureShadowGc` call so the caller can run it
-     * off the readiness-critical path. Each config write is one git spawn;
-     * on hosts where process spawn is expensive (Windows AV scanning ~1s per
-     * spawn), these four spawns are pure added latency to a boot sequence
-     * that gates the HTTP API. Callers that pass this MUST schedule
-     * `configureShadowGc` themselves — the gc config is what keeps a
-     * long-lived shadow repo from degrading.
-     */
     deferGcConfig?: boolean;
   },
 ): Promise<ShadowHandle> {
-  // Path resolution lives in @inkeep/open-knowledge-core so the CLI read path
-  // and this server write path use exactly the same rule.
   const shadowDir = resolveShadowDir(projectRoot);
 
-  // legacy-rename shim — runs before any other shadow op.
   const legacyDir = resolve(projectRoot, '.git/openknowledge');
   const legacyExists = existsSync(legacyDir);
   const newExists = existsSync(shadowDir);
@@ -273,7 +153,6 @@ export async function initShadowRepo(
     );
   }
 
-  // Skip init if already valid
   const alreadyInit = existsSync(resolve(shadowDir, 'HEAD'));
   if (!alreadyInit) {
     tracedMkdirSync(shadowDir, { recursive: true });
@@ -290,9 +169,6 @@ export async function initShadowRepo(
 
   const handle: ShadowHandle = { gitDir: shadowDir, workTree: projectRoot };
 
-  // Write gc config on every boot (idempotent) so an existing degraded repo
-  // picks it up post-upgrade, not only freshly-initialized ones.
-  // Best-effort: a config failure must never block boot or the writer lock.
   if (!opts?.deferGcConfig) {
     try {
       await configureShadowGc(handle);
@@ -301,39 +177,20 @@ export async function initShadowRepo(
     }
   }
 
-  // Allowlist-based sweep of legacy WIP refs on every start.
-  // Idempotent — no-op once all legacy refs are gone.
   await sweepLegacyShadowRefs(handle);
 
-  // Sweep orphaned scratch state (temp indices, park blob dirs) left behind
-  // by a crashed prior process. Idempotent — no-op on a clean shutdown.
   sweepOrphanedScratchState(handle);
 
-  // Acquire exclusive writer lock
   acquireLock(shadowDir, projectRoot);
 
   return handle;
 }
 
-/**
- * Release the exclusive writer lock on a shadow repo.
- * Called during graceful shutdown.
- */
 export function destroyShadowRepo(shadow: ShadowHandle): void {
   releaseLock(shadow.gitDir);
   releaseShadowOpGate(shadow.gitDir);
 }
 
-/**
- * Allowlist-based sweep of legacy WIP refs.
- *
- * Enumerates refs/wip/*\/\* and deletes ONLY refs whose writer-ID segment
- * matches the known-legacy patterns: exact `server`, prefix `human-`, exact
- * `upstream`. New-taxonomy refs (agent-*, principal-*, file-system,
- * git-upstream, openknowledge-service) are preserved unchanged.
- *
- * Idempotent: running twice is a no-op once legacy refs are gone.
- */
 export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<number> {
   const sg = shadowGit(shadow);
   let allRefs: string[];
@@ -344,7 +201,6 @@ export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<numbe
       .split('\n')
       .filter((r) => r.length > 0);
   } catch {
-    // No refs yet (fresh repo) — nothing to sweep
     return 0;
   }
 
@@ -352,14 +208,10 @@ export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<numbe
   const breakdown: Record<string, number> = { server: 0, 'human-': 0, upstream: 0 };
 
   for (const refname of allRefs) {
-    // refs/wip/<branch>/<writerId>
     const parts = refname.split('/');
     if (parts.length < 4) continue;
     const writerId = parts.slice(3).join('/');
 
-    // Only delete refs that parseWriterId classifies as 'unknown' AND match
-    // the known-legacy allowlist. This is deliberately narrow — we never
-    // delete a ref we can't positively identify as legacy.
     const classification = parseWriterId(writerId).classification;
     if (classification !== 'unknown') continue;
 
@@ -373,7 +225,6 @@ export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<numbe
       toDelete.push(refname);
       breakdown.upstream++;
     }
-    // All other 'unknown' refs are preserved (defensive)
   }
 
   if (toDelete.length === 0) return 0;
@@ -398,25 +249,7 @@ export async function sweepLegacyShadowRefs(shadow: ShadowHandle): Promise<numbe
   return deleted;
 }
 
-// ─── WIP commits ─────────────────────────────────────────────────────────────
-
-/**
- * Commit content changes to a per-writer, per-branch WIP ref in the shadow.
- *
- * Uses commit-tree plumbing with GIT_INDEX_FILE isolation so we never
- * touch any user-visible staging area.
- *
- * @param branch - Project branch name (e.g. 'main', 'feature/xyz'). When omitted, defaults to 'main'.
- */
 export interface CommitWipOptions {
-  /**
-   * Explicit commit timestamp (any git-parseable date, e.g. ISO 8601), applied
-   * to both author and committer date. Production leaves this unset so git
-   * stamps the current time; tests pass distinct increasing values to make
-   * commit ordering deterministic without real-time sleeps — git's committer
-   * date has 1-second granularity, so two commits in the same second sort
-   * ambiguously and would otherwise need a >1s wall-clock wait between them.
-   */
   date?: string;
 }
 
@@ -439,11 +272,6 @@ export async function commitWip(
       },
     },
     async () => {
-      // The shadow op gate's `withMutator` is SHARED (mutators run concurrently;
-      // only gc is exclusive), so it does NOT serialize two in-flight flushes
-      // for the same writer — they'd race on the fixed-path `index-wip-<writer>`
-      // and commit stale trees. The per-writer promise queue below is the
-      // serialization; the gate still fences us against gc.
       const key = `${shadow.gitDir}\0${writer.id}`;
       const flush = () =>
         shadowOpGateFor(shadow).withMutator(() =>
@@ -466,28 +294,22 @@ async function commitWipInner(
 ): Promise<string> {
   const tmpIndex = resolve(shadow.gitDir, `index-wip-${writer.id}`);
   const ref = `refs/wip/${branch}/${writer.id}`;
-  // Staging timeout, not the 30s op watchdog: the index here is seeded by
-  // `read-tree` (no stat info), so the `git add` below re-hashes everything in
-  // the pathspec and is silent throughout — see CORPUS_STAGE_GIT_TIMEOUT_MS.
   const sg = shadowGit(shadow, { timeoutMs: CORPUS_STAGE_GIT_TIMEOUT_MS });
   const gitPathspec = contentRoot || '.';
 
   try {
-    // Seed index from current ref state (if exists)
     try {
       const refTree = (await sg.raw('rev-parse', `${ref}^{tree}`)).trim();
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('read-tree', refTree);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes('unknown revision') || msg.includes('bad revision')) {
-        // Expected: first commit on this ref — start fresh
       } else {
         log.error({ ref, err: e }, `Unexpected error seeding index for ${ref}`);
         throw e;
       }
     }
 
-    // Stage content files
     await sg
       .env({
         GIT_DIR: shadow.gitDir,
@@ -499,7 +321,6 @@ async function commitWipInner(
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
     ).trim();
 
-    // Find parent
     let parentSha: string | null = null;
     try {
       parentSha = (await sg.raw('rev-parse', ref)).trim();
@@ -509,10 +330,8 @@ async function commitWipInner(
         log.error({ ref, err: e }, `Unexpected error resolving ${ref}`);
         throw e;
       }
-      // Expected: no parent — first commit on this ref
     }
 
-    // Create commit with writer identity
     const args = ['commit-tree', treeSha, '-m', message];
     if (parentSha) args.push('-p', parentSha);
 
@@ -534,36 +353,12 @@ async function commitWipInner(
   } finally {
     try {
       rmSync(tmpIndex);
-    } catch {
-      // ignore cleanup failure
-    }
+    } catch {}
   }
 }
 
-// ─── Per-writer fan-out helpers ────────────────────────────────────────────
-
-/**
- * Stable filename of the reusable fan-out index inside the shadow gitDir.
- * Reusing one index across drain cycles lets git's stat cache elide re-reading
- * and re-hashing unchanged files, so the per-drain cost of `buildWipTree` is a
- * stat walk instead of a whole-corpus re-hash. The name deliberately does NOT
- * match the `index-wip-fanout-<uuid>` throwaway pattern the boot sweep deletes:
- * the cache is valid across restarts (git re-validates every entry by stat).
- */
 const FANOUT_INDEX_NAME = 'index-wip-fanout';
 
-/**
- * Sweep transient scratch state left in the shadow gitDir by a crashed
- * process: `index-wip-fanout-<uuid>` throwaway scratch files, a stale
- * `index-wip-fanout.lock` from a `git add` killed mid-write (git would refuse
- * to reuse the persistent fan-out index while the lock exists), and
- * `tmp-park-blobs-<uuid>` blob scratch directories from a park killed before
- * its `finally` cleanup ran. The owning process is always gone by the time we
- * run (initShadowRepo acquires an exclusive writer lock immediately after),
- * so unconditional deletion is safe. The persistent `index-wip-fanout` file
- * itself is kept — it is a pure stat cache whose entries git re-validates on
- * every use.
- */
 function sweepOrphanedScratchState(shadow: ShadowHandle): number {
   let deleted = 0;
   try {
@@ -575,40 +370,21 @@ function sweepOrphanedScratchState(shadow: ShadowHandle): number {
       try {
         rmSync(resolve(shadow.gitDir, name), { recursive: true, force: true });
         deleted++;
-      } catch {
-        // best effort — next startup will retry
-      }
+      } catch {}
     }
-  } catch {
-    // gitDir missing or unreadable — initShadowRepo will catch the real error
-  }
+  } catch {}
   return deleted;
 }
 
 export async function buildWipTree(shadow: ShadowHandle, contentRoot: string): Promise<string> {
-  // The returned tree is dangling until a later commitWipFromTree references
-  // it, and that call takes a SEPARATE gate hold — a gc can interleave between
-  // the two. Safe today because gc.pruneExpire is left at git's 2-week default,
-  // so a milliseconds-old dangling tree is far inside the prune grace window.
-  // If prune config is ever tightened toward `now`, the flush fan-out must
-  // instead span tree-build + per-writer commits under ONE mutator hold.
   return shadowOpGateFor(shadow).withMutator(() => buildWipTreeInner(shadow, contentRoot));
 }
 
-/**
- * Stage the content directory into `indexFile` and return a git tree SHA.
- * Never seeded from any ref: a directory-pathspec `git add` fully syncs the
- * index subtree to the working tree (additions, modifications, AND deletions),
- * so the resulting tree always reflects current filesystem state of
- * contentRoot regardless of what the index held before.
- */
 async function buildWipTreeWithIndex(
   shadow: ShadowHandle,
   contentRoot: string,
   indexFile: string,
 ): Promise<string> {
-  // Staging timeout, not the 30s op watchdog: a cold `git add` is silent for
-  // its whole (possibly long) runtime — see CORPUS_STAGE_GIT_TIMEOUT_MS.
   const sg = shadowGit(shadow, { timeoutMs: CORPUS_STAGE_GIT_TIMEOUT_MS });
   const gitPathspec = contentRoot || '.';
   await sg
@@ -623,21 +399,6 @@ async function buildWipTreeWithIndex(
   ).trim();
 }
 
-/**
- * Stage the content directory and return a git tree SHA.
- * Used by the per-writer L2 fan-out so all writers share the same tree.
- *
- * Fast path: reuse the persistent fan-out index so unchanged files hit git's
- * stat cache instead of being re-read and re-hashed every cycle (the previous
- * throwaway-index design made every drain O(total corpus bytes)). Safe to
- * share a single index because the L2 commit path is serialized (one commit
- * in flight per server; one server per contentDir via the writer lock).
- *
- * Fallback: on ANY failure (stale `index.lock` from a timed-out add, corrupt
- * index file, …) drop the persistent index and rebuild from a fresh throwaway
- * index — the pre-optimization behavior. Recorded history is identical either
- * way; only the caching differs.
- */
 async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Promise<string> {
   const persistentIndex = resolve(shadow.gitDir, FANOUT_INDEX_NAME);
   try {
@@ -647,20 +408,13 @@ async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Pro
       { err: e },
       '[shadow-repo] persistent fan-out index failed — rebuilding from a fresh index',
     );
-    // A TIMEOUT leaves a valid (if partial) stat cache — deleting it on that
-    // class guaranteed the next build started cold again, so a repo whose cold
-    // stage ever outlived the watchdog could never establish the cache. Drop
-    // the index only on real failures (corruption); the stale `.lock` from the
-    // killed `git add` must go either way or git refuses the next use.
     const isTimeout = e instanceof Error && e.message.includes('block timeout');
     for (const stale of isTimeout
       ? [`${persistentIndex}.lock`]
       : [persistentIndex, `${persistentIndex}.lock`]) {
       try {
         rmSync(stale);
-      } catch {
-        // ignore cleanup failure
-      }
+      } catch {}
     }
     const tmpIndex = resolve(shadow.gitDir, `${FANOUT_INDEX_NAME}-${randomUUID()}`);
     try {
@@ -668,17 +422,11 @@ async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Pro
     } finally {
       try {
         rmSync(tmpIndex);
-      } catch {
-        // ignore cleanup failure
-      }
+      } catch {}
     }
   }
 }
 
-/**
- * Create a commit from a pre-built tree SHA and advance the per-writer WIP ref.
- * All per-writer commits in one fan-out cycle share the same treeSha.
- */
 export async function commitWipFromTree(
   shadow: ShadowHandle,
   writer: WriterIdentity,
@@ -742,27 +490,18 @@ async function commitWipFromTreeInner(
   return commitSha;
 }
 
-// ─── Classified writer-identity constants ─────────────────────────────────
-
-// Display names come from `SYSTEM_WRITER_DISPLAY_NAMES` in core: the editor
-// matches on them to choose a timeline icon and cannot import this module, so
-// the strings have to live somewhere both sides can reach.
-
-/** Non-attributable file-system writes (disk changes, reconciliation). */
 export const FILE_SYSTEM_WRITER: WriterIdentity = {
   id: 'file-system',
   name: SYSTEM_WRITER_DISPLAY_NAMES.fileSystem,
   email: 'file-system@openknowledge.local',
 };
 
-/** Non-attributable upstream git-pull imports. */
 export const GIT_UPSTREAM_WRITER: WriterIdentity = {
   id: 'git-upstream',
   name: SYSTEM_WRITER_DISPLAY_NAMES.gitUpstream,
   email: 'git@openknowledge.local',
 };
 
-/** Non-attributable internal service bookkeeping. */
 export const SERVICE_WRITER: WriterIdentity = {
   id: 'openknowledge-service',
   name: SYSTEM_WRITER_DISPLAY_NAMES.service,
@@ -784,18 +523,8 @@ export const OK_GENERATOR_WRITER: WriterIdentity = {
   email: `${OK_GENERATOR_WRITER_ID}@openknowledge.local`,
 };
 
-// ─── Upstream import ─────────────────────────────────────────────────────────
-
 const UPSTREAM_WRITER: WriterIdentity = GIT_UPSTREAM_WRITER;
 
-/**
- * Record an upstream-import commit in the shadow.
- *
- * Called when HEAD moves (e.g., git pull) to attribute the incoming changes
- * to "upstream" in the attribution journal.
- *
- * @param branch - Project branch name for ref scoping. Defaults to 'main'.
- */
 export async function commitUpstreamImport(
   shadow: ShadowHandle,
   contentRoot: string,
@@ -835,20 +564,6 @@ async function commitUpstreamImportInner(
   return commitWip(shadow, UPSTREAM_WRITER, contentRoot, message, branch);
 }
 
-// ─── Safety checkpoint ──────────────────────────────────────────────────────
-
-/**
- * Generic safety-checkpoint primitive.
- *
- * Snapshots the current working tree to the shadow repo's WIP ref *before*
- * a destructive action so the user can recover pre-action state from the
- * timeline. Rollback is the first caller; future coarse actions (apply-draft,
- * etc.) reuse the same primitive.
- *
- * Inspired by Figma's "two checkpoints around restore" pattern — one before,
- * one after the destructive operation. The "after" checkpoint is handled by
- * the normal L2 persistence pipeline (commitWip on debounce).
- */
 export interface SafetyCheckpointParams {
   action: string;
   context: Record<string, unknown>;
@@ -880,47 +595,6 @@ export async function safetyCheckpoint(
   return commitWip(shadow, SAFETY_WRITER, contentRoot, message, branch);
 }
 
-// ─── In-memory checkpoint ──────────────────
-
-/**
- * Kind-discriminated parameters for {@link saveInMemoryCheckpoint}. Each
- * kind carries typed metadata that `parseCheckpoint` in
- * `@inkeep/open-knowledge-core/shadow-repo-layout` can round-trip.
- *
- * - `bridge-merge-loss` — Observer A Path B fired `mergeThreeWay`, the
- *   content-preservation post-condition flagged the result, and we want a
- *   silent Notion-style restore artifact on the timeline. `contents` is the
- *   pre-merge baseline (the state the user saw before the conflict merge).
- * - `producer-guard-loss` — Observer A's producer guard detected serialize
- *   output that fails structural legality (a fresh parse loses authored
- *   content) at the serialize boundary. `contents` is the pre-loss source (the
- *   last-good Y.Text); `construct` is a bounded, content-free locator of the
- *   danger-space node types present.
- * - `observer-a-duplication` — Observer A's duplication gate found a
- *   provenance-confirmed CRDT double-materialization of a bridge-derived span
- *   and re-derived the fragment from Y.Text before it could persist.
- *   `contents` is the pre-recovery doubled fragment serialization (the anchor
- *   if the re-derive was wrong); `duplicatedLineCount` is a content-free count.
- * - `external-change-rescue` — an external disk write (reconcile-delete or
- *   branch-switch path) would otherwise have discarded dirty Y.Doc content.
- *   `contents` is the rescued in-memory markdown; `incomingDiskSha` names
- *   the disk SHA we chose over it.
- * - `defer-exhaustion-loss` — the derive-timing defer guard reached its
- *   drain-count bound and force-resolved. `contents` is the pre-resolve
- *   fragment serialization (which still holds the un-propagated keystroke);
- *   `deferCount` is a content-free count of the deferrals that preceded it.
- * - `observer-a-apply-loss` — the XmlFragment→Y.Text APPLY post-condition found
- *   the byte-preserving apply arms dropped content the fragment's intended
- *   markdown held. Distinct from `bridge-merge-loss` (a Path-B MERGE drop) so
- *   the two detection sites keep separate counters and retention budgets.
- *   `contents` is the pre-loss fragment serialization; `lostSubstrings` names
- *   the dropped content.
- * - `bridge-derive-loss` — the Y.Text→XmlFragment derive post-condition found
- *   the pre-derive fragment held content the authoritative Y.Text lacked, about
- *   to be discarded by a paired agent-undo derive. `contents` is the pre-derive
- *   fragment serialization (the restore anchor); `lostSubstrings` names the
- *   dropped content for diagnosis.
- */
 export type InMemoryCheckpointParams = (
   | {
       kind: 'bridge-merge-loss';
@@ -1019,37 +693,9 @@ export type InMemoryCheckpointParams = (
       metadata: { diskBytes: number; discardedBytes: number };
     }
 ) & {
-  /**
-   * Explicit commit timestamp (any git-parseable date, e.g. ISO 8601), applied
-   * to both author and committer date. Production leaves this unset so git
-   * stamps the current time; tests pass explicit values to pin retention
-   * ordering — git stores dates at one-second granularity, so checkpoints
-   * written inside one second are indistinguishable by date and would
-   * otherwise need a >1s wall-clock wait between writes to order
-   * deterministically. Mirrors `CommitWipOptions.date` and
-   * `SaveVersionOptions.date`.
-   */
   date?: string;
 };
 
-/**
- * Silent in-memory checkpoint — writes `contents` as a blob at the
- * extension-less tree path `<docName>` (docNames are extension-less by
- * convention; `foo` → `foo.md` on disk) in an isolated git tree, commits with body
- * `checkpoint: ${label}\n\nok-checkpoint-v1: ${JSON}`, and updates the ref
- * `refs/checkpoints/<branch>/<sha>`. Never touches `refs/wip/*` — this is a
- * one-shot recovery artifact, not part of the per-writer WIP chain
- * (contrast `saveVersion` which resets WIP).
- *
- * **Concurrent safety.** Each call uses a unique tmp-index file
- * name derived from a random UUID so two in-flight calls on the same shadow
- * do not contend at the index level. The ref-update is atomic at the git
- * layer. Callers fire-and-forget via `queueMicrotask(() =>
- * saveInMemoryCheckpoint(...).catch(...))` — the hot bridge-merge path
- * never awaits the commit.
- *
- * @returns the commit sha (which also appears in the ref name).
- */
 export async function saveInMemoryCheckpoint(
   shadow: ShadowHandle,
   contentRoot: string,
@@ -1071,25 +717,10 @@ async function saveInMemoryCheckpointInner(
   const tmpIndex = resolve(shadow.gitDir, `index-checkpoint-${token}`);
   const tmpBlobFile = resolve(shadow.gitDir, `tmp-checkpoint-blob-${token}`);
 
-  // Path inside the tree mirrors the real content layout so TimelinePanel's
-  // existing per-doc view logic (walks the tree at the commit's docName)
-  // resolves identically for silent-checkpoint artifacts.
-  //
-  // A '.'-only (or './'-prefixed) contentRoot means the content dir IS the repo
-  // root. `git update-index --cacheinfo` rejects a `./`-prefixed tree path, so
-  // collapse it to a bare docName — mirroring the WIP builders, which treat ''
-  // and '.' as the same root pathspec. Without this a silent checkpoint throws
-  // `Invalid path './<doc>'` and the recovery floor never persists on a booted
-  // server (which passes contentRoot '.').
   const normalizedRoot =
     contentRoot === '.' ? '' : contentRoot.replace(/^\.\//, '').replace(/\/$/, '');
   const treePath = normalizedRoot ? `${normalizedRoot}/${params.docName}` : params.docName;
-  // Byte-size of the rescued content; encoded in metadata so the rescue
-  // read path can render the listing without spawning a per-ref `git ls-tree`
-  // subprocess.
   const size = Buffer.byteLength(params.contents, 'utf-8');
-  // Reconstruct the parsed shape per kind so each metadata type stays bound to
-  // its own discriminant (the switch is exhaustive over InMemoryCheckpointParams).
   let parsed: ParsedCheckpoint;
   switch (params.kind) {
     case 'bridge-merge-loss':
@@ -1224,49 +855,22 @@ async function saveInMemoryCheckpointInner(
   } finally {
     try {
       rmSync(tmpIndex);
-    } catch {
-      // ignore cleanup failure
-    }
+    } catch {}
     try {
       rmSync(tmpBlobFile);
-    } catch {
-      // ignore cleanup failure
-    }
+    } catch {}
   }
 }
 
-/**
- * A single `kind: 'external-change-rescue'` rescue entry reconstructed from
- * the shadow repo's `refs/checkpoints/<branch>/*` namespace. Shape mirrors
- * the flat-file rescue listing at `/api/rescue` so the two sources can be
- * merged into one unified response.
- */
 export interface TimelineRescueEntry {
   docName: string;
   timestamp: string;
   size: number;
-  /** Commit SHA of the checkpoint, so the caller can request the raw content. */
   sha: string;
-  /** Commit message (first line); surfaces the human-readable label. */
   label: string;
-  /** SHA of the incoming disk content that overrode the in-memory state. */
   incomingDiskSha: string;
 }
 
-/**
- * List every `external-change-rescue` checkpoint on `refs/checkpoints/<branch>/*`
- * by walking the refs, reading each commit's body via `parseCheckpoint`,
- * and filtering by kind. Does not walk ancestry — each ref is resolved
- * directly via `git log --no-walk`. Returns an empty array on any git error
- * to match the graceful-degradation posture of `getDocumentHistory`.
- *
- * `docName` + `size` are now read
- * from the parsed `ok-checkpoint-v1:` metadata body line. The per-ref
- * `git ls-tree` fan-out the prior implementation performed is retained
- * only as a backward-compat fallback for checkpoints written before the
- * metadata was enriched (none in a fresh install; included for robustness
- * on worktrees carrying earlier-iteration artifacts).
- */
 export async function listRescueCheckpoints(
   shadow: ShadowHandle,
   branch = 'main',
@@ -1309,14 +913,9 @@ export async function listRescueCheckpoints(
     const parsed = parseCheckpoint(body);
     if (parsed?.kind !== 'external-change-rescue') continue;
 
-    // Fast path: metadata carries docName + size directly
-    // Per-commit subprocess skipped in this path.
     let docName = parsed.docName ?? '';
     let size = parsed.size ?? 0;
 
-    // Backward-compat fallback for any pre-enrichment checkpoints on this
-    // branch. Safe no-op for fresh commits since the fast-path already
-    // populated both fields.
     if (!docName) {
       try {
         const entry = (await listTreeLongEntries(sg, ['ls-tree', '-r', '--long', sha]))[0];
@@ -1328,9 +927,7 @@ export async function listRescueCheckpoints(
               .split('/')
               .slice(-1)[0] ?? '';
         }
-      } catch {
-        // ignore — docName stays empty; caller treats as unparseable
-      }
+      } catch {}
     }
     if (!docName) continue;
     out.push({
@@ -1345,119 +942,20 @@ export async function listRescueCheckpoints(
   return out;
 }
 
-// ─── Checkpoint GC ────
-
-/** Per-kind retention policy for `refs/checkpoints/<branch>/*`. */
 export interface CheckpointRetentionPolicy {
-  /**
-   * Maximum `bridge-merge-loss` checkpoints to keep per branch. These are
-   * written on every Observer A Path B post-condition violation. Default 50.
-   */
   maxBridgeMergeLoss: number;
-  /**
-   * Maximum `producer-guard-loss` checkpoints to keep per branch. Written when
-   * Observer A's producer guard detects illegal serialize output. Its own
-   * budget so a stuck serializer cannot evict merge-drop recovery anchors (and
-   * vice versa). Default 50.
-   */
   maxProducerGuardLoss: number;
-  /**
-   * Maximum `observer-a-duplication` checkpoints to keep per branch. Written
-   * when Observer A's duplication gate recovers a provenance-confirmed CRDT
-   * double-materialization. Its own budget so a stuck race cannot evict
-   * merge-drop or serializer-corruption recovery anchors. Default 50.
-   */
   maxObserverADuplication: number;
-  /**
-   * Maximum `external-change-rescue` checkpoints to keep per branch. These
-   * are written on reconcile-delete / branch-switch disk-overrode-memory
-   * paths. Default 50.
-   */
   maxExternalChangeRescue: number;
-  /**
-   * Maximum `defer-exhaustion-loss` checkpoints to keep per branch. Written
-   * when the derive-timing defer guard force-resolves at its drain-count bound.
-   * Its own budget so a doc stuck in sustained defer-exhaustion cannot evict
-   * merge-drop or serializer-corruption recovery anchors. Default 50.
-   */
   maxDeferExhaustionLoss: number;
-  /**
-   * Maximum `bridge-derive-loss` checkpoints to keep per branch. Written when
-   * the Y.Text→XmlFragment derive post-condition detects the pre-derive
-   * fragment held content Y.Text lacked. Its own budget so a doc undergoing
-   * repeated derive-loss cannot evict merge-drop or serializer-corruption
-   * recovery anchors. Default 50.
-   */
   maxBridgeDeriveLoss: number;
-  /**
-   * Maximum `observer-a-apply-loss` checkpoints to keep per branch. Written when
-   * the Observer-A apply post-condition detects the byte-preserving apply arms
-   * dropped fragment content. Its own budget so a doc undergoing repeated apply
-   * drops cannot evict Path-B merge-drop or serializer-corruption anchors.
-   * Default 50.
-   */
   maxObserverAApplyLoss: number;
-  /**
-   * Maximum `bridge-backstop-trip` checkpoints to keep per branch. Written when
-   * the Y.Text→XmlFragment re-derive loop hits its drain-count backstop and
-   * freezes. Its own budget so a doc stuck in a runaway re-derive loop cannot
-   * evict merge-drop or serializer-corruption recovery anchors. Default 50.
-   */
   maxBridgeBackstopTrip: number;
-  /**
-   * Maximum `persistence-reconcile-loss` checkpoints to keep per branch.
-   * Written when the persistence pre-write check finds a divergence outside the
-   * derive-timing guard's protected set and rebuilds the fragment. Its own
-   * budget so a doc resting on a construct that diverges on every write-back
-   * cannot evict merge-drop or serializer-corruption recovery anchors — the
-   * budget is the second line of defense; the mint-side dedup in `persistence.ts`
-   * is the first. Default 50.
-   */
   maxPersistenceReconcileLoss: number;
-  /**
-   * Maximum `persistence-duplication-reset` checkpoints to keep per branch.
-   * Written when the structural-duplication tripwire refuses a doubled store
-   * and resets the live document from disk. Its own budget so a client stuck
-   * re-materializing a duplicate every debounce cannot evict merge-drop or
-   * serializer-corruption recovery anchors — the budget is the second line of
-   * defense; the mint-side dedup in `persistence.ts` is the first. Default 50.
-   */
   maxPersistenceDuplicationReset: number;
-  /**
-   * Maximum `persistence-divergence-realign` checkpoints to keep per branch.
-   * Written when the L3 store-time backstop declares disk the winner over a
-   * diverged live document. Its own budget so an agent retry-looping against a
-   * file a second writer keeps rewriting cannot evict duplication-reset or
-   * merge-drop anchors — the budget is the second line of defense; the mint-side
-   * dedup in `persistence.ts` is the first. Default 50.
-   */
   maxPersistenceDivergenceRealign: number;
-  /**
-   * Maximum `managed-artifact-reconcile` checkpoints to keep per branch.
-   * Written when a managed-artifact store reconciles against a concurrent
-   * writer. Its own budget so churn on a skill or template — a class that is
-   * frequently agent-authored, and so can reconcile far more often than prose —
-   * cannot evict the document-path anchors. Default 50.
-   */
   maxManagedArtifactReconcile: number;
-  /**
-   * Maximum `auto-consolidation` checkpoints to keep per branch.
-   * These are service-authored when dead WIP chains are folded; left unbounded
-   * they reintroduce the unbounded-hidden-ref growth this feature exists to
-   * cure. Retention is COUNT-ONLY (TTL deliberately does NOT apply, see
-   * `gcCheckpointRefs`): every checkpoint adopts the prior checkpoint as a
-   * parent (chained), so the newest retained auto-checkpoint's ancestry
-   * still reaches all older consolidated history — but only while at least one
-   * survives, so TTL must never be able to reap them all. Default 2.
-   */
   maxAutoConsolidation: number;
-  /**
-   * `ok-checkpoint-v1`-tagged checkpoints older than this TTL (ms) are
-   * GC-eligible regardless of count. Default 30 days. `Save Version`
-   * checkpoints (no `ok-checkpoint-v1:` body line) are NOT affected —
-   * their retention was set at PR inception as permanent. Does NOT apply to
-   * `auto-consolidation` (count-only — see `maxAutoConsolidation`).
-   */
   ttlMs: number;
 }
 
@@ -1496,25 +994,14 @@ export interface CheckpointGcResult {
   retained: number;
 }
 
-/** The per-bucket deletion counters on {@link CheckpointGcResult}. */
 type GcDeletionCounter = Exclude<keyof CheckpointGcResult, 'scanned' | 'retained'>;
 
 interface GcBucketPolicy {
-  /** The retention limit this bucket draws from. */
   limit: (policy: CheckpointRetentionPolicy) => number;
-  /** Which `CheckpointGcResult` counter its deletions land on. */
   counter: GcDeletionCounter;
-  /** Whether the TTL lower bound applies (false = count-only retention). */
   applyTtl: boolean;
 }
 
-/**
- * Retention wiring per GC bucket. `satisfies Record<CheckpointKind, …>` is what
- * makes this exhaustive: a checkpoint kind added to the parser cannot compile
- * until it declares a limit, a counter, and its TTL applicability here — so a
- * new kind can never end up scanned-but-never-reaped, accumulating refs forever
- * with no cap and no TTL.
- */
 export const GC_BUCKET_POLICY = {
   'bridge-merge-loss': {
     limit: (p) => p.maxBridgeMergeLoss,
@@ -1576,9 +1063,6 @@ export const GC_BUCKET_POLICY = {
     counter: 'deletedManagedArtifactReconcile',
     applyTtl: true,
   },
-  // Count-only: TTL must never be able to reap every surviving
-  // auto-checkpoint, or the chained consolidated history it anchors becomes
-  // unreachable.
   'auto-consolidation': {
     limit: (p) => p.maxAutoConsolidation,
     counter: 'deletedAutoConsolidation',
@@ -1586,22 +1070,6 @@ export const GC_BUCKET_POLICY = {
   },
 } as const satisfies Record<CheckpointKind, GcBucketPolicy>;
 
-/**
- * GC `refs/checkpoints/<branch>/*` kind-aware: keep the most-recent N per
- * kind (per policy), delete older entries, apply TTL as a lower bound.
- * Untyped checkpoints (no `ok-checkpoint-v1:` body line — i.e. user-
- * triggered `Save Version` artifacts) are always retained to preserve the
- * permanent-history contract.
- *
- * Recency comes from the commit author date, which git stores at one-second
- * granularity, so a burst written inside one second is unorderable. When the
- * keep boundary falls inside such a group the count window widens to cover
- * the whole group — the sweep may retain more than N, but it never destroys a
- * checkpoint it cannot prove is the older one.
- *
- * Batched: single `for-each-ref` + single `git log --no-walk` regardless of
- * ref count. Deletion is one `update-ref -d` per eligible ref.
- */
 export async function gcCheckpointRefs(
   shadow: ShadowHandle,
   branch = 'main',
@@ -1650,8 +1118,6 @@ async function gcCheckpointRefsInner(
     .filter(Boolean);
   if (refLines.length === 0) return result;
 
-  // Maintain the ref → sha mapping so we can delete by refname (stable even
-  // if a future rewrite changes the sha-under-ref naming convention).
   const shaToRef = new Map<string, string>();
   const shas: string[] = [];
   for (const line of refLines) {
@@ -1681,7 +1147,7 @@ async function gcCheckpointRefsInner(
 
   interface Entry {
     sha: string;
-    timestamp: number; // ms since epoch
+    timestamp: number;
     kind: CheckpointKind | null;
   }
   const entries: Entry[] = [];
@@ -1696,11 +1162,6 @@ async function gcCheckpointRefsInner(
     entries.push({ sha, timestamp: Number.isFinite(ts) ? ts : 0, kind });
   }
 
-  // Partition by GC BUCKET, derived from the shared registry rather than a
-  // hand-kept list — `CHECKPOINT_KINDS` is the enumeration and
-  // `CHECKPOINT_KIND_REGISTRY[kind].gcBucket` is the routing, so a kind added to
-  // the parser lands in a real bucket by construction. Save-Version (kind=null)
-  // entries are always retained.
   const byBucket = Object.fromEntries(
     CHECKPOINT_KINDS.map((kind) => [kind, [] as Entry[]]),
   ) as Record<CheckpointKind, Entry[]>;
@@ -1719,24 +1180,9 @@ async function gcCheckpointRefsInner(
     list: Entry[],
     limit: number,
     counter: GcDeletionCounter,
-    // auto-consolidation is count-only: TTL must never be able to reap every
-    // surviving auto-checkpoint, or the chained consolidated history it anchors
-    // becomes unreachable. Pass false to disable the TTL lower bound.
     applyTtl = true,
   ): void => {
-    // Newest first so the count-based keep-N is trivial.
     list.sort((a, b) => b.timestamp - a.timestamp);
-    // Timestamps come from `%aI`, and git stores commit dates at one-second
-    // granularity, so entries written inside the same second tie and carry no
-    // recency information relative to each other — the enumeration that
-    // produced them is refname (sha) order, which is a content hash. When the
-    // keep boundary lands inside such a group, widen it to cover the whole
-    // group rather than destroying a member picked by that order: a sweep that
-    // cannot order its candidates must not fabricate one, and the newest
-    // rescue point is exactly what the arbitrary victim can be. Retention is a
-    // space bound, not a correctness bound, and the excess is bounded by the
-    // size of the straddling group. The TTL below is a per-entry threshold,
-    // needs no ordering, and is deliberately left applying to every entry.
     let keep = limit;
     while (keep > 0 && keep < list.length) {
       const lastKept = list[keep - 1];
@@ -1759,9 +1205,6 @@ async function gcCheckpointRefsInner(
       }
     }
   };
-  // Exhaustive by construction: every bucket in the registry gets a plan, and
-  // `GC_BUCKET_POLICY` is `satisfies Record<CheckpointKind, …>` so a new kind
-  // cannot compile without declaring its limit, counter, and TTL applicability.
   for (const bucket of CHECKPOINT_KINDS) {
     const bucketPolicy = GC_BUCKET_POLICY[bucket];
     planDeletions(
@@ -1784,24 +1227,12 @@ async function gcCheckpointRefsInner(
   return result;
 }
 
-// ─── Park / Load / Restore ──────────────────────────────────────────────────
-
-/** A document's serialized state for parking. */
 export interface ParkableDoc {
   docName: string;
-  /** Current Y.Doc serialized to markdown (from memory). */
   markdown: string;
-  /** Last known disk content (reconciledBase) — used as merge base for restore. */
   diskSnapshot: string;
 }
 
-/**
- * Park the current branch context by committing Y.Doc in-memory state
- * to the shadow repo. Each document's state and its disk snapshot are
- * stored so that `restoreBranchWIP` can three-way merge later.
- *
- * Park commits use message prefix "park:" for identification.
- */
 export async function parkBranch(
   shadow: ShadowHandle,
   branch: string,
@@ -1826,11 +1257,6 @@ export async function parkBranch(
   );
 }
 
-/**
- * Max blob/index entries per git invocation in the park batch. Keeps argv
- * comfortably under platform limits (200 absolute paths or `--cacheinfo`
- * tuples is a few tens of KB vs. the ~1 MB macOS/Linux ARG_MAX floor).
- */
 const PARK_BATCH_CHUNK = 200;
 
 async function parkBranchInner(
@@ -1846,12 +1272,6 @@ async function parkBranchInner(
 
   const tmpBlobDir = resolve(shadow.gitDir, `tmp-park-blobs-${randomUUID()}`);
   try {
-    // Build a tree with both Y.Doc state and disk snapshots. Write every blob
-    // to a scratch dir first, then hash and stage them in chunked batches:
-    // park runs `await`-ed on the branch-switch critical path with all writes
-    // gated, and the previous per-doc form (2× hash-object + 2× update-index,
-    // sequentially awaited) cost 4 git spawns per open doc — ~15s for a
-    // 100-doc park. Batching collapses the spawn count to ~2 per 100 docs.
     tracedMkdirSync(tmpBlobDir, { recursive: true });
     const blobFiles: string[] = [];
     const treePaths: string[] = [];
@@ -1868,8 +1288,6 @@ async function parkBranchInner(
       treePaths.push(`.park-base/${doc.docName}`);
     }
 
-    // `git hash-object -w` accepts multiple files and prints one object id per
-    // line in argument order, so blobShas[i] pairs with treePaths[i].
     const blobShas: string[] = [];
     for (let i = 0; i < blobFiles.length; i += PARK_BATCH_CHUNK) {
       const chunk = blobFiles.slice(i, i + PARK_BATCH_CHUNK);
@@ -1902,13 +1320,10 @@ async function parkBranchInner(
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
     ).trim();
 
-    // Find parent
     let parentSha: string | null = null;
     try {
       parentSha = (await sg.raw('rev-parse', ref)).trim();
-    } catch {
-      // No prior WIP on this branch for this session
-    }
+    } catch {}
 
     const parkActorEntry: OkActorEntry = {
       v: 1,
@@ -1944,21 +1359,13 @@ async function parkBranchInner(
   } finally {
     try {
       rmSync(tmpIndex);
-    } catch {
-      // ignore cleanup failure
-    }
+    } catch {}
     try {
       rmSync(tmpBlobDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup failure
-    }
+    } catch {}
   }
 }
 
-/**
- * Read parked Y.Doc state and disk snapshot from a park commit.
- * Returns null if the ref doesn't exist or the latest commit isn't a park.
- */
 export async function readParkedState(
   shadow: ShadowHandle,
   branch: string,
@@ -1968,15 +1375,13 @@ export async function readParkedState(
   const sg = shadowGit(shadow);
   const ref = `refs/wip/${branch}/${writerId}`;
 
-  // Check if ref exists — expected to be missing on first visit to a branch
   let refSha: string;
   try {
     refSha = (await sg.raw('rev-parse', ref)).trim();
   } catch {
-    return null; // ref doesn't exist — no parked state
+    return null;
   }
 
-  // Ref exists — read park commit data. Errors here are unexpected and should propagate.
   try {
     const msg = (await sg.raw('log', '-1', '--format=%s', refSha)).trim();
     if (!msg.startsWith('park:')) return null;
@@ -1990,60 +1395,17 @@ export async function readParkedState(
   }
 }
 
-// ─── Save Version ────────────────────────────────────────────────────────────
-
 export interface SaveVersionResult {
   checkpointRef: string;
 }
 
 export interface SaveVersionOptions {
-  /**
-   * When set, tags the checkpoint commit with a typed `auto-consolidation`
-   * `ok-checkpoint-v1:` body line so `GET /api/history` can exclude it
-   * and `gcCheckpointRefs` can bound its retention. Used by the
-   * service-authored auto-consolidation path; user `Save Version`
-   * checkpoints leave this unset and stay untyped (permanent).
-   */
   checkpointKind?: { foldedRefs: number; trigger: AutoConsolidationTrigger };
-  /**
-   * Whether to also fold (parent on + reset) the branch's `git-upstream` WIP ref.
-   * Default true — Save Version and dead-chain consolidation fold everything.
-   * The TTL backstop sets this false so it consolidates ONLY the aged session
-   * writers it targeted, leaving the upstream-import chain untouched.
-   */
   includeUpstream?: boolean;
-  /**
-   * Block timeout for the underlying git ops. Maintenance callers (auto-
-   * consolidation, TTL backstop) pass `MAINTENANCE_GIT_TIMEOUT_MS` so a fold on
-   * a degraded repo isn't killed mid-run by the 30s op watchdog, matching the gc
-   * leg. Omitted by the interactive Save Version button, which keeps
-   * the default 30s watchdog so a stuck git command surfaces to the user.
-   */
   timeoutMs?: number;
-  /**
-   * Explicit checkpoint commit timestamp (any git-parseable date), applied to
-   * both author and committer date. Production leaves this unset so git stamps
-   * the current time; tests pass distinct increasing values so a checkpoint
-   * orders deterministically against the WIP commits around it without a >1s
-   * wall-clock sleep (git committer dates have 1-second granularity). See
-   * {@link CommitWipOptions.date}.
-   */
   date?: string;
 }
 
-/**
- * Save Version — checkpoint in shadow repo only:
- * 1. Write a checkpoint ref in the shadow with full tree snapshot
- * 2. Reset per-writer WIP refs so subsequent WIP tracks only post-checkpoint deltas
- *
- * Ref reset is compare-and-delete: a WIP ref is deleted only if it
- * still points at the SHA captured as a checkpoint parent. A ref a concurrent
- * writer advanced between snapshot and delete is skipped — its new commit
- * survives as ongoing WIP instead of being orphaned. This makes every
- * consolidation path (auto + button) race-safe by construction.
- *
- * @param branch - Project branch name for ref scoping. Defaults to 'main'.
- */
 export async function saveVersion(
   shadow: ShadowHandle,
   contentRoot: string,
@@ -2076,19 +1438,9 @@ async function saveVersionInner(
   summary?: string,
   options?: SaveVersionOptions,
 ): Promise<SaveVersionResult> {
-  // Maintenance callers thread `MAINTENANCE_GIT_TIMEOUT_MS` so the fold's git
-  // ops (add/write-tree/commit-tree/reset) aren't killed mid-run on a degraded
-  // repo; the interactive button leaves it unset for the default 30s watchdog.
   const sg = shadowGit(shadow, options?.timeoutMs ? { timeoutMs: options.timeoutMs } : undefined);
-  // git rejects an empty string pathspec — use '.' (repo root) when
-  // contentRoot is '' (content dir === project root).
   const gitPathspec = contentRoot || '.';
 
-  // ── Step 1: Checkpoint ref in shadow with full tree snapshot ──
-
-  // Per-invocation scratch index: two concurrent saveVersion
-  // calls on the same shadow must not share `index-checkpoint` or they corrupt
-  // each other's staging. Mirrors saveInMemoryCheckpoint's token pattern.
   const shadowTmpIndex = resolve(shadow.gitDir, `index-checkpoint-${randomUUID()}`);
   try {
     await sg
@@ -2102,40 +1454,24 @@ async function saveVersionInner(
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: shadowTmpIndex }).raw('write-tree')
     ).trim();
 
-    // Collect ALL writer WIP refs (+ upstream unless opted out) as checkpoint
-    // parents (preserves all per-writer chains across the checkpoint boundary).
-    // Keep the per-writer snapshot SHA so the reset below can compare-and-delete.
     const foldWriters =
       options?.includeUpstream === false ? writers : [...writers, GIT_UPSTREAM_WRITER];
     const shadowParentShas: string[] = [];
-    const wipSnapshotShas = new Map<string, string>(); // writerId -> sha at snapshot
+    const wipSnapshotShas = new Map<string, string>();
     for (const w of foldWriters) {
       try {
         const sha = (await sg.raw('rev-parse', `refs/wip/${branch}/${w.id}`)).trim();
         shadowParentShas.push(sha);
         wipSnapshotShas.set(w.id, sha);
-      } catch {
-        // ref doesn't exist for this writer — skip
-      }
+      } catch {}
     }
-    // Deduplicate (upstream may alias a writer ref in edge cases)
     const uniqueParents = [...new Set(shadowParentShas)];
 
-    // Checkpoint chaining: EVERY checkpoint — even one with WIP activity —
-    // adopts every dangling chain anchor as an additional parent, so history
-    // forms one connected DAG. That is what makes kind-aware GC non-destructive:
-    // reaping an older checkpoint ref leaves its commit reachable through a
-    // newer checkpoint's ancestry, which is the guarantee `maxAutoConsolidation`
-    // rests on. Anchors go LAST so WIP tips remain first-parents.
     const chainAnchors = await resolveCheckpointChainAnchors(sg, branch);
     for (const anchor of chainAnchors) {
       if (!uniqueParents.includes(anchor)) uniqueParents.push(anchor);
     }
     if (chainAnchors.length > 1) {
-      // More than one dangling anchor means the chain had already forked and is
-      // being re-joined here. Routine once, persistent means something upstream
-      // keeps splitting it. The count rides a structured log, never a metric
-      // label.
       log.info(
         { branch, anchors: chainAnchors.length },
         '[shadow] checkpoint chain re-anchored across multiple dangling tips',
@@ -2158,10 +1494,6 @@ async function saveVersionInner(
     const checkpointSubject = summary?.trim() ? summary.trim() : 'Checkpoint version';
     let checkpointMessage = `${formatCheckpointSubject(checkpointSubject)}\n\n${formatOkActor(checkpointActorEntry)}`;
     if (options?.checkpointKind) {
-      // Tag service-authored consolidation checkpoints so the read path can
-      // exclude them and kind-aware GC can bound them. Old readers
-      // that predate this kind get null from parseCheckpoint and render it as a
-      // plain Save Version — data-safe, cosmetic only.
       checkpointMessage += `\n${formatCheckpointBodyLine({
         kind: 'auto-consolidation',
         docName: null,
@@ -2193,28 +1525,16 @@ async function saveVersionInner(
     const checkpointRef = `refs/checkpoints/${branch}/${checkpointSha}`;
     await sg.raw('update-ref', checkpointRef, checkpointSha);
 
-    // ── Step 2: Reset WIP refs (branch-scoped), compare-and-delete ──
     await resetFoldedWipRefs(sg, branch, foldWriters, wipSnapshotShas);
 
     return { checkpointRef };
   } finally {
     try {
       rmSync(shadowTmpIndex);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 }
 
-/**
- * Reset (delete) the folded WIP refs after a checkpoint — compare-and-delete.
- * Each ref is deleted only if it STILL points at the SHA captured as a
- * checkpoint parent (`wipSnapshotShas`). A ref a concurrent writer advanced
- * between snapshot and now fails the 3-arg `update-ref -d <ref> <expected>` and
- * is skipped, so its new commit survives as ongoing WIP instead of being
- * orphaned. Exported so the skip-on-advance guard is unit-testable
- * deterministically, without racing a real concurrent writer.
- */
 export async function resetFoldedWipRefs(
   sg: ReturnType<typeof shadowGit>,
   branch: string,
@@ -2224,11 +1544,9 @@ export async function resetFoldedWipRefs(
   for (const w of writers) {
     const ref = `refs/wip/${branch}/${w.id}`;
     const expected = wipSnapshotShas.get(w.id);
-    if (expected === undefined) continue; // had no WIP ref at snapshot — nothing to reset
+    if (expected === undefined) continue;
     try {
       await sg.raw('update-ref', '-d', ref, expected);
-    } catch {
-      // ref already gone, or advanced by a concurrent writer — skip on move
-    }
+    } catch {}
   }
 }

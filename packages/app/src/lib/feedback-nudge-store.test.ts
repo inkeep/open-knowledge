@@ -35,7 +35,6 @@ function stateWith(overrides: Partial<FeedbackNudgeState>): FeedbackNudgeState {
 }
 
 const NOW = 1_800_000_000_000;
-/** A `firstSeenAt` exactly on the two-week boundary relative to `NOW`. */
 const RIPE = NOW - FEEDBACK_NUDGE_MIN_AGE_MS;
 
 describe('readPersistedState', () => {
@@ -61,8 +60,6 @@ describe('readPersistedState', () => {
   });
 
   test('non-positive and non-finite timestamps coerce to null, not to the epoch', () => {
-    // A stored `0` would otherwise read as "first seen at the epoch" and make
-    // the two-week gate pass on the spot.
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
       const s = memoryStorage({
         [FEEDBACK_NUDGE_STORAGE_KEY]: JSON.stringify({ firstSeenAt: bad }),
@@ -90,11 +87,6 @@ describe('writePersistedState', () => {
 });
 
 describe('storage that refuses to write', () => {
-  // Quota exceeded / Safari private mode / SSR. `FeedbackNudgeStorage` is an
-  // injected parameter, so the throw comes from a real collaborator through
-  // the public interface rather than a mock inside the try — the assertions
-  // are on the promised outcome (the session survives and in-memory state
-  // still holds), not on the catch having fired.
   function throwingStorage(): FeedbackNudgeStorage {
     return {
       getItem: () => null,
@@ -114,8 +106,6 @@ describe('storage that refuses to write', () => {
     const store = createFeedbackNudgeStore(throwingStorage());
 
     expect(() => store.dismiss()).not.toThrow();
-    // The write was lost, but the user's answer must still hold until reload —
-    // otherwise a full-storage device re-shows the nudge within the session.
     expect(store.getSnapshot().dismissed).toBe(true);
     expect(isFeedbackNudgeEligible(store.getSnapshot(), NOW, 400)).toBe(false);
   });
@@ -129,10 +119,8 @@ describe('countUserDocuments', () => {
   test('excludes the .ok substrate that /api/pages serves alongside real docs', () => {
     const pages = new Set([
       'notes',
-      // Skills-as-content: every `ok init` project ships these.
       '.ok/skills/project/SKILL',
       '.ok/skills/project/references/linking',
-      // Starter-pack templates land in a nested `.ok/`.
       'brain/.ok/templates/article',
       'brain/.ok/frontmatter',
     ]);
@@ -224,7 +212,6 @@ describe('createFeedbackNudgeStore', () => {
 
     const second = createFeedbackNudgeStore(s);
     expect(second.getSnapshot().firstSeenAt).toBe(RIPE);
-    // The one-shot survives the reload: a new device session does not re-nag.
     expect(isFeedbackNudgeEligible(second.getSnapshot(), NOW, 400)).toBe(false);
   });
 
@@ -235,9 +222,9 @@ describe('createFeedbackNudgeStore', () => {
       calls++;
     });
     store.recordFirstSeen(NOW);
-    store.recordFirstSeen(NOW); // idempotent — no second notify
+    store.recordFirstSeen(NOW);
     unsub();
-    store.dismiss(); // after unsub — not counted
+    store.dismiss();
     expect(calls).toBe(1);
   });
 
@@ -251,9 +238,6 @@ describe('createFeedbackNudgeStore', () => {
   });
 
   test('syncFromStorage adopts another window write and notifies', () => {
-    // Cross-window contract: a second window shares this storage. When it
-    // dismisses, this window's `storage` handler calls syncFromStorage, and the
-    // dismissal must land here so the card can clear without a reload.
     const shared = memoryStorage();
     const thisWindow = createFeedbackNudgeStore(shared);
     let notified = 0;
@@ -263,7 +247,7 @@ describe('createFeedbackNudgeStore', () => {
     expect(thisWindow.getSnapshot().dismissed).toBe(false);
 
     const otherWindow = createFeedbackNudgeStore(shared);
-    otherWindow.dismiss(); // writes shared storage
+    otherWindow.dismiss();
 
     thisWindow.syncFromStorage();
     expect(thisWindow.getSnapshot().dismissed).toBe(true);

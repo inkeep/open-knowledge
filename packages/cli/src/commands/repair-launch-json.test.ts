@@ -4,10 +4,6 @@ import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type LaunchJsonRepairLogEvent, repairLaunchJson } from './repair-launch-json.ts';
 
-// OK no longer scaffolds `.claude/launch.json`; the `ok start` repair sweep now
-// REMOVES any `open-knowledge-ui` entry a prior OK version left behind. The
-// surgical removal itself is covered in launch-json-removal.test.ts; here we
-// pin the sweep wrapper's outcomes, its structured event, and the reclaim gate.
 describe('repairLaunchJson (remove sweep)', () => {
   let testDir: string;
   let projectDir: string;

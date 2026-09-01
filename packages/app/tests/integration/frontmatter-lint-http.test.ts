@@ -1,10 +1,3 @@
-/**
- * L1 integration coverage for the frontmatter-schemas plugin against a real
- * server + tmp contentDir: schema mappings in `.ok/config.yml`, schema files
- * on disk, diagnostics through `GET /api/lint` + `GET /api/lint/audit`, config
- * problems on the config channel, and the advisory-only agent write path.
- */
-
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -48,8 +41,6 @@ const DOC_SCHEMA = {
   },
 };
 
-// 2020-12, exercising the keywords draft-07 cannot express: `$defs` with a
-// `$ref`, and a `prefixItems` tuple.
 const MODERN_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   type: 'object',
@@ -62,8 +53,6 @@ const MODERN_SCHEMA = {
   },
 };
 
-// 2019-09 runs on a different ajv class (Ajv2019) than 2020-12 (Ajv2020), so the
-// server load -> HTTP diagnostic path is proven for both, not just the newest.
 const NINETEEN_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2019-09/schema',
   type: 'object',
@@ -144,22 +133,12 @@ describe('GET /api/lint — frontmatter diagnostics', () => {
     expect(enumViolation?.severity).toBe('warning');
   });
 
-  /**
-   * The absent-property name has to survive `successResponse`'s schema
-   * serialization, or the staged-row affordance an API/MCP consumer builds from
-   * it never fires. Read the RAW wire body rather than `LintDocResultSchema` —
-   * re-parsing with the same schema that serializes the response would mask a
-   * field the server dropped.
-   *
-   */
   test('a missing-required diagnostic carries frontmatterProperty across the wire', async () => {
     const res = await fetch(api('/api/lint?doc=docs%2Fguide'));
     expect(res.status).toBe(200);
     const raw = (await res.json()) as { diagnostics: Array<Record<string, unknown>> };
     const required = raw.diagnostics.find((d) => d.code === 'required');
     expect(required?.frontmatterScope).toBe('missing');
-    // docs/guide.md declares `status` but not `owner`, so `owner` is the absent
-    // required property the diagnostic names.
     expect(required?.frontmatterProperty).toBe('owner');
   });
 
@@ -169,19 +148,12 @@ describe('GET /api/lint — frontmatter diagnostics', () => {
     expect(body.diagnostics.filter((d) => d.source === 'frontmatter')).toEqual([]);
   });
 
-  /**
-   * A dialect newer than draft-07 loads and validates over the wire — the
-   * whole path (loader dialect check, per-dialect ajv, HTTP shape), not just
-   * the pure validator.
-   *
-   */
   test('a 2020-12 schema validates, including $defs/$ref and prefixItems', async () => {
     const res = await fetch(api('/api/lint?doc=modern%2Fspec'));
     expect(res.status).toBe(200);
     const body = LintDocResultSchema.parse(await res.json());
     const frontmatter = body.diagnostics.filter((d) => d.source === 'frontmatter');
 
-    // No config problem for this mapping — the dialect is supported now.
     expect(body.warnings?.some((w) => w.includes('modern.schema.json'))).toBe(false);
 
     const enumViolation = frontmatter.find((d) => d.code === 'enum');
@@ -193,12 +165,6 @@ describe('GET /api/lint — frontmatter diagnostics', () => {
     expect(tuple?.range.start.line).toBe(3);
   });
 
-  /**
-   * 2019-09 compiles on `Ajv2019`, a different class than 2020-12's `Ajv2020`.
-   * Proving only the newest dialect over the wire would leave a per-class
-   * wiring failure invisible at this tier.
-   *
-   */
   test('a 2019-09 schema validates, including $defs/$ref and dependentRequired', async () => {
     const res = await fetch(api('/api/lint?doc=nineteen%2Fnote'));
     expect(res.status).toBe(200);
@@ -277,8 +243,6 @@ describe('agent write path — advisory only, never gating', () => {
     expect(lintWarnings.length).toBeGreaterThan(0);
     expect(lintWarnings.every((w) => w.source === 'frontmatter')).toBe(true);
     expect(lintWarnings.length).toBeLessThanOrEqual(10);
-    // The write landed despite the violations: the doc reaches disk with the
-    // violating frontmatter intact (persistence is debounced — poll).
     const target = join(server.contentDir, 'docs', 'advisory-target.md');
     const pollDelay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     let onDisk = '';
@@ -286,9 +250,7 @@ describe('agent write path — advisory only, never gating', () => {
       try {
         onDisk = readFileSync(target, 'utf-8');
         if (onDisk.includes('status: bogus')) break;
-      } catch {
-        // not persisted yet
-      }
+      } catch {}
       await pollDelay(20);
     }
     expect(onDisk).toContain('status: bogus');
@@ -313,11 +275,8 @@ describe('POST /api/lint/frontmatter-schema — write surface over HTTP', () => 
       constraint: { enum: ['draft', 'shipped'], required: true },
     });
     expect(res.status).toBe(200);
-    // The response is the recomputed effective config (not a bare ok wrapper).
     const body = LintConfigResponseSchema.parse(await res.json());
     expect(body.effective.plugins.frontmatter.enabled).toBe(true);
-    // The write actually reached disk with the field-scoped constraint merged
-    // into a freshly-scaffolded (create-on-first-edit) draft-07 skeleton.
     const onDisk = JSON.parse(readFileSync(join(server.contentDir, file), 'utf-8'));
     expect(onDisk.properties.status.enum).toEqual(['draft', 'shipped']);
     expect(onDisk.required).toContain('status');
@@ -333,7 +292,6 @@ describe('POST /api/lint/frontmatter-schema — write surface over HTTP', () => 
     const first = readFileSync(join(server.contentDir, file), 'utf-8');
     expect(JSON.parse(first)).toMatchObject({ type: 'object' });
 
-    // Re-issuing create-empty must not clobber the now-existing file.
     const again = await postSchema({ file });
     expect(again.status).toBe(200);
     expect(readFileSync(join(server.contentDir, file), 'utf-8')).toBe(first);
@@ -353,7 +311,6 @@ describe('POST /api/lint/frontmatter-schema — write surface over HTTP', () => 
     LintConfigResponseSchema.parse(await res.json());
     expect(existsSync(join(server.contentDir, file))).toBe(false);
 
-    // Re-issuing the delete for the now-absent file still succeeds.
     const again = await postSchema({ file, delete: true });
     expect(again.status).toBe(200);
   });
@@ -468,8 +425,6 @@ describe('GET /api/lint/frontmatter-schemas — file listing for the picker', ()
     const res = await fetch(api('/api/lint/frontmatter-schemas'));
     expect(res.status).toBe(200);
     const body = FrontmatterSchemasListSuccessSchema.parse(await res.json());
-    // The seeded schema is enumerated; the missing mapping target is not on disk
-    // so it never appears (listing is a directory scan, not a config read).
     expect(body.schemas).toContain('.ok/schemas/doc.schema.json');
     expect(body.schemas).not.toContain('.ok/schemas/missing.schema.json');
     expect(body.truncated).toBe(false);

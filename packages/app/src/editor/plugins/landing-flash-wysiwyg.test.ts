@@ -30,11 +30,6 @@ function makeState() {
   });
 }
 
-/**
- * A minimal EditorView surface backed by a real EditorState, so the real plugin
- * reducer runs on every dispatch. The flash trigger only reaches `state` and
- * `dispatch`, and the removal timer keys off the view object.
- */
 function drivenView() {
   let state = makeState();
   const view = {
@@ -133,7 +128,6 @@ describe('landing flash — wysiwyg trigger', () => {
 });
 
 describe('landing flash — wysiwyg rendering', () => {
-  /** Mount a real view so the decoration's rendered attributes are observable. */
   function mountedView(): EditorView {
     const host = document.createElement('div');
     document.body.appendChild(host);
@@ -141,9 +135,6 @@ describe('landing flash — wysiwyg rendering', () => {
   }
 
   test('paints the shared landing-flash class onto the landed range in the DOM', () => {
-    // Decoration ranges alone do not prove the highlight is visible: the class
-    // is the contract with the stylesheet, so it is asserted on a real mounted
-    // view rather than on the plugin's state.
     const view = mountedView();
     try {
       flashWysiwygLanding(view, 1, 6, 'exact');

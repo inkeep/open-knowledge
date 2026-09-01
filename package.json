@@ -44,13 +44,21 @@
   },
   "lint-staged": {
     "packages/**/*.{ts,tsx,js,jsx,json,md}": [
-      "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --error-on-warnings"
+      "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --error-on-warnings",
+      "oxlint --max-warnings 0 --no-error-on-unmatched-pattern"
     ],
     "docs/**/*.{ts,tsx,js,jsx,json,md}": [
-      "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --error-on-warnings"
+      "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --error-on-warnings",
+      "oxlint --max-warnings 0 --no-error-on-unmatched-pattern"
     ],
     "{package.json,turbo.json,tsconfig.json,biome.jsonc}": [
       "biome check --write --no-errors-on-unmatched --files-ignore-unknown=true --error-on-warnings"
+    ],
+    "{scripts,.github/scripts}/**/*.mjs": [
+      "oxlint --max-warnings 0 --no-error-on-unmatched-pattern"
+    ],
+    "./*.ts": [
+      "oxlint --max-warnings 0 --no-error-on-unmatched-pattern"
     ]
   },
   "devDependencies": {

@@ -1,24 +1,9 @@
-/**
- * Behavioral tests for the empty-state CreatePromptComposer's chevron dropdown:
- * the "External apps" section (detected desktop apps) and the desktop-gated
- * "Terminal" section (the "Claude" CLI row). Every row SELECTS a create target —
- * an external-app row picks a desktop app, Terminal picks the docked Claude CLI —
- * and the primary button
- * performs the selected target (app deep-link or terminal launch), reusing the same
- * create-scope handoff input. Pins selection -> button reflection, that the CLI
- * launch carries the typed brief verbatim, section gating, and the visible-text vs
- * accessible-name split.
- */
-
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, type Ref, useImperativeHandle, useRef } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HandoffDispatchInput } from '@/components/handoff/useHandoffDispatch';
-// Real namespace, captured before the mock below replaces the module — lets the
-// mock keep the real `buildCreateHandoffInput` (whose exact output shape the CLI
-// tests assert) while spying on the thread-launch + app-dispatch entry points.
 import * as handoffModule from '@/components/handoff/useHandoffDispatch';
 import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
@@ -47,17 +32,12 @@ vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceValue,
 }));
 
-// Stub the brand-icon helper so the test doesn't pull next-themes / SVG vendor
-// icons — the composer only needs *an* icon per row, not the themed artwork.
 vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => (
     <svg data-testid={`target-icon-${id}`} aria-hidden="true" />
   ),
 }));
 
-// Passthrough the dropdown primitives so jsdom doesn't fight Radix's portal +
-// modal pointer-events trap; the composer's section gating + click handlers are
-// what's under test, not Radix's open/close.
 type MenuChild = {
   children?: ReactNode;
   disabled?: boolean;
@@ -72,9 +52,6 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
       {children}
     </div>
   ),
-  // Mirrors Radix `Menu.Group` (`<Primitive.div role="group" {...props} />`).
-  // A bare fragment would erase the role and swallow `aria-label`, so the
-  // section's accessible name could not be asserted at all.
   DropdownMenuGroup: ({ children, ...props }: MenuChild) => (
     // biome-ignore lint/a11y/useSemanticElements: must mirror Radix's `<div role="group">`
     <div role="group" {...props}>
@@ -90,12 +67,6 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
 }));
 
-// Spy on the two handoff entry points the create composer can reach on submit,
-// keeping every other export (notably the real `buildCreateHandoffInput`) intact
-// so the CLI tests still assert its true output. `startAgentThreadForInput` =
-// the in-app thread path; `useHandoffDispatch().dispatch` = the app-agent
-// deep-link path. Which one fires on Enter is exactly what the thread-mode
-// keyboard test below pins.
 const threadLaunchCalls: unknown[] = [];
 const dispatchCalls: Array<{ id: string; input: unknown }> = [];
 vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
@@ -111,13 +82,7 @@ vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   }),
 }));
 
-// Mentions the mock input returns from getContent(); reset per test.
 let mockMentions: string[] = [];
-// Textarea double for the rich `@`-mention input: exposes the same imperative
-// handle CreatePromptComposer drives (getContent / setText / focus) and routes
-// Enter -> onSubmit, mirroring the real ComposerMentionInput contract. The real
-// `@`-typeahead is exercised against the live editor in ComposerMentionInput's
-// own tests; here we cover the create composer's wiring.
 type MentionHandle = {
   focus: () => void;
   blur: () => void;
@@ -195,8 +160,6 @@ async function renderComposer(
       <CreatePromptComposer scenario={opts.scenario ?? 'new-project'} />
     </TerminalLaunchProvider>,
   );
-  // The smart-default effect resolves a selected agent once the install probe
-  // settles; the chevron dropdown only mounts then.
   await waitFor(() => {
     expect(screen.getByTestId('create-with-agent-menu')).toBeTruthy();
   });
@@ -223,14 +186,11 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
 
     expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.getByText('Terminal')).toBeTruthy();
-    // Terminal-first: the Terminal section label precedes the External apps one.
     expect(
       screen.getByText('Terminal').compareDocumentPosition(screen.getByText('External apps')) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.getByTestId('create-with-cli-claude')).toBeTruthy();
-    // Two separators: Terminal | External apps, and the Configure agents footer. No
-    // In-app section here (no enabled in-app agents), so no generic thread row.
     expect(screen.queryAllByTestId('menu-separator')).toHaveLength(2);
     expect(screen.queryByTestId('create-agent-option-thread')).toBeNull();
   });
@@ -243,7 +203,6 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
     expect(screen.queryByTestId('create-with-cli-claude')).toBeNull();
-    // One separator remains: In-this-app | External apps (Terminal absent on web).
     expect(screen.queryAllByTestId('menu-separator')).toHaveLength(1);
   });
 
@@ -259,12 +218,9 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude Agent');
     });
-    // Selecting thread mode does not launch the terminal.
     expect(launchCalls).toEqual([]);
   });
 
-  // This menu hand-duplicates AgentSplitButton's three-section structure rather
-  // than reusing it, so the In-app section is asserted here independently.
   test('names the In-app section "In app" and carries no maturity badge', async () => {
     registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
     states = { ...installedAll };
@@ -284,14 +240,11 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
 
     const field = screen.getByLabelText('Describe the project you want to create');
     fireEvent.change(field, { target: { value: 'Build a coffee wiki' } });
-    fireEvent.click(screen.getByTestId('create-agent-option-thread-registry:claude-acp')); // thread mode
+    fireEvent.click(screen.getByTestId('create-agent-option-thread-registry:claude-acp'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude Agent');
     });
 
-    // Enter must perform the SAME action as the Create button — launch the in-app
-    // thread — instead of falling through to the app-agent deep-link dispatch (the
-    // regression when handleSubmit lacked the thread branch the button had).
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(threadLaunchCalls).toHaveLength(1);
     expect(threadLaunchCalls[0]).toMatchObject({ createDescription: 'Build a coffee wiki' });
@@ -308,14 +261,12 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
       target: { value: 'Build a competitor wiki' },
     });
 
-    // Selecting the CLI row reflects in the primary button and does NOT launch yet.
     fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
     expect(launchCalls).toEqual([]);
 
-    // Clicking Create performs the docked-terminal launch with the create-scope input.
     fireEvent.click(screen.getByTestId('create-with-agent'));
     expect(launchCalls).toEqual([
       {
@@ -331,11 +282,9 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
 
   test('CLI mode does not launch when the workspace is unresolved', async () => {
     states = { ...installedAll };
-    workspaceValue = null; // buildCreateHandoffInput returns null until the workspace resolves.
+    workspaceValue = null;
     await renderComposer({ withTerminal: true });
 
-    // Give it intent so the input-required gate passes — the only thing blocking
-    // the launch here is the unresolved workspace.
     fireEvent.change(screen.getByLabelText('Describe the project you want to create'), {
       target: { value: 'Build a wiki' },
     });
@@ -377,12 +326,11 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
 
     const field = screen.getByLabelText('Describe the project you want to create');
     fireEvent.change(field, { target: { value: 'Build a wiki' } });
-    fireEvent.click(screen.getByTestId('create-with-cli-claude')); // enter CLI mode
+    fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
 
-    // Plain Enter submits (Shift+Enter newlines) — matches the bottom composer.
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(launchCalls).toEqual([
       {
@@ -401,12 +349,11 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: true });
 
-    fireEvent.click(screen.getByTestId('create-with-cli-claude')); // enter CLI mode
+    fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
 
-    // Switching back to an external app must clear CLI mode (chooseAgent -> setCliMode(false)).
     fireEvent.click(screen.getByTestId('create-agent-option-codex'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Open ChatGPT Desktop');
@@ -429,7 +376,7 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
 
     const field = screen.getByLabelText('Describe the project you want to create');
     fireEvent.change(field, { target: { value: 'draft a spec' } });
-    fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
+    fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
@@ -452,17 +399,13 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
     await renderComposer({ withTerminal: true });
 
-    // Nothing is shown while empty until the user actually attempts to create —
-    // the requirement is opt-in, not a permanent label.
     expect(screen.queryByTestId('create-input-required')).toBeNull();
 
-    fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
+    fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });
 
-    // Enter on an empty field surfaces the validation error (role=alert,
-    // announced to screen readers) and does NOT launch.
     fireEvent.keyDown(screen.getByLabelText('Describe the project you want to create'), {
       key: 'Enter',
     });
@@ -472,15 +415,12 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     expect(enterError.getAttribute('role')).toBe('alert');
     expect(enterError.className).toContain('text-destructive');
 
-    // Clicking the (clickable) Create primary with empty input also surfaces the
-    // error and does not launch — a natively-disabled button couldn't.
     fireEvent.click(screen.getByTestId('create-with-agent'));
     expect(launchCalls).toEqual([]);
     expect(screen.getByTestId('create-input-required').textContent).toBe(
       'Describe what you want to create to continue',
     );
 
-    // Typing a valid brief clears the error.
     fireEvent.change(screen.getByLabelText('Describe the project you want to create'), {
       target: { value: 'Build a wiki' },
     });
@@ -488,7 +428,6 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
       expect(screen.queryByTestId('create-input-required')).toBeNull();
     });
 
-    // Enter now launches with the typed brief — create works.
     fireEvent.keyDown(screen.getByLabelText('Describe the project you want to create'), {
       key: 'Enter',
     });
@@ -520,7 +459,7 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     expect(field.value.length).toBeGreaterThan(0);
     const prefilled = field.value;
 
-    fireEvent.click(screen.getByTestId('create-with-cli-claude')); // CLI mode
+    fireEvent.click(screen.getByTestId('create-with-cli-claude'));
     await waitFor(() => {
       expect(screen.getByTestId('create-with-agent').textContent).toContain('Ask Claude CLI');
     });

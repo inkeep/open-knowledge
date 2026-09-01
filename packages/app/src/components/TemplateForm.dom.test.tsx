@@ -1,8 +1,3 @@
-/**
- * DOM tests for the template form — the filename-slug derivation helper and
- * the Name -> derived-filename behavior. Runs under jsdom via `bun run test:dom`.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -21,13 +16,12 @@ describe('parseDocBody / composeDocBody', () => {
     const parsed = parseDocBody(RESEARCH_BODY);
     expect(parsed.type).toBe('research-note');
     expect(parsed.markdown).toContain('## Question');
-    expect(parsed.markdown).not.toContain('status:'); // frontmatter lifted out
+    expect(parsed.markdown).not.toContain('status:');
     const byKey = Object.fromEntries(parsed.properties.map((p) => [p.key, p.value]));
     expect(byKey.status).toBe('provisional');
-    expect(byKey.sources).toBe('[]'); // value shape preserved verbatim
-    expect(byKey.created).toBe('{{date}}'); // token preserved
+    expect(byKey.sources).toBe('[]');
+    expect(byKey.created).toBe('{{date}}');
     expect(byKey.tags).toBe('[research, provisional]');
-    // `type` is NOT duplicated into the rows.
     expect(parsed.properties.some((p) => p.key === 'type')).toBe(false);
   });
 
@@ -41,7 +35,6 @@ describe('parseDocBody / composeDocBody', () => {
     expect(composed).toContain('created: {{date}}');
     expect(composed.indexOf('type: research-note')).toBeLessThan(composed.indexOf('status:'));
     expect(composed).toContain('## Question');
-    // stable: re-parsing yields the same logical model.
     const reparsed = parseDocBody(composed);
     expect(reparsed.type).toBe('research-note');
     expect(reparsed.properties.map((p) => p.key)).toEqual(['status', 'sources', 'created', 'tags']);

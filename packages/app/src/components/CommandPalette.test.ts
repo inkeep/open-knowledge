@@ -1,16 +1,3 @@
-/**
- * CommandPalette unit tests — mirrors `ProjectSwitcher.test.ts`'s shape.
- *
- * Repo convention (see `EditorActivityPool.test.ts`) is no
- * @testing-library/react; full DOM + keyboard interaction is exercised by
- * Playwright. These tests assert the pure error-handling surface that
- * the shared `runWithToast` helper exposes (success / Error-rejection /
- * non-Error / empty-message / non-rethrow / internal-clear-regression-
- * guard), keeping the silent-error class of bug out of future diffs.
- *
- * DOM-level command visibility, routing, and overlay-prop contracts live in
- * `CommandPalette.dom.test.tsx`.
- */
 import { describe, expect, test, vi } from 'vitest';
 
 describe('CommandPalette module', () => {
@@ -64,9 +51,6 @@ describe('CommandPalette.runWithToast (IPC rejection → toast feedback)', () =>
   });
 
   test('success path fires NO toast even on the internal setError(null) clear', async () => {
-    // Regression guard — the shared runWithErrorStatePure calls setError(null)
-    // first to clear stale state; our adapter must filter the null rather
-    // than passing it to toast.error(null).
     const { runWithToast } = await import('./CommandPalette');
     const toastApi = { error: vi.fn(() => {}) };
     await runWithToast(() => Promise.resolve(), 'Command failed.', toastApi);
@@ -74,7 +58,6 @@ describe('CommandPalette.runWithToast (IPC rejection → toast feedback)', () =>
   });
 
   test('falls back to module sonner toast when toastApi is omitted', async () => {
-    // Smoke — calling runWithToast without the test double must not throw.
     const { runWithToast } = await import('./CommandPalette');
     await expect(runWithToast(() => Promise.resolve(), 'fallback')).resolves.toBeUndefined();
   });

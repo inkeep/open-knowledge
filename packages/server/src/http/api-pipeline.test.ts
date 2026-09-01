@@ -9,15 +9,6 @@ import {
 } from './api-pipeline.ts';
 import { createHttpApp, type NativeApiHandle } from './http-app.ts';
 
-/**
- * Gate parity for natively-mounted `/api/*` routes. The composition suite
- * (`api-admission-composition.test.ts`) pins the admission gates as the
- * LEGACY dispatch applies them; this suite pins the same wire behavior for
- * routes mounted ABOVE the strangler catch-all through `NativeApiHandle` —
- * the exact bypass the native mount exists to close. A synthetic route table
- * keeps the pins independent of any real route group's handler behavior.
- */
-
 const fakeLog = {
   error: () => {},
   warn: () => {},
@@ -26,7 +17,6 @@ const fakeLog = {
   child: () => fakeLog,
 } as never;
 
-/** The exact preflight header list the legacy dispatch reflects — byte-pinned. */
 const EXPECTED_ALLOW_HEADERS =
   'Content-Type, Authorization, traceparent, tracestate, baggage, x-request-id, x-ok-client-protocol, x-ok-client-runtime, x-ok-client-kind';
 
@@ -58,7 +48,6 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
           },
         };
       }
-      // Owned prefix with no handler — the pipeline's 404 must close it.
       if (pathname === '/api/native-empty') {
         return { template: '/api/native-empty' };
       }
@@ -72,8 +61,6 @@ async function bootNativeRig(opts: { ephemeral?: boolean } = {}): Promise<Native
       '/api/native-mutating',
       '/api/native-throw',
       '/api/native-empty',
-      // Claimed by the router but declined by the table — must fall through
-      // to the legacy dispatch.
       '/api/native-declined',
     ],
     dispatch: createApiRequestPipeline({
@@ -134,10 +121,6 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       const res = await fetch(`${rig.baseUrl}/api/native-declined`);
       expect(res.status).toBe(299);
       expect(rig.legacyCalls).toEqual(['/api/native-declined']);
-      // Decline is side-effect-FREE (pipeline docblock step 0): the declining
-      // pipeline must not have touched the response — no request-id echo,
-      // no CORS headers. The multi-group chain depends on this: every group
-      // before the owning one declines the same request.
       expect(res.headers.get('x-request-id')).toBeNull();
       expect(res.headers.get('access-control-allow-methods')).toBeNull();
     } finally {
@@ -146,9 +129,6 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
   });
 
   test('a declined path skips the gates too — foreign Origin falls through, not 403', async () => {
-    // The decline precedes the Origin gate: a chained group must never
-    // refuse a request it does not own (the owning table — here the legacy
-    // dispatch — applies its own gates).
     const rig = await bootNativeRig();
     try {
       const res = await fetch(`${rig.baseUrl}/api/native-declined`, {
@@ -164,10 +144,6 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
   test('a dot-segment URL the router normalizes onto a claimed path still gets a response', async () => {
     const rig = await bootNativeRig();
     try {
-      // Hono matches `/api/./native-ping` against the claimed path (the
-      // adapter normalizes dot segments), but the pipeline resolves the RAW
-      // req.url and declines it — the fall-through must hand the request to
-      // the legacy dispatch rather than leaving it unanswered.
       const res = await rawRequest(rig.port, '/api/./native-ping', {});
       expect(res.status).toBe(299);
       expect(rig.legacyCalls).toEqual(['/api/./native-ping']);
@@ -202,8 +178,6 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       const body = (await res.json()) as { type?: string; title?: string };
       expect(body.type).toBe('urn:ok:error:invalid-origin');
       expect(body.title).toBe('Origin not allowed.');
-      // The rejection still carries the request-id echo (identity slots
-      // BEFORE the gates).
       expect(res.headers.get('x-request-id')).not.toBeNull();
     } finally {
       await rig.close();
@@ -269,8 +243,6 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
       expect(refused.status).toBe(403);
       expect(parseProblem(refused.body).type).toBe('urn:ok:error:host-not-allowed');
 
-      // Flipped pin (read-posture hardening): reads share the mutating
-      // gate's Host predicate in normal mode too.
       const read = await rawRequest(rig.port, '/api/native-ping', {
         headers: { Host: 'evil.example' },
       });
@@ -342,8 +314,6 @@ describe('createApiRouteGroup', () => {
     const hit = group.table.resolve('/api/alpha');
     expect(hit?.template).toBe('/api/alpha');
     expect(hit?.dispatch).toBeDefined();
-    // Decline is `null`, not a template-only resolution — the multi-group
-    // chain relies on zero side effects for unclaimed URLs.
     expect(group.table.resolve('/api/gamma')).toBeNull();
   });
 
@@ -364,7 +334,6 @@ describe('createApiRouteGroup', () => {
       { mutatingPrefixes: ['/api/local-op/'] },
     );
     expect(group.table.isMutating('/api/local-op/clone')).toBe(true);
-    // Default-protect: a member never enumerated anywhere still gates.
     expect(group.table.isMutating('/api/local-op/brand-new-route')).toBe(true);
     expect(group.table.isMutating('/api/alpha')).toBe(false);
   });
@@ -386,14 +355,12 @@ describe('createApiRouteGroup', () => {
   });
 
   test('a malformed or orphaned mutatingPrefixes entry fails at construction', () => {
-    // Slash dropped: would also match unrelated siblings.
     expect(() =>
       createApiRouteGroup(
         { '/api/local-op/clone': handler },
         { mutatingPrefixes: ['/api/local-op'] },
       ),
     ).toThrow(/must end in '\/'/);
-    // Typo: covers nothing, so the real family would ride the read posture.
     expect(() =>
       createApiRouteGroup(
         { '/api/local-op/clone': handler },
@@ -423,12 +390,9 @@ describe('createApiRouteGroup', () => {
     const named = group.table.resolve('/api/tags/til');
     expect(named?.template).toBe('/api/tags/:name');
     expect(named?.dispatch).toBeDefined();
-    // Empty tail: the table OWNS the URL (template resolution) but binds no
-    // dispatch, so the pipeline's explicit 404 answers under the template.
     const empty = group.table.resolve('/api/tags/');
     expect(empty?.template).toBe('/api/tags/:name');
     expect(empty?.dispatch).toBeUndefined();
-    // Outside the namespace still declines.
     expect(group.table.resolve('/api/other')).toBeNull();
   });
 });

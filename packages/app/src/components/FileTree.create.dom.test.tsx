@@ -1,14 +1,3 @@
-/**
- * Pins the `addPage(docName)` symmetry between `startCreating` (file branch)
- * and `applyRenamedDocuments`. Without the call, `pages.has(docName) === false`
- * for the 50–500ms window before the `/api/pages` refetch lands, which drives
- * `isNewDoc=true` in `EditorActivityPool.tsx` and flips the composite TipTap
- * key when the refetch resolves — forcing a mid-window remount during the
- * create → inline-rename → click race.
- *
- * Mocks `PageListContext.usePageList` to intercept `addPage`.
- */
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MouseEventHandler, ReactNode } from 'react';
@@ -52,8 +41,6 @@ function MenuSeparator() {
 const toastSuccessMock = vi.fn(() => {});
 const toastErrorMock = vi.fn(() => {});
 const addPageMock = vi.fn(() => {});
-// usePageList always returns these alongside addPage; the create flow reads
-// pageMeta.get / pages.has while opening the new doc, so stub both.
 const pageMetaMock = new Map<string, { size: number }>();
 const pagesMock = new Set<string>();
 const openTargetMock = vi.fn(() => {});
@@ -173,8 +160,6 @@ class StubModel {
     return () => {};
   }
 
-  // Pierre fires a 'remove' mutation when a user cancels a removeIfCanceled
-  // inline rename; the component treats that as the user-cancel signal.
   emitRemove(path: string) {
     for (const listener of this.removeListeners) listener({ path });
   }
@@ -200,14 +185,8 @@ let createGate: Promise<void> | null = null;
 let createFetchError: Error | null = null;
 let deletePathStatus = 200;
 let deletePathResponse: unknown = { ok: true };
-// When set, the delete-path fetch rejects instead of resolving, driving the
-// discard cleanup's catch (network-failure) branch — distinct from a non-2xx
-// HTTP response, which the deletePathStatus toggle covers.
 let deletePathFetchError: Error | null = null;
 let fetchCalls: FetchCall[] = [];
-// Drives the folder context-menu's "New from template" smart-hide. The menu
-// gates the submenu on the resolved cascade being non-empty, so a folder with
-// no templates must not render the submenu at all.
 let folderTemplates: Array<{
   name: string;
   title?: string;
@@ -215,12 +194,7 @@ let folderTemplates: Array<{
   source_folder: string;
   scope: 'local' | 'inherited';
 }> = [];
-// While the folder-config fetch is in flight, the gate is optimistic-true so
-// the entry doesn't flicker out from under the cursor. The toggle lets a test
-// pin that the entry stays rendered in the loading branch.
 let folderConfigStatus: 'ready' | 'loading' = 'ready';
-// Captures the path the menu asks for, so a test can assert the gate reads the
-// right-clicked folder rather than a hardcoded root/null.
 let lastFolderConfigPath: string | null = null;
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -258,11 +232,6 @@ function makeFetchMock() {
     if (url === '/api/create-folder') {
       return jsonResponse(createResponse, createStatus);
     }
-    // A placeholder discard (user cancel or create failure) posts
-    // /api/delete-path. Default 200 completes the discard; a test can force a
-    // server error (deletePathStatus) or a rejected fetch (deletePathFetchError)
-    // to exercise the two distinct cleanup-failure branches. An unmount teardown
-    // detaches without deleting, so it never reaches this branch.
     if (url === '/api/delete-path') {
       if (deletePathFetchError) throw deletePathFetchError;
       return jsonResponse(deletePathResponse, deletePathStatus);
@@ -492,10 +461,6 @@ describe('FileTree startCreating addPage symmetry', () => {
   });
 
   test('folder context-menu New Folder does NOT register an addPage call', async () => {
-    // The fix's branch-check matters: the folder branch has no docName and
-    // therefore must not call addPage. Pinning the asymmetry prevents a
-    // future "always addPage" simplification from registering a non-doc
-    // folder path as a PageList entry.
     createResponse = {
       kind: 'folder',
       path: 'notes/SubDir',
@@ -512,13 +477,9 @@ describe('FileTree startCreating addPage symmetry', () => {
   });
 
   test('folder context-menu hides "New from template" when the folder has no templates', async () => {
-    // An empty resolved cascade must drop the submenu trigger entirely, not
-    // render it into a submenu that lists only a disabled "No templates
-    // available" row.
     folderTemplates = [];
     renderFileTree();
 
-    // Sibling create rows still render — only the template submenu is gated.
     expect(await screen.findByRole('menuitem', { name: /new file/i })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: /new from template/i })).toBeNull();
   });
@@ -536,16 +497,10 @@ describe('FileTree startCreating addPage symmetry', () => {
     renderFileTree();
 
     expect(await screen.findByRole('menuitem', { name: /new from template/i })).toBeTruthy();
-    // The gate must read the right-clicked folder's cascade, not a hardcoded
-    // root/null — otherwise a subfolder with inherited templates would be
-    // judged against the wrong scope.
     expect(lastFolderConfigPath).toBe('notes');
   });
 
   test('folder context-menu keeps "New from template" while folder config is loading', async () => {
-    // Optimistic-true: before the cascade resolves, the entry stays rendered so
-    // it doesn't flash out from under the cursor on a slow cold fetch. Empty
-    // templates here would hide it once resolved, but loading must not.
     folderConfigStatus = 'loading';
     folderTemplates = [];
     renderFileTree();
@@ -581,8 +536,6 @@ describe('FileTree startCreating addPage symmetry', () => {
 
       view.unmount();
 
-      // The crash/unmount path detaches its bookkeeping and leaves the file on
-      // disk: no /api/delete-path request is issued.
       expect(deletePathCalls()).toHaveLength(0);
     });
 
@@ -603,9 +556,6 @@ describe('FileTree startCreating addPage symmetry', () => {
     });
 
     test('cancelling the inline rename closes the placeholder tab and returns to the previous location', async () => {
-      // The delete is only part of what a cancel owes the user. Splitting the
-      // cleanup into two intents left these two behaviors reachable only on the
-      // discard branch, so they are pinned separately from the delete call.
       const user = userEvent.setup();
       window.location.hash = '#/notes/somewhere-else';
       renderFileTree();
@@ -619,13 +569,6 @@ describe('FileTree startCreating addPage symmetry', () => {
     });
 
     test('a failed discard cleanup reports through console.error and still toasts', async () => {
-      // A cleanup failure surfaces two decoupled signals: the toast a mounted
-      // user sees, and a structured console.error carried in the crash bundle
-      // with the kind and path of the file left on disk. Reporting is
-      // independent of the UI-update posture. The detach path shares this
-      // reporter but has no surviving UI, and its only throw source is a
-      // removeEventListener disposer that cannot fail, so it is not separately
-      // drivable here without mocking internals.
       const user = userEvent.setup();
       renderFileTree();
       const renamePath = await startPendingFileCreate(user);
@@ -646,10 +589,6 @@ describe('FileTree startCreating addPage symmetry', () => {
     });
 
     test('cancelling a folder create closes the folder tab, not a document tab', async () => {
-      // The discard cleanup forks on kind: a folder releases its tab through
-      // closeTabs([folderTabId(...)]), never closeDocument (which addresses a
-      // doc by name). Pinned so an "always closeDocument" simplification cannot
-      // silently break folder-cancel tab cleanup.
       createResponse = { kind: 'folder', path: 'notes/SubDir' };
       const user = userEvent.setup();
       renderFileTree();
@@ -669,12 +608,6 @@ describe('FileTree startCreating addPage symmetry', () => {
     });
 
     test('a discard whose delete request throws reports the network error and still toasts', async () => {
-      // The catch (network-failure) branch: the delete fetch rejects rather
-      // than returning a non-2xx. It reports the same structured console.error
-      // as the HTTP-error branch — carrying the file left on disk, with the raw
-      // error as `cause` rather than a {status, detail} shape — and surfaces a
-      // toast. Pinned so dropping either the reporter or the toast turns a
-      // network failure into a silent orphaned file.
       const user = userEvent.setup();
       renderFileTree();
       const renamePath = await startPendingFileCreate(user);
@@ -706,9 +639,6 @@ describe('FileTree startCreating addPage symmetry', () => {
       view.unmount();
       const remounted = renderFileTree();
 
-      // The surviving file loads as an ordinary entry, so the fresh tree mounts
-      // without resurrecting the placeholder's inline rename or re-issuing the
-      // delete.
       expect(await remounted.findByTestId('fake-pierre-tree')).toBeTruthy();
       expect(model.startRenaming.mock.calls.length).toBe(renameCallsAfterCreate);
       expect(deletePathCalls()).toHaveLength(0);

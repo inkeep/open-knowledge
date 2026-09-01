@@ -1,52 +1,3 @@
-/**
- * First-party crash detection for the desktop main process. Three signal
- * sources feed one invitation pipeline:
- *
- *   - Electron's `crashReporter` runs with `uploadToServer: false` — Crashpad
- *     writes native-crash minidumps to `app.getPath('crashDumps')` and
- *     nothing ever leaves the machine (standing policy: first-party only, no
- *     vendor crash SDKs).
- *   - `render-process-gone` / `child-process-gone` signals, filtered to
- *     genuine crash reasons, invite a report while the app is still running.
- *     GPU deaths are filtered twice: Chromium replaces that process on its
- *     own, so an isolated one is presumed recovered and stays a log line —
- *     only a repeat inside the window is worth asking the user about.
- *   - A boot-time scan pairs a dirty-shutdown sentinel (written each boot,
- *     removed on clean quit) with a minidump-freshness check to catch
- *     main-process/native crashes that leave no live-session signal.
- *
- * Every detection only ever *invites*: the renderer opens the report dialog
- * and the user decides; nothing is sent automatically. Each crash event
- * prompts at most once — delivery is once per event, at most one invitation
- * is armed at a time, and acknowledgments persist (userData JSON) so an
- * acked event never re-prompts across restarts.
- *
- * A dirty shutdown only merits a prompt when the app itself died. The
- * sentinel records the kernel boot-session identity plus liveness/power
- * markers; when the next boot sees a different kernel session (the machine
- * rebooted out from under the previous session) or an OS-shutdown marker,
- * the invitation is suppressed — a reboot or power loss is not an app bug,
- * so it becomes a log breadcrumb, never a report prompt. A fresh minidump
- * overrides suppression: kernel panics never write app minidumps, so a dump
- * proves the app native-crashed before the machine went down.
- *
- * Not every dump in the crash database is ours. Crashpad's exception handler
- * is inherited by every descendant process, so the directory also collects
- * dumps for programs the app merely spawned. Both consumers of the dump scan
- * therefore classify by the dump's own main module (`minidump-ownership.ts`),
- * with deliberately opposite defaults for an unreadable dump: arming fails
- * open (a dismissible question), attachment fails closed (process memory
- * leaving the machine under a consent that describes THIS app).
- *
- * Deliberately absent: a userland `uncaughtException` handler. Electron
- * defers its main-process crash dialog to such a handler whenever one exists
- * (see `process-safety-net.ts`) — the boot-time sentinel/minidump scan is how
- * main-process crashes are covered instead.
- *
- * Electron-free by construction (paths, clock, and the renderer push are all
- * injected) so the whole pipeline is testable without a live app.
- */
-
 import {
   type Dirent,
   mkdirSync,
@@ -69,124 +20,28 @@ import {
   readMinidumpProcessType,
 } from './minidump-ownership.ts';
 
-/**
- * Process-gone reasons that read as genuine crashes. `clean-exit` and
- * `killed` are routine teardown (window closed mid-load, OS/user kill);
- * `abnormal-exit` is a managed child exiting nonzero — those children own
- * their failure UX (e.g. the server utility's spawn-error surface), so a
- * report prompt for each would nag.
- */
 const CRASH_REASONS = new Set(['crashed', 'oom', 'launch-failed', 'integrity-failure']);
 
-/** Electron's `details.type` for the GPU child process. */
 const GPU_PROCESS_TYPE = 'GPU';
 
-/**
- * The same process, as Chromium's own `process_type` crash key spells it.
- *
- * Two vocabularies for one process: Electron reports `details.type` from its
- * own table (`GPU`, `Utility`, `Zygote`), while Crashpad records the `--type=`
- * switch the process was launched with. A declined death is recorded in the
- * dump's vocabulary rather than Electron's, because the reader that has to
- * match it later has only the dump.
- */
 const GPU_DUMP_PROCESS_TYPE = 'gpu-process';
 
-/**
- * How many GPU deaths inside the window it takes before one is worth a prompt.
- *
- * The GPU process is the one child Chromium replaces on its own: it relaunches
- * a dead one and re-issues the lost graphics context in about a second, so an
- * isolated death leaves the user with nothing to describe. Inviting anyway
- * produces a report whose author saw no failure, and costs a triage cycle to
- * conclude "recovered" — the reason this threshold exists.
- *
- * Repetition is the opposite signal. A GPU process that will not stay up
- * degrades every window and eventually drops the app to software rendering,
- * which the user does feel, so the prompt is delayed rather than removed. The
- * reason is deliberately not consulted: `crashed` and `oom` recover by the same
- * mechanism, and a genuinely broken GPU reaches the threshold either way.
- */
 const GPU_CRASH_INVITE_THRESHOLD = 3;
 
-/**
- * Deaths only compound while they are related. Spread across a long session
- * they are independent blips that each recovered, so the count is taken over a
- * trailing window rather than for the life of the process.
- */
 const GPU_CRASH_WINDOW_MS = 5 * 60_000;
 
-/**
- * How long a pending invitation keeps a later crash silent. The single-slot
- * guard exists to stop one incident stacking prompts, so its reach has to end
- * where the incident does — the same relatedness horizon `GPU_CRASH_WINDOW_MS`
- * draws, for the same reason. Beyond it an unanswered invitation is not
- * "the prompt already on screen" but a prompt the user walked away from, and
- * letting it mute an independent crash means the app recovers in silence.
- */
 const INVITE_SUPERSEDE_AFTER_MS = 5 * 60_000;
 
-/**
- * Acked ids older than the store's minidump baseline can never fire again,
- * so the list only needs to outlive a plausible burst of distinct events.
- */
 const MAX_ACKED_EVENT_IDS = 50;
 
-/**
- * How far a dump's mtime may sit from a death this app declined to prompt for
- * and still be read as that death's dump.
- *
- * Not a guess at how related two crashes are — the far wider judgement
- * `GPU_CRASH_WINDOW_MS` makes — but the width of one instant seen through two
- * clocks. Crashpad writes the dump as the process dies and Electron delivers
- * `child-process-gone` immediately after, so the two stamps describe the same
- * moment; the window only has to absorb the flush and the coarseness of an
- * mtime. Kept an order of magnitude below the relatedness window so it can
- * never reach across two distinct incidents and retire the second one's dump.
- *
- * The two stamps come from two clocks — a wall-clock read here, an OS-stamped
- * mtime there — so an NTP correction or a manual clock change between them can
- * pull a genuine pair apart. Tolerated rather than corrected for: a missed
- * pair costs one prompt the user dismisses, which is the direction this whole
- * mechanism is built to fail in, and the pairing already demands a matching
- * `process_type` before it drops anything.
- */
 const DECLINED_DEATH_DUMP_MATCH_MS = 30_000;
 
-/**
- * On the path where the user is never prompted, this IS the retention policy,
- * not a safety net.
- *
- * A record cannot be dropped when its dump is found, because finding the dump
- * changes nothing about how long that dump stays visible: the scan floor is
- * the acknowledgment baseline and nothing else moves it, so the same dump is
- * still there at the next boot and every boot after. Retiring it once and then
- * forgetting why would hand the user the same bogus prompt one launch later —
- * intermittently, which is worse than never having suppressed it. A record has
- * to outlive its dump's visibility, and only an acknowledgment ends that.
- *
- * So on a run of isolated blips with no prompt in between, the list fills and
- * this cap is what bounds it. Evicting oldest-first is the direction that
- * matters: the newest record is the one whose dump is most likely still to be
- * asked about.
- */
 const MAX_DECLINED_DEATHS = 20;
 
-/** Crashpad nests dumps (`pending/`, `completed/`, `new/`) — walk a bounded depth. */
 const MINIDUMP_SCAN_DEPTH = 3;
 
-/**
- * A real OS shutdown kills the process within seconds of the announcement.
- * If heartbeats are still arriving this long after one, the shutdown was
- * cancelled — the marker must be dropped so a later genuine crash in the same
- * session isn't misread as an OS-shutdown kill and wrongly suppressed. Must
- * stay greater than `SENTINEL_HEARTBEAT_INTERVAL_MS` — cancelled-shutdown
- * recovery relies on at least one heartbeat landing inside the TTL window so
- * a later one can observe it's expired.
- */
 const OS_SHUTDOWN_MARKER_TTL_MS = 120_000;
 
-/** How often the sentinel's `lastAliveAt` is refreshed while the app runs. */
 export const SENTINEL_HEARTBEAT_INTERVAL_MS = 60_000;
 
 interface CrashLogger {
@@ -194,309 +49,87 @@ interface CrashLogger {
   warn(payload: Record<string, unknown>, msg: string): void;
 }
 
-/**
- * A death this app saw, classified, and deliberately chose not to tell the user
- * about — today only a recoverable GPU death under the invite threshold.
- *
- * Recorded because the decision and its consequence are separated by a
- * restart. The prompt is declined in-session, but the dump that death wrote
- * outlives the session, and the boot scan that finds it has no other way to
- * tell it from the dump of a crash nobody ever heard about. Without this the
- * app swallows a GPU blip on purpose and then asks about it at the next
- * launch, naming a crash the user never saw.
- */
 interface DeclinedDeath {
-  /** When the death was declined, ISO-8601. */
   at: string;
-  /** Chromium's `process_type` for the process that died — the dump's spelling. */
   processType: string;
 }
 
-/**
- * What the dump said when asked which kind of process it was written for.
- *
- * Three outcomes rather than a value and a failure flag, because the one that
- * matters operationally is the middle one. `unnamed` covers every way the
- * annotation can stop being where this app looks — renamed, relocated to the
- * simple dictionary, or moved by a Chromium bump — all of which the reader
- * reports as a clean "the dump does not say" rather than as a broken parse. It
- * is the only observable that distinguishes a build where retirement has gone
- * inert from one where nothing needed retiring, so it has to survive as its
- * own state instead of collapsing into the failure flag, which sees only an
- * OS-level read error.
- */
 type ProcessTypeRead = 'named' | 'unnamed' | 'parse-failed' | 'not-asked';
 
-/** What the boot scan concluded about one dump's provenance. */
 interface DeclinedDeathMatch {
-  /** The declined death that wrote this dump, or null when none claimed it. */
   matched: DeclinedDeath | null;
-  /** `not-asked` when no declined death was near enough to be worth a parse. */
   read: ProcessTypeRead;
 }
 
-/**
- * One dump from a boot scan, with everything the scan decided about it.
- *
- * Named rather than derived from the `.map()` that builds it because `arming`
- * below is the load-bearing definition of "this dump makes the app ask", and a
- * predicate whose domain can only be learned by jumping to a construction site
- * is one the next reader will re-spell inline instead.
- */
 interface ClassifiedDump {
   entry: MinidumpEntry;
   ownership: MinidumpOwnership;
-  /** Only asked of dumps that are ours; null otherwise. */
   crashKind: MinidumpCrashKind | null;
   declined: DeclinedDeathMatch;
 }
 
-/** Persisted acknowledgment state (userData JSON). */
 interface CrashAckStore {
   ackedEventIds: string[];
-  /** Minidumps at or older than this instant are considered already handled. */
   minidumpBaselineAt: string;
-  /**
-   * Deaths declined in an earlier session whose dumps must not be read as
-   * unreported crashes. Add-only field: a store written by a build that
-   * predates it parses as an empty list rather than as corruption, since
-   * failing the parse would re-baseline and retire every real dump with it.
-   */
   declinedDeaths: DeclinedDeath[];
 }
 
-/**
- * On-disk sentinel contents for the running session. No FORMAT version field —
- * forward/backward compatibility instead relies on every field staying
- * add-only (never renamed or repurposed) and `field()` in `detectBootCrash`
- * returning null for any key a reader doesn't recognize, since this file is
- * read across app-version boundaries (auto-update can start a new binary
- * against a sentinel an older one wrote). `appVersion` below names the app,
- * not this file's shape — it is content, covered by that contract like any
- * other field rather than being an exception to it.
- */
 interface SentinelState {
   bootId: string;
-  /** When this session booted. Recorded for readers of the file, not read back here. */
   startedAt: string;
-  /** Refreshed by the heartbeat; how close to death the session was known alive. */
   lastAliveAt: string;
-  /** Kernel session identity; absent when the platform probe returned null. */
   bootSessionUuid?: string;
-  /** Set when the OS announced a shutdown/restart; TTL-cleared if we survive it. */
   pendingOsShutdownAt?: string;
-  /**
-   * Why the OS said it was ending the session, when it told us. Windows is the
-   * only platform that says: `WM_ENDSESSION`'s flags reach us as Electron's
-   * `session-end` `reasons` (`shutdown` / `close-app` / `critical` / `logoff`),
-   * where the macOS/Linux `powerMonitor` `shutdown` event carries no argument
-   * at all. Recorded purely so the next boot's suppression breadcrumb can name
-   * the cause — nothing branches on it, because every value means the same
-   * thing here: the machine ended the session, not the app.
-   *
-   * Note `shutdown` does NOT distinguish restart from power-off; Microsoft
-   * documents that as indeterminable from these flags.
-   */
   osShutdownReasons?: string[];
-  /** Set on suspend, cleared on resume — a never-resumed sentinel died asleep. */
   suspendedAt?: string;
-  /**
-   * App version of the session that wrote this sentinel. Read back by the NEXT
-   * session to name the build that actually crashed: an auto-update between
-   * the two is precisely when it differs from the running one. Absent on a
-   * sentinel written before this field existed, which reads as unknown.
-   */
   appVersion?: string;
 }
 
 export interface CrashDetectionDeps {
-  /** Dirty-shutdown sentinel — written each boot, removed on clean quit. */
   sentinelPath: string;
-  /** Acknowledgment store (JSON) recording which crash events the user already saw. */
   ackStorePath: string;
-  /** Electron's `app.getPath('crashDumps')`; scanned for fresh `.dmp` files. */
   crashDumpsDir: string;
-  /**
-   * Root that every process of this app launches from (`app.getPath('exe')`
-   * reduced by `appBundleRootFromExecutable`). A dump in `crashDumpsDir` is
-   * only ours when its main module resolves inside this root — Crashpad's
-   * exception handler is inherited by every descendant process, so the crash
-   * database also collects dumps for programs we merely spawned.
-   */
   appBundleRoot: string;
-  /**
-   * Version of the RUNNING session, recorded into this boot's sentinel so the
-   * next boot can name it if this one dies. Never used to describe a crash
-   * detected during this boot — that crash belongs to an earlier session.
-   */
   appVersion: string;
-  /**
-   * Which platform's simulated-exception sentinel to recognize in a dump.
-   * Injected like everything else here so the crash-kind behavior is testable
-   * off the host platform — CI runs Linux, where the predicate is deliberately
-   * inert, and reading `process.platform` directly would make every such
-   * assertion pass vacuously there while proving nothing.
-   */
   platform?: NodeJS.Platform;
-  /**
-   * Push one crash-detected event to a live renderer. Returns false when no
-   * renderer could take it — the event stays armed and is re-offered on the
-   * next `notifyRendererReady`.
-   */
   emit(event: OkBugReportCrashDetectedEvent): boolean;
   now(): Date;
-  /**
-   * Identity of the running kernel session (`kern.bootsessionuuid` on macOS);
-   * changes if and only if the kernel rebooted. Null when unavailable —
-   * detection then skips the reboot classification entirely (fail-open
-   * toward prompting, i.e. the pre-classification behavior).
-   */
   currentBootSessionUuid(): string | null;
-  /**
-   * The updater's verdict that an install it committed to may still have been
-   * running at some point during the previous session's death — the fourth
-   * thing that can end a session without the app having crashed.
-   *
-   * Asked of the updater rather than decided here: the bounds that make "may
-   * still be running" a bounded claim, and which of them applies to which span
-   * shape, are the updater's calibration. A second copy of that judgment would
-   * drift from the one that decides whether to tell the user an install failed.
-   * `installWasInFlightDuring` is where the pairing is set out.
-   *
-   * A span rather than an instant, and both ends are required parameters,
-   * because the only clock reachable from here is the detecting boot's and the
-   * question is about a moment that has already passed. `installWasInFlightDuring`
-   * holds the derivation of why an instant cannot answer it. Passing both ends
-   * forces each caller to say which span it means, the same reason `stagedAt`
-   * is a parameter of the predicate underneath rather than a field read.
-   *
-   * `deathFromMs` is a lower bound on the death, and the error in it is
-   * one-directional. Below the handoff it costs nothing: the updater clamps it
-   * forward and the window is measured from the handoff itself. Above the
-   * handoff it IS what the window is measured to, so a bound that under-shoots
-   * the death shortens the measured age and can revive a record the grace
-   * should have retired. Loosen it only with that in view: every millisecond
-   * earlier admits another handoff into the class, and the class suppresses.
-   *
-   * Optional as a dep, and null when nothing was in flight during the span. An
-   * absent reader skips the classification entirely — fail-open toward
-   * prompting, the same posture `currentBootSessionUuid` takes when the probe
-   * is unavailable.
-   */
   installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
   logger: CrashLogger;
 }
 
-/**
- * What the updater knows about an install that had been committed to but had
- * not yet been observed to land. Carries the version so the suppression
- * breadcrumb can name it, and the moment so a reader can tell a held verdict
- * from a stale one.
- */
 export interface InstallInFlight {
-  /** The version the installer was launched to install. */
   attemptedVersion: string;
-  /**
-   * Epoch ms at which the install was handed off, or — when no live process
-   * saw the commit — the moment the artifact was staged, which is a sound
-   * lower bound on the handoff.
-   */
   handoffAt: number;
-  /** False when `handoffAt` is the staging fallback rather than a real stamp. */
   recordedHandoff: boolean;
 }
 
 export interface CrashDetection {
-  /**
-   * Boot-time scan: reads the previous session's sentinel and the minidump
-   * directory, arms at most one boot invitation (unless already acked), then
-   * writes this session's sentinel. Returns what it armed, for callers'
-   * logging; delivery waits for `notifyRendererReady`.
-   */
   detectBootCrash(): OkBugReportCrashDetectedEvent | null;
-  /** Clean-quit path: removes the sentinel so the next boot reads as clean. */
   markCleanQuit(): void;
-  /**
-   * Liveness heartbeat: refreshes the sentinel's `lastAliveAt` (and expires a
-   * stale OS-shutdown marker). No-op after `markCleanQuit` — a straggling
-   * timer tick must never resurrect the sentinel an orderly quit removed,
-   * which would turn every clean quit into next boot's phantom crash.
-   */
   noteAlive(): void;
-  /**
-   * The OS announced a shutdown/restart. If the process is killed before the
-   * quit sequence completes, the next boot suppresses the report prompt (and
-   * warns about the unfinished quit) instead of blaming the app.
-   *
-   * `reasons` is Windows-only detail for the breadcrumb (see
-   * `SentinelState.osShutdownReasons`); the macOS/Linux `powerMonitor` caller
-   * has nothing to pass and omits it. Suppression does not depend on it.
-   */
   noteOsShutdown(reasons?: readonly string[]): void;
-  /** System is suspending; a sentinel that never resumes died asleep (power loss). */
   noteSuspend(): void;
   noteResume(): void;
   handleRenderProcessGone(details: { reason: string; exitCode?: number }): void;
-  /**
-   * Every child death still logs; only GPU deaths are held back from the
-   * prompt, and only until they repeat inside the window — Chromium replaces
-   * that one process transparently, so an isolated death is invisible to the
-   * user being asked about it.
-   */
   handleChildProcessGone(details: {
     type: string;
     reason: string;
     exitCode?: number;
     name?: string;
   }): void;
-  /** A renderer finished loading — deliver the armed invitation if one is waiting. */
   notifyRendererReady(): void;
-  /** Persist an acknowledgment so the event never re-prompts, and disarm it. */
   ack(eventId: string): void;
-  /**
-   * The newest minidump not yet covered by an acknowledgment (strictly newer
-   * than the ack baseline) AND provably written for one of our own processes —
-   * the dump belonging to whatever crash the user is currently invited to
-   * report. `path` is null when the un-acked crash left no dump (e.g. dirty
-   * shutdown without a native crash), when every dump is already acked, or
-   * when the only fresh dumps belong to descendant processes that inherited
-   * our crash handler. The two skip counts say which of those it was, which is
-   * the difference between a bundle that arrived without a dump for a knowable
-   * reason and one that is a mystery after the fact.
-   *
-   * Minidumps carry raw process memory that text redaction cannot scrub, so
-   * bundle inclusion stays behind the report dialog's crash-dump checkbox
-   * (pre-checked for a crash invite, opt-out) plus the review-before-send step
-   * that calls this — never a silent attach. Ownership is the same consent
-   * question one level down: the dialog's copy describes THIS app's memory, so
-   * a dump we cannot prove is ours must not be offered. This path therefore
-   * fails CLOSED on an unreadable dump, unlike `detectBootCrash`, which only
-   * asks a dismissible question and fails open.
-   */
   newestMinidumpForReport(): MinidumpReportLookup;
 }
 
-/**
- * What one report-time minidump lookup found. The skip counts are what the
- * ownership walk rejected on its way to the answer, carried alongside the path
- * so a caller that logs the outcome can say WHY there was no dump without
- * running a second classification pass.
- */
 export interface MinidumpReportLookup {
-  /** Absolute path of the attachable dump, or null when there is none. */
   path: string | null;
-  /** Fresh dumps skipped because they belong to a descendant process. */
   foreignSkipped: number;
-  /** Fresh dumps skipped because they could not be parsed at all. */
   unknownSkipped: number;
 }
 
-/**
- * Start Electron's crash reporter in local-only mode: Crashpad collects
- * minidumps on disk and uploads nothing. Isolated behind this wrapper so the
- * no-upload contract is pinned by a unit test rather than trusted to a call
- * site nothing exercises.
- */
 export function startLocalCrashReporter(reporter: {
   start(options: { uploadToServer: boolean }): void;
 }): void {
@@ -509,40 +142,12 @@ function isFileMissingError(err: unknown): boolean {
   );
 }
 
-/**
- * ISO-8601 to epoch ms, or null when the field is absent or unparseable.
- *
- * Guarded rather than trusted because the death-span floor is read off a
- * sentinel written across app-version boundaries, so it is only as well-formed
- * as whichever build wrote it. An unguarded `Date.parse` yields `NaN`, and
- * formatting that for the breadcrumb below throws a `RangeError` out of a
- * boot-time scan, which is the consequence this helper is the sole guard
- * against.
- *
- * `installWasInFlightDuring` guards its own bounds too, which is why removing
- * either one alone still leaves the verdict correct. That seam carries why it
- * does not lean on this one.
- *
- * The shutdown-marker TTL shares this helper for uniformity rather than for a
- * live hazard, since that value is minted in-process moments before it is read
- * back.
- */
 function epochMsOrNull(iso: string | null): number | null {
   if (iso === null) return null;
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
 }
 
-/**
- * Element-wise rather than trusted wholesale, and never fatal.
- *
- * This list is the newest field in a file read across app-version boundaries,
- * so it is the one most likely to arrive absent or half-written — and rejecting
- * the whole store for it would fail open to a fresh baseline, retiring every
- * genuine dump on disk to salvage a record whose only job is to retire one.
- * Anything unusable therefore reads as "no declined deaths recorded", which is
- * exactly what an older build meant by leaving it out.
- */
 function parseDeclinedDeaths(raw: unknown): DeclinedDeath[] {
   if (!Array.isArray(raw)) return [];
   const out: DeclinedDeath[] = [];
@@ -580,7 +185,6 @@ interface MinidumpEntry {
   mtimeMs: number;
 }
 
-/** Collect `.dmp` files under `dir` with mtimes, tolerating a dir Crashpad hasn't created yet. */
 function collectMinidumpEntries(dir: string, depth: number, out: MinidumpEntry[]): void {
   let entries: Dirent[];
   try {
@@ -597,17 +201,11 @@ function collectMinidumpEntries(dir: string, depth: number, out: MinidumpEntry[]
     if (!entry.name.endsWith('.dmp')) continue;
     try {
       out.push({ path: entryPath, mtimeMs: statSync(entryPath).mtimeMs });
-    } catch {
-      // Raced with Crashpad's own upload/cleanup rotation — skip the entry.
-    }
+    } catch {}
   }
 }
 
 export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
-  /**
-   * The one invitation in flight; a new signal while this is unacked and still
-   * recent stays silent. `armedAtMs` is what bounds "still recent".
-   */
   let active: {
     event: OkBugReportCrashDetectedEvent;
     delivered: boolean;
@@ -615,25 +213,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
   } | null = null;
   let runtimeSeq = 0;
 
-  /**
-   * GPU-death timestamps still inside the trailing window, oldest first. In
-   * memory only: the counter asks whether the GPU is failing to stay up *right
-   * now*, and a fresh process means a fresh GPU that has not yet failed.
-   */
   let recentGpuCrashes: number[] = [];
 
-  /** This session's sentinel; null until `detectBootCrash` writes the first version. */
   let sentinel: SentinelState | null = null;
-  /** Freezes every sentinel writer once the file was removed by an orderly quit. */
   let cleanQuitMarked = false;
 
-  /**
-   * Which caller triggered the write — surfaced in the failure log so a
-   * write that fails on `noteOsShutdown` (losing the shutdown marker this
-   * feature depends on) doesn't read as "could not arm," which would send an
-   * investigator toward "did detection even run?" instead of "did the
-   * shutdown marker persist?"
-   */
   type SentinelWriteContext = 'arm' | 'alive' | 'os-shutdown' | 'suspend' | 'resume';
 
   function writeSentinel(context: SentinelWriteContext): void {
@@ -661,12 +245,8 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     let parsed: CrashAckStore | null = null;
     try {
       parsed = parseAckStore(readFileSync(deps.ackStorePath, 'utf8'));
-    } catch {
-      // Missing on first run; unreadable otherwise — both re-baseline below.
-    }
+    } catch {}
     if (parsed === null) {
-      // Fresh baseline: minidumps that predate this store (from before the
-      // feature existed, or from before the store was lost) never prompt.
       store = {
         ackedEventIds: [],
         minidumpBaselineAt: deps.now().toISOString(),
@@ -678,15 +258,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     }
   }
 
-  /**
-   * Which caller triggered the write, for the same reason `writeSentinel`
-   * carries one: the failures mean different things. A lost `ack` re-asks a
-   * question the user already answered, which is merely annoying. A lost
-   * `clear-declined-deaths` leaves on disk the very records that would retire
-   * the dump of the crash just escalated to the user, which is this file's
-   * fail-open posture inverted — and the two are indistinguishable on one
-   * flat line.
-   */
   type StoreWriteContext = 'init' | 'ack' | 'record-declined-death' | 'clear-declined-deaths';
 
   function persistStore(context: StoreWriteContext): void {
@@ -694,14 +265,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       mkdirSync(dirname(deps.ackStorePath), { recursive: true });
       writeFileSync(deps.ackStorePath, `${JSON.stringify(store)}\n`);
     } catch (err) {
-      // Four of the five contexts degrade tolerably: detection stays usable
-      // in-session even when userData is unwritable, and only the
-      // cross-restart memory suffers. The fifth does not. A lost clear leaves
-      // on disk the records that will retire the dump of the crash just
-      // escalated, so the loss inverts this file's fail-open posture rather
-      // than merely blunting it — and no alert can separate the two when they
-      // share a level and a message. Not retried: this fails on ENOSPC or
-      // EPERM, and the process that would retry is the one about to die.
       const failsClosed = context === 'clear-declined-deaths';
       deps.logger.warn(
         { event: 'crash-detection.store-write-failed', context, failsClosed, err },
@@ -712,17 +275,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     }
   }
 
-  /**
-   * Remember that this app chose not to prompt for a death, so the dump it
-   * wrote is not mistaken for an unreported crash at the next boot.
-   *
-   * Recorded against the clock rather than against the dump, because at this
-   * instant the dump may not exist yet: Crashpad can still be flushing when
-   * Electron delivers the death, which is the same race that makes the
-   * in-session `minidumpAvailable` signal best-effort. The moment is the
-   * durable half of the pairing; `declinedDeathForDump` supplies the
-   * other half once the file is on disk.
-   */
   function recordDeclinedDeath(processType: string): void {
     store.declinedDeaths.push({ at: deps.now().toISOString(), processType });
     if (store.declinedDeaths.length > MAX_DECLINED_DEATHS) {
@@ -731,17 +283,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     persistStore('record-declined-death');
   }
 
-  /**
-   * Forget the declined deaths of one kind of process, because a death of that
-   * kind has now been raised with the user.
-   *
-   * The deaths a GPU invitation finally arms for are the ones it was counting
-   * all along, and they are minutes apart at most — so the dump of the death
-   * that crosses the threshold lands squarely inside the window of the ones
-   * that did not. Left on file, those earlier records would retire the dump of
-   * the very crash being reported, and an invitation the user never got to
-   * answer would find nothing left to re-raise at the next boot.
-   */
   function clearDeclinedDeaths(processType: string): void {
     const cleared = store.declinedDeaths.filter(
       (declined) => declined.processType === processType,
@@ -750,8 +291,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     store.declinedDeaths = store.declinedDeaths.filter(
       (declined) => declined.processType !== processType,
     );
-    // Logged because this is a silent widening of what the next boot will ask
-    // about, and the only other trace of it is the absence of a retirement.
     deps.logger.info(
       { event: 'crash-detection.declined-deaths-cleared', processType, cleared },
       'a death of this kind was raised, so its earlier declines no longer retire dumps',
@@ -759,30 +298,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     persistStore('clear-declined-deaths');
   }
 
-  /**
-   * Which death this app already decided to swallow, if any, wrote `entry`.
-   *
-   * Both factors are requirements. The moment narrows the field: a dump
-   * stamped within `DECLINED_DEATH_DUMP_MATCH_MS` of a declined death is a
-   * candidate for being that death's dump. The dump's own `process_type` then
-   * has to agree before anything is dropped.
-   *
-   * Demanding that annotation rather than treating its absence as consent is
-   * the difference between a wrong guess costing a prompt and a wrong guess
-   * costing a crash report. A dump that names nothing has not said it was a
-   * GPU death, and one of the things it can be is the main process crashing
-   * natively — the crash this whole scan exists to catch. A dump truncated by
-   * the fault that wrote it says nothing for a different reason again. So only
-   * a dump that positively names the kind of process this app declined to
-   * prompt for is retired; everything indeterminate still arms, which is the
-   * posture every other exclusion in this file takes.
-   *
-   * The cost is that retirement goes inert if Chromium ever moves the
-   * annotation, which is survivable — a prompt the user dismisses once — but
-   * only if it is noticed. A moved annotation reads as a clean "the dump does
-   * not say", never as a parse failure, so the thing to watch is the count of
-   * dumps that sat inside a declined death's window and named nothing at all.
-   */
   function declinedDeathForDump(entry: MinidumpEntry): DeclinedDeathMatch {
     const near = store.declinedDeaths.filter((declined) => {
       const at = epochMsOrNull(declined.at);
@@ -806,14 +321,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     }
   }
 
-  /**
-   * Arm an invitation without delivering — boot events wait for the first
-   * renderer-ready signal, runtime events follow up with `tryDeliver`.
-   * Returns false when a recent invitation is still unanswered (new signals
-   * stay silent rather than stacking prompts); a pending one that has gone
-   * stale is superseded instead, so the newer crash is the one the user is
-   * asked about rather than being dropped behind a prompt nobody answered.
-   */
   function armInvite(event: OkBugReportCrashDetectedEvent): boolean {
     const nowMs = deps.now().getTime();
     if (active !== null) {
@@ -830,9 +337,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         );
         return false;
       }
-      // Warn, not info: the superseded invitation is one the user never
-      // answered, so this line is the only record that a crash they were
-      // offered a prompt for went unaddressed before the next one arrived.
       deps.logger.warn(
         {
           event: 'crash-detection.superseded',
@@ -847,11 +351,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     return true;
   }
 
-  /**
-   * Record a GPU death and decide whether it is still the recoverable kind.
-   * Returns the in-window count too, so the log line carries the number the
-   * decision was made on rather than leaving it to be inferred.
-   */
   function noteGpuCrash(): { countInWindow: number; suppressInvite: boolean } {
     const nowMs = deps.now().getTime();
     recentGpuCrashes = recentGpuCrashes.filter((at) => nowMs - at < GPU_CRASH_WINDOW_MS);
@@ -870,7 +369,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     return classifyMinidumpCrashKind(path, deps.platform ?? process.platform);
   }
 
-  /** Baseline-filtered dumps from one scan of the crash-dumps dir, newest first. */
   function freshMinidumpEntries(): MinidumpEntry[] {
     const entries: MinidumpEntry[] = [];
     collectMinidumpEntries(deps.crashDumpsDir, MINIDUMP_SCAN_DEPTH, entries);
@@ -878,22 +376,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     return entries.filter((e) => e.mtimeMs > baselineMs).sort((a, b) => b.mtimeMs - a.mtimeMs);
   }
 
-  /**
-   * Newest un-acked minidump this app can prove it owns, or null. Shared by
-   * the report-time path lookup and the per-event availability signal so the
-   * checkbox is only offered when there is a dump the bundle may actually
-   * carry. Walks newest-first and stops at the first owned dump, so a quiet
-   * crash database costs one parse rather than one per file.
-   *
-   * The two skip counts report what the walk rejected on its way there, which
-   * is what the runtime callers log. They are kept apart because they mean
-   * different things to whoever reads that line: `foreignSkipped` is a
-   * descendant process crashing, an ordinary event, while `unknownSkipped` is a
-   * dump we could not read at all — a half-flushed one, or the first sign that
-   * the format drifted out from under the parser. Counting as the walk goes
-   * keeps the short-circuit intact; asking for totals afterwards would mean
-   * classifying every fresh dump on every renderer crash.
-   */
   function newestOwnedMinidump(): {
     entry: MinidumpEntry | null;
     foreignSkipped: number;
@@ -906,12 +388,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     for (const entry of freshMinidumpEntries()) {
       const ownership = classifyDump(entry.path);
       if (ownership === 'ours') {
-        // Skipping rather than stopping is the whole fix. This walk is
-        // newest-first and has no idea which crash is being reported, so a
-        // snapshot of a process that never faulted — a GPU watchdog capture,
-        // say — would otherwise be handed to a report about a genuine crash
-        // that happened earlier, under a consent notice describing that other
-        // failure. Stepping over it reaches the dump that actually belongs.
         if (crashKindOf(entry.path) === 'non-crash') {
           nonCrashSkipped += 1;
           continue;
@@ -932,10 +408,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         bootSessionUuid === null &&
         (process.platform === 'darwin' || process.platform === 'linux')
       ) {
-        // Reboot suppression silently stops working if this ever goes null on
-        // a platform it should work on (sysctl timeout, sandboxed exec,
-        // renamed binary) — nothing else would surface why every reboot
-        // started prompting again.
         deps.logger.warn(
           { event: 'crash-detection.boot-session-unavailable', platform: process.platform },
           'kernel boot-session identity unavailable — reboot suppression is disabled this launch',
@@ -948,17 +420,8 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         sentinelRaw = readFileSync(deps.sentinelPath, 'utf8');
         sentinelPresent = true;
       } catch (err) {
-        // A non-ENOENT read failure still means the file exists — the
-        // previous session did not clean-quit.
         sentinelPresent = !isFileMissingError(err);
         if (sentinelPresent) {
-          // Said out loud for the same reason the parse failure below is. A
-          // file this boot could not open reaches every downstream read as the
-          // same set of nulls a build predating those fields would produce, and
-          // the two point opposite ways: one is nothing to do, the other is a
-          // lock or a permission this app observed and could name. Without the
-          // errno there is no signal at all that the death span collapsed
-          // because of it.
           deps.logger.warn(
             { event: 'crash-detection.sentinel-read-failed', err },
             'dirty-shutdown sentinel exists but could not be read, so the previous session is dated by this boot alone',
@@ -973,21 +436,10 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       let prevSuspendedAt: string | null = null;
       let prevAppVersion: string | null = null;
       if (sentinelRaw !== null) {
-        // Only the parse is inside the catch, because its warn asserts that
-        // nothing downstream got a date. Reads left inside would make that true
-        // by accident of ordering, and a throw partway through them would null
-        // a machine-level-death disjunct while the log named another cause.
         let parsed: Record<string, unknown> | null = null;
         try {
           parsed = JSON.parse(sentinelRaw) as Record<string, unknown> | null;
         } catch (err) {
-          // Torn write from the crashed session — presence alone is the signal,
-          // so this is not fatal. Said out loud anyway: a file that parsed and
-          // simply carried no dates reaches every downstream read as the same
-          // set of nulls, and the two lead to different conclusions about why
-          // the death span collapsed onto the detecting clock. The cause rides
-          // along for the same reason the sibling write failure carries one, a
-          // truncated write and binary garbage being different findings.
           deps.logger.warn(
             { event: 'crash-detection.sentinel-parse-failed', err },
             'dirty-shutdown sentinel did not parse, so the previous session is dated by this boot alone',
@@ -1001,10 +453,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         prevBootSessionUuid = field('bootSessionUuid');
         prevLastAliveAt = field('lastAliveAt');
         prevPendingOsShutdownAt = field('pendingOsShutdownAt');
-        // Element-wise filtered rather than trusted wholesale: this file is
-        // read across app-version boundaries, so the array is only as
-        // well-formed as whichever build wrote it. A non-array, or one with
-        // nothing usable in it, reads as "no cause named" — same as absent.
         const rawReasons = parsed?.osShutdownReasons;
         if (Array.isArray(rawReasons)) {
           const usable = rawReasons.filter(
@@ -1013,31 +461,15 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           prevOsShutdownReasons = usable.length > 0 ? usable : null;
         }
         prevSuspendedAt = field('suspendedAt');
-        // Must be read here, before this boot overwrites the file below:
-        // afterwards the value on disk is the RUNNING version, which is the
-        // wrong answer in exactly the update-between-sessions case that
-        // makes the question worth asking. Gated like the minidump's
-        // annotation because it reaches the same line of the same report,
-        // and this file is no more trustworthy than that one.
         prevAppVersion = asReportableAppVersion(field('appVersion'));
       }
 
-      // Every fresh dump is classified before it can influence anything: the
-      // crash database also collects dumps for descendant processes that
-      // inherited our exception handler, and an unrelated program aborting is
-      // not this app crashing. Without this the app prompts "the previous
-      // session crashed" after a perfectly clean quit.
       const freshDumps: ClassifiedDump[] = freshMinidumpEntries().map((entry) => {
         const ownership = classifyDump(entry.path);
         return {
           entry,
           ownership,
-          // Only asked of dumps that are ours. A foreign dump's crash kind is
-          // not this app's business, and asking would cost a second parse of a
-          // file already excluded.
           crashKind: ownership === 'ours' ? crashKindOf(entry.path) : null,
-          // Asked on the same terms as the crash kind, and for the same
-          // reason: a foreign dump's provenance is settled already.
           declined:
             ownership === 'ours'
               ? declinedDeathForDump(entry)
@@ -1046,25 +478,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       });
       const foreignDumpCount = freshDumps.filter((d) => d.ownership === 'foreign').length;
       const unreadableDumpCount = freshDumps.filter((d) => d.ownership === 'unknown').length;
-      // Ours, but a snapshot of a process that never faulted: Chromium's GPU
-      // watchdog captures one when a thread merely looks stalled, and may then
-      // let that process keep running. Counted apart from the two above
-      // because it means something different to whoever reads the line —
-      // detection worked perfectly and correctly declined to ask.
       const nonCrashDumpCount = freshDumps.filter((d) => d.crashKind === 'non-crash').length;
-      // Ours, a real fault, and already answered by a decision this app made
-      // in the session that died — a GPU death it swallowed on purpose. Given
-      // its own event rather than a count on the line below, because that line
-      // is about dumps this app could not claim and these are dumps it claimed
-      // and then set aside; and per dump rather than as a total, because an
-      // operator holding a report of "it crashed and never asked me" needs to
-      // see which death each retirement was paired with.
-      //
-      // Projected into pairs rather than filtered, so the death each line
-      // reports is carried by the type rather than re-tested at the point of
-      // use: a widened filter would then fail to compile instead of quietly
-      // emitting a retirement breadcrumb with the two fields it exists for
-      // both absent.
       const retired = freshDumps.flatMap((d) =>
         d.declined.matched === null ? [] : [{ entry: d.entry, declined: d.declined.matched }],
       );
@@ -1079,12 +493,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           'ignored a minidump written by a death this app declined to report',
         );
       }
-      // A dump that sat inside a declined death's window and named no process
-      // type at all. It still arms, and this is the ONLY trace of the case
-      // that would make retirement inert: a Chromium bump that moves the
-      // annotation reads here as silence, never as a parse failure, so a build
-      // where this rises while the retirements above stop appearing is one
-      // where the pairing no longer finds anything.
       const unnamedNearDeclineCount = freshDumps.filter(
         (d) => d.declined.read === 'unnamed',
       ).length;
@@ -1098,11 +506,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         );
       }
       if (foreignDumpCount > 0 || unreadableDumpCount > 0 || nonCrashDumpCount > 0) {
-        // Otherwise a suppressed prompt and a detection pipeline that never
-        // ran are indistinguishable in the logs. The unreadable count is the
-        // one to watch: a dump we cannot parse at all is either half-flushed
-        // or the first sign the format moved out from under the parser, and
-        // unlike a foreign dump it leaves no other trace.
         deps.logger.info(
           {
             event: 'crash-detection.foreign-dumps-ignored',
@@ -1113,53 +516,13 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           'ignored minidumps that this app could not claim',
         );
       }
-      // Arming fails OPEN on an unparseable dump: a dump truncated by the very
-      // crash that wrote it is more likely ours than not, and the cost of being
-      // wrong is one prompt the user dismisses once. The attachment side takes
-      // the opposite default, so an un-ownable dump can still never be sent.
-      //
-      // A dump we can positively prove was captured without a fault is the one
-      // exception, and it is an exclusion by evidence rather than by default:
-      // only a value a real crash cannot carry gets a dump dropped here.
-      // Anything indeterminate still arms.
-      //
-      // A dump this app already declined to prompt for is the second
-      // exclusion by evidence, and the evidence is its own earlier decision
-      // rather than the dump's contents: the session that died looked at that
-      // death, judged it recovered, and said nothing on purpose. Asking about
-      // it now would raise a crash the user was deliberately never shown.
       const arming = (d: ClassifiedDump): boolean =>
         d.ownership !== 'foreign' && d.crashKind !== 'non-crash' && d.declined.matched === null;
       const newDumps = freshDumps.filter(arming).map((d) => d.entry.mtimeMs);
-      // Deliberately NOT filtered by retirement, unlike arming. This one only
-      // asks whether a dump worth attaching exists, and it has to answer that
-      // the same way `newestMinidumpForReport` does — otherwise a boot that
-      // arms for an unrelated reason hides the attach-dump checkbox while the
-      // report path hands the same file straight over. Retirement decides what
-      // the app asks about, never what it can attach.
       const ownedDumpCount = freshDumps.filter(
         (d) => d.ownership === 'ours' && d.crashKind !== 'non-crash',
       ).length;
 
-      // A boot-session mismatch means the kernel rebooted after the previous
-      // session was last alive; an os-shutdown marker means the OS killed the
-      // app past its quit grace; a never-resumed suspend marker means the
-      // session died asleep (e.g. the battery ran out) — safe-sleep resume
-      // preserves the kernel boot session (Apple's IOPMrootDomain docs:
-      // BootSessionUUID "remain[s] same across sleep/wake/hibernate cycle"),
-      // so a reboot never happens for this case and it needs its own signal.
-      // Either way the machine ended the session, not the app. Missing
-      // identity on either side (old-format sentinel, probe failure) skips
-      // the reboot classification — fail-open toward prompting. Note this
-      // reboot signal has an inherent false-negative: an app crash followed
-      // by an unrelated user-initiated reboot before relaunch reads
-      // identically to "the reboot killed the app" and is suppressed too —
-      // accepted tradeoff of comparing boot-session identity alone. The
-      // suspend marker has an analogous narrow window: a whole-process crash
-      // between the OS delivering wake and `noteResume()`'s synchronous clear
-      // reads as "died asleep" too — mitigated by the fresh-minidump override
-      // below for native crashes, and by `noteResume()` running as the first
-      // step of the `resume` handler.
       const rebootedBetweenSessions =
         prevBootSessionUuid !== null &&
         bootSessionUuid !== null &&
@@ -1168,57 +531,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         sentinelPresent &&
         (rebootedBetweenSessions || prevPendingOsShutdownAt !== null || prevSuspendedAt !== null);
 
-      // The fourth way a session ends without the app having crashed, and the
-      // only one the machine did not cause: this app committed to an update,
-      // and the session ended without its quit sequence completing.
-      //
-      // Neither installer is a plain pre-emption of a healthy app. The Windows
-      // one waits over a second for the app to go before it intervenes at all,
-      // so an app that quits promptly is never touched and this class never
-      // sees it, while one still tearing down loses that race. The macOS helper
-      // (Squirrel's ShipIt) does not terminate the app at all: it waits for the
-      // process to exit and then swaps the bundle, per the sequence documented
-      // in Squirrel.Mac and electron/electron#36130. Either way the reachable
-      // population is a session that was still quitting, which is why this
-      // class is about the quit sequence not completing rather than about a
-      // kill signal.
-      //
-      // What decides the frame this question gets asked in is not the platform
-      // but whether anything stamped the handoff. Both commit points stamp it
-      // while a live process still exists to observe them: the "Relaunch now"
-      // click on every platform, and `before-quit` wherever install-on-quit is
-      // armed, which is everywhere except Linux. A session that ended without
-      // reaching either arrives carrying only the moment the artifact was
-      // staged. That fallback keeps answering at the detecting instant rather
-      // than across the span, so where nothing was stamped this class still
-      // decays with how long the user left the app closed, and
-      // `installWasInFlightDuring` carries why a finished download cannot widen
-      // it. Either way `markCleanQuit()` never clears the sentinel, and without
-      // this class the next boot reports a death the app arranged on purpose.
-      //
-      // Deliberately asked of the updater rather than inferred here. A version
-      // delta between the crashed and detecting sessions is the tempting cheap
-      // test and it is unsound: when the install FAILS, the relaunched app is
-      // the same version as the one that was killed, so the delta is zero on
-      // exactly the subset this class was first reported from.
-      //
-      // The death is a span, not an instant: the previous session was alive at
-      // `deathFromMs` and gone by `detectedAtMs`. The two tiers are not
-      // interchangeable, which is why the one that fired is logged rather than
-      // left to be re-derived. The heartbeat dates the death to within one
-      // interval, and the sentinel gets one at birth rather than at its first
-      // tick, so every sentinel a current build writes carries one. Without it
-      // the span collapses onto the detecting clock, which is no bound at all
-      // and is the frame this class must never be asked in when a date IS
-      // available.
-      //
-      // The start of the session is deliberately not the middle tier, though it
-      // is present and is a sound lower bound. It dates the boot rather than the
-      // death, so a session that ran for hours before genuinely crashing and one
-      // the installer killed seconds in reduce to the same span, and preferring
-      // it resolves that ambiguity toward silence. Collapsing resolves it toward
-      // asking, which is this subsystem's posture everywhere else for a probe it
-      // cannot reason from.
       const detectedAtMs = detectedAt.getTime();
       const lastAliveMs = epochMsOrNull(prevLastAliveAt);
       const deathFromMs = lastAliveMs ?? detectedAtMs;
@@ -1239,51 +551,12 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         const breadcrumb = {
           event: 'crash-detection.machine-level-death',
           reason,
-          // Null when no install was in flight, whatever the reason — a reboot
-          // that happened to land inside an install window carries a version
-          // here too. Carried on every line rather than only the update one so
-          // a reader can tell "no install was in flight" from "this build
-          // predates the class".
           attemptedInstall: installInFlight?.attemptedVersion ?? null,
-          // False when the moment below is the staging fallback rather than a
-          // handoff a live process recorded — the same distinction the
-          // updater's own boot logs draw. It says which commit the window was
-          // measured from, not how tight it was: a handoff a live process
-          // stamped dates the commit to the quit that preceded the death,
-          // while the staging fallback dates it to the download, which can
-          // precede the death by a whole session of ordinary use.
           recordedHandoff: installInFlight?.recordedHandoff ?? null,
-          // The moment the window opened, and the span it had to overlap. A
-          // suppression here is invisible to the user by construction, so
-          // these are the only way a field report can tell a handoff that
-          // genuinely sat inside the death from one that got in because the
-          // span widened. `deathFromSource` names which tier bounded it, since
-          // the two differ by far more than the grace on a long session.
-          //
-          // Named for its encoding rather than sharing the updater's
-          // `handoffAt` key, which that module emits as raw epoch ms. Both
-          // describe the same instant and land in the same stream, so one key
-          // carrying two datatypes would break any reader keyed on the field
-          // name alone.
-          //
-          // The collision is resolved on this side because this key is new,
-          // while the updater's has shipped. Suffixing the numeric one instead
-          // would read better per line, since every other moment here is a bare
-          // `…At` holding ISO and `…Ms` is already that module's answer to the
-          // same question. It would also rename a key across released builds
-          // and cost triage another era to reconcile, on log statements this
-          // change has no other reason to touch.
           handoffAtIso:
             installInFlight !== null ? new Date(installInFlight.handoffAt).toISOString() : null,
           deathFrom: new Date(deathFromMs).toISOString(),
           deathFromSource,
-          // Clamped deliberately, unlike the updater's elapsed-time helpers,
-          // which return null on a negative. This reports the width the
-          // question was actually asked over, and a floor that postdates this
-          // boot (a clock correction across the quit) collapses the span rather
-          // than inverting it, so zero is the true answer there. The inversion
-          // itself stays visible: `deathFrom` and `detectedAt` are both on this
-          // line unclamped.
           deathSpanMs: Math.max(0, detectedAtMs - deathFromMs),
           detectedAt: detectedAt.toISOString(),
           prevBootId,
@@ -1292,16 +565,9 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           lastAliveAt: prevLastAliveAt,
           suspendedAt: prevSuspendedAt,
           pendingOsShutdownAt: prevPendingOsShutdownAt,
-          // Windows-only, and null everywhere else — see
-          // `SentinelState.osShutdownReasons`. The one thing the win32 path
-          // knows that the others do not: whether this was a logoff, a
-          // shutdown/restart, or a forced end.
           osShutdownReasons: prevOsShutdownReasons,
         };
         if (reason === 'os-shutdown') {
-          // Same kernel session yet the shutdown marker survived: our quit
-          // sequence never completed before the OS killed the app. That gap
-          // is ours to watch in logs, but not the user's to report.
           deps.logger.warn(
             breadcrumb,
             'previous session was killed during an OS shutdown — suppressing the report prompt',
@@ -1317,51 +583,14 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           );
         }
       } else if (sentinelPresent || newDumps.length > 0) {
-        // Sentinel-derived ids stay stable for the same crashed session, so an
-        // ack survives even if detection runs again before this boot rewrites
-        // the sentinel. The dump-only and unreadable-sentinel fallbacks only
-        // need in-session stability — the sentinel is replaced below either way.
-        //
-        // A machine-level death with fresh dumps still prompts, but as the
-        // dump-driven variant: the reboot ended the session, the dump is the
-        // crash — framing it as an app dirty-shutdown would misattribute. An
-        // install kill reads the same way: the installer ended the session,
-        // and a dump that survived it is still the app faulting on its own.
         const dumpDriven = !sentinelPresent || machineLevelDeath || updateInstallDeath;
         const eventId = dumpDriven
           ? `boot:dump:${Math.max(...newDumps)}`
           : `boot:${prevBootId ?? `unreadable:${detectedAt.getTime()}`}`;
         if (!store.ackedEventIds.includes(eventId)) {
-          // The version of the session that DIED, which an auto-update between
-          // the crash and this launch makes different from the running one.
-          //
-          // Both witnesses can be present at once — a reboot that killed a
-          // session with a fresh dump leaves a sentinel AND a dump — so this
-          // is a priority rule, not a partition of disjoint cases. The dump
-          // wins wherever it decides the event: it was stamped at the instant
-          // the process died, while the sentinel only names whichever session
-          // happened to be running.
-          //
-          // Selected by the same `arming` predicate the event id's maximum was
-          // taken over, which is what makes the first entry of this
-          // newest-first list that very dump. Any looser test can pick a
-          // different one: a foreign dump carries OUR annotations while
-          // describing an unrelated program's death (Crashpad stamps them onto
-          // dumps for descendant processes), and a non-crash or retired dump
-          // may be newer than the one that actually armed the event — either
-          // way the version, and the accessibility mode read below it, would
-          // describe a death other than the one being reported.
-          //
-          // Unknown stays unknown. Falling back to the running version here
-          // would reproduce the misattribution this exists to remove, in a
-          // form no reader could detect.
           const eventDump = dumpDriven ? freshDumps.find(arming) : undefined;
           const dumpVersion =
             eventDump === undefined ? null : readMinidumpAppVersion(eventDump.entry.path);
-          // Chromium's own record of whether an accessibility tree was live in
-          // the process that died. Read from the SAME dump the event id and the
-          // version come from, so all three describe one death rather than
-          // three separately-chosen dumps.
           const dumpAccessibilityMode =
             eventDump === undefined ? null : readMinidumpAccessibilityMode(eventDump.entry.path);
           const crashedAppVersion = dumpDriven ? (dumpVersion?.version ?? null) : prevAppVersion;
@@ -1369,10 +598,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             eventId,
             kind: 'boot',
             context: { dirtyShutdown: !dumpDriven, newMinidumps: newDumps.length },
-            // Availability is the stricter question — it decides whether the
-            // dialog offers a checkbox that attaches process memory — so it
-            // counts only dumps we proved are ours, never the fail-open set
-            // that decided whether to prompt at all.
             minidumpAvailable: ownedDumpCount > 0,
             ...(crashedAppVersion !== null ? { crashedAppVersion } : {}),
           };
@@ -1385,66 +610,12 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 detectedAt: detectedAt.toISOString(),
                 dirtyShutdown: !dumpDriven,
                 newMinidumps: newDumps.length,
-                // When the dead session was last known alive, and whether it
-                // was asleep at the time. The heartbeat refreshes `lastAliveAt`
-                // every `SENTINEL_HEARTBEAT_INTERVAL_MS`, so it dates the death
-                // to within a minute; without it the only bound is the gap
-                // between the session's last log line and this launch, which
-                // runs to hours, leaving "died early, the relaunch was late"
-                // and "hung until the relaunch" equally consistent with the
-                // report while pointing at different bugs.
-                //
-                // The suspend marker, the OS-shutdown marker and the updater's
-                // in-flight verdict are the other three witnesses the
-                // suppression predicate is built from, and a fresh dump routes
-                // their sessions here instead, where that breadcrumb is never
-                // emitted. Carrying only some of them would let their absence
-                // read as "no machine-level death" when it only means "not the
-                // one we happened to log". All four are logged even when null,
-                // for the same reason the version below is.
-                //
-                // Read the install one's PRESENCE, never its value. Reaching
-                // this line with a verdict on file requires a fresh dump, which
-                // is also what makes the event dump-driven, so a
-                // `dirtyShutdown: true` line logs null whether or not an
-                // install was on record. It is evidence on the dump-driven
-                // population and an era marker everywhere else, not a
-                // suppressed-versus-prompted ratio: that reads as this line
-                // thinning while `crash-detection.machine-level-death` thickens,
-                // and the attempt a declined verdict leaves unnamed here is on
-                // the updater's own reconciliation lines from the same boot.
                 lastAliveAt: prevLastAliveAt,
                 suspendedAt: prevSuspendedAt,
                 pendingOsShutdownAt: prevPendingOsShutdownAt,
                 attemptedInstall: installInFlight?.attemptedVersion ?? null,
-                // Logged even when null: this line is what an incident gets
-                // reconstructed from, and "we could not tell" is itself the
-                // finding when the two sources both come up empty.
                 crashedAppVersion,
-                // Which kind of silence that was. A dump predating the
-                // annotation and a parser that broke on a Crashpad layout
-                // change both reach the report as no version at all, and they
-                // send whoever debugs it in opposite directions.
                 crashedAppVersionParseFailed: dumpVersion?.parseFailed ?? false,
-                // Chromium's `ax_mode` for the process that died. The Blink
-                // accessibility `CHECK` crashes are reachable only with a live
-                // accessibility tree, and `OK_FORCE_A11Y` is opt-in, so before
-                // this the precondition could only be guessed at from
-                // circumstance.
-                //
-                // Present as an explicit null when a dump WAS read and did not
-                // name a mode; absent entirely when no dump was read at all
-                // (the sentinel-driven path, where `eventDump` is undefined).
-                // Those are different findings and a single `?? null` would
-                // merge them — which is the whole distinction
-                // `MinidumpAccessibilityModeRead` exists to preserve, and the
-                // convention the sibling site in `ipc/bug-report.ts` follows.
-                //
-                // The app version beside this one CAN collapse to `?? null`,
-                // because it has a second witness in the sentinel; the
-                // accessibility mode has exactly one source, so absence here
-                // would otherwise be unreadable. Null is never "accessibility
-                // was off".
                 ...(dumpAccessibilityMode !== null
                   ? {
                       crashedAccessibilityMode: dumpAccessibilityMode.mode,
@@ -1464,11 +635,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         storeNeedsInit = false;
       }
 
-      // `lastAliveAt` is seeded now, at arm time, rather than left for the first
-      // heartbeat, so a session that dies inside that first interval still gets
-      // a floor rather than none. What that buys the install-kill suppression is
-      // `INSTALL_DEFER_MAX_BOOTS`'s to state, since it takes a stamped handoff
-      // as well as a floor and only that site carries both.
       sentinel = {
         bootId: String(detectedAt.getTime()),
         startedAt: detectedAt.toISOString(),
@@ -1503,9 +669,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         const announcedMs = epochMsOrNull(sentinel.pendingOsShutdownAt);
         if (announcedMs !== null && nowAt.getTime() - announcedMs > OS_SHUTDOWN_MARKER_TTL_MS) {
           delete sentinel.pendingOsShutdownAt;
-          // Cleared with the marker they describe: a cancelled shutdown we
-          // outlived must not leave the next boot a cause for an event that
-          // never happened.
           delete sentinel.osShutdownReasons;
         }
       }
@@ -1516,17 +679,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     noteOsShutdown(reasons?: readonly string[]): void {
       if (sentinel === null || cleanQuitMarked) return;
       sentinel.pendingOsShutdownAt = deps.now().toISOString();
-      // No cause and an empty cause both collapse to an absent field: the next
-      // boot reads them identically ("the OS named no cause"), so writing an
-      // empty array would only add a second spelling of the same state.
-      //
-      // Validated on the way in, mirroring the read path, because these values
-      // cross a native boundary out of Electron's win32 event rather than
-      // coming from our own code — and the parameter type is a compile-time
-      // claim about that, not a runtime guarantee. Getting it wrong is not a
-      // cosmetic failure: an exception here would skip `writeSentinel` below
-      // and lose the marker entirely, defeating the suppression this whole
-      // path exists to provide.
       const usable = Array.isArray(reasons)
         ? reasons.filter((value): value is string => typeof value === 'string' && value !== '')
         : [];
@@ -1559,11 +711,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           event: 'crash-detection.render-process-gone',
           reason: details.reason,
           exitCode: details.exitCode,
-          // Otherwise an absent crash-dump checkbox is unreadable after the
-          // fact: a dump Crashpad had not finished flushing and a dump written
-          // for a descendant process both reach the operator as "no dump".
-          // Carried on this line rather than the boot path's separate
-          // breadcrumb so the counts sit with the crash they explain.
           foreignDumpsIgnored: owned.foreignSkipped,
           unreadableDumpsSkipped: owned.unknownSkipped,
           nonCrashDumpsSkipped: owned.nonCrashSkipped,
@@ -1578,9 +725,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             reason: details.reason,
             ...(details.exitCode !== undefined ? { exitCode: details.exitCode } : {}),
           },
-          // Best-effort: Crashpad may still be flushing the dump when this
-          // signal fires. A dump that lands just after reads as unavailable
-          // here (no checkbox); the boot-time path is the reliable one.
           minidumpAvailable: owned.entry !== null,
         })
       ) {
@@ -1592,9 +736,6 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       if (!CRASH_REASONS.has(details.reason)) return;
       const owned = newestOwnedMinidump();
       const gpu = details.type === GPU_PROCESS_TYPE ? noteGpuCrash() : null;
-      // Logged at warn even when the prompt is held back: this line is the only
-      // record that the GPU died at all, and a suppressed death that left no
-      // breadcrumb is indistinguishable from one that never happened.
       deps.logger.warn(
         {
           event: 'crash-detection.child-process-gone',
@@ -1610,24 +751,9 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         'child process died abnormally',
       );
       if (gpu?.suppressInvite === true) {
-        // Written down rather than simply returned. The prompt is declined
-        // here, but the dump this death wrote outlives the session, and the
-        // next boot's scan has no way to tell it from a crash nobody was ever
-        // told about — so without this record the app swallows the blip on
-        // purpose and then asks about it at the next launch.
         recordDeclinedDeath(GPU_DUMP_PROCESS_TYPE);
         return;
       }
-      // Deliberately not gated on whether the invitation below actually armed.
-      // What this records is class-level — a GPU death of this magnitude has
-      // been escalated, so GPU declines may no longer retire dumps — and that
-      // stays true when `armInvite` declines the slot to an invitation already
-      // pending. It is arguably MORE true then: this death gets no record of
-      // its own once the threshold is crossed, so leaving the earlier ones on
-      // file would let them retire its dump at the next boot and lose the one
-      // GPU failure the threshold exists to escalate. The other direction
-      // costs a prompt the user dismisses, which is the side this file fails
-      // toward everywhere else.
       if (gpu !== null) clearDeclinedDeaths(GPU_DUMP_PROCESS_TYPE);
       if (
         armInvite({
@@ -1657,17 +783,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           store.ackedEventIds.splice(0, store.ackedEventIds.length - MAX_ACKED_EVENT_IDS);
         }
       }
-      // Advancing the baseline marks this crash's minidumps as handled, so the
-      // boot-time scan never re-invites for an event the user already answered.
       store.minidumpBaselineAt = deps.now().toISOString();
-      // A declined death only exists to retire a dump the baseline scan can
-      // still see. Past the baseline that dump is filtered anyway, so keeping
-      // the record would only grow the file and widen the window in which an
-      // unrelated later dump could match a stale moment.
-      // The baseline is read unguarded here and in `freshMinidumpEntries`,
-      // because `parseAckStore` rejects a store whose baseline is not
-      // finite-parseable and the only other writer is the line above. Each
-      // `at` is guarded, because that one comes off the persisted list.
       const baselineMs = Date.parse(store.minidumpBaselineAt);
       store.declinedDeaths = store.declinedDeaths.filter((declined) => {
         const at = epochMsOrNull(declined.at);

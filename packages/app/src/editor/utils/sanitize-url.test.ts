@@ -88,20 +88,14 @@ describe('isDangerousPropName', () => {
   test('accepts regular prop names', () => {
     expect(isDangerousPropName('title')).toBe(false);
     expect(isDangerousPropName('className')).toBe(false);
-    expect(isDangerousPropName('on')).toBe(false); // bare 'on' is not an event handler
+    expect(isDangerousPropName('on')).toBe(false);
     expect(isDangerousPropName('href')).toBe(false);
   });
 
   test('denies on*-prefix names defensively (both React camelCase and HTML lowercase)', () => {
-    // Both React camelCase (onClick) and HTML lowercase (onclick) event
-    // handlers are XSS gadgets. We block every on*-prefixed name ≥ 3 chars
-    // rather than try to enumerate every valid event name; legitimate props
-    // that happen to start with literal "on" (e.g. "one") are rejected as
-    // well. None of the 17 built-in descriptors use such names, and a
-    // descriptor author can rename the prop if they hit this.
-    expect(isDangerousPropName('onclick')).toBe(true); // lowercase HTML form
-    expect(isDangerousPropName('onfoo')).toBe(true); // unknown on* name
-    expect(isDangerousPropName('one')).toBe(true); // false positive, accepted
+    expect(isDangerousPropName('onclick')).toBe(true);
+    expect(isDangerousPropName('onfoo')).toBe(true);
+    expect(isDangerousPropName('one')).toBe(true);
   });
 });
 
@@ -146,7 +140,7 @@ describe('sanitizeComponentProps — URL-scheme filtering', () => {
       title: 'Hello',
     };
     const output = sanitizeComponentProps(input);
-    expect(output).toBe(input); // same reference — no unnecessary re-render
+    expect(output).toBe(input);
   });
 
   test('covers all known URL prop names', () => {
@@ -184,9 +178,7 @@ describe('sanitizeComponentProps — dangerous prop denylist', () => {
   test('drops onClick / onError / onMouseDown', () => {
     const input = {
       onClick: 'alert(1)',
-      onError: () => {
-        /* ignore */
-      },
+      onError: () => {},
       onMouseDown: 'alert(2)',
       title: 'safe',
     };
@@ -211,7 +203,6 @@ describe('sanitizeComponentProps — dangerous prop denylist', () => {
   });
 
   test('accepts props whose names start with "on" but are not event handlers', () => {
-    // 2-char names don't match the on* guard (requires length >= 3).
     const output = sanitizeComponentProps({ on: true, title: 'safe' });
     expect(output.on).toBe(true);
     expect(output.title).toBe('safe');
@@ -273,11 +264,6 @@ describe('sanitizeComponentProps — nested URL traversal', () => {
   });
 
   test('drops dangerous prop names inside nested object (Mi3 review fix)', () => {
-    // The top-level filter dropped `dangerouslySetInnerHTML` / `on*`; the
-    // nested traversal previously passed them through. A future descriptor
-    // that spreads nested attrs onto a React element would have smuggled
-    // them past sanitization. The fix mirrors the top-level filter at
-    // depth.
     const input = {
       items: [
         {
@@ -299,19 +285,12 @@ describe('sanitizeComponentProps — nested URL traversal', () => {
   });
 
   test('sanitizes URL at depth 6 (no recursion cap)', () => {
-    // Earlier revisions capped recursion at depth 4 and fail-opened nested
-    // URLs past that depth — letting `{a:{b:{c:{d:{e:{url:'javascript:…'}}}}}}`
-    // through unchanged. The cap was over-cautious (MDX expression-attrs are
-    // text-parsed and acyclic); recursion is now unbounded and this attack
-    // class is closed.
     const deep = { a: { b: { c: { d: { e: { url: 'javascript:alert(1)' } } } } } };
     const output = sanitizeComponentProps(deep) as typeof deep;
     expect(output.a.b.c.d.e.url).toBe('#');
   });
 
   test('sanitizes URL at depth 8 inside arrays-of-objects', () => {
-    // Deep + array-mixed shape. Verifies the recursion descends through
-    // both object and array branches without depth limit.
     const deep = {
       sections: [
         {

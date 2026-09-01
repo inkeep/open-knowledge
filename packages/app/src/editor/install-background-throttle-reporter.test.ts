@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { installBackgroundThrottleReporter } from './install-background-throttle-reporter';
 
-/** A fake pool: a mutable unsynced flag + a listener registry the test fires. */
 function makeFakePool(initial: boolean) {
   let pending = initial;
   const listeners = new Set<() => void>();
@@ -62,7 +61,7 @@ describe('installBackgroundThrottleReporter', () => {
       report: (s) => reports.push(s),
     });
     pool.setPending(true);
-    pool.setPending(true); // still pending — no new report (keystroke burst)
+    pool.setPending(true);
     pool.setPending(true);
     expect(reports.filter((r) => r.hasPendingWork)).toHaveLength(1);
   });
@@ -91,6 +90,6 @@ describe('installBackgroundThrottleReporter', () => {
     stop();
     expect(pool.listenerCount()).toBe(0);
     pool.setPending(true);
-    expect(reports).toHaveLength(1); // only the install-time seed
+    expect(reports).toHaveLength(1);
   });
 });

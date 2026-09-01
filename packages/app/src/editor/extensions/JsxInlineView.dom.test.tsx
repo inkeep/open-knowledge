@@ -1,15 +1,3 @@
-/**
- * Pins the registered-inline-widget contract:
- *
- *   1. A `jsxInline` node with `componentName` renders the descriptor's
- *      component (not source text); the thin shape still renders source.
- *   2. NodeSelection on the widget opens the PropPanel popover.
- *   3. A PropPanel commit rewrites `props` and stamps `sourceDirty` so the
- *      serializer reconstructs from the edit.
- *
- * Tier: `.dom.test.tsx` (jsdom) — drives a mounted TipTap Editor.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
@@ -18,9 +6,6 @@ import { createPortal } from 'react-dom';
 import { afterEach, describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared';
 
-// React NodeViews only mount under the @tiptap/react host (`EditorContent`),
-// so the harness renders a real host instead of a bare `new Editor()`.
-// Portalled per the H6 cross-doc DOM bleed contract (no-unportaled-editor-content).
 function Host({ content, onEditor }: { content: object; onEditor: (e: Editor) => void }) {
   const editor = useEditor({
     extensions: sharedExtensions.map((extension) =>
@@ -129,10 +114,8 @@ describe('JsxInlineView', () => {
       }),
     );
     await waitFor(() => {
-      // The React NodeView's widget span, not renderHTML's fallback DOM.
       expect(document.querySelector('[data-jsx-inline-widget]')).toBeTruthy();
     });
-    // The rendered widget shows the Callout chrome, not the raw source.
     expect(document.body.textContent).not.toContain('<Callout');
   });
 
@@ -156,7 +139,6 @@ describe('JsxInlineView', () => {
     });
     const editor = getEditor();
     {
-      // The widget sits after 'before ' (pos 1 + 7 text chars).
       editor.commands.setNodeSelection(1 + 'before '.length);
 
       const titleInput = await screen.findByDisplayValue('careful');

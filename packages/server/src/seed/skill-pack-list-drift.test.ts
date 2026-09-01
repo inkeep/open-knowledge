@@ -3,18 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { STARTER_PACK_IDS } from './starter.ts';
 
-// The project skill carries a hand-written starter-pack awareness list (names +
-// short hints) so an agent knows which archetypes exist and can reach for one.
-// Names live in the skill; descriptions stay single-source in the registry.
-// This guard keeps that list honest: adding / renaming / removing a pack fails
-// here until the skill is updated in lock-step.
-//
-// The skill is split into a lean core SKILL.md + on-demand `references/*.md`, and
-// the pack list lives in a reference (`starter-packs.md`). Read the WHOLE
-// bundle (core + every reference) so the guard finds the list wherever it lives.
 const SKILL_DIR = join(import.meta.dir, '../../assets/skills/project');
-// Matches each pack bullet: `- \`<id>\` — <hint>` (em-dash). Verified unique to
-// the pack list — no other bullet in the bundle uses this exact shape.
 const PACK_BULLET_RE = /^- `([a-z][a-z0-9-]+)` —/gm;
 
 function readSkillBundle(): string {

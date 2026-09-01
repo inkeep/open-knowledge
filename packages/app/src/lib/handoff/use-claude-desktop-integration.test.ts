@@ -1,10 +1,3 @@
-/**
- * Tests for the Claude-Desktop integration consolidator hook. Repo convention
- * (matches `useInstalledAgents.test.ts`): no @testing-library/react; behavior
- * is exercised via the pure probe + coordinator primitives, and the React
- * hook gets a surface-only smoke test.
- */
-
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createDefaultFetchSnapshot,
@@ -97,9 +90,6 @@ describe('probeClaudeDesktopIntegration — failure modes', () => {
   });
 
   test('fetchSnapshot returns null (contract-conforming swallow) → falls through to localStorage', async () => {
-    // ProbeDeps contract: fetchSnapshot swallows network/abort errors and
-    // resolves null. The probe trusts that contract — production defaults
-    // honor it via internal catches in createDefaultFetchSnapshot.
     const result = await probeClaudeDesktopIntegration(
       deps({
         fetchSnapshot: async () => null,
@@ -111,10 +101,6 @@ describe('probeClaudeDesktopIntegration — failure modes', () => {
   });
 
   test('detectClaudeDesktop rejects → desktopPresent defaults true (graceful degrade)', async () => {
-    // detect is wrapped in the probe (not a contract obligation on the dep)
-    // because the production `defaultDetectClaudeDesktop` returns a thin
-    // closure that calls the IPC bridge directly — there's no inner catch
-    // to lean on. The outer catch is the canonical degradation point.
     const result = await probeClaudeDesktopIntegration(
       deps({
         detectClaudeDesktop: async () => {
@@ -126,8 +112,6 @@ describe('probeClaudeDesktopIntegration — failure modes', () => {
   });
 
   test('readLocalStorageGuard returns safe default (contract-conforming) → skillInstalled=false', async () => {
-    // ProbeDeps contract: guard swallows access errors and returns the safe
-    // default. Production default does this via internal try/catch.
     const result = await probeClaudeDesktopIntegration(
       deps({
         fetchSnapshot: async () => null,
@@ -160,9 +144,6 @@ describe('runIntegrationProbe — cache + subscriber coalescing', () => {
       };
       expect(a).toHaveBeenCalledTimes(1);
       expect(b).toHaveBeenCalledTimes(1);
-      // Subscribers are no-args (useSyncExternalStore contract). Consumers
-      // call getClaudeDesktopIntegrationSnapshot() (or hit `cache`) after
-      // notification — verifying the cache rather than the call args.
       expect(peekClaudeDesktopIntegrationCache()).toEqual(expected);
     } finally {
       unsubA();
@@ -186,11 +167,6 @@ describe('runIntegrationProbe — cache + subscriber coalescing', () => {
   });
 
   test('sequential probes each run their own fetch — pins the refresh() code path', async () => {
-    // After a probe completes the inflight Promise resets in `finally`. The
-    // next call must run a fresh fetch and replace cache. Without this pin
-    // an accidental removal of the `inflight = null` reset would silently
-    // turn `refresh()` into a no-op — the INSTALL badge would persist
-    // after a successful install until the next window focus event.
     await runIntegrationProbe(deps({ fetchSnapshot: async () => okSnapshot('1.0.0') }));
     expect(peekClaudeDesktopIntegrationCache()?.skillVersion).toBe('1.0.0');
     await runIntegrationProbe(deps({ fetchSnapshot: async () => okSnapshot('2.0.0') }));
@@ -210,13 +186,10 @@ describe('runIntegrationProbe — cache + subscriber coalescing', () => {
 
 describe('createDefaultFetchSnapshot — abort + timeout behavior', () => {
   test('aborts and resolves null when fetch exceeds the configured timeout', async () => {
-    // Custom fetch that respects the AbortSignal — when aborted, throws an
-    // AbortError mid-await. The default fetcher must catch that and return
-    // null rather than propagate.
     const fetchImpl: typeof fetch = (_url, init) => {
       return new Promise<Response>((_resolve, reject) => {
         const signal = init?.signal;
-        if (!signal) return; // pure timeout — never resolves
+        if (!signal) return;
         if (signal.aborted) {
           reject(new DOMException('Aborted', 'AbortError'));
           return;
@@ -264,14 +237,8 @@ describe('createDefaultFetchSnapshot — abort + timeout behavior', () => {
   });
 
   test('returns null when response.json() throws a non-SyntaxError (e.g., aborted body)', async () => {
-    // The catch wraps any throw from response.json(), not just SyntaxError.
-    // Pin the wider catch behavior — a TypeError or similar surfaces the
-    // same safe-default fallback to localStorage.
     const fetchImpl: typeof fetch = async () => {
-      // Custom Response whose .json() throws a TypeError to simulate a body
-      // that resolved with a bad content-encoding header.
       const response = new Response('{}', { status: 200 });
-      // Override .json to throw a non-SyntaxError.
       response.json = async () => {
         throw new TypeError('body stream already consumed');
       };
@@ -282,9 +249,6 @@ describe('createDefaultFetchSnapshot — abort + timeout behavior', () => {
   });
 
   test('returns null when server responds with empty-string version (validator tightening)', async () => {
-    // An empty version field is a string but semantically meaningless.
-    // The validator rejects it so the cache isn't populated with a
-    // bogus "installed at v" state.
     const fetchImpl: typeof fetch = async () =>
       new Response(JSON.stringify({ currentVersion: '' }), {
         status: 200,
@@ -325,9 +289,6 @@ describe('useClaudeDesktopIntegration — module surface', () => {
 });
 
 describe('defaultReadLocalStorageGuard — production scanner', () => {
-  // Module-level swap: the function reads the global `localStorage` directly,
-  // so each test installs an in-memory replacement and restores after. Matches
-  // the `memoryStorage` helper shape used in `cowork-skill-install.test.ts`.
   const realLocalStorage = (globalThis as { localStorage?: Storage }).localStorage;
 
   function installMemoryStorage(entries: Record<string, string>): void {
@@ -427,10 +388,6 @@ describe('defaultReadLocalStorageGuard — production scanner', () => {
   });
 
   test('cross-module prefix contract holds — writer key shape matches reader prefix', async () => {
-    // Pin the cross-module contract: the writer in `cowork-skill-install.ts`
-    // emits keys of shape `ok:skill:cowork:installed:v<version>`. The reader
-    // here must decode the same shape. Drift breaks "is the skill installed?"
-    // silently — the badge persists, Settings shows "Install" forever.
     const { buildCoworkSkillGuardKey } = await import('./cowork-skill-install');
     const key = buildCoworkSkillGuardKey('1.2.3');
     expect(key).toBe('ok:skill:cowork:installed:v1.2.3');
@@ -444,12 +401,6 @@ describe('defaultReadLocalStorageGuard — production scanner', () => {
 });
 
 describe('validateSkillInstallStateSnapshot — shape-drift defense', () => {
-  // The validator gate is the load-bearing defense against server-contract
-  // drift: a future API change that ships `version: 42` (number) would pass
-  // the TS cast but poison the cache with non-string values everywhere
-  // downstream. Each branch needs its own pin so a future Zod migration
-  // can't drop one silently.
-
   test('null body → null (not an object)', () => {
     expect(validateSkillInstallStateSnapshot(null)).toBeNull();
   });

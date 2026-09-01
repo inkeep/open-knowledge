@@ -91,7 +91,6 @@ describe('list + listItem DOM rendering', () => {
     const node = schema.nodes.list.createAndFill({ ordered: false });
     if (!node) throw new Error('createAndFill returned null');
     const spec = schema.nodes.list.spec.toDOM?.(node);
-    // toDOM returns [tag, attrs, 0] — tag should be 'ul' for bullet
     expect(spec).toBeDefined();
     expect(Array.isArray(spec)).toBe(true);
     expect((spec as unknown[])[0]).toBe('ul');
@@ -111,7 +110,6 @@ describe('list + listItem DOM rendering', () => {
     if (!node) throw new Error('createAndFill returned null');
     const spec = schema.nodes.list.spec.toDOM?.(node);
     expect(spec).toBeDefined();
-    // [tag, attrs, 0] — attrs should include start
     const attrs = (spec as unknown[])[1] as Record<string, unknown>;
     expect(attrs.start).toBe(5);
   });
@@ -157,19 +155,12 @@ describe('list fidelity attrs', () => {
 });
 
 describe('list pipeline round-trip (via new MarkdownManager)', () => {
-  // These tests use the new MarkdownManager with the unified list schema
-  // to verify that the handlers + schema work together.
-  // The MarkdownManager from packages/core/src/markdown builds against
-  // whatever extensions are provided — when list.ts is registered, it
-  // uses the unified `list` + `listItem` path.
-
   const mdManager = new MarkdownManager({ extensions });
 
   test('bullet list round-trips', () => {
     const md = '- item one\n- item two\n';
     const json = mdManager.parse(md);
     expect(json.content).toBeDefined();
-    // Should contain a list node
     const listNode = json.content?.find((n: { type: string }) => n.type === 'list');
     expect(listNode).toBeDefined();
     expect(listNode.attrs.ordered).toBe(false);
@@ -189,10 +180,8 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
     const json = mdManager.parse(md);
     const listNode = json.content?.find((n: { type: string }) => n.type === 'list');
     expect(listNode).toBeDefined();
-    // Inner list should be inside the first listItem
     const firstItem = listNode?.content?.[0];
     expect(firstItem?.type).toBe('listItem');
-    // Should have a nested list as second content child
     const hasNestedList = firstItem?.content?.some((n: { type: string }) => n.type === 'list');
     expect(hasNestedList).toBe(true);
   });
@@ -214,11 +203,6 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
     expect(listNode?.attrs.bulletMarker).toBe('+');
   });
 
-  // What the task-item input rules construct, on the way back out. The rules
-  // accept spellings GFM does not (`[]` with nothing between the brackets), so
-  // the write-back is where that widening has to disappear: every unchecked
-  // spelling has to land as the canonical `- [ ] `, and only the uppercase box
-  // survives as itself.
   test.each([
     { attrs: { checked: false, sourceCheckboxChar: null }, marker: '- [ ]' },
     { attrs: { checked: true, sourceCheckboxChar: null }, marker: '- [x]' },
@@ -252,14 +236,6 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
   });
 });
 
-// The bullet rule must not claim a checkbox spelling. What enforces that is the
-// trailing `\s$`: the rule matches only while the marker is followed by one
-// space and nothing else, so `- [` has stopped matching before the bracket is
-// closed. A negative lookahead used to sit in this regex claiming the job and
-// was removed — it could never fire, and an exhaustive comparison over every
-// string of length <= 5 from `-+* \t[]xXa` found no input where it changed the
-// verdict. These assertions are pointed at the anchor so they can fail if it
-// ever loosens.
 describe('bullet rule vs the checkbox spellings', () => {
   test('bullet rule does NOT match task list patterns', () => {
     expect(BULLET_INPUT_RE.test('- [ ] ')).toBe(false);
@@ -270,8 +246,6 @@ describe('bullet rule vs the checkbox spellings', () => {
   });
 
   test('the trailing anchor is what rejects them', () => {
-    // Nothing may follow the single space. That is the whole mechanism, so
-    // these are the cases that would break first if the anchor loosened.
     expect(BULLET_INPUT_RE.test('- ')).toBe(true);
     expect(BULLET_INPUT_RE.test('- [')).toBe(false);
     expect(BULLET_INPUT_RE.test('-  ')).toBe(false);
@@ -287,7 +261,6 @@ describe('bullet rule vs the checkbox spellings', () => {
   test('bullet rule matches with leading whitespace (nested)', () => {
     expect(BULLET_INPUT_RE.test('  - ')).toBe(true);
     expect(BULLET_INPUT_RE.test('    * ')).toBe(true);
-    // And rejects task patterns even when nested
     expect(BULLET_INPUT_RE.test('  - [ ] ')).toBe(false);
   });
 
@@ -316,7 +289,6 @@ describe('bullet rule vs the checkbox spellings', () => {
   });
 
   test('ordered rule does not conflict with bullet or task rules', () => {
-    // All three rules are mutually exclusive for their shapes
     expect(BULLET_INPUT_RE.test('1. ')).toBe(false);
     expect(TASK_MARKER_INPUT_RE.test('1. ')).toBe(false);
     expect(ORDERED_INPUT_RE.test('1. ')).toBe(true);
@@ -345,11 +317,6 @@ describe('bullet rule vs the checkbox spellings', () => {
   });
 });
 
-// The bare checkbox shorthand: `[] `, `[ ] `, `[x] `, `[X] ` with no list
-// marker. This is the spelling a typing user actually produces — the bullet
-// rule claims `- ` at the space, so by the time the `[` is typed the marker is
-// already a listItem and TASK_MARKER_INPUT_RE has no prefix left to match. Before this
-// rule existed there was NO keystroke sequence that produced a checkbox.
 describe('bare task list input rule', () => {
   test('matches every accepted checkbox spelling', () => {
     expect('[] '.match(TASK_BARE_INPUT_RE)?.[1]).toBe('');
@@ -375,26 +342,19 @@ describe('bare task list input rule', () => {
     expect(TASK_BARE_INPUT_RE.test('* [x] ')).toBe(false);
   });
 
-  // Pinned against TipTap's own TaskItem `inputRegex`, which this rule is
-  // adapted from. Both departures are deliberate; if someone later "aligns
-  // with upstream" they should have to delete an assertion that says why.
   test('departs from upstream TipTap only where intended', () => {
     const TIPTAP_TASK_ITEM_RE = /^\s*(\[([( |x])?\])\s$/;
 
-    // Agreement on every spelling that matters.
     for (const shared of ['[] ', '[ ] ', '[x] ']) {
       expect(TASK_BARE_INPUT_RE.test(shared)).toBe(true);
       expect(TIPTAP_TASK_ITEM_RE.test(shared)).toBe(true);
     }
 
-    // Departure 1: upstream's `[( |x]` class admits `(` and `|` literally.
     expect(TIPTAP_TASK_ITEM_RE.test('[(] ')).toBe(true);
     expect(TIPTAP_TASK_ITEM_RE.test('[|] ')).toBe(true);
     expect(TASK_BARE_INPUT_RE.test('[(] ')).toBe(false);
     expect(TASK_BARE_INPUT_RE.test('[|] ')).toBe(false);
 
-    // Departure 2: upstream cannot produce the uppercase box that
-    // `sourceCheckboxChar` round-trips.
     expect(TIPTAP_TASK_ITEM_RE.test('[X] ')).toBe(false);
     expect(TASK_BARE_INPUT_RE.test('[X] ')).toBe(true);
   });

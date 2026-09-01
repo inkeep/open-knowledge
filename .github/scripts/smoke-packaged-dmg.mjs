@@ -1,28 +1,4 @@
 #!/usr/bin/env node
-/**
- * Packaged-DMG smoke driver — the shared engine behind both release gates.
- *
- * Mounts a `.dmg`, copies the `.app` out, runs the packaged Playwright subset
- * against the copy, and reports a TRI-STATE verdict:
- *
- *   pass  — the subset ran and every test passed.
- *   fail  — the subset ran and the app genuinely misbehaved.
- *   error — infrastructure: the DMG would not mount, the runner would not
- *           start, the report was unreadable, or nothing actually executed.
- *
- * The three-way split is the whole design. Collapsing `error` into `fail` lets
- * a runner outage masquerade as a product verdict; collapsing it into a hard
- * job failure would block the release path the selection gate is required
- * never to block. Callers decide what each state means for them; the driver
- * only decides which one is true.
- *
- * The zero-executed rule is the adversarial core: a DMG so broken that Electron
- * never launches produces an all-skipped run, and an all-skipped run reads
- * green to anyone counting failures. That is exactly the silent-failure shape
- * these gates exist to close, so zero executed is `error`, never `pass`.
- *
- * Usage: node .github/scripts/smoke-packaged-dmg.mjs <path-to.dmg>
- */
 
 import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -48,10 +24,6 @@ const DESKTOP_DIR = resolve(SCRIPT_DIR, '..', '..', 'packages', 'desktop');
 const PACKAGED_CONFIG = 'playwright.packaged.config.ts';
 export const PACKAGED_REPORT = join('test-results', 'desktop-smoke-packaged-results.json');
 
-/**
- * Pure verdict function. `report` is the parsed Playwright JSON report, or null
- * when it could not be read or parsed.
- */
 export function classifyRun({ runExitCode, report, runnerError }) {
   if (runnerError) {
     return {
@@ -97,7 +69,6 @@ export function classifyRun({ runExitCode, report, runnerError }) {
   };
 }
 
-/** GitHub annotation for a verdict. `fail` and `error` must read differently. */
 export function annotationFor(verdict, reason, dmgPath) {
   if (verdict === VERDICT.pass) {
     return `::notice::DMG smoke PASSED for ${dmgPath} — ${reason}`;
@@ -108,17 +79,10 @@ export function annotationFor(verdict, reason, dmgPath) {
   return `::warning::DMG smoke ERRORED (infrastructure, not an app verdict) for ${dmgPath} — ${reason}`;
 }
 
-/**
- * Publish the verdict. Writes `verdict=` / `reason=` to the step-output file
- * when GITHUB_OUTPUT is set; otherwise echoes the same pair to stdout so a
- * local run is still readable.
- */
 export function publishVerdict({ verdict, reason }, deps = {}) {
   const env = deps.env ?? process.env;
   const appendFile = deps.appendFileSync ?? appendFileSync;
   const write = deps.writeStream ?? ((s) => process.stdout.write(s));
-  // Newlines would corrupt the `key=value` step-output format, and every reason
-  // this driver produces is a single sentence.
   const flat = String(reason).replace(/\r?\n/g, ' ');
   if (env.GITHUB_OUTPUT) {
     appendFile(env.GITHUB_OUTPUT, `verdict=${verdict}\nreason=${flat}\n`);
@@ -149,21 +113,11 @@ async function defaultReadReport(deps = {}) {
   try {
     return JSON.parse(await readFile(join(DESKTOP_DIR, PACKAGED_REPORT), 'utf-8'));
   } catch (err) {
-    // Non-fatal — `classifyRun` maps null to an `error` verdict. But four very
-    // different causes collapse into that one generic reason (ENOENT: the
-    // runner never launched; SyntaxError: the report was truncated; EPERM:
-    // permissions; shape mismatch), and each wants a different response. The
-    // responder reading a RELEASE BLOCKED page sees only the generic reason,
-    // so this line is the only place the distinction survives.
     warn(`could not read ${PACKAGED_REPORT}: ${err?.message ?? String(err)}`);
     return null;
   }
 }
 
-/**
- * Mount, run, classify. Returns `{verdict, reason}`; never throws for a
- * mount/run failure — those become `error` verdicts.
- */
 export async function smokePackagedDmg(dmgPath, deps = {}) {
   const withMount = deps.withMountedDmg ?? withMountedDmg;
   const runPlaywright = deps.runPlaywright ?? ((appPath) => defaultRunPlaywright(appPath, deps));
@@ -180,9 +134,6 @@ export async function smokePackagedDmg(dmgPath, deps = {}) {
       deps,
     );
   } catch (err) {
-    // The mount helper's failures (attach refused, no .app inside) are
-    // infrastructure by construction — the DMG never got far enough to say
-    // anything about the app.
     return {
       verdict: VERDICT.error,
       reason: `could not prepare the DMG for smoking: ${err?.message ?? String(err)}`,
@@ -203,8 +154,6 @@ export async function runDriver(argv, deps = {}) {
   const result = await smokePackagedDmg(dmgPath, deps);
   log(annotationFor(result.verdict, result.reason, dmgPath));
   publishVerdict(result, deps);
-  // Fails closed: a workflow step that forgets to branch on the verdict still
-  // stops the job on fail or error.
   return EXIT_CODES[result.verdict];
 }
 

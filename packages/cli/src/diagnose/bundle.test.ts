@@ -1,11 +1,3 @@
-/**
- * Unit tests for the bundle collector library.
- *
- * Tests use real disk fixtures (no fs mocks) since the module's job is
- * filesystem-shaped. Network + git + os-level deps are injected via
- * `CollectBundleDeps` so tests stay deterministic and hermetic.
- */
-
 import { randomUUID } from 'node:crypto';
 import {
   existsSync,
@@ -27,10 +19,6 @@ import {
   collectBundle,
   writeBundle,
 } from './bundle.ts';
-
-// ---------------------------------------------------------------------------
-// Fixture helpers
-// ---------------------------------------------------------------------------
 
 const tmpDirs: string[] = [];
 
@@ -64,9 +52,6 @@ function makeDeterministicDeps(over: Partial<CollectBundleDeps> = {}): CollectBu
     now: () => new Date('2026-05-28T14:22:01.000Z'),
     okVersion: () => '0.7.99',
     readDesktopEnv: () => null,
-    // Pinned like every sibling seam here: the real reader resolves against the
-    // running machine's user config and `LANG`, which would make these
-    // assertions read differently on a developer box than in CI.
     readLanguage: () => DETERMINISTIC_LANGUAGE,
     readRuntime: () => ({
       nodeVersion: 'v22.18.0',
@@ -83,10 +68,6 @@ function writeAt(contentDir: string, relPath: string, body: string): void {
   mkdirSync(dirname(full), { recursive: true });
   writeFileSync(full, body);
 }
-
-// ---------------------------------------------------------------------------
-// Tracer bullet — manifest shape on a fresh content-dir
-// ---------------------------------------------------------------------------
 
 describe('collectBundle — smoke', () => {
   test('produces a v2 manifest on a fresh content-dir with no server', async () => {
@@ -108,7 +89,6 @@ describe('collectBundle — smoke', () => {
     expect(collected.manifest.serverStatus).toBe('not-running');
     expect(collected.manifest.redaction).toEqual({ applied: false });
 
-    // state/runtime.json + state/server-status.txt always staged.
     const paths = collected.manifest.files.map((f) => f.path);
     expect(paths).toContain('state/runtime.json');
     expect(paths).toContain('state/server-status.txt');
@@ -117,10 +97,6 @@ describe('collectBundle — smoke', () => {
     expect(existsSync(collected.stagingDir)).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// File inventory + line counts
-// ---------------------------------------------------------------------------
 
 describe('collectBundle — file inventory', () => {
   test('lists staged spans-current.jsonl with correct bytes + lines', async () => {
@@ -138,11 +114,6 @@ describe('collectBundle — file inventory', () => {
   });
 
   test('harvests sink + lock from projectDir, not the content sub-folder', async () => {
-    // content.dir: docs → contentDir is a sub-folder of the project root.
-    // The server writes per-machine runtime state (spans, logs, server.lock)
-    // under `<projectDir>/.ok/local/`, never inside the content sub-folder.
-    // The bundle must read from projectDir; a decoy planted under contentDir
-    // must be ignored.
     const projectDir = makeTmpDir();
     const contentDir = join(projectDir, 'docs');
     mkdirSync(contentDir, { recursive: true });
@@ -151,7 +122,6 @@ describe('collectBundle — file inventory', () => {
     writeAt(projectDir, '.ok/local/telemetry/spans-current.jsonl', realSpans);
     writeAt(projectDir, '.ok/local/logs/server-current.jsonl', '{"level":30,"msg":"x"}\n');
     writeAt(projectDir, '.ok/local/server.lock', JSON.stringify({ port: 6111 }));
-    // Decoy in the wrong place — must NOT be harvested.
     writeAt(contentDir, '.ok/local/telemetry/spans-current.jsonl', '{"resourceSpans":["DECOY"]}\n');
 
     const collected = await collectBundle({
@@ -174,11 +144,6 @@ describe('collectBundle — file inventory', () => {
   });
 
   test('defaults to contentDir as the project root when projectDir is omitted', async () => {
-    // content.dir: '.' — projectDir and contentDir coincide. With projectDir
-    // omitted, the `opts.projectDir ?? opts.contentDir` fallback treats
-    // contentDir as the project root and harvests its `.ok/local/` artifacts.
-    // Names the fallback intent so a dropped/inverted `??` fails loudly here
-    // instead of coincidentally passing.
     const contentDir = makeTmpDir();
     writeAt(contentDir, '.ok/local/telemetry/spans-current.jsonl', '{"resourceSpans":[]}\n');
     writeAt(contentDir, '.ok/local/server.lock', JSON.stringify({ port: 6222 }));
@@ -206,7 +171,6 @@ describe('collectBundle — file inventory', () => {
 
   test('omits missing telemetry/log files silently', async () => {
     const contentDir = makeTmpDir();
-    // No .ok/local/telemetry or .ok/local/logs files at all.
 
     const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
     const paths = collected.manifest.files.map((f) => f.path);
@@ -234,7 +198,6 @@ describe('collectBundle — file inventory', () => {
 
   test('partial trailing line is not counted (mid-write resilience)', async () => {
     const contentDir = makeTmpDir();
-    // Two complete lines + one unterminated trailing fragment (simulates SIGKILL).
     writeAt(
       contentDir,
       '.ok/local/telemetry/spans-current.jsonl',
@@ -246,10 +209,6 @@ describe('collectBundle — file inventory', () => {
     collected.cleanup();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Content-dir hash
-// ---------------------------------------------------------------------------
 
 describe('collectBundle — contentDir.pathSha256', () => {
   test('is 64-hex SHA-256 of the absolute path', async () => {
@@ -264,10 +223,6 @@ describe('collectBundle — contentDir.pathSha256', () => {
     collected.cleanup();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Server-status + agent-presence
-// ---------------------------------------------------------------------------
 
 describe('collectBundle — server status', () => {
   test('lock present + agent-presence 2xx → running, agent-presence.json staged', async () => {
@@ -309,7 +264,6 @@ describe('collectBundle — server status', () => {
     expect(collected.manifest.serverStatus).toBe('not-running');
     expect(existsSync(join(collected.stagingDir, 'state', 'server.lock'))).toBe(true);
     expect(existsSync(join(collected.stagingDir, 'state', 'agent-presence.json'))).toBe(false);
-    // server-status.txt should carry the reason for the recipient.
     const status = readFileSync(join(collected.stagingDir, 'state', 'server-status.txt'), 'utf-8');
     expect(status).toContain('not-running');
     expect(status).toContain('4711');
@@ -397,7 +351,6 @@ describe('collectBundle — server status', () => {
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[0] ?? '')).toEqual(decisions[0]);
     expect(JSON.parse(lines[1] ?? '')).toEqual(decisions[1]);
-    // JSONL files are line-counted in the manifest inventory.
     const entry = collected.manifest.files.find((f) => f.path === 'state/watcher-recent.jsonl');
     expect(entry?.lines).toBe(2);
     collected.cleanup();
@@ -477,10 +430,6 @@ describe('collectBundle — server status', () => {
     collected.cleanup();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Shadow head, runtime block, desktop block
-// ---------------------------------------------------------------------------
 
 describe('collectBundle — state files', () => {
   test('shadow-head.txt is written when readShadowHead returns content', async () => {
@@ -613,10 +562,6 @@ describe('collectBundle — state files', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// process/ directory
-// ---------------------------------------------------------------------------
-
 describe('collectBundle — process/ subdir', () => {
   test('copies processDir contents under process/ when supplied', async () => {
     const contentDir = makeTmpDir();
@@ -647,10 +592,6 @@ describe('collectBundle — process/ subdir', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Summary fields
-// ---------------------------------------------------------------------------
-
 describe('collectBundle — summary', () => {
   test('docNameCount counts "doc.name" occurrences across telemetry JSONLs', async () => {
     const contentDir = makeTmpDir();
@@ -671,10 +612,6 @@ describe('collectBundle — summary', () => {
   });
 
   test('docNameCount also counts the renderer-log spelling, in the log files', async () => {
-    // The number this feeds is printed to a user deciding whether to share the
-    // bundle. Frontend spans are opt-in and off by default, so a scan that saw
-    // only the span attribute in only `telemetry/` reported zero over a zip
-    // carrying a document path per activation.
     const contentDir = makeTmpDir();
     writeAt(
       contentDir,
@@ -688,9 +625,6 @@ describe('collectBundle — summary', () => {
   });
 
   test('docNameCount sees the `.log` sink, which is the only one the desktop build writes', async () => {
-    // Everything staged under `logs/` is `.log`, and on desktop the web
-    // forwarder is switched off — so `desktop.<date>.log` carries every
-    // breadcrumb and a `.jsonl`-only scan reports zero over all of them.
     const contentDir = makeTmpDir();
     const userLogsDir = makeTmpDir();
     writeAt(
@@ -710,7 +644,6 @@ describe('collectBundle — summary', () => {
 
   test('contentDirVisible flips true when path appears in any staged file', async () => {
     const contentDir = makeTmpDir();
-    // A log line referencing the content-dir path verbatim.
     writeAt(
       contentDir,
       '.ok/local/logs/server-current.jsonl',
@@ -730,10 +663,6 @@ describe('collectBundle — summary', () => {
     collected.cleanup();
   });
 });
-
-// ---------------------------------------------------------------------------
-// loss-capture ring staging (full/Detailed tier)
-// ---------------------------------------------------------------------------
 
 describe('collectBundle — loss-capture ring', () => {
   test('stages the content-loss ring under state/ with its raw doc name intact', async () => {
@@ -761,8 +690,6 @@ describe('collectBundle — loss-capture ring', () => {
     expect(paths).toContain('state/loss-current.jsonl');
     expect(paths).toContain('state/loss-prev.jsonl');
 
-    // The ring's doc name ships raw — only the content-dir path is masked, and
-    // the ring carries no content-dir path.
     const staged = readFileSync(join(collected.stagingDir, 'state', 'loss-current.jsonl'), 'utf-8');
     expect(staged).toContain('meetings/plan');
     collected.cleanup();
@@ -778,13 +705,7 @@ describe('collectBundle — loss-capture ring', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// writeBundle
-// ---------------------------------------------------------------------------
-
 async function readZipEntries(zipPath: string): Promise<string[]> {
-  // yazl writes; the standard parser pair is yauzl. Avoid adding it as a
-  // dep for tests — use `unzip -l` (BSD/Linux ships it) instead.
   const { execSync } = await import('node:child_process');
   const out = execSync(`unzip -Z1 ${JSON.stringify(zipPath)}`, { encoding: 'utf-8' });
   return out
@@ -828,7 +749,6 @@ describe('writeBundle', () => {
     const outputPath = join(outDir, 'bundle.zip');
     await writeBundle({ collected, outputPath });
 
-    // Extract manifest via unzip and parse.
     const { execSync } = await import('node:child_process');
     const extractDir = makeTmpDir('ok-bundle-extract-');
     execSync(
@@ -842,8 +762,6 @@ describe('writeBundle', () => {
   });
 
   test('yazl ZipFile end-state — explicit smoke that the underlying lib is wired', async () => {
-    // Just a sanity check the import + minimal use of yazl works, before we
-    // depend on it for the real path.
     const outDir = makeTmpDir('ok-bundle-yazl-');
     const outputPath = join(outDir, 'tiny.zip');
     const zip = new ZipFile();
@@ -861,16 +779,8 @@ describe('writeBundle', () => {
 
 describe('collectBundle — manifest.telemetry.localSink cascade', () => {
   test("project's explicit `enabled: false` survives schema defaults in an empty project-local config", async () => {
-    // Mirrors the resolver fix on the server side. `readConfigSafely` applies
-    // schema defaults, so a naive cascade reads project-local's defaulted
-    // `enabled: true` and shadows the project's explicit `false` — producing
-    // a manifest that disagrees with the actual server state. The collector
-    // must use the same raw-YAML cascade as the resolver so recipients of a
-    // bug-report bundle see the truth: the project committed `false`, and
-    // empty project-local does not silently re-enable it.
     const contentDir = makeTmpDir();
     writeAt(contentDir, '.ok/config.yml', 'telemetry:\n  localSink:\n    enabled: false\n');
-    // Empty project-local config.
     writeAt(contentDir, '.ok/local/config.yml', '');
 
     const collected = await collectBundle({
@@ -915,8 +825,6 @@ describe('collectBundle — manifest.telemetry.localSink cascade', () => {
 
   test('absent both files → manifest reports schema defaults', async () => {
     const contentDir = makeTmpDir();
-    // No config files at all — both raw-YAML reads return {}; cascade falls
-    // through to the schema default constants.
     const collected = await collectBundle({
       contentDir,
       deps: makeDeterministicDeps(),
@@ -928,16 +836,10 @@ describe('collectBundle — manifest.telemetry.localSink cascade', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Staging cleanup on a mid-staging throw
-// ---------------------------------------------------------------------------
-
 describe('collectBundle — staging cleanup on throw', () => {
   test('a mid-staging throw removes the staging dir instead of stranding staged copies', async () => {
     const marker = `staging-leak-${randomUUID()}`;
     const contentDir = makeTmpDir();
-    // Staged before `readRuntime` runs, so by the time the injected failure
-    // fires, this bundle's bytes already sit in the tmpdir staging area.
     writeAt(contentDir, '.ok/local/logs/server-current.jsonl', `{"msg":"${marker}"}\n`);
 
     await expect(
@@ -951,17 +853,12 @@ describe('collectBundle — staging cleanup on throw', () => {
       }),
     ).rejects.toThrow('runtime probe failed');
 
-    // Content-marker scan instead of a directory diff: concurrently running
-    // suites also create `ok-bundle-*` staging dirs, but only this bundle can
-    // contain the marker.
     const candidates = readdirSync(tmpdir()).filter((d) => d.startsWith('ok-bundle-'));
     for (const dir of candidates) {
       let staged = '';
       try {
         staged = readFileSync(join(tmpdir(), dir, 'logs', 'server-current.jsonl'), 'utf-8');
-      } catch {
-        // Another suite's staging dir (different layout, or already cleaned).
-      }
+      } catch {}
       expect(staged).not.toContain(marker);
     }
   });
@@ -969,11 +866,6 @@ describe('collectBundle — staging cleanup on throw', () => {
 
 describe('checkpoint-ref staging format (privacy enforcement)', () => {
   test('stages only the content-free commit subject, never the body', () => {
-    // The REAL privacy enforcement for checkpoint bundle staging: the loss
-    // kinds' commit BODY carries verbatim lost-content substrings, so the
-    // for-each-ref format must expose only the content-free subject. This locks
-    // that enforcement point — the checkpoint-kind registry's bundleExposure
-    // attribute is advisory and is not consulted by the staging path.
     expect(CHECKPOINT_REF_GIT_FORMAT).toContain('%(contents:subject)');
     for (const bodyToken of ['%(contents:body)', '%(contents)', '%(body)', '%(trailers)']) {
       expect(CHECKPOINT_REF_GIT_FORMAT).not.toContain(bodyToken);

@@ -133,7 +133,9 @@
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
         "../../biome.jsonc",
-        "../../biome-plugins/**"
+        "../../biome-plugins/**",
+        "../../lint-plugins/**",
+        "../../oxlint.config.ts"
       ]
     },
     "test:integration:shard1": {
@@ -153,7 +155,9 @@
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
         "../../biome.jsonc",
-        "../../biome-plugins/**"
+        "../../biome-plugins/**",
+        "../../lint-plugins/**",
+        "../../oxlint.config.ts"
       ]
     },
     "test:integration:shard2": {
@@ -173,7 +177,9 @@
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
         "../../biome.jsonc",
-        "../../biome-plugins/**"
+        "../../biome-plugins/**",
+        "../../lint-plugins/**",
+        "../../oxlint.config.ts"
       ]
     },
     "test:integration:shard3": {
@@ -193,7 +199,9 @@
         "../server/src/**/*.ts",
         "../core/src/**/*.ts",
         "../../biome.jsonc",
-        "../../biome-plugins/**"
+        "../../biome-plugins/**",
+        "../../lint-plugins/**",
+        "../../oxlint.config.ts"
       ]
     },
     "test:conversion": {

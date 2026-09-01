@@ -1,18 +1,3 @@
-/**
- * Cross-file contract test for the uninstall window's theme stamp.
- *
- * Main resolves the theme and puts it in the entry query
- * (`resolveUninstallEntryTarget`); `packages/app/uninstall.html`'s inline head
- * script reads it back and adds the `dark` class. Nothing in the type system
- * links the two, so this executes the SHIPPED script against a query string
- * built by the SHIPPED producer — renaming the key on either side fails here.
- *
- * The script runs before any bundle loads and cannot be imported, so it is
- * extracted from the entry HTML and evaluated against a minimal DOM stub. The
- * end-to-end version of this assertion (real Electron, real `file://` window)
- * lives in `tests/smoke/uninstall-window-chrome.e2e.ts`.
- */
-
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,10 +17,6 @@ function inlineEntryScripts(): string[] {
   return [...html.matchAll(INLINE_SCRIPT_RE)].map((match) => match[1] ?? '');
 }
 
-/**
- * Run every inline entry script against a stub document, returning the classes
- * they left on `<html>`. `search` is the `?…` the window was loaded with.
- */
 function runEntryScripts(search: string): Set<string> {
   const classes = new Set<string>();
   const sandbox = {
@@ -55,7 +36,6 @@ function runEntryScripts(search: string): Set<string> {
   return classes;
 }
 
-/** The `?…` main would load the window with for a given resolved theme. */
 function entrySearchFor(theme: 'light' | 'dark'): string {
   const target = resolveUninstallEntryTarget(
     {
@@ -72,8 +52,6 @@ function entrySearchFor(theme: 'light' | 'dark'): string {
 
 describe('uninstall.html theme stamp', () => {
   it('has an inline script to run', () => {
-    // Guards the extraction itself: an empty match set would make every
-    // assertion below vacuously pass.
     expect(inlineEntryScripts().length).toBeGreaterThan(0);
   });
 
@@ -86,8 +64,6 @@ describe('uninstall.html theme stamp', () => {
   });
 
   it('stays light with no query rather than reading the OS preference', () => {
-    // A renderer-side `prefers-color-scheme` fallback would show the OS theme
-    // when the user has overridden it in-app — main is the only authority.
     expect(runEntryScripts('').has('dark')).toBe(false);
   });
 

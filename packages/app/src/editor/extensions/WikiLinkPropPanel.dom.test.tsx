@@ -1,17 +1,3 @@
-/**
- * First DOM test for WikiLinkPropPanel. Covers the US doc-card wiring: a
- * resolved wiki target renders the internal doc card (title / folder / excerpt)
- * additively above the pill, an unavailable field is omitted (progressive), and
- * an unresolved target keeps the create-page state with no card.
- *
- * The Radix-Popover-based `InteractionPropPanel` is mocked to a passthrough so
- * the panel body renders inline (floating-ui / portal positioning is not under
- * test here). `usePageList` is mocked to a single resolved page; the doc-card
- * reader is mocked to echo whatever docName the panel decides to resolve, so
- * the test exercises the panel's own resolved-vs-create gating rather than a
- * stubbed verdict. Lingui macros resolve to the English-passthrough shim.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
@@ -21,9 +7,6 @@ import type { InternalDocPreview } from '../link-preview/internal-doc-preview.ts
 
 const RESOLVED_DOC = 'guides/install';
 
-// The reader the panel decides to call: return a preview only when the panel
-// resolved a docName (its own gating), null otherwise — so the create branch
-// genuinely drives "no card".
 const previewHarness: { value: InternalDocPreview } = {
   value: {
     docName: RESOLVED_DOC,
@@ -31,8 +14,6 @@ const previewHarness: { value: InternalDocPreview } = {
     folderPath: 'guides',
     lastEditedAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
     excerpt: 'Install the CLI and run ok start to boot the server.',
-    // tags / backlinkCount intentionally undefined — the "unavailable field
-    // omitted" assertion.
   },
 };
 
@@ -47,9 +28,6 @@ vi.doMock('../../components/InteractionPropPanel', () => ({
   ),
 }));
 
-// The create-missing-page boundary. The real implementation writes a file;
-// the panel's contract is what it does with the name it gets back, so the mock
-// hands one straight to `onCreated`.
 let createdDocName = 'created/doc';
 vi.doMock('../../lib/create-page', () => ({
   createPageFromSeedAndUpdate: async (
@@ -81,11 +59,6 @@ vi.doMock('../../components/PageListContext', () => ({
 
 afterEach(cleanup);
 
-/**
- * Minimal editor + getPos stub. The panel reads node attrs and `editor.view.dom`
- * at render; `posToDOMRect` / state mutations only run in the mocked panel's
- * callbacks, which this test never fires.
- */
 function makeEditor(target: string): Editor {
   const node = { attrs: { target, alias: null, anchor: null }, nodeSize: 1 };
   return {
@@ -126,7 +99,6 @@ describe('WikiLinkPropPanel — resolved doc renders the doc card', () => {
     expect(
       container.querySelector('[data-slot="internal-doc-preview-excerpt"]')?.textContent,
     ).toContain('Install the CLI');
-    // backlinkCount + tags are undefined → those slots are omitted (progressive).
     expect(container.querySelector('[data-slot="internal-doc-preview-tags"]')).toBeNull();
     const meta = container.querySelector('[data-slot="internal-doc-preview-meta"]');
     expect(meta?.textContent ?? '').not.toContain('backlink');
@@ -145,10 +117,6 @@ describe('WikiLinkPropPanel — unresolved target keeps create-page, no card', (
 
 describe('WikiLinkPropPanel — creating the missing page navigates to it', () => {
   test('a created name carrying a `#` opens that doc, not a truncation of it', async () => {
-    // The writer here is the one the source lint rule cannot see: the rule
-    // catches a re-inlined `#/` prefix, not a builder called on the wrong value
-    // or an assignment dropped altogether. Asserted through the reader, so the
-    // test states the contract the user cares about.
     createdDocName = 'ghost/# 2 - Tokens';
     window.location.hash = '#/somewhere-else';
     const { container } = await renderPanel('ghost/# 2 - Tokens');

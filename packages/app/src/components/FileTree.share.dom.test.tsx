@@ -11,9 +11,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { OK_SIDEBAR_DRAG_MIME, parseSidebarDragPayload } from '@/lib/sidebar-drag';
 import type { FileEntry } from './file-tree-utils';
 
-// Controls the mocked git-sync hook's hasRemote signal per test.
 let hasRemote = true;
-// Captures the input runShareAction receives.
 let lastShareInput: unknown;
 const runShareActionMock = vi.fn(async (input: unknown) => {
   lastShareInput = input;
@@ -196,7 +194,6 @@ function makeFetchMock() {
         symlinkResolved: true,
       });
     }
-    // Share goes through the mocked runShareAction; sync-status is mocked too.
     return jsonResponse({});
   });
 }
@@ -492,7 +489,6 @@ describe('FileTree context-menu Share action', () => {
     menuItem = { kind: 'file', path: 'images/logo.png' };
     renderFileTree();
 
-    // Wait for the menu to render (Reveal/Copy path are always present for files).
     await screen.findByText('Copy path');
     expect(screen.queryByTestId('file-tree-menu-share')).toBeNull();
   });

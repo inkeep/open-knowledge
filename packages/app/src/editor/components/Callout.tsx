@@ -57,15 +57,6 @@ import {
 } from 'lucide-react';
 import { resolveLucideIcon } from './lucide-icon-allowlist.ts';
 
-/**
- * Default lucide icon per first-class type. `icon` prop overrides via
- * `ICON_OVERRIDES` below. The 5 GFM types keep their original icons
- * (Info / Lightbulb / MessageSquareWarning / AlertTriangle / AlertOctagon)
- * so existing renders are unchanged; the 10 Obsidian-parity additions
- * each get a distinct icon that maps to common Obsidian-vault visual
- * conventions (Bug for bug, FlaskConical for example, Quote for quote,
- * etc.).
- */
 const TYPE_ICON: Record<CalloutType, LucideIcon> = {
   note: Info,
   tip: Lightbulb,
@@ -73,9 +64,6 @@ const TYPE_ICON: Record<CalloutType, LucideIcon> = {
   warning: AlertTriangle,
   caution: AlertOctagon,
   abstract: ClipboardList,
-  // `info` uses BookOpen (not Info) so it's visually distinguishable
-  // from `note` — the two types are semantically separate now and
-  // sharing an icon would degrade discoverability.
   info: BookOpen,
   todo: ListTodo,
   success: CircleCheck,
@@ -107,9 +95,7 @@ type CalloutType =
 interface CalloutProps {
   type?: CalloutType | string;
   title?: string;
-  /** Namespaced lucide identifier (e.g. `lucide:Lightbulb`). */
   icon?: string;
-  /** Hex accent override (e.g. `#F05032`). Sanitized at JsxComponentView boundary. */
   color?: string;
   collapsible?: boolean;
   defaultOpen?: boolean;
@@ -117,24 +103,9 @@ interface CalloutProps {
 }
 
 function resolveIcon(icon: string | undefined, type: CalloutType): LucideIcon {
-  // Allowlist resolution + prototype-pollution guard live in
-  // `lucide-icon-allowlist.ts`. Unresolvable identifiers fall back to the
-  // type's default icon so misconfigured `icon` props still render.
   return resolveLucideIcon(icon) ?? TYPE_ICON[type];
 }
 
-/**
- * Renderer-side type normalizer. Used as a defensive narrowing pass when
- * the descriptor's `type` prop arrives from a path that bypasses the
- * mdast → PM normalization (e.g. PM `setNodeMarkup` with an arbitrary
- * string, an MDX-authored `<Callout type="weird">`). Mirrors the parser's
- * fallback to `note` for unrecognized tokens.
- *
- * The 15-name `Set` membership check is kept explicit (vs reading from
- * `TYPE_ICON`'s key list) so `type` narrowing and icon lookup stay
- * decoupled — adding an icon override doesn't accidentally widen the
- * accepted enum.
- */
 const ACCEPTED_TYPES: ReadonlySet<string> = new Set<CalloutType>([
   'note',
   'tip',
@@ -158,16 +129,6 @@ function normalizeType(raw: CalloutType | string | undefined): CalloutType {
   return 'note';
 }
 
-/**
- * DIY Callout. Descriptor-dispatched via `componentMap['Callout']`.
- *
- * Note on `color` prop plumbing: we set it on `style['--callout-type-color']`
- * at the root element. The CSS rule for `[data-component-type="callout"]`
- * reads this var both for the left-border tint (this component's own CSS)
- * and the selection-halo (globals.css selection-halo rule inherited from
- * the wrapper). When `color` is unset, both fall back to the per-type
- * accent token declared in CSS.
- */
 export function Callout(props: CalloutProps) {
   const type = normalizeType(props.type);
   const Icon = resolveIcon(props.icon, type);

@@ -1,12 +1,3 @@
-/**
- * `replaceYText` splices new content into an existing `Y.Text` using the
- * smallest edit that spans the change — the prefix/suffix shrink is the
- * primary WYSIWYG write path (`commitChart → replaceYText`) so its
- * boundary logic needs targeted coverage. A bug in the `start` /
- * `endCur` / `endNext` interactions would produce incorrect splices,
- * manifesting as corrupted diagram labels after a click-edit.
- */
-
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { replaceYText } from './MermaidDocEditor.tsx';
@@ -32,7 +23,6 @@ describe('replaceYText', () => {
     const { ytext, events } = makeYText('OldPrefix middle suffix');
     replaceYText(ytext, 'NewPrefix middle suffix');
     expect(ytext.toString()).toBe('NewPrefix middle suffix');
-    // Exactly one splice — the prefix region.
     expect(events.length).toBe(1);
   });
 
@@ -68,9 +58,6 @@ describe('replaceYText', () => {
   });
 
   test('overlapping prefix/suffix (identical surrounding text) locates the middle change', () => {
-    // The classic diff-boundary trap: prefix/suffix common runs meet in
-    // the middle. If the algorithm shrinks suffix too aggressively, it
-    // will delete or insert the wrong characters.
     const { ytext } = makeYText('abcXabc');
     replaceYText(ytext, 'abcYabc');
     expect(ytext.toString()).toBe('abcYabc');
@@ -89,8 +76,6 @@ describe('replaceYText', () => {
   });
 
   test('multi-line mermaid label rewrite (real WYSIWYG shape)', () => {
-    // What the WYSIWYG click-edit actually produces: replace one node
-    // label mid-chart, everything else unchanged.
     const before = 'graph LR\n  Shopper --> Storefront\n  Storefront --> Cart\n';
     const after = 'graph LR\n  Buyer --> Storefront\n  Storefront --> Cart\n';
     const { ytext } = makeYText(before);

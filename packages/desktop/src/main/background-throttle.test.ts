@@ -6,21 +6,6 @@ import {
   type ThrottleableWebContents,
 } from './background-throttle.ts';
 
-/**
- * Coverage for the desktop background-throttling toggle. The observable under
- * test is BEHAVIOR — the `setBackgroundThrottling(allowed)` call on the (fake)
- * webContents and the boolean the predicate resolves — never the value of a
- * config string or the presence of source text. A toggle that reads the flag
- * but no longer applies it would pass a flag-text assertion and fail here.
- *
- * Residual (carried, not claimed): whether a backgrounded window actually
- * keeps its timers alive is an OS/Chromium behavior only observable in a
- * packaged desktop build. That rides the advisory desktop-smoke tier; these
- * hermetic tests cover the predicate and the toggle application, not the
- * real throttling effect.
- */
-
-/** Hand-rolled webContents fake capturing the toggle's only two touches. */
 function makeFakeWebContents(opts: { destroyed?: boolean } = {}) {
   const setBackgroundThrottling = vi.fn<(allowed: boolean) => void>();
   const wc: ThrottleableWebContents = {

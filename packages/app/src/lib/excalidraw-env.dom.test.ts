@@ -1,11 +1,3 @@
-/**
- * The Excalidraw asset-path pin must resolve relative to the document
- * under `file:` (the packaged desktop renderer loads via `loadFile`, where
- * a path-absolute `/excalidraw-assets/` resolves to the filesystem root,
- * 404s, and silently falls back to the esm.sh CDN — defeating the vendored
- * fonts). Regressing this is invisible in dev/CI, which are both `http:`.
- */
-
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const realLocation = window.location;
@@ -29,8 +21,6 @@ afterEach(() => {
 
 describe('excalidraw-env', () => {
   test('http pages keep the path-absolute asset root', async () => {
-    // The module only pins when unset — clear any earlier pin so this
-    // import exercises the assignment.
     window.EXCALIDRAW_ASSET_PATH = undefined;
     stubLocation('http://localhost:5173/');
     vi.resetModules();

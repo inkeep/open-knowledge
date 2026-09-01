@@ -1,17 +1,3 @@
-/**
- * DocumentBoundary — unit tests for the component contract that makes the
- * `use(syncPromise(...))` body safe under React StrictMode + Suspense.
- *
- * We cannot exercise `use()` + Suspense directly here — the repo convention
- * rules out adding a DOM test harness.
- * Component-level rendering is covered end-to-end by Playwright.
- *
- * What we CAN verify without a renderer is the invariant DocumentBoundary
- * depends on: `syncPromise(docName, provider)` returns a stable reference for
- * repeated same-doc calls, which is what lets `use()` survive StrictMode's
- * dev-mode double-invoke of the component body.
- */
-
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { __resetSyncPromiseCache, syncPromise } from '@/editor/sync-promise';
@@ -20,9 +6,6 @@ import { DocumentBoundary } from './DocumentBoundary';
 const DUMMY_WS = 'ws://localhost:1/collab';
 
 function makeProvider(docName: string): HocuspocusProvider {
-  // Never open a real socket: on Node the undici WebSocket to the dead dummy URL
-  // fires an async close that rejects the syncPromise as an unhandled
-  // PreSyncDisconnectError after the test ends. bun never connected here.
   return new HocuspocusProvider({ url: DUMMY_WS, name: docName, autoConnect: false });
 }
 
@@ -42,9 +25,7 @@ afterEach(() => {
   for (const p of providers) {
     try {
       p.destroy();
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
   providers = [];
 });
@@ -58,8 +39,6 @@ describe('DocumentBoundary', () => {
     const provider = track(makeProvider('doc-a'));
     const first = syncPromise('doc-a', provider);
     const second = syncPromise('doc-a', provider);
-    // `use()` on a stable reference is the invariant that prevents infinite
-    // suspend loops under StrictMode's dev-mode double-invoke.
     expect(second).toBe(first);
   });
 

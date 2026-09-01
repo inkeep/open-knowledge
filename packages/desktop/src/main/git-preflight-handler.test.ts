@@ -1,21 +1,3 @@
-/**
- * Tests for the Electron main-process git-preflight handler.
- *
- * `ensureGitAvailable` is the recoverable-dialog wrapper around the server's
- * `assertGitAvailable` primitive. These tests pin the contract:
- *   - success-on-first-try short-circuits with no dialog
- *   - the typed-error path drives a dialog loop with three buttons whose
- *     positions are wire-format
- *   - Open-Install-Page triggers `openExternal` and re-shows the dialog
- *   - Retry re-runs the primitive; success → 'recovered', failure → loop
- *   - Quit returns 'aborted'
- *   - non-typed errors short-circuit to 'aborted' without ever showing a
- *     dialog (we have no install guidance to present)
- *
- * The dialog primitive (`showMessageBox`) and `openExternal` are injected
- * mocks; the production wiring lives in `main/index.ts`.
- */
-
 import {
   GitNotAvailableError,
   GitTooOldError,
@@ -50,12 +32,6 @@ const MAC_GUIDANCE: InstallGuidance = {
   ],
 };
 
-/**
- * Sequence-driven `showMessageBox` mock. Each invocation pops the next
- * `response` from the queue; calling more times than queued throws so a
- * test's expectations are tight (an unexpected re-show fails fast rather
- * than silently returning `undefined`).
- */
 function showMessageBoxSequence(responses: readonly number[]) {
   const remaining = [...responses];
   const calls: MessageBoxOptions[] = [];
@@ -100,9 +76,7 @@ describe('ensureGitAvailable', () => {
       calls += 1;
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -112,8 +86,6 @@ describe('ensureGitAvailable', () => {
     });
 
     expect(outcome).toBe('aborted');
-    // assertGitAvailable runs exactly once (the first attempt). Quit
-    // short-circuits the loop without retrying.
     expect(calls).toBe(1);
     expect(boxCalls).toHaveLength(1);
     expect(boxCalls[0]?.type).toBe('warning');
@@ -133,10 +105,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      0, // BUTTON_OPEN_INSTALL_PAGE
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([0, 2]);
     const openExternal = vi.fn(async (_url: string) => {});
 
     const outcome = await ensureGitAvailable({
@@ -149,7 +118,6 @@ describe('ensureGitAvailable', () => {
     expect(openExternal).toHaveBeenCalledTimes(1);
     expect(openExternal).toHaveBeenCalledWith('https://git-scm.com/download/mac');
     expect(boxCalls).toHaveLength(2);
-    // Open-Install-Page does NOT re-run the preflight — only Retry does.
     expect(assertGitAvailable).toHaveBeenCalledTimes(1);
   });
 
@@ -167,9 +135,7 @@ describe('ensureGitAvailable', () => {
         source: 'PATH' as const,
       };
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      1, // BUTTON_RETRY
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([1]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -188,11 +154,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      1, // BUTTON_RETRY
-      1, // BUTTON_RETRY
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([1, 1, 2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -202,7 +164,6 @@ describe('ensureGitAvailable', () => {
     });
 
     expect(outcome).toBe('aborted');
-    // Initial attempt + two retries = 3 calls.
     expect(assertGitAvailable).toHaveBeenCalledTimes(3);
     expect(boxCalls).toHaveLength(3);
   });
@@ -211,9 +172,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitTooOldError('linux', '2.20.0', '2.31.0', '/usr/bin/git', LINUX_GUIDANCE);
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([2]);
     const openExternal = vi.fn(async () => {});
 
     const outcome = await ensureGitAvailable({
@@ -225,8 +184,6 @@ describe('ensureGitAvailable', () => {
     expect(outcome).toBe('aborted');
     expect(boxCalls[0]?.title).toBe('Git too old');
     expect(boxCalls[0]?.message).toBe('OpenKnowledge requires Git 2.31.0 or newer.');
-    // Detail carries the full err.message which includes the resolvedPath
-    // for support's debugging.
     expect(boxCalls[0]?.detail).toContain('detected 2.20.0 at /usr/bin/git');
   });
 
@@ -234,9 +191,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new Error('something completely different');
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      0, // The unknown-error dialog has a single 'Quit' button at index 0.
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([0]);
     const openExternal = vi.fn(async () => {});
     const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
@@ -248,9 +203,6 @@ describe('ensureGitAvailable', () => {
     });
 
     expect(outcome).toBe('aborted');
-    // The user sees an informational dialog instead of the app silently
-    // disappearing. The dialog has type='error' + a single 'Quit' button
-    // and surfaces the underlying error message in `detail`.
     expect(showMessageBox).toHaveBeenCalledTimes(1);
     expect(boxCalls).toHaveLength(1);
     expect(boxCalls[0]?.type).toBe('error');
@@ -259,8 +211,6 @@ describe('ensureGitAvailable', () => {
     expect(boxCalls[0]?.detail).toContain('something completely different');
     expect(openExternal).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledTimes(1);
-    // Confirm the diagnostic carries the unknown-error message so the
-    // failure isn't silent.
     const warnCall = warn.mock.calls[0];
     expect(warnCall?.[0]).toContain('unexpected error');
   });
@@ -274,10 +224,7 @@ describe('ensureGitAvailable', () => {
       }
       throw new Error('git binary crashed unexpectedly');
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      1, // BUTTON_RETRY on the typed-error dialog
-      0, // Quit on the unknown-error dialog that follows the failed retry
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([1, 0]);
     const openExternal = vi.fn(async () => {});
     const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
@@ -290,11 +237,9 @@ describe('ensureGitAvailable', () => {
 
     expect(outcome).toBe('aborted');
     expect(attempts).toBe(2);
-    // Two dialogs: the typed-error dialog (retry → unknown error), then the
-    // unknown-error dialog before abort.
     expect(boxCalls).toHaveLength(2);
-    expect(boxCalls[0]?.type).toBe('warning'); // typed-error dialog
-    expect(boxCalls[1]?.type).toBe('error'); // unknown-error dialog
+    expect(boxCalls[0]?.type).toBe('warning');
+    expect(boxCalls[1]?.type).toBe('error');
     expect(boxCalls[1]?.buttons).toEqual(['Quit']);
     expect(boxCalls[1]?.detail).toContain('git binary crashed unexpectedly');
     expect(warn).toHaveBeenCalled();
@@ -306,10 +251,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      0, // BUTTON_OPEN_INSTALL_PAGE (openExternal throws)
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([0, 2]);
     const openExternal = vi.fn(async (_url: string) => {
       throw new Error('no XDG default browser configured');
     });
@@ -324,10 +266,7 @@ describe('ensureGitAvailable', () => {
 
     expect(outcome).toBe('aborted');
     expect(boxCalls).toHaveLength(2);
-    // First dialog: plain detail, no URL surface yet.
     expect(boxCalls[0]?.detail).not.toContain('Could not open browser');
-    // Second dialog (after openExternal failed): URL appended to detail so
-    // the user can copy it manually instead of clicking Install Page again.
     expect(boxCalls[1]?.detail).toContain('Could not open browser automatically');
     expect(boxCalls[1]?.detail).toContain('https://git-scm.com/download/mac');
   });
@@ -336,11 +275,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('darwin', MAC_GUIDANCE);
     });
-    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([
-      0, // BUTTON_OPEN_INSTALL_PAGE — openExternal throws
-      0, // BUTTON_OPEN_INSTALL_PAGE — openExternal succeeds
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox, calls: boxCalls } = showMessageBoxSequence([0, 0, 2]);
     let attempts = 0;
     const openExternal = vi.fn(async (_url: string) => {
       attempts += 1;
@@ -359,9 +294,7 @@ describe('ensureGitAvailable', () => {
 
     expect(outcome).toBe('aborted');
     expect(boxCalls).toHaveLength(3);
-    // After the first failure, dialog #2 carries the URL hint.
     expect(boxCalls[1]?.detail).toContain('Could not open browser automatically');
-    // After the second (successful) open, the hint disappears in dialog #3.
     expect(boxCalls[2]?.detail).not.toContain('Could not open browser');
   });
 
@@ -379,10 +312,7 @@ describe('ensureGitAvailable', () => {
         source: 'fallback' as const,
       };
     });
-    const { fn: showMessageBox } = showMessageBoxSequence([
-      0, // BUTTON_OPEN_INSTALL_PAGE (openExternal throws)
-      1, // BUTTON_RETRY (preflight succeeds)
-    ]);
+    const { fn: showMessageBox } = showMessageBoxSequence([0, 1]);
     const openExternal = vi.fn(async (_url: string) => {
       throw new Error('browser unavailable');
     });
@@ -407,13 +337,7 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
-    const { fn: showMessageBox } = showMessageBoxSequence([
-      // -1 mirrors what Electron returns when a dialog is closed via a
-      // window-close gesture instead of a button click. We don't trust
-      // unexpected indices to mean Retry / Install — Quit is the safe
-      // default.
-      -1,
-    ]);
+    const { fn: showMessageBox } = showMessageBoxSequence([-1]);
     const openExternal = vi.fn(async () => {});
     const warn = vi.fn((_msg: string, _obj?: unknown) => {});
 
@@ -434,12 +358,9 @@ describe('ensureGitAvailable', () => {
     const assertGitAvailable = vi.fn(() => {
       throw new GitNotAvailableError('linux', LINUX_GUIDANCE);
     });
-    const { fn: showMessageBox } = showMessageBoxSequence([
-      2, // BUTTON_QUIT
-    ]);
+    const { fn: showMessageBox } = showMessageBoxSequence([2]);
     const openExternal = vi.fn(async () => {});
 
-    // No `log` passed — handler should not throw.
     const outcome = await ensureGitAvailable({
       assertGitAvailable,
       showMessageBox,

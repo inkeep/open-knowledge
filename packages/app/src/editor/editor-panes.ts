@@ -1,13 +1,7 @@
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 
-/** A stable identity for one side-by-side editor column. */
 export type EditorPaneId = string;
 
-/**
- * Runtime-only state for one editor pane. `activeTarget` and blank-tab state
- * are deliberately not persisted: both are derived while restoring the tab
- * session and may be stale by the next launch.
- */
 export interface EditorPaneState {
   id: EditorPaneId;
   openTabs: string[];
@@ -17,7 +11,6 @@ export interface EditorPaneState {
   newTabIds: string[];
   activeNewTabId: string | null;
   activeTarget: ResolvedNavigationTarget | null;
-  /** Percentage of the flat, horizontal editor workspace. */
   size: number;
 }
 
@@ -26,7 +19,6 @@ export interface EditorWorkspaceState {
   focusedPaneId: EditorPaneId;
 }
 
-/** The durable, bridge-safe subset of an editor pane. */
 export interface PersistedEditorPane {
   id: EditorPaneId;
   openTabs: string[];
@@ -199,9 +191,6 @@ function normalizePane(
     previewTabId,
     newTabIds,
     activeNewTabId,
-    // A resolved target belongs to the exact selected tab. When normalization
-    // selects a fallback, the resolver must rebuild that target instead of
-    // projecting stale navigation state into the editor.
     activeTarget:
       activeTabId !== null && activeTabId === requestedActiveTabId
         ? (pane.activeTarget ?? null)
@@ -247,7 +236,6 @@ export function createEmptyEditorWorkspace(
   return { panes: [pane], focusedPaneId: pane.id };
 }
 
-/** Converts persisted session data into runtime state without resolving targets. */
 export function hydrateEditorWorkspace(session: PersistedEditorWorkspace): EditorWorkspaceState {
   const panes = session.panes.map((pane) => ({
     ...pane,
@@ -264,7 +252,6 @@ export function hydrateEditorWorkspace(session: PersistedEditorWorkspace): Edito
   };
 }
 
-/** Removes runtime-only fields before session persistence / IPC transport. */
 export function persistEditorWorkspace(workspace: EditorWorkspaceState): PersistedEditorWorkspace {
   const normalized = normalizeEditorWorkspace(workspace);
   return {
@@ -279,11 +266,6 @@ export function persistEditorWorkspace(workspace: EditorWorkspaceState): Persist
   };
 }
 
-/**
- * Defensively parses persisted pane data. Provider-backed document tabs remain
- * globally unique, while independent folder and asset views may occupy more
- * than one pane.
- */
 export function parsePersistedEditorWorkspace(
   value: unknown,
   createPaneId: PaneIdFactory = () => DEFAULT_PANE_ID,
@@ -351,9 +333,6 @@ export function normalizeEditorWorkspace(workspace: EditorWorkspaceState): Edito
   const claimedPaneIds = new Set<string>();
   const claimedTabIds = new Set<string>();
   const panes = workspace.panes.flatMap((pane) => {
-    // Reject duplicate pane identities before normalizing tabs. Otherwise a
-    // discarded duplicate would still claim its targets and silently evict
-    // valid tabs from a later, distinct pane.
     if (!isPaneId(pane.id) || claimedPaneIds.has(pane.id)) return [];
     const normalized = normalizePane(pane, claimedTabIds);
     if (!normalized) return [];
@@ -506,11 +485,6 @@ export function pruneEmptyEditorPanes(workspace: EditorWorkspaceState): EditorWo
   };
 }
 
-/**
- * Build the pane layout for a filtered tab surface without mutating the saved
- * workspace. Panes whose tabs are all hidden disappear from this projection;
- * switching surfaces can still restore their original tabs and pane identity.
- */
 export function projectVisibleEditorWorkspace(
   workspace: EditorWorkspaceState,
   visibleTabIdsByPane: ReadonlyMap<EditorPaneId, readonly string[]>,
@@ -648,7 +622,6 @@ export function splitTabToPane(
   const sourcePane = findPaneContainingTab(workspace, tabId);
   const targetPane = workspace.panes.find((pane) => pane.id === targetPaneId);
   if (!sourcePane || !targetPane) return workspace;
-  // There is nothing to split when the only tab is dragged to its own edge.
   if (
     sourcePane.id === targetPane.id &&
     sourcePane.openTabs.length + sourcePane.newTabIds.length === 1

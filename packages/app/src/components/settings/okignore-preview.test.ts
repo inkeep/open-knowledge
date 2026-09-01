@@ -42,7 +42,6 @@ describe('okignore-preview — countMatches', () => {
   });
 
   test('returns 0 for a lone-bang pattern', () => {
-    // negation alone has no anchor to negate, so nothing is ignored.
     expect(countMatches('!keep.md', ['keep.md', 'foo.md'])).toBe(0);
   });
 
@@ -95,8 +94,6 @@ describe('okignore-preview — countMatches', () => {
   });
 
   test('returns 0 on a malformed-looking pattern (npm:ignore does NOT throw)', () => {
-    // Trailing backslash and unmatched bracket are heuristic-warning cases —
-    // the library tolerates them silently, so countMatches should not throw.
     expect(() => countMatches('foo\\', ['foo.md'])).not.toThrow();
     expect(() => countMatches('[unclosed', ['foo.md'])).not.toThrow();
   });

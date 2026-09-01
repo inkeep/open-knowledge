@@ -1,25 +1,7 @@
-/**
- * Read the canonical GitHub remote URL for a project, used to backfill
- * `RecentProject.gitRemoteUrl` on every project open so the share-receive
- * lookup finds previously opened projects by `{owner, repo}`.
- *
- * Why re-emit canonical form: senders may have cloned via SSH
- * (`git@github.com:owner/repo.git`) while receivers via HTTPS — both must
- * normalize to one URL for the string compare to hit.
- */
-
 import { parseGitUrl } from '@inkeep/open-knowledge';
 import { classifyGitHubShareHost } from '@inkeep/open-knowledge-core';
 import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
 
-/**
- * Best-effort: returns the canonical GitHub remote URL for the project
- * at `projectPath`, or `null` if the project has no `.git/config`, no
- * `[remote "origin"]`, or a non-github.com origin. Never throws — any
- * I/O or parse error returns `null` so callers can fall through silently
- * (the field stays undefined, the user pays a one-time cost on first
- * share-receive for this project).
- */
 export function readCanonicalGitHubRemoteUrl(projectPath: string): string | null {
   const inspection = inspectGitRepository(projectPath);
   if (inspection.kind !== 'repository') return null;
@@ -30,22 +12,9 @@ export function readCanonicalGitHubRemoteUrl(projectPath: string): string | null
   return canonicalizeGitHubRemoteUrl(origin.url);
 }
 
-/**
- * Re-emit a git remote URL in the canonical `https://<host>/<owner>/<repo>.git`
- * form, or null when it isn't a GitHub-host URL. The rebuild is from parsed
- * components only, so no userinfo — a declared account or an embedded
- * credential — can survive into the output. Also the load-time repair for
- * `RecentProject.gitRemoteUrl` values persisted by builds whose parser folded
- * userinfo into the hostname and rebuilt credentialed URLs — an in-memory
- * heal; the persisted copy is replaced by the next whole-file state save.
- */
 export function canonicalizeGitHubRemoteUrl(url: string): string | null {
   const parsed = parseGitUrl(url);
   if (parsed === null) return null;
-  // Presume any host that isn't a known non-GitHub forge is github.com or a
-  // GHES instance, and re-emit the canonical HTTPS form host-qualified so
-  // GHES clones get a `gitRemoteUrl` (else they never match a share) and a
-  // GHES `acme/kb` stays distinct from a github.com `acme/kb`.
   const foldedHost = classifyGitHubShareHost(parsed.hostname);
   if (foldedHost === null) return null;
   return `https://${foldedHost}/${parsed.owner}/${parsed.name}.git`;

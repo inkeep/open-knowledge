@@ -65,14 +65,11 @@ async function fetchHeadings(docName: string): Promise<HeadingEntry[]> {
   return success.data.headings ?? [];
 }
 
-// Button height (py-1.5 = 12px + text-sm line-height 20px). Marker is
-// vertically centred against this — keep in sync with the button className.
 const ITEM_H = 32;
 const LEVEL_W = 12;
 const MARKER_SIZE = 6;
 
 export interface OutlineNavDetail {
-  /** The document that owns this navigation request. */
   docName: string;
   index: number;
   slug: string;
@@ -81,18 +78,10 @@ export interface OutlineNavDetail {
 
 export const OUTLINE_NAV_EVENT = 'open-knowledge:outline-nav';
 
-/**
- * Event name the two outline-nav consumers report under, so one grep over a
- * diagnostic bundle finds every click regardless of which editor answered it.
- * Lives beside the event it traces rather than in either consumer, because
- * neither consumer is the one both of them share.
- */
 export const OUTLINE_NAV_BREADCRUMB = 'ok-outline-nav';
 
-/** The click as the panel dispatched it, before any consumer has seen it. */
 export const OUTLINE_NAV_DISPATCH_BREADCRUMB = 'ok-outline-nav-dispatch';
 
-/** Where the scroll came to rest, once the smooth animation has finished. */
 export const OUTLINE_NAV_SETTLED_BREADCRUMB = 'ok-outline-nav-settled';
 
 export function OutlinePanel(props: {
@@ -128,23 +117,9 @@ function OutlinePanelInner({
     queryKey: ['page-headings', docName],
     queryFn: () => fetchHeadings(docName),
     enabled: !loading && (pages.has(docName) || isManagedArtifactDocName(docName)),
-    // The Y.Doc `update` subscription below is authoritative for freshness —
-    // background refetch on window-focus/reconnect would add wasted fetches
-    // for data already guaranteed-current. Per TkDodo (TanStack Query
-    // maintainer) guidance for subscription-source-authoritative queries:
-    // https://tkdodo.eu/blog/using-web-sockets-with-react-query
     staleTime: Number.POSITIVE_INFINITY,
   });
 
-  // Precise-trigger invalidation. The active doc's Y.Doc `update` event fires
-  // on every mutation — local typing, remote peer edits arriving via
-  // WebSocket, and agent writes — so the outline stays fresh without
-  // polling. We gate on `activeDocName === docName` because
-  // `OutlinePanel` may briefly render for a doc that isn't the active one
-  // during a navigation transition; in that case the initial query fetch is
-  // sufficient and there's no point subscribing to a provider for a different
-  // doc. `DocPanel` in practice only mounts one `OutlinePanel` at a time, but
-  // the guard keeps this robust under future layout changes.
   useEffect(() => {
     if (!activeProvider || activeDocName !== docName) return;
     const doc = activeProvider.document;
@@ -177,36 +152,18 @@ function OutlinePanelInner({
     if (detail.mode === 'source') {
       rememberPendingSourceNavigation(docName, { kind: 'outline', detail });
     }
-    // Emitted here, at the dispatch, and not left to the consumers. Every
-    // consumer guard is a bare return — wrong document, wrong mode, view not
-    // mounted — so without this line a click that reaches no consumer is
-    // indistinguishable from a click that never happened, and "the row did
-    // nothing" is exactly the report this instrumentation has to answer.
-    // A consumer line that never follows this one is itself the finding.
     emitDiagnosticBreadcrumb(OUTLINE_NAV_DISPATCH_BREADCRUMB, {
       docName,
       index,
       mode: detail.mode,
-      // Named for the enumeration it counted, not generically: each consumer
-      // reports the count of ITS OWN list under its own name, and the three
-      // disagreeing is the drift this instrumentation exists to expose. A
-      // shared `headingCount` would hide that behind one word.
       outlineCount: headings.length,
-      // NOT `level`: that name belongs to the log record's own producer, so the
-      // emitter and the capture chokepoint both drop it. Using it would cost
-      // the heading depth entirely rather than corrupt anything — the field
-      // would simply never reach the line.
       headingLevel: headings[index]?.level,
-      // What the panel's own marker believed was current, resolved by slug
-      // rather than by ordinal. The two disagreeing is the panel disagreeing
-      // with itself about the same document.
       activeIndex,
     });
     window.dispatchEvent(new CustomEvent(OUTLINE_NAV_EVENT, { detail }));
   }
 
   const activeLevel = activeIndex >= 0 ? headings[activeIndex].level : 1;
-  // Centre marker horizontally on the level column, vertically on the row.
   const markerX = (activeLevel - 1) * LEVEL_W + (LEVEL_W - MARKER_SIZE) / 2;
   const markerY = activeIndex * ITEM_H + (ITEM_H - MARKER_SIZE) / 2;
 

@@ -4,21 +4,6 @@ import { Readable } from 'node:stream';
 import { isProcessAlive } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 
-/**
- * No-orphan OUTCOME seam. Verifies the system property the feature requires:
- * killing a PTY host process leaves no surviving shell. Real shell +
- * real signal are required, so the drive runs in an isolated Node subprocess;
- * this test spawns it, reads the
- * shell pid it spawned, kills the host, and asserts the shell pid is gone.
- *
- * No-orphan is defense-in-depth — the explicit `installHostReaping` `pty.kill()`
- * (whose wiring is unit-tested in `pty-host.test.ts`) AND the OS backstop (the
- * pty master fd closing on host exit SIGHUPs the slave). So this is an outcome
- * test, not an installHostReaping-isolating one: SIGTERM exercises the graceful
- * explicit-reap path; SIGKILL is uncatchable and exercises the OS backstop
- * alone — both must leave no orphan, including under a forced host crash.
- */
-
 const HARNESS = new URL('./pty-host.reap-harness.ts', import.meta.url).pathname;
 
 async function readShellPid(
@@ -64,28 +49,20 @@ async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> 
   let shellPid: number | null = null;
   try {
     shellPid = await readShellPid(proc.stdout, 20_000);
-    // The shell is live before teardown.
     expect(isProcessAlive(shellPid)).toBe(true);
-    // SIGTERM models Electron's utilityProcess.kill(); SIGKILL models a forced
-    // host crash where no catchable handler can run.
     proc.kill(killSignal);
     expect(await waitForReaped(shellPid, 10_000)).toBe(true);
   } finally {
     if (shellPid !== null && isProcessAlive(shellPid)) {
       try {
         process.kill(shellPid, 'SIGKILL');
-      } catch {
-        // Already gone — fine.
-      }
+      } catch {}
     }
     proc.kill('SIGKILL');
     await proc.exited;
   }
 }
 
-// This harness requires POSIX signals and master-fd SIGHUP behavior. Windows
-// update-time cleanup has separate survivor-sweep coverage; real Windows
-// forced-host-crash orphan behavior remains an external packaged-runtime gate.
 describe.skipIf(process.platform === 'win32')(
   'PTY host — no orphan on host teardown (Node runtime)',
   () => {

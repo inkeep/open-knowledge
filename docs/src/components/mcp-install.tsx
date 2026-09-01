@@ -1,11 +1,5 @@
 import type { ReactNode } from 'react';
 
-/**
- * Shared "Install" body for the MCP integration pages. Covers both ways the
- * editor gets wired up: the desktop app's first-launch consent dialog, and
- * `ok init` for the web app / terminal path. The consent-dialog re-trigger
- * is single-sourced here. Optional editor-specific notes go in `children`.
- */
 export function McpInstall({ editor, children }: { editor: string; children?: ReactNode }) {
   return (
     <>

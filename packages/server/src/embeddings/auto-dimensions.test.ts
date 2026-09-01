@@ -1,15 +1,3 @@
-/**
- * Auto-detected vector dimensions, end to end: the real HTTP embedder against
- * the fake provider (`fake-provider.test-helper.ts`), driven by the real
- * service and persisted through the real cache.
- *
- * What this is guarding: with `search.semantic.dimensions` unset, the embedder
- * used to declare 1536 and reject every response from any model of another
- * size, which surfaced to the user as "semantic search silently does nothing".
- * Nothing below uses the concept embedder — it bypasses the HTTP client, so it
- * cannot see this class of bug at all.
- */
-
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,7 +37,6 @@ interface Rig {
   requests: { input: string[]; dimensions?: number }[];
 }
 
-/** A service wired to the real embedder over a fake provider socket-alike. */
 function makeService(
   provider: FakeEmbeddingsProviderOptions,
   over: { dimensions?: number; model?: string } = {},
@@ -92,11 +79,10 @@ describe('auto-detected embedding dimensions', () => {
     const requestsAfterFirstRun = first.requests.length;
     expect(requestsAfterFirstRun).toBeGreaterThan(0);
 
-    // Same config, same cache dir — a fresh process.
     const second = makeService({ dims: 1024 });
     await second.service.embedCorpus(corpus);
 
-    expect(second.requests).toHaveLength(0); // nothing re-embedded
+    expect(second.requests).toHaveLength(0);
     expect(second.service.getStatus().embeddedCount).toBe(corpus.length);
   });
 
@@ -104,8 +90,6 @@ describe('auto-detected embedding dimensions', () => {
     const { service } = makeService({ dims: 1024 });
     await service.embedCorpus(corpus);
     const manifest = readManifest();
-    // The two must differ in kind: folding the detected length into the
-    // identity is what would make every restart look like a config change.
     expect(manifest.identityDims).toBe('auto');
     expect(manifest.dims).toBe(1024);
   });
@@ -114,7 +98,6 @@ describe('auto-detected embedding dimensions', () => {
     const first = makeService({ dims: 1536 });
     await first.service.embedCorpus(corpus);
 
-    // Rewrite the manifest in the pre-split shape an older build wrote.
     const manifestPath = join(cacheDir, 'manifest.json');
     const legacy = JSON.parse(readFileSync(manifestPath, 'utf-8'));
     delete legacy.identityDims;
@@ -129,7 +112,6 @@ describe('auto-detected embedding dimensions', () => {
   });
 
   test('a provider that swaps model size mid-life rebuilds instead of dying', async () => {
-    // Serve the first pass at 1024, then answer everything at 1536.
     const { service, requests } = makeService({
       dims: 1024,
       driftDims: 1536,
@@ -139,11 +121,9 @@ describe('auto-detected embedding dimensions', () => {
     expect(service.getStatus().embeddedCount).toBeGreaterThan(0);
     const afterFirst = requests.length;
 
-    // The drift shows up on the next pass; the service discards and re-warms.
     await service.embedCorpus(corpus.map((d) => doc(d.path, `${d.content} updated`, 2)));
     expect(requests.length).toBeGreaterThan(afterFirst);
 
-    // A further pass now succeeds at the new size rather than staying dead.
     const updated = corpus.map((d) => doc(d.path, `${d.content} updated`, 2));
     await service.embedCorpus(updated);
     expect(service.getStatus().embeddedCount).toBe(updated.length);
@@ -155,11 +135,8 @@ describe('auto-detected embedding dimensions', () => {
     await service.embedCorpus(corpus);
     expect(service.getStatus().embeddedCount).toBe(corpus.length);
 
-    // The corpus is unchanged, so every embed pass is a no-op reconcile: the
-    // query path is the only place the size change can be noticed. Without
-    // recovery here, semantic search stays silently dead until a doc changes.
     expect(await service.queryScores('session credentials', corpus)).toBeNull();
-    expect(service.getStatus().ready).toBe(false); // warm state dropped
+    expect(service.getStatus().ready).toBe(false);
 
     await service.embedCorpus(corpus);
     const scores = await service.queryScores('session credentials', corpus);
@@ -168,13 +145,8 @@ describe('auto-detected embedding dimensions', () => {
   });
 
   test('survives exactly MAX_DIMS_DRIFT_RESETS size changes, then gives up', async () => {
-    // Pinned deliberately: the budget is a spend ceiling AND the headroom a
-    // legitimate model update needs. A silent change to either side should
-    // require touching this line.
     expect(MAX_DIMS_DRIFT_RESETS).toBe(2);
 
-    // A provider whose size changes only when the test says so, so each drift
-    // event is one deliberate step rather than a side effect of call ordering.
     let servedDims = 1024;
     const requests: string[][] = [];
     const fetchImpl = ((_url: string, init: RequestInit) => {
@@ -213,32 +185,26 @@ describe('auto-detected embedding dimensions', () => {
     await service.embedCorpus(nextCorpus());
     expect(service.getStatus().capable).toBe(true);
 
-    // Each iteration is one size change the service is expected to absorb.
     for (let swap = 1; swap <= MAX_DIMS_DRIFT_RESETS; swap++) {
       servedDims = servedDims === 1024 ? 1536 : 1024;
-      await service.embedCorpus(nextCorpus()); // drift → discard + re-warm
-      await service.embedCorpus(nextCorpus()); // rebuild at the new size
+      await service.embedCorpus(nextCorpus());
+      await service.embedCorpus(nextCorpus());
       expect(service.getStatus().capable).toBe(true);
       expect(service.getStatus().embeddedCount).toBe(corpus.length);
     }
 
-    // One more than the budget allows: give up rather than keep paying.
     servedDims = servedDims === 1024 ? 1536 : 1024;
     await service.embedCorpus(nextCorpus());
     expect(service.getStatus().capable).toBe(false);
 
-    // And staying given-up costs nothing: no further provider calls, no scores.
     const spent = requests.length;
     await service.embedCorpus(nextCorpus());
     expect(await service.queryScores('session credentials', corpus)).toBeNull();
     expect(requests.length).toBe(spent);
 
-    // A deliberate provider change is a fresh start, not a permanently spent
-    // budget. Asserting `capable` directly is what catches the budget reset
-    // being moved into `resetWarm`, which drift recovery calls itself.
     service.applyConfig({ enabled: true, providerFingerprint: `${BASE_URL}|other|auto` });
-    await service.embedCorpus(nextCorpus()); // drifts again — only recoverable on a refunded budget
-    await service.embedCorpus(nextCorpus()); // rebuilds at the current size
+    await service.embedCorpus(nextCorpus());
+    await service.embedCorpus(nextCorpus());
     expect(requests.length).toBeGreaterThan(spent);
     expect(service.getStatus().capable).toBe(true);
     expect(service.getStatus().embeddedCount).toBe(corpus.length);
@@ -249,7 +215,6 @@ describe('auto-detected embedding dimensions', () => {
     await first.service.embedCorpus(corpus);
     expect(first.service.getStatus().embeddedCount).toBe(corpus.length);
 
-    // What the Settings coverage panel reads after an endpoint/model change.
     first.service.applyConfig({
       enabled: true,
       providerFingerprint: `${BASE_URL}|another-model|auto`,
@@ -259,7 +224,7 @@ describe('auto-detected embedding dimensions', () => {
     const second = makeService({ dims: 1024 }, { model: 'another-model' });
     await second.service.embedCorpus(corpus);
     expect(second.service.getStatus().embeddedCount).toBe(corpus.length);
-    expect(readManifest().dims).toBe(1024); // the old 1536 vectors are gone
+    expect(readManifest().dims).toBe(1024);
   });
 
   test('an explicitly configured size that the server ignores fails loudly, no rebuild', async () => {
@@ -269,10 +234,8 @@ describe('auto-detected embedding dimensions', () => {
     );
     await service.embedCorpus(corpus);
 
-    expect(requests[0]?.dimensions).toBe(1536); // we asked
-    expect(service.getStatus().embeddedCount).toBe(0); // it lied; nothing cached
-    // Re-embedding cannot fix a server that ignores the param, so the pass
-    // stops after one rejected batch instead of paying for the whole corpus.
+    expect(requests[0]?.dimensions).toBe(1536);
+    expect(service.getStatus().embeddedCount).toBe(0);
     expect(requests).toHaveLength(1);
   });
 });

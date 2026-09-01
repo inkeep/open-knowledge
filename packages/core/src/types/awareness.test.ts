@@ -17,7 +17,6 @@ describe('isPresenceSentinelDocName', () => {
   });
 
   test('exact match only — real parenthesised docNames are not sentinels', () => {
-    // A leading-`(` heuristic would over-match these legitimate filenames.
     expect(isPresenceSentinelDocName('(WIP) draft')).toBe(false);
     expect(isPresenceSentinelDocName('(2026-05-13) standup')).toBe(false);
     expect(isPresenceSentinelDocName('articles/tea/terroir')).toBe(false);

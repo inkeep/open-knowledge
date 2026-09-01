@@ -23,9 +23,6 @@ describe('OkBlobRunnerEasterEgg', () => {
     expect(resting()).toBeTruthy();
     expect(game()).toBeNull();
     expect(screen.getByTestId('ok-blob-probe').dataset.variant).toBe('sleeping');
-    // An easter egg that advertises itself is just a feature in a strange place.
-    // Asserted on the slot, not the copy: key names render inside `<kbd>` caps,
-    // so a text matcher would find nothing whether or not the hint is there.
     expect(document.querySelector('[data-slot="ok-blob-runner-hint"]')).toBeNull();
   });
 
@@ -56,9 +53,6 @@ describe('OkBlobRunnerEasterEgg', () => {
   });
 
   test('Space does NOT wake it while a button holds focus', async () => {
-    // The error fallback focuses "Try again" on mount, and Space is that
-    // button's activation key. Stealing it would break recovery for exactly
-    // the users who cannot click.
     const { OkBlobRunnerEasterEgg } = await import('./OkBlobRunnerEasterEgg');
     render(
       <div>
@@ -74,15 +68,12 @@ describe('OkBlobRunnerEasterEgg', () => {
     fireEvent.keyDown(window, { key: ' ' });
     expect(game()).toBeNull();
 
-    // ArrowUp is still safe, because no control treats it as activation.
     fireEvent.keyDown(window, { key: 'ArrowUp' });
     expect(game()).toBeTruthy();
   });
 });
 
 describe('keyboard={false} (crash screens)', () => {
-  // On a crash the bug report is the point. The mascot must be reachable,
-  // but it must never take a key that Try again or Report might want.
   test('ArrowUp and Space are both ignored', async () => {
     const { OkBlobRunnerEasterEgg } = await import('./OkBlobRunnerEasterEgg');
     render(<OkBlobRunnerEasterEgg keyboard={false} />);

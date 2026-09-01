@@ -1,16 +1,3 @@
-/**
- * The consent-gated managed-runtime launch path, driven through the real
- * `AcpThreadManager`. A registry agent distributed via `npx` is launched with
- * an empty `PATH` (so the system `npx` can't resolve), which forces the
- * download flow: the manager emits a `runtime_consent_request`, parks the
- * launch, and — once granted through `respondRuntimeConsent` — downloads +
- * verifies a synthetic Node runtime served through a fake `fetch`.
- *
- * Everything but the network + `~/.ok` is real: the archive is extracted,
- * checksum-verified, installed, and the launcher relocated by the same code
- * production uses.
- */
-
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -65,17 +52,9 @@ const NPX_AGENT = {
   id: 'npxagent',
   name: 'NPX Agent',
   version: '1.0.0',
-  // Empty overlay PATH forces the system `npx` to be unresolvable → download
-  // flow. Also pins the contract that an explicit overlay PATH is used verbatim:
-  // `mergedEnv`'s base-PATH augmentation must not re-populate it.
   distribution: { npx: { package: '@fake/agent', env: { PATH: '' } } },
 };
 
-/**
- * Synthetic Node runtime tree (`node-vTEST/bin/{node,npx}`) as a `.tar.gz`.
- * `npxBody` overrides the launcher so a test can serve a runtime that installs
- * cleanly and still can't run.
- */
 function fakeNodeTarball(
   dir: string,
   npxBody = '#!/bin/sh\nexit 0\n',
@@ -135,8 +114,6 @@ function makeManager(opts: {
       root: opts.runtimeRoot,
       fetchImpl: opts.fetchImpl,
     },
-    // Hermetic default (see the thread-manager integration suite): never spawn
-    // the developer's own login shell from a test.
     resolveLoginShellPath: opts.resolveLoginShellPath ?? (async () => null),
     log,
   });
@@ -144,7 +121,6 @@ function makeManager(opts: {
   return manager;
 }
 
-/** Subscribe and collect every thread event into `sink`. */
 async function collect(
   manager: AcpThreadManager,
   threadId: string,
@@ -225,13 +201,11 @@ describe('managed-runtime consent + download flow', () => {
     expect(req?.runtime).toBe('node');
     expect(req?.provides).toBe('npx');
     expect(req?.agentName).toBe('NPX Agent');
-    // NPX_AGENT pins an empty PATH, so this interpreter really is absent.
     expect(req?.reason).toBe('missing');
 
     if (req === undefined) throw new Error('unreachable');
     manager.respondRuntimeConsent(info.threadId, req.requestId, { kind: 'granted' });
 
-    // The runtime downloads, verifies, and installs into the seam's root.
     await waitFor(
       () => events.some((e) => e.kind === 'runtime_consent_resolved'),
       3_000,
@@ -250,7 +224,6 @@ describe('managed-runtime consent + download flow', () => {
       contentDir,
       localDir,
       runtimeRoot,
-      // No tarball needed — the decline path never downloads.
       fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64)),
     });
 
@@ -296,18 +269,10 @@ describe('managed-runtime consent + download flow', () => {
     const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
     await collect(manager, info.threadId, events);
 
-    // NPX_AGENT pins its own PATH, which is a spawn-env contract: the launch
-    // gets exactly that PATH, so the fallback must not append to it and the
-    // download offer is still the right next step.
     await waitFor(() => findConsentRequest(events) !== undefined, 5_000, 'consent request');
     expect(probes).toBe(0);
   });
 
-  // The interpreter is right there on PATH and executable, so
-  // preflight passes — and then it aborts the instant it runs, exactly as a
-  // Homebrew `node` does once its `icu4c` is upgraded out from under it.
-  // Before the health probe this spawned the crashing `npx` and surfaced as
-  // "initialize failed: ACP connection closed" with no offer of a way out.
   test('an interpreter that resolves but crashes routes to the managed runtime', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -337,9 +302,6 @@ describe('managed-runtime consent + download flow', () => {
     await waitFor(() => findConsentRequest(events) !== undefined, 10_000, 'consent request');
     const req = findConsentRequest(events);
     if (req === undefined) throw new Error('unreachable');
-    // The offer's copy turns on this: "isn't installed" would send a user whose
-    // interpreter is present-but-broken to install a second one that the broken
-    // copy still shadows on PATH.
     expect(req.reason).toBe('broken');
     manager.respondRuntimeConsent(info.threadId, req.requestId, { kind: 'granted' });
 
@@ -441,8 +403,6 @@ describe('managed-runtime consent + download flow', () => {
     20_000,
   );
 
-  // Declining the download must not leave the user with the stock hint, which
-  // says the interpreter "isn't installed" — the one thing this case disproves.
   test('declining after a crash reports the broken interpreter, not a missing one', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -457,7 +417,6 @@ describe('managed-runtime consent + download flow', () => {
       contentDir,
       localDir,
       runtimeRoot,
-      // No tarball needed — the decline path never downloads.
       fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64), {
         ...NPX_AGENT,
         distribution: { npx: { package: '@fake/agent', env: { PATH: brokenBin } } },
@@ -488,10 +447,6 @@ describe('managed-runtime consent + download flow', () => {
     expect(await findManagedRuntime('node', runtimeRoot)).toBeNull();
   }, 20_000);
 
-  // A decision is scoped to the launch that asked for it. Persisting one gave
-  // a misclicked "Not now" no way back — there is no UI that un-declines, so
-  // the offer was gone for good and the only cure was deleting a file in
-  // `~/.ok` by hand.
   test('a declined offer comes back on the next launch', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -523,8 +478,6 @@ describe('managed-runtime consent + download flow', () => {
     await collect(manager, two.threadId, second);
     await waitFor(() => findConsentRequest(second) !== undefined, 5_000, 'second consent request');
 
-    // …and granting it now still works, from a thread that knows nothing of
-    // the earlier refusal.
     const retry = findConsentRequest(second);
     if (retry === undefined) throw new Error('unreachable');
     manager.respondRuntimeConsent(two.threadId, retry.requestId, { kind: 'granted' });
@@ -568,11 +521,6 @@ describe('interpreter health probe', () => {
     expect(events.filter((e) => e.kind === 'runtime_consent_request')).toHaveLength(1);
   }, 30_000);
 
-  // The fallback's own fallback. `findManagedRuntime`'s already-installed fast
-  // path admits a runtime on an exists-plus-execute-bit check — the evidence
-  // `probeInterpreterHealth` supersedes — so one damaged by an interrupted
-  // extraction or an earlier layout passes it. This copy is OK's, so OK
-  // replaces it rather than handing the user a directory to delete.
   test('a damaged managed runtime is replaced, not reported as the dead end', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -581,14 +529,8 @@ describe('interpreter health probe', () => {
     const { bytes, sha } = fakeNodeTarball(stage);
     const fetchImpl = fakeNodeFetch(bytes, sha);
 
-    // Install first, damage second, and only THEN start a manager: this is the
-    // production shape — a server booting into a runtime some earlier process
-    // left behind — and it keeps the test off the health memo, which by design
-    // would let an already-probed runtime through without re-checking.
     const installed = await ensureManagedRuntime('node', log, { root: runtimeRoot, fetchImpl });
     const launcher = installed.kind === 'node' ? installed.npxBin : installed.uvxBin;
-    // Present and executable, no longer able to run — what an interrupted
-    // extraction leaves behind, and what preflight alone cannot see.
     writeFileSync(launcher, '#!/bin/sh\nkill -ABRT $$\n', { mode: 0o755 });
 
     const manager = makeManager({ contentDir, localDir, runtimeRoot, fetchImpl });
@@ -599,12 +541,9 @@ describe('interpreter health probe', () => {
     await waitFor(() => findConsentRequest(events) !== undefined, 10_000, 'repair offer');
     const req = findConsentRequest(events);
     if (req === undefined) throw new Error('unreachable');
-    // Not `broken`: the copy at fault is OK's, so the card must not talk about
-    // the user's own Node.
     expect(req.reason).toBe('damaged');
     manager.respondRuntimeConsent(info.threadId, req.requestId, { kind: 'granted' });
 
-    // The damaged tree is gone and a working launcher stands in its place.
     await waitFor(
       async () => {
         const runtime = await findManagedRuntime('node', runtimeRoot);
@@ -617,15 +556,11 @@ describe('interpreter health probe', () => {
     );
   }, 30_000);
 
-  // The repair is one attempt, not a retry loop: a runtime that arrives broken
-  // twice is a machine-level problem, and the message has to say so rather
-  // than blame a system Node that was never involved.
   test('a replacement that is also broken reports the machine, not the user', async () => {
     const contentDir = tmp();
     const localDir = tmp();
     const runtimeRoot = tmp();
     const stage = tmp();
-    // Every copy this host can fetch is dead on arrival.
     const { bytes, sha } = fakeNodeTarball(stage, '#!/bin/sh\nkill -ABRT $$\n');
     const fetchImpl = fakeNodeFetch(bytes, sha);
     await ensureManagedRuntime('node', log, { root: runtimeRoot, fetchImpl });
@@ -651,15 +586,11 @@ describe('interpreter health probe', () => {
     );
     expect(errEvent?.detail).toContain('downloaded a fresh copy');
     expect(errEvent?.detail).toContain('still');
-    // No `rm -rf` homework, and no blaming a system Node that never ran.
     expect(errEvent?.detail).not.toContain('delete that directory');
     expect(errEvent?.detail).not.toContain('icu4c');
-    // Exactly one offer: the repair does not re-enter itself.
     expect(events.filter((e) => e.kind === 'runtime_consent_request')).toHaveLength(1);
   }, 40_000);
 
-  // Declining the repair must not land on the stock decline hint, which says
-  // the interpreter isn't installed — OK's copy is installed, just damaged.
   test('declining the repair says the copy is damaged, not missing', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -694,20 +625,12 @@ describe('interpreter health probe', () => {
     expect(errEvent?.detail).not.toContain("isn't installed");
   }, 30_000);
 
-  // What `retryThread`'s cache-clear actually protects. Healthy verdicts are
-  // cached for the server's life, so an interpreter that breaks AFTER being
-  // probed (a `brew upgrade` mid-session) would keep being spawned on every
-  // retry, and the managed-runtime offer — the way out — would never appear.
-  // The reverse case needs no cache-clear at all: a failing probe is never
-  // cached, so a repaired interpreter is re-probed either way.
   test('Retry re-probes an interpreter that broke after it was cached healthy', async () => {
     const contentDir = tmp();
     const localDir = tmp();
     const runtimeRoot = tmp();
     const binDir = tmp();
     const npxPath = join(binDir, 'npx');
-    // Healthy for `--version`, useless afterwards: the thread fails at the
-    // handshake, which is all this needs — the probe verdict is now cached.
     writeFileSync(npxPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     writeNodeVersion(binDir, 'v24.0.0');
     const manager = makeManager({
@@ -728,17 +651,11 @@ describe('interpreter health probe', () => {
       10_000,
       'the thread to fail',
     );
-    // Nothing was offered: as far as OK knows, this interpreter is fine.
     expect(findConsentRequest(events)).toBeUndefined();
 
-    // Now it breaks the way a `brew upgrade` breaks one.
     writeFileSync(npxPath, '#!/bin/sh\nkill -ABRT $$\n', { mode: 0o755 });
-    void manager.retryThread(info.threadId).catch(() => {
-      // Rejects once the launch fails; the re-probe on the way there is the point.
-    });
+    void manager.retryThread(info.threadId).catch(() => {});
 
-    // Only a re-probe can produce this: a cached verdict would have sent the
-    // retry straight to spawning the interpreter that can no longer run.
     await waitFor(
       () => findConsentRequest(events) !== undefined,
       10_000,
@@ -746,18 +663,12 @@ describe('interpreter health probe', () => {
     );
   }, 30_000);
 
-  // The probe is a process spawn on the launch path, so it has to be paid once
-  // per interpreter, not once per thread — startup latency is already the sore
-  // point (npx resolution + node boot + handshake, serialized).
   test('a healthy interpreter is probed once, not once per thread', async () => {
     const contentDir = tmp();
     const localDir = tmp();
     const runtimeRoot = tmp();
     const binDir = tmp();
     const calls = join(binDir, 'calls.log');
-    // Records every invocation, then behaves like an npx whose package isn't
-    // an ACP agent: healthy for `--version`, useless afterwards. The thread
-    // fails at the handshake, which is irrelevant to what this counts.
     writeFileSync(join(binDir, 'npx'), `#!/bin/sh\necho "$@" >> ${calls}\nexit 0\n`, {
       mode: 0o755,
     });
@@ -787,8 +698,6 @@ describe('interpreter health probe', () => {
     );
     expect(versionProbes()).toBe(1);
     const second = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
-    // The second thread must reach its own (failed) launch — otherwise this
-    // would pass on a thread that never got as far as needing an interpreter.
     await waitFor(
       () => manager.getInfo(second.threadId)?.status === 'error',
       10_000,
@@ -798,7 +707,6 @@ describe('interpreter health probe', () => {
   }, 30_000);
 });
 
-/** Poll for the installed runtime (the download resolves asynchronously). */
 async function pollInstalled(
   runtimeRoot: string,
 ): Promise<Awaited<ReturnType<typeof findManagedRuntime>>> {

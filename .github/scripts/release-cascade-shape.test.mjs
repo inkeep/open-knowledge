@@ -1,14 +1,3 @@
-/**
- * Adversarial proof that the release gates bite, plus the ordering and payload
- * invariants a later edit is most likely to break silently.
- *
- * GitHub Actions cannot be executed locally, so the ordering assertions parse
- * the workflow's flat step list and compare positions. That is the highest
- * fidelity available for "the gate runs before the thing it gates", and it is
- * precisely the invariant a well-meaning reorder would destroy without any
- * test noticing.
- */
-
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -26,22 +15,8 @@ const desktopBuildWinLinux = read('desktop-build-win-linux.yml');
 const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
 const bugLane = read('bug-lane.yml');
-// The lane is two workflows: bug-lane.yml evaluates and hands off,
-// bug-lane-verify.yml picks, verifies, pages and dispatches. Assertions name
-// the half that actually RUNS the step, so a step drifting across the boundary
-// fails here rather than passing against a concatenation of the two.
 const bugLaneVerify = read('bug-lane-verify.yml');
 
-/**
- * One workflow step's body, bounded at the NEXT step.
- *
- * Assertions about a step have to be scoped to that step. A whole-file
- * `toContain` passes on any occurrence, so a string that appears in two steps
- * lets either one be mutated while the other keeps the test green; a
- * fixed-width slice runs past a short step into its neighbour and does the
- * same. Both holes were shipped and caught by mutation testing rather than by
- * review, which is why this is the only way these files slice a step.
- */
 const workflowStep = (source, workflowName, name) => {
   const start = source.indexOf(`- name: ${name}`);
   if (start === -1) throw new Error(`${workflowName} has no step named ${name}`);
@@ -52,13 +27,6 @@ const workflowStep = (source, workflowName, name) => {
 const bugLaneVerifyStep = (name) => workflowStep(bugLaneVerify, 'bug-lane-verify.yml', name);
 const selectBeta = read('select-beta-to-promote.yml');
 
-/**
- * Ordered step names across the workflow, in FILE order. Under the fan-out
- * topology file order equals execution order only WITHIN a job; cross-job
- * ordering is enforced by the `needs:` DAG, which the dedicated describe
- * below pins directly. Fails loud rather than silently returning [] if the
- * shape ever changes.
- */
 function stepNames(source) {
   const names = [...source.matchAll(/^ {6}- name: (.+)$/gm)].map((m) => m[1].trim());
   if (names.length < 5) {
@@ -71,11 +39,6 @@ function stepNames(source) {
 
 const indexOfStep = (names, needle) => names.findIndex((n) => n.includes(needle));
 
-/**
- * Step-level `if:` conditions (8-space indent) with YAML block-scalar
- * folding resolved: an `if: >-` yields its joined continuation lines, not
- * the literal `>-` — which would sail through every `not.toContain` check.
- */
 function stepLevelIfConditions(source) {
   const lines = source.split('\n');
   const out = [];
@@ -101,7 +64,6 @@ describe('the stable gate is upstream of everything that ships', () => {
   const names = stepNames(desktopRelease);
 
   test('the smoke gate runs after the DMG is built', () => {
-    // Both steps live in build-macos, so file order is execution order here.
     const build = indexOfStep(names, 'Build + sign + notarize DMG/ZIP');
     expect(build).toBeGreaterThan(-1);
     expect(indexOfStep(names, 'Smoke the packaged DMG')).toBeGreaterThan(build);
@@ -129,13 +91,6 @@ describe('the stable gate is upstream of everything that ships', () => {
   });
 
   test('no shipping STEP opts out of the implicit success() guard', () => {
-    // A downstream step carrying `if: always()` / `!cancelled()` would run
-    // even after the gate refused — which is exactly how a gate stops
-    // gating. JOB-level `!cancelled()` predicates are a different animal:
-    // the required-platforms valve needs them, and each one re-asserts the
-    // success of everything it actually gates on — they are pinned exactly
-    // in the fan-in DAG describe below. Step-level ifs sit at 8-space
-    // indentation; job-level at 4.
     const afterGate = desktopRelease.slice(
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
@@ -153,23 +108,11 @@ describe('the stable gate is upstream of everything that ships', () => {
   });
 
   test('every shipping step with an explicit if: spells success() itself', () => {
-    // The subtler sibling of the test above, and the one that matters more.
-    // Actions injects the implicit `success()` ONLY on steps with no `if:`;
-    // declare one and you own the whole predicate. A shipping step whose `if:`
-    // omits `success()` fires on a job that already failed — which is a gate
-    // that does not gate. This escaped review once: the npm dispatch shipped
-    // with a channel-and-event `if:` and no `success()`, so a refused DMG
-    // would still have published to npm.
     const afterGate = desktopRelease.slice(
       desktopRelease.indexOf('- name: Smoke the packaged DMG'),
     );
     const shipping = afterGate.slice(0, afterGate.indexOf('- name: Alert on a blocked release'));
-    // Step-level ifs only (8-space indent, folding resolved) — job-level
-    // predicates are the required-platforms valve, pinned in the fan-in
-    // DAG describe.
     const conditions = stepLevelIfConditions(shipping);
-    // One condition in this span is a gate, not shipping: the smoke gate's
-    // own channel scope. Everything else ships and must be success()-gated.
     const shippingConditions = conditions.filter(
       (c) => c !== "steps.channel.outputs.channel == 'latest'",
     );
@@ -184,14 +127,6 @@ describe('the stable gate is upstream of everything that ships', () => {
 
 describe('the Azure signing flag set satisfies the schema', () => {
   test('every schema-required azureSignOptions field is passed by both Windows packagers', () => {
-    // app-builder-lib's validateConfig rejects a PARTIAL azureSignOptions
-    // before packaging anything ("should be one of these: null"), and the
-    // fan-in topology turns that one-job failure into a zero-platform
-    // release. The required set is data (scheme.json), so pin the workflows'
-    // flag sets against it — this is exactly the check that would have
-    // caught the three-of-four-fields shape without a live Azure account.
-    // Resolution goes through electron-builder's own tree because pnpm's
-    // isolated layout hides transitive deps from the workspace packages.
     const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const desktopRequire = createRequire(join(repoRoot, 'packages/desktop/package.json'));
     const ebMain = desktopRequire.resolve('electron-builder');
@@ -199,7 +134,7 @@ describe('the Azure signing flag set satisfies the schema', () => {
     const ablMain = ablRequire.resolve('app-builder-lib');
     const scheme = JSON.parse(readFileSync(join(dirname(ablMain), '..', 'scheme.json'), 'utf8'));
     const required = scheme.definitions.WindowsAzureSigningConfiguration.required;
-    expect(required.length).toBeGreaterThanOrEqual(3); // schema sanity, not vacuous
+    expect(required.length).toBeGreaterThanOrEqual(3);
 
     for (const workflow of [desktopRelease, desktopBuildWinLinux]) {
       const passed = [...workflow.matchAll(/--config\.win\.azureSignOptions\.([A-Za-z]+)=/g)].map(
@@ -236,14 +171,6 @@ describe('the optional Windows signing lane proves what it reports', () => {
 });
 
 describe('the publishing Windows lane attests its signed native payload', () => {
-  // This workflow runs main's YAML against `client_payload[ref]`, which may be
-  // an older tag whose tree legitimately excludes node-pty from its Windows
-  // package (a soaked beta or bug-lane synthetic commit cut before the
-  // terminal shipped). The terminal-specific assertions are therefore gated on
-  // the checked-out tree's own packaging intent via the `winterm` detect step;
-  // the app-signature attestation stays unconditional. These tests pin BOTH
-  // halves: the gate may say exactly one thing, and nothing else in the
-  // attestation region may grow a condition.
   const GATE_CONDITION = "success() && steps.winterm.outputs.ships == 'true'";
 
   test('checks both outer architectures before staging release assets', () => {
@@ -274,8 +201,6 @@ describe('the publishing Windows lane attests its signed native payload', () => 
     expect(attestationSteps).toContain("-notmatch 'Microsoft'");
     expect(attestationSteps.match(/OK_WIN_PACKAGE_REQUIRED: "1"/gu) ?? []).toHaveLength(2);
     expect(attestationSteps).not.toContain('continue-on-error:');
-    // Every condition in the attestation region is exactly the tree gate —
-    // nothing may weaken these steps with any other predicate.
     const conditions = stepLevelIfConditions(attestationSteps);
     expect(conditions).toHaveLength(3);
     for (const condition of conditions) {
@@ -293,17 +218,10 @@ describe('the publishing Windows lane attests its signed native payload', () => 
       'desktop-release.yml',
       'Detect whether this ref packages the Windows terminal',
     );
-    // The probe is the checked-out tree's own electron-builder config — never
-    // the packaged output, which would let a broken packaging run skip its
-    // own guard.
     expect(detectStep).toContain('packages/desktop/electron-builder.yml');
     expect(detectStep).toContain('grep -qF -- \'- "!**/node_modules/node-pty/**"\'');
-    // Polarity: the grep HIT (the closed set of pre-terminal trees) is the
-    // skip; every other shape — including future config refactors — stays
-    // armed.
     expect(detectStep.indexOf('ships=false')).toBeGreaterThan(-1);
     expect(detectStep.indexOf('ships=false')).toBeLessThan(detectStep.indexOf('ships=true'));
-    // The app-signature attestation itself carries no condition at all.
     const appAttestation = workflowStep(
       desktopRelease,
       'desktop-release.yml',
@@ -313,10 +231,6 @@ describe('the publishing Windows lane attests its signed native payload', () => 
   });
 
   test('keeps the shared signature-preservation core in both Windows lanes', () => {
-    // desktop-release splits the attestation (the app-signature half runs on
-    // every ref; the ConPTY half is tree-gated); desktop-build-win-linux runs
-    // its workflow file from the dispatched ref itself, so no tree skew is
-    // possible there and it keeps the combined unconditional step.
     const releaseAppStep = workflowStep(
       desktopRelease,
       'desktop-release.yml',
@@ -355,9 +269,6 @@ describe('the publishing Windows lane attests its signed native payload', () => 
 
 describe('the fan-in publication DAG gates every platform', () => {
   test('publish-assets waits on all four build jobs', () => {
-    // The single publication point must sit downstream of EVERY packaging
-    // job — dropping one from `needs` publishes a release that platform
-    // never built for.
     expect(desktopRelease).toContain(
       'needs: [prepare, build-macos, build-windows, build-linux]',
     );
@@ -385,10 +296,6 @@ describe('the fan-in publication DAG gates every platform', () => {
   });
 
   test('the required-platforms valve gates exactly what it may skip — and mac has no bypass', () => {
-    // publish-assets may proceed past a FAILED platform only when that
-    // platform is absent from the required set; the mac result is asserted
-    // unconditionally (the stable smoke gate rides on build-macos), and
-    // prepare refuses a required-set that omits mac at the variable level.
     const pa = desktopRelease.slice(
       desktopRelease.indexOf('\n  publish-assets:'),
       desktopRelease.indexOf('\n  finalize:'),
@@ -401,9 +308,6 @@ describe('the fan-in publication DAG gates every platform', () => {
       "needs.build-linux.result == 'success' || !contains(needs.prepare.outputs.required, 'linux')",
     );
     expect(pa).not.toContain("contains(needs.prepare.outputs.required, 'mac')");
-    // The valve is DEAD without !cancelled(): a non-required platform's
-    // failure would skip these jobs via the implicit all-needs-success
-    // default, blocking exactly the release the override exists to save.
     expect(pa).toContain('!cancelled()');
     const fin = desktopRelease.slice(
       desktopRelease.indexOf('\n  finalize:'),
@@ -412,19 +316,12 @@ describe('the fan-in publication DAG gates every platform', () => {
     expect(fin).toContain('!cancelled()');
     expect(fin).toContain("needs.publish-assets.result == 'success'");
     expect(fin).toContain("needs.build-macos.result == 'success'");
-    // Fail-CLOSED shape, not just message presence: the mac guard must be
-    // the ::error:: + exit 1 pair (a downgrade to ::warning:: or a dropped
-    // exit would leave mac silently droppable).
     expect(desktopRelease).toMatch(
       /::error::DESKTOP_RELEASE_REQUIRED_PLATFORMS must include 'mac'[^"]*"\s*\n\s*exit 1/,
     );
   });
 
   test('the alert pages on a blocked RELEASE, not on any failed job', () => {
-    // Under a degraded required-set a non-required platform can fail while
-    // the release still publishes — paging on that would train readers to
-    // ignore the alert. finalize != success covers every blocked shape
-    // transitively.
     const alertJob = desktopRelease.slice(
       desktopRelease.indexOf('\n  alert:'),
       desktopRelease.indexOf('- name: Alert on a blocked release'),
@@ -453,7 +350,6 @@ describe('the moved dispatch keeps the contract release.yml consumes', () => {
     for (const field of ['ref: $ref', 'version: $version', 'dispatched_by: $by']) {
       expect(payload).toContain(field);
     }
-    // And release.yml still reads each of them.
     expect(releaseYml).toContain('github.event.client_payload.ref');
     expect(releaseYml).toContain('github.event.client_payload.version');
     expect(releaseYml).toContain('github.event.client_payload.dispatched_by');
@@ -472,7 +368,7 @@ describe('the moved dispatch keeps the contract release.yml consumes', () => {
 describe('a non-pass verdict keeps a beta off the fast tier', () => {
   const meta = {
     isDraft: false,
-    publishedAt: '2026-07-28T11:00:00Z', // 1h old — under-soaked
+    publishedAt: '2026-07-28T11:00:00Z',
     assets: [{ name: 'x.dmg' }, { name: 'beta-mac.yml' }],
   };
   const soaked = { ...meta, publishedAt: '2026-07-25T11:00:00Z' };
@@ -502,16 +398,10 @@ describe('a deliberately broken DMG never reads as a pass', () => {
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
   test('a file that is named .dmg but is not one yields a non-pass verdict', async () => {
-    // No mocks anywhere below this line: the real driver, the real mount
-    // helper, the real filesystem. On macOS hdiutil refuses the garbage file;
-    // on Linux hdiutil does not exist. Both are infrastructure, so both are
-    // `error` — and the point of the test is that neither is ever `pass`.
     const fake = join(scratch, 'NotReallyOpenKnowledge.dmg');
     writeFileSync(fake, 'this is not a disk image\n');
 
     const result = await smokePackagedDmg(fake, {
-      // Fail loud if the runner is somehow reached — a broken DMG must never
-      // get that far.
       runPlaywright: async () => {
         throw new Error('the Playwright runner must not be reached for a broken DMG');
       },
@@ -559,10 +449,6 @@ describe('the smoke harness comes from the workflow SHA, not the release tag', (
   };
 
   test('the step overlays the harness from GITHUB_SHA', () => {
-    // The harness is CI tooling. Read it from the release tag and a fix to the
-    // copy logic can never reach an already-cut tag — and since promote-stable
-    // tags the stable at the beta's SHA, every soaked beta is older than the
-    // fix, so all of them stay unreleasable.
     const step = smokeStep();
     expect(step).toContain('git fetch --depth=1 origin "$GITHUB_SHA"');
     expect(step).toContain('git checkout "$GITHUB_SHA" --');
@@ -570,8 +456,6 @@ describe('the smoke harness comes from the workflow SHA, not the release tag', (
   });
 
   test('the overlay cannot newly gate a ref that predates the harness', () => {
-    // Order is the whole safety property: a ref with no harness must still take
-    // the absent-gate exit, not get one grafted on from the default branch.
     const step = smokeStep();
     expect(step.indexOf('ref predates the harness')).toBeLessThan(
       step.indexOf('git checkout "$GITHUB_SHA" --'),
@@ -579,7 +463,6 @@ describe('the smoke harness comes from the workflow SHA, not the release tag', (
   });
 
   test('the overlay degrades to the tag copy instead of blocking the release', () => {
-    // A transient fetch failure must not turn into a refused release.
     expect(smokeStep()).toContain('::warning::Could not read the smoke harness');
   });
 });
@@ -592,26 +475,18 @@ describe('the stable gate does not touch the beta cadence', () => {
   };
 
   test('the smoke gate is stable-only', () => {
-    // Betas flow through this same job. Gating them here would add 5-15 min to
-    // every cadence cut and let a bad DMG block the cadence itself; the beta
-    // equivalent is the selection-time gate, which runs after publication.
     expect(scoped('- name: Smoke the packaged DMG (FR5b)')).toContain(
       "if: steps.channel.outputs.channel == 'latest'",
     );
   });
 
   test('the alert is stable-only too, so a beta hiccup does not page', () => {
-    // The failure() half of the old combined predicate moved to the alert
-    // JOB header (pinned by build-smoke-alert-payload.test.mjs); the step
-    // keeps the channel scope.
     expect(scoped('- name: Alert on a blocked release (FR5c)')).toContain(
       "if: needs.prepare.outputs.channel == 'latest'",
     );
   });
 
   test('the beta path keeps its existing stuck-draft warning', () => {
-    // No step-level channel gate: the warning fires for BOTH channels (the
-    // alert job's failure() header is what conditions it on a broken run).
     const warn = scoped('- name: Warn on stuck draft');
     expect(warn).toContain('RECOVERY="gh release edit');
     expect(warn).not.toContain("if: needs.prepare.outputs.channel == 'latest'");
@@ -619,12 +494,6 @@ describe('the stable gate does not touch the beta cadence', () => {
 });
 
 describe('the bug lane hands off instead of verifying in the evaluator', () => {
-  // The split exists so the evaluator stays SHORT. It runs under a
-  // cancel-on-supersede group on a 20-minute cron plus every push, and a
-  // cancelled run's check is welded to whatever commit was HEAD at the time,
-  // which GitHub's rollup scores as a FAILURE on that commit. A slow step
-  // creeping back in here would resume painting red X's on unrelated commits
-  // of the public repo — the exact regression these tests exist to catch.
   test('the evaluator dispatches the verify workflow rather than running it', () => {
     expect(bugLane).toContain('gh workflow run bug-lane-verify.yml');
     expect(bugLane).not.toContain('- name: Verify the synthetic tree');
@@ -633,10 +502,6 @@ describe('the bug lane hands off instead of verifying in the evaluator', () => {
   });
 
   test('the evaluator will not queue a second verify behind a running one', () => {
-    // First of the two guards that replaced the single global group; the
-    // verify workflow's own queueing group is the backstop. Without this the
-    // lane would request a fresh verify every tick for the ~15 minutes one
-    // takes, re-deriving a batch already in progress.
     const inflight = bugLane.slice(
       bugLane.indexOf('- name: Skip while a release'),
       bugLane.indexOf('- name: Hand the batch to the verify workflow'),
@@ -646,9 +511,6 @@ describe('the bug lane hands off instead of verifying in the evaluator', () => {
   });
 
   test('the verify half queues rather than cancelling a run mid-pick', () => {
-    // Cancelling a verify is what discarded ~11 minutes of work per
-    // supersession before the split. There is nothing to supersede for: the
-    // batch it holds was already qualified by the evaluator.
     const concurrency = bugLaneVerify.slice(
       bugLaneVerify.indexOf('concurrency:'),
       bugLaneVerify.indexOf('env:'),
@@ -657,9 +519,6 @@ describe('the bug lane hands off instead of verifying in the evaluator', () => {
   });
 
   test('the verify half runs only on dispatch, so it cannot colour a commit', () => {
-    // workflow_dispatch checks attach to the commit but are excluded from the
-    // status-check rollup that draws the icon. A `push:` or `schedule:`
-    // trigger here would put this long job back on the commit list.
     const triggers = bugLaneVerify.slice(
       bugLaneVerify.indexOf('\non:'),
       bugLaneVerify.indexOf('\npermissions:'),
@@ -675,37 +534,16 @@ describe('the bug lane hands off instead of verifying in the evaluator', () => {
   });
 });
 
-// The failing-test names travel verify-step output → paging-step env →
-// `--argjson`, and each hop is a separate string in a separate step. Break any
-// one and the page still POSTs, still renders, and simply says it captured no
-// failing test name — the uninformative page the channel exists to avoid. That
-// is a silent degradation, so the hops are pinned by step rather than by a
-// file-wide `toContain` that either end could satisfy alone.
 describe('the failing-test names reach the refusal page', () => {
   test('the verify step publishes them as an output', () => {
     const verify = bugLaneVerifyStep('Verify the synthetic tree (cherry-pick + fast test tiers)');
     expect(verify).toContain('failures<<FAILURES_EOF');
-    // The heredoc BODY, not the bare token: `FAILURES_JSON` also appears on its
-    // own declaration line, so a token check passes while the body emits a
-    // literal `[]` and the output goes permanently empty. That line is outside
-    // what the extraction test executes, too — its slicer stops at the
-    // declaration — so nothing else covers it.
     expect(verify).toContain('printf \'%s\\n\' "$FAILURES_JSON"');
   });
 
   test('the paging step reads that output and hands it to the payload builder', () => {
     const page = bugLaneVerifyStep('Page on a refusal (armed only)');
     expect(page).toContain('FAILURES: ${{ steps.verify.outputs.failures }}');
-    // The connector between the env var and the variable `jq` reads. It sits
-    // third in a stack of three near-identical siblings (TICKETS_JSON,
-    // CONFLICTS_JSON, FAILURES_JSON) in the step whose whole job is not to
-    // page empty. Both plausible mis-wires fail INVISIBLY, because `parseArgs`
-    // drops every non-string and `${...:-}` defaults a name that does not
-    // exist: reaching for the wrong sibling (`${CONFLICTS:-}`) hands the
-    // builder conflict OBJECTS, and dropping the plural (`${FAILURE:-}`)
-    // hands it nothing at all. Either way the list arrives `[]` and the page
-    // says it captured no failing test name — the uninformative page restored,
-    // with every other assertion here still green.
     expect(page).toContain('FAILURES_JSON="${FAILURES:-}"');
     expect(page).toContain('--argjson failures "$FAILURES_JSON"');
   });
@@ -718,18 +556,11 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   );
 
   test('a red tier gets one retry before the tick is refused', () => {
-    // Single-shot here holds a candidate to a STRICTER bar than the tier that
-    // gates main, which retries each package once and treats a retry-pass as
-    // green. These tiers spawn real processes (an orphaned CLI reaped on host
-    // death), so one flake under runner contention has refused a sound fix and left
-    // the page blaming the fix for it.
     const runs = [...verify.matchAll(/turbo run typecheck test/g)];
     expect(
       runs.length,
       'verify must invoke the tiers twice: once, then one flake retry',
     ).toBe(2);
-    // The retry now sits in the ordinary-failure arm of a case, because a
-    // budget blow is deliberately routed past it.
     expect(verify).toContain('case "$FIRST_STATUS" in');
     const ordinaryArm = verify.indexOf('*)', verify.indexOf('case "$FIRST_STATUS" in'));
     expect(ordinaryArm, 'the ordinary-failure arm must exist').toBeGreaterThan(-1);
@@ -737,22 +568,12 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('the first attempt runs to completion so the retry stays incremental', () => {
-    // A cost guard, not a style choice. turbo defaults to `--continue=never`,
-    // which cancels every in-flight and unstarted task on the first failure —
-    // none of those cache, so the retry re-runs them and a late failure costs
-    // close to two full passes. That matters because each attempt now runs
-    // under its own budget, and two near-full passes is how a tick reaches it.
-    // Scoped to the invocation LINES, not the step text: the comment above
-    // them names both flags to explain the choice, and a ratchet that bans
-    // naming what it rules out just gets worked around.
     const invocations = verify
       .split('\n')
       .filter((l) => l.includes('pnpm exec turbo run typecheck test'));
     expect(invocations).toHaveLength(2);
     const [first, retry] = invocations;
     expect(first).toContain('--continue');
-    // `--force` on either would throw away exactly the cached passes that
-    // make the retry cheap.
     expect(first).not.toContain('--force');
     expect(retry).not.toContain('--force');
   });
@@ -761,30 +582,15 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     const installGuardAt = verify.indexOf('verdict=fail');
     const retryAt = verify.indexOf('| tee "$RETRY_LOG"');
     expect(retryAt).toBeGreaterThan(-1);
-    // The install-failure guard mints its own verdict=fail before the tiers
-    // run. The tier verdict is the one that matters here, and it is emitted
-    // from a variable now, because a blown budget is a different verdict from
-    // a red tier. Either way it must sit after the retry.
     expect(installGuardAt).toBeGreaterThan(-1);
     expect(installGuardAt).toBeLessThan(retryAt);
     expect(verify.indexOf('verdict=${TIER_VERDICT}')).toBeGreaterThan(retryAt);
   });
 
   test('each tier attempt runs under its own budget, and a blown one still pages', () => {
-    // The job's `timeout-minutes` is a hard kill that sets no verdict, and every
-    // paging step gates on one — so a job that hits it refuses NOTHING and, since
-    // this group queues rather than cancels, stacks the next verify behind it. A
-    // silent tick is strictly worse than a wrong one here, and bounding turbo's
-    // concurrency made overrun likelier by design. Both attempts are wrapped so a
-    // budget blow arrives as exit 124 and is reported as "could not verify"
-    // rather than as a verdict on the batch.
     const wrappers = [...verify.matchAll(/timeout --foreground --kill-after=\d+s/g)];
     expect(wrappers.length, 'both attempts must carry their own budget').toBe(2);
 
-    // Substrings alone would not pin this: 124 and 137 also appear in prose a
-    // few lines up, so deleting the functional branch and keeping the comments
-    // would stay green, and so would transposing the two messages. Anchor on
-    // the gate and require each message on the correct side of it.
     const gateAt = verify.indexOf('"${TIER_VERDICT:-fail}" == "could-not-verify" ]]; then\n              echo');
     expect(gateAt, 'the warning must branch on the computed budget flag').toBeGreaterThan(-1);
     const couldNotVerifyAt = verify.indexOf('COULD NOT VERIFY', gateAt);
@@ -792,11 +598,6 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(couldNotVerifyAt).toBeGreaterThan(gateAt);
     expect(notFlakeAt).toBeGreaterThan(couldNotVerifyAt);
 
-    // A blown budget must NOT be retried: a second attempt burns another full
-    // budget and buries the signal, which is the PR tier's stated rule. Scoped
-    // INSIDE the FIRST_STATUS case and required to precede the ordinary arm --
-    // `124|137)` also spells the flag computation below, so a bare substring
-    // would survive deleting this arm entirely.
     const caseAt = verify.indexOf('case "$FIRST_STATUS" in');
     expect(caseAt).toBeGreaterThan(-1);
     const blowArm = verify.indexOf('124|137)', caseAt);
@@ -806,27 +607,17 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('a tick that mints no verdict still refuses out loud', () => {
-    // Every paging step gates on a verdict and steps default to `if: success()`,
-    // so anything that dies before the tiers -- a bad stable ref, a failed
-    // install, the job ceiling reached during checkout -- skips all of them. The
-    // tier budget closes the commonest door; this is what closes the rest.
     const guard = bugLaneVerify.indexOf("steps.verify.outputs.verdict == ''");
     expect(guard, 'a no-verdict tick must still page').toBeGreaterThan(-1);
     const always = bugLaneVerify.lastIndexOf('always()', guard);
     expect(always, 'the guard is useless without always()').toBeGreaterThan(-1);
     expect(guard - always).toBeLessThan(40);
-    // A guard that runs and says nothing is the same silence it exists to end,
-    // so require the step to actually emit -- and to say which class it is.
     const emits = bugLaneVerify.indexOf('::warning::', guard);
     expect(emits, 'the guarded step must emit something').toBeGreaterThan(guard);
     expect(bugLaneVerify.slice(guard, emits + 200)).toContain('COULD NOT VERIFY');
   });
 
   test('a budget blow and a real refusal do not share a page signature', () => {
-    // They differ by VERDICT, which the signature already hashes. That is the
-    // whole reason a blow mints its own verdict instead of riding `fail` with a
-    // flag: a flag has to be threaded to the page, the signature and the gates
-    // separately, and a missed wiring is silent because each reader defaults it.
     const sigFrom = bugLaneVerify.indexOf('- name: Refusal signature');
     const sigTo = bugLaneVerify.indexOf('- name: Has this refusal already been paged?');
     expect(sigFrom).toBeGreaterThan(-1);
@@ -834,16 +625,10 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     const sig = bugLaneVerify.slice(sigFrom, sigTo);
     expect(sig).toContain('"$VERDICT"');
     expect(verify).toContain('TIER_VERDICT=could-not-verify');
-    // The flag is gone; if it comes back, the threading hazard comes with it.
     expect(bugLaneVerify).not.toContain('budget_blown');
   });
 
   test('an unchanged refusal is paged once, not once per tick', () => {
-    // The refused ref stays in the pending pile and re-conflicts on every
-    // tick, so a page-per-tick emits the same message every 20 minutes until
-    // the cycle consumes it — five identical pages in two hours on 2026-08-05.
-    // The gate is the cache lookup; losing it restores the flood silently,
-    // because every individual page is still "correct".
     const page = bugLaneVerify.slice(
       bugLaneVerify.indexOf('- name: Page on a refusal'),
       bugLaneVerify.indexOf('- name: Record that this refusal was paged'),
@@ -854,19 +639,6 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('the marker is gated on DELIVERY, not on the page step succeeding', () => {
-    // The page step cannot fail: a dead webhook is downgraded to a warning
-    // (losing a notification must never fail a release job) and an unset
-    // secret returns early, so its conclusion is `success` in both cases while
-    // nothing reached anyone. Keying the marker on the step would cache the
-    // signature anyway and silence that refusal permanently — strictly worse
-    // than the per-tick flood it replaced, which self-healed next tick.
-    //
-    // Step ORDER is not the property: `Record` sits after `Page` either way,
-    // so an ordering assertion stays green while the guarantee is gone.
-    // Scoped to the refusal step. Both strings now also appear in the drop
-    // step added alongside it, so a whole-file assertion would let either
-    // step's copy satisfy the other's test — the sibling-coverage hole that
-    // has bitten every ratchet in this block.
     const refusalPage = bugLaneVerifyStep('Page on a refusal (armed only)');
     expect(refusalPage).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
     expect(refusalPage).toContain('delivered=true');
@@ -878,19 +650,9 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('an unchanged partial drop is paged once, not once per tick', () => {
-    // The drop page is a STANDING ANSWER on the same terms as the refusal
-    // above: the ref conflicts with the stable on every tick, so without a
-    // gate it re-sends an unchanged message every ~20 minutes. Observed
-    // 2026-08-21: four identical overnight pages, because the dispatch they
-    // accompanied could never land (anchor-drift) and so the candidate set
-    // never moved. verdict is `pass` on this path, which is exactly why the
-    // refusal's own gate does not cover it.
     expect(bugLaneVerifyStep('Notify on a partial drop (armed only)')).toContain(
       "steps.drop_paged_before.outputs.cache-hit != 'true'",
     );
-    // Both cache steps, each bounded to itself. A restore key that stops
-    // tracking the signature is the per-tick flood this test is named for; if
-    // BOTH go constant it is permanent silence for every later drop.
     for (const step of ['Has this drop already been paged?', 'Remember the drop across ticks']) {
       expect(bugLaneVerifyStep(step), `${step} must key on the drop signature`).toContain(
         'key: bug-lane-drop-${{ steps.drop.outputs.sig }}',
@@ -899,10 +661,6 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('the drop marker is gated on DELIVERY, not on the notify step succeeding', () => {
-    // Same contract as the refusal marker: the notify step cannot fail (an
-    // unset secret returns early, a dead webhook downgrades to a warning), so
-    // keying the marker on its conclusion would cache the signature even when
-    // nothing reached anyone and silence that drop permanently.
     for (const step of ['Record that this drop was paged', 'Remember the drop across ticks']) {
       expect(bugLaneVerifyStep(step), `${step} must gate on delivery`).toContain(
         "if: steps.drop_page.outputs.delivered == 'true'",
@@ -911,62 +669,32 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('the drop signature ignores the stable but tracks the dispatched subset', () => {
-    // Deliberate asymmetry, inherited from the refusal signature. The
-    // operator's move does not change when the stable rolls, and stables roll
-    // several times a day — including it would restore most of the flood for a
-    // fact already reported. A different surviving subset IS new news, so it
-    // stays in.
     const sig = bugLaneVerifyStep('Drop signature');
     expect(sig).toContain('"$DROPPED_REFS" "$SURVIVING_REFS"');
     expect(sig).not.toContain('$STABLE');
   });
 
   test('a suppressed drop still leaves a trace in the run', () => {
-    // Same property the refusal path already pins: the suppressing tick has
-    // nothing else to show — no page, no marker write, green check — so an
-    // operator asking "is that drop still standing?" has only an invisible
-    // cache hit to infer it from. The gate is the COMPLEMENT of the notify
-    // step's; inverting it makes the note fire alongside the page and never on
-    // the tick it exists for.
     const suppress = bugLaneVerifyStep('Note a suppressed drop');
     expect(suppress).toContain("if: steps.drop_paged_before.outputs.cache-hit == 'true'");
     expect(suppress).toContain('>> "$GITHUB_STEP_SUMMARY"');
   });
 
   test('the drop page states its delivery on every path', () => {
-    // The markers key on `delivered`, so the step has to write it whether or
-    // not a webhook exists. An early `exit 0` on the no-webhook branch leaves
-    // it unset — inert today, since unset and 'false' both fail the gate, but
-    // it makes the marker contract depend on a GHA default rather than on a
-    // value this step always states.
     const notify = bugLaneVerifyStep('Notify on a partial drop (armed only)');
     expect(notify).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
     expect(notify).not.toContain('exit 0');
   });
 
   test('a disarmed lane cannot post the drop page', () => {
-    // The notify step used to carry `BUG_LANE_ARMED` in its own `if:`. Now that
-    // it gates on the signature instead, the armed check survives in exactly
-    // ONE place — and it is the only thing keeping a log-only lane from posting
-    // to Slack. Losing it there is silent: every other assertion here stays
-    // green while a disarmed lane starts paging.
     expect(bugLaneVerifyStep('Drop signature')).toContain("env.BUG_LANE_ARMED == 'true'");
   });
 
   test('the one page it does send says the following silence is deliberate', () => {
-    // Paging once and then going quiet is indistinguishable from resolved
-    // unless the message says so.
-    // Bounded to the Page step: an open-ended slice would also match the
-    // phrase in a later step or comment and pass while the message itself
-    // had lost it.
     const page = bugLaneVerify.slice(
       bugLaneVerify.indexOf('- name: Page on a refusal'),
       bugLaneVerify.indexOf('- name: Record that this refusal was paged'),
     );
-    // The sentence lives in the payload builder the step shells out to, so the
-    // contract is "the step composes a body that carries it" rather than "the
-    // YAML contains the literal". Assert both halves: the step reaches the
-    // builder, and the builder still emits the sentence.
     expect(page).toContain('bug-lane-refusal-payload.mjs');
     expect(
       readFileSync(join(WORKFLOWS, '..', 'scripts', 'bug-lane-refusal-payload.mjs'), 'utf8'),
@@ -974,11 +702,6 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('a suppressed refusal still leaves a trace in the run', () => {
-    // The suppressing tick is the one with nothing else to show: no page, no
-    // marker write, green check. Its condition is the COMPLEMENT of the page
-    // step's, which is the regression worth pinning — swapping it to
-    // `!= 'true'` makes it fire alongside the page and never on the tick it
-    // exists for, and every other test here stays green.
     const suppress = bugLaneVerify.slice(
       bugLaneVerify.indexOf('- name: Note a suppressed refusal'),
       bugLaneVerify.indexOf('- name: Page on a refusal'),
@@ -988,14 +711,6 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
   });
 
   test('the refusal page does not claim a cause it has not established', () => {
-    // The prior text asserted "the fix passes on main but not on the stable it
-    // would ship against" off a single red run, sending operators hunting for
-    // an incompatibility that was really a flake.
-    // Through the file's own guarded helper: it refuses -1 AND bounds at the
-    // next step, where a hand-rolled floor check would slice to end-of-file.
-    // This test's ONLY assertion is a negative one, so an unguarded slice would
-    // yield one character and pass — renaming the step would satisfy the test
-    // rather than break it.
     const page = bugLaneVerifyStep('Page on a refusal (armed only)');
     expect(page).not.toContain('the fix passes on main but not on the stable');
   });
@@ -1008,9 +723,6 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   );
 
   test('the announcement prefers the releases webhook, falling back to the shared one', () => {
-    // A Slack incoming webhook is bound to its channel when it is installed
-    // and the payload carries no `channel` field, so this expansion is the
-    // ONLY thing deciding which channel the release notes land in.
     expect(announce).toContain(
       'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
     );
@@ -1020,9 +732,6 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   });
 
   test('the announcement posts to the resolved URL, never straight to the shared secret', () => {
-    // Collapsing this back to "$SLACK_WEBHOOK_URL" is the silent regression:
-    // the step still posts and still exits 0, and the notes quietly reappear
-    // in the ops channel with nothing failing.
     expect(announce).toContain('--data "$payload" "$WEBHOOK_URL"');
     expect(announce).not.toContain('--data "$payload" "$SLACK_WEBHOOK_URL"');
   });
@@ -1032,10 +741,6 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   });
 
   test('the blocked-release alarm resolves the same way the announcement does', () => {
-    // The alarm is the negative of the announcement — the release that did NOT
-    // ship — so it reads as release traffic and belongs with the notes. What
-    // must never come back is a bare "$SLACK_WEBHOOK_URL" post: that still
-    // exits 0 while the page silently reappears in the product channel.
     const alert = desktopRelease.slice(
       desktopRelease.indexOf('- name: Alert on a blocked release'),
     );
@@ -1046,15 +751,7 @@ describe('every release-pipeline post prefers the releases webhook', () => {
     expect(alert).not.toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
   });
 
-  // The remaining four moved posts. Ratcheting only the blocked-release alert
-  // would leave the stated invariant — no step posts straight at the shared
-  // secret — unenforced for most of the steps that moved, and this is the
-  // regression class that exits 0 while the page reappears in the product
-  // channel, so it is invisible without a test.
   const RESOLVED = 'WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"';
-  // Guarded at the chokepoint: four call sites feed this, several asserting
-  // only negatives, so an unguarded miss would yield slice(-1) — one character —
-  // and turn those assertions green on a renamed step.
   const stepAfter = (source, name, next) => {
     const start = source.indexOf(`- name: ${name}`);
     if (start === -1) throw new Error(`no step named ${name}`);
@@ -1083,17 +780,12 @@ describe('every release-pipeline post prefers the releases webhook', () => {
       expect(s).toContain('SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}');
       expect(s).toContain(RESOLVED);
       expect(s).toContain('"$WEBHOOK_URL"');
-      // The bare forms this replaced. Either one reaching the curl again puts
-      // the page back in the product channel with nothing failing.
       expect(s).not.toContain('--data "$payload" "$SLACK_WEBHOOK_URL"');
       expect(s).not.toContain('if [[ -z "${SLACK_WEBHOOK_URL:-}" ]]; then');
     });
   }
 
   test('the aggregate smoke alarm resolves the releases webhook first', () => {
-    // This one posts through a `post` helper rather than a bare curl, so it
-    // carries the compound expansion at the call site instead of a WEBHOOK_URL
-    // assignment.
     const alarm = stepAfter(selectBeta, 'Page the release channel');
     expect(alarm).toContain('SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}');
     expect(alarm).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');

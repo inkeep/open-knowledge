@@ -1,12 +1,3 @@
-/**
- * Materializing the OKF schemas into `.ok/okf/`.
- *
- * The files exist so an agent told a contract governs a document can go read it. That
- * makes two things load-bearing and tested here: the bytes must match what the plugin
- * actually validates with (a drifted file describes a contract nothing enforces), and
- * the advertised path must be the path written (an agent following it must not 404).
- */
-
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -38,7 +29,6 @@ const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
 
 describe('writing the schemas', () => {
   test('every registered schema lands at the path it is advertised as', () => {
-    // The whole point of the file is that an advertised name can be followed.
     writeOkfSchemaFiles(root);
     for (const entry of OKF_FRONTMATTER_REGISTRY) {
       const advertised = okfSchemaPathFor(entry.id);
@@ -47,8 +37,6 @@ describe('writing the schemas', () => {
   });
 
   test('the written bytes ARE the schema the plugin validates with', () => {
-    // The drift guard. The constants are the source and these files are a rendering;
-    // if they could diverge, an agent would read a contract nothing enforces.
     writeOkfSchemaFiles(root);
     for (const file of renderOkfSchemaFiles()) {
       const onDisk = JSON.parse(read(file.path));
@@ -67,8 +55,6 @@ describe('writing the schemas', () => {
   });
 
   test('an edit is reverted on the next write', () => {
-    // Rewriting unconditionally is what makes the generated-ness observable rather
-    // than merely asserted in a comment.
     writeOkfSchemaFiles(root);
     const path = okfSchemaPathFor('frontmatter-required');
     writeFileSync(join(root, path), '{"type":"object"}\n', 'utf8');
@@ -112,7 +98,6 @@ describe('git handling', () => {
   });
 
   test('a project with no .ok/.gitignore still gets its schemas', () => {
-    // Nothing to extend and no conventions to guess at — write the schemas anyway.
     rmSync(join(root, '.ok', '.gitignore'), { force: true });
     expect(writeOkfSchemaFiles(root).length).toBeGreaterThan(0);
     expect(existsSync(join(root, OKF_SCHEMA_DIR))).toBe(true);
@@ -134,8 +119,6 @@ describe('rule toggles', () => {
   });
 
   test('a body rule with no schema changes nothing', () => {
-    // Only frontmatter rules materialize files; toggling e.g. no-wiki-links
-    // must not disturb the directory.
     writeOkfSchemaFiles(root);
     const before = OKF_FRONTMATTER_REGISTRY.map((e) => read(okfSchemaPathFor(e.id)));
     writeOkfSchemaFiles(root, { 'no-wiki-links': false });
@@ -154,8 +137,6 @@ describe('the enablement gate', () => {
     const path = okfSchemaPathFor('frontmatter-required');
     expect(existsSync(join(root, path))).toBe(true);
 
-    // The guard means a hand-edit is NOT reverted until the state changes — the
-    // cost of calling this on a hot config path. A restart or a toggle restores it.
     writeFileSync(join(root, path), 'edited\n', 'utf8');
     ensureOkfSchemaFiles(root, { enabled: true });
     expect(read(path)).toBe('edited\n');
@@ -166,8 +147,6 @@ describe('the enablement gate', () => {
   });
 
   test('toggling a rule off deletes its file without a restart', () => {
-    // A rule toggle is a state change the funnel must notice — the memo cannot
-    // be a plain "already materialized" boolean.
     ensureOkfSchemaFiles(root, { enabled: true });
     ensureOkfSchemaFiles(root, { enabled: true, rules: { 'frontmatter-provenance': false } });
     expect(existsSync(join(root, okfSchemaPathFor('frontmatter-provenance')))).toBe(false);
@@ -181,8 +160,6 @@ describe('the enablement gate', () => {
   });
 
   test('disabling the plugin leaves a file it did not write', () => {
-    // Only rendered files are deleted; the non-recursive rmdir keeps that
-    // guarantee structural rather than a matter of care.
     ensureOkfSchemaFiles(root, { enabled: true });
     const stray = join(root, OKF_SCHEMA_DIR, 'notes.txt');
     writeFileSync(stray, 'mine\n', 'utf8');
@@ -192,10 +169,6 @@ describe('the enablement gate', () => {
   });
 
   test('a second project is not skipped by the first', () => {
-    // The gate keys "already materialized" by project dir, so enabling one
-    // project must not mark a DIFFERENT one as done — a single boolean flag
-    // would write the first and silently skip the second (a server can serve
-    // more than one project in a process).
     const rootB = mkdtempSync(join(tmpdir(), 'ok-okf-schemas-b-'));
     mkdirSync(join(rootB, '.ok'), { recursive: true });
     try {
@@ -208,8 +181,6 @@ describe('the enablement gate', () => {
   });
 
   test('an unwritable project degrades quietly rather than throwing', () => {
-    // The plugin validates from its compiled copy regardless, so a read-only
-    // checkout must not stop a server from booting.
     expect(() => writeOkfSchemaFiles(join(root, 'nope', '\0bad'))).not.toThrow();
   });
 });

@@ -1,22 +1,3 @@
-/**
- * `ok embeddings` — manage the semantic-search embeddings provider key + status.
- *
- * Subcommands:
- *   - `set-key` / `clear-key`  store / remove the API key for THIS project's
- *     configured endpoint (keys are per-project + per-endpoint now).
- *   - `list`      show every project + endpoint that has a stored key.
- *   - `set-url` / `clear-url`  set / reset `search.semantic.baseUrl` (project-local).
- *   - `set-model` / `clear-model`  set / reset `search.semantic.model` (project-local).
- *   - `enable` / `disable`  flip `search.semantic.enabled` for the project (project-local).
- *   - `status`    show key presence + enabled/capability/coverage (per-project).
- *
- * The key is read from stdin (piped) or a hidden prompt, stored only in the
- * 0600 `~/.ok/secrets.yml` file keyed by (project, endpoint) — NOT the OS
- * keychain (a keychain read prompts on the agent-triggered search path), and
- * never in the project tree. NEVER echoed, logged, or written to project
- * config. A sibling of `ok auth` (GitHub-specific, which DOES use the keychain).
- */
-
 import { resolve } from 'node:path';
 import {
   checkEmbeddingsBaseUrl,
@@ -39,7 +20,6 @@ import {
   resolveEmbeddingsCredential,
 } from '../../auth/embeddings-key-store.ts';
 
-/** Read the key from piped stdin, else a hidden interactive prompt. */
 async function readKey(): Promise<string> {
   if (!process.stdin.isTTY) {
     const chunks: Buffer[] = [];
@@ -49,19 +29,10 @@ async function readKey(): Promise<string> {
   return (await password({ message: 'Enter embeddings provider API key:' })).trim();
 }
 
-// Read `search.semantic.*` through the SAME project-local-only resolver the
-// server uses (`readProjectLocalSemanticConfig`), so `status` can never report a
-// different enabled/capability than the running server. The working dir IS the
-// project root (matches how `ok start` resolves `projectDir`).
 function readSemanticConfig(projectDir: string) {
   return readProjectLocalSemanticConfig(projectDir);
 }
 
-/**
- * Whether a key resolves for this project's configured endpoint, via the SAME
- * resolver the server uses (project key → env on the default host → keyless
- * loopback), so `status` can't disagree with what a search would do.
- */
 async function resolveKeyPresence(
   projectDir: string,
   baseUrl: string,
@@ -77,12 +48,6 @@ async function resolveKeyPresence(
   return { present: false, notRequired: cred.keyless, source: null };
 }
 
-/**
- * Best-effort live coverage from the project's running server (discovered via
- * `server.lock`). Returns null — never throws — when no server is running or the
- * probe fails, so `status` works offline. The probe is the read-only,
- * side-effect-free `/api/semantic-status` (no embed, no egress, no keychain).
- */
 async function fetchLiveCoverage(
   projectDir: string,
 ): Promise<{ embedded: number; total: number } | null> {
@@ -117,15 +82,12 @@ function setKeyCommand(): Command {
       try {
         await createEmbeddingsSecretStore().setForProject(projectDir, baseUrl, key);
       } catch (e) {
-        // The CLI is the headless path (keys piped from a secrets manager), so a
-        // disk-write failure must report clearly rather than dump a stack.
         process.stderr.write(
           `Failed to store the embeddings key: ${e instanceof Error ? e.message : String(e)}\n`,
         );
         process.exitCode = 1;
         return;
       }
-      // Never echo the key.
       process.stderr.write(
         `✓ Embeddings API key stored for ${baseUrl}\n` +
           '  (kept in ~/.ok/secrets.yml, 0600, this machine only — never in the project).\n' +
@@ -169,8 +131,6 @@ function listCommand(): Command {
         process.stderr.write('No project embeddings keys stored.\n');
         return;
       }
-      // Read-only view; also the way to spot orphaned entries from projects that
-      // were moved or deleted (their path no longer exists on disk).
       const lines: string[] = ['Stored embeddings keys (this machine):', ''];
       for (const { projectKey, endpoints } of projects) {
         lines.push(`  ${projectKey}`);
@@ -182,16 +142,6 @@ function listCommand(): Command {
     });
 }
 
-/**
- * `set-url` / `clear-url` set / reset `search.semantic.baseUrl` in the
- * project-local config — the same field + scope the Settings endpoint input
- * uses, so a running server picks the change up live. `set-url` validates the
- * URL against the SAME rule the server enforces before sending the key
- * (`checkEmbeddingsBaseUrl`: https, or http only for loopback) so a
- * guaranteed-to-fail endpoint is rejected here instead of degrading to lexical
- * at warm time. `clear-url` writes the default endpoint back (mirrors clearing
- * the Settings field). Human-run (the field is `agentSettable: false`).
- */
 function setUrlCommand(): Command {
   return new Command('set-url')
     .description('Set the embeddings API endpoint for this project (project-local)')
@@ -250,17 +200,6 @@ function clearUrlCommand(): Command {
     });
 }
 
-/**
- * `set-model` / `clear-model` are the endpoint commands' other half: a custom
- * endpoint is only usable once you can also name the model it serves. Without
- * these the persona this whole feature targets — someone running their own
- * server, often headless — can set the URL from the CLI but has to hand-edit
- * `config.yml` for the model.
- *
- * Free-text by design (no preset list): whatever the endpoint serves is valid,
- * and a curated catalog would rot. The vector size is detected from the
- * provider, so there is no matching dimensions command.
- */
 function setModelCommand(): Command {
   return new Command('set-model')
     .description('Set the embeddings model for this project (project-local)')
@@ -315,12 +254,6 @@ function clearModelCommand(): Command {
     });
 }
 
-/**
- * `enable` / `disable` flip `search.semantic.enabled` in the project-local config
- * (`<project>/.ok/local/config.yml`) — the same field + scope the Settings toggle
- * and the server's config watcher use, so a running server picks the change up
- * live. Human-run (consistent with the field's `agentSettable: false`).
- */
 function toggleEnabledCommand(name: 'enable' | 'disable', value: boolean): Command {
   return new Command(name)
     .description(`Turn semantic search ${value ? 'on' : 'off'} for this project (project-local)`)
@@ -366,7 +299,6 @@ function statusCommand(): Command {
         source: keySource,
       } = await resolveKeyPresence(projectDir, cfg.baseUrl);
       const capable = cfg.enabled && (hasKey || keyNotRequired);
-      // Coverage is only meaningful once capable; skip the server probe otherwise.
       const coverage = capable ? await fetchLiveCoverage(projectDir) : null;
 
       if (opts.json) {
@@ -427,7 +359,6 @@ function statusCommand(): Command {
     });
 }
 
-/** Build the `embeddings` command group. */
 export function embeddingsCommand(): Command {
   return new Command('embeddings')
     .description('Manage the semantic-search embeddings provider key + status')

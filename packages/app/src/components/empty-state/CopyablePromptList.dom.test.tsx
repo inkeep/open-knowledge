@@ -1,23 +1,3 @@
-/**
- * RTL behavioral tests for `CopyablePromptList` — the embedded-host
- * (Cursor/Codex/Claude) copy-to-clipboard counterpart to the composer.
- *
- * Load-bearing regression: the list used to call `navigator.clipboard.writeText`
- * directly with a silent `.catch()`. Inside Claude's embedded iframe the parent
- * frame's Permissions-Policy denies `clipboard-write`, so the async write
- * rejects — and the swallowed rejection meant the click did NOTHING (no copy, no
- * "Copied" feedback). The fix routes through `scheduleClipboardWrite`, whose
- * `execCommand('copy')` fallback still fires under the click's transient
- * activation where the policy-gated async API is refused.
- *
- * These tests pin both halves of that contract:
- *   - happy path     → adapter resolves, row flips to "Copied"
- *   - embedded iframe → navigator.clipboard rejects, execCommand copies anyway,
- *                       row still flips to "Copied"
- *
- * Substrate: jsdom via `bun run test:dom`.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -42,9 +22,6 @@ describe('CopyablePromptList', () => {
   });
   afterEach(() => {
     cleanup();
-    // Restore any document.execCommand stub an individual test installed —
-    // mirrors the save/restore discipline in clipboard-adapter.test.ts so a
-    // later test can't silently inherit a prior test's fallback behavior.
     Reflect.deleteProperty(globalThis.document, 'execCommand');
   });
 
@@ -69,8 +46,6 @@ describe('CopyablePromptList', () => {
   });
 
   test('falls back to execCommand and still copies when embedded-iframe policy refuses the async write', async () => {
-    // Reproduce Claude's embedded iframe: navigator.clipboard exists but the
-    // Permissions-Policy refusal surfaces as a rejected writeText.
     const writeText = vi.fn(() =>
       Promise.reject(
         Object.assign(new Error('blocked because of a permissions policy'), {
@@ -102,10 +77,6 @@ describe('CopyablePromptList', () => {
   });
 
   test('does not flip to "Copied" when every clipboard path is refused', async () => {
-    // Graceful-degradation contract: when the async write rejects AND the
-    // execCommand fallback returns false (no Electron bridge either), the row
-    // must stay on "Copy" — never show a false success. Guards the trivial
-    // `.catch()` in handleCopy against silent removal.
     const writeText = vi.fn(() =>
       Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' })),
     );
@@ -122,8 +93,6 @@ describe('CopyablePromptList', () => {
     render(<CopyablePromptList scenario="new-project" />);
     fireEvent.click(screen.getByTestId('copy-prompt-button-competitor-research'));
 
-    // Await both refusals so the assertion lands after the catch settles, not
-    // on a bare timeout: writeText rejects, then execCommand is attempted.
     await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'));
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('copy-prompt-button-competitor-research').textContent).not.toContain(

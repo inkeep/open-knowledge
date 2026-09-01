@@ -1,20 +1,9 @@
-/**
- * Terminal lives as a subsection of This project → Preferences, and stays
- * desktop-only: the docked terminal has no web host, so its per-project revoke
- * toggle must only be reachable under the Electron preload (`window.okDesktop`)
- * on a pty-capable host. The observable shell-level surface for the gate is
- * the settings SEARCH index: the subsection entry exists only on capable
- * hosts.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Radix/cmdk reach for DOM globals the jsdom preload doesn't expose; hoist the
-// same shims the sibling search test uses.
 type WindowGlobals = { MutationObserver?: typeof MutationObserver; NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -67,9 +56,6 @@ const probeActiveIds: string[] = [];
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: ({ activeId }: { activeId: string }) => {
     probeActiveIds.push(activeId);
-    // Stands in for the blocks the legacy aliases target so the shell's
-    // scroll-to-flash has real `[data-field]` nodes to find — the same anchors
-    // the sidebar declares.
     return (
       <div data-testid="settings-body-probe">
         <div data-field="section:terminal" data-testid="probe-terminal-block" />
@@ -118,8 +104,6 @@ const { SettingsDialogShell } = await import('./SettingsDialogShell');
 function setDesktopHost(present: boolean, opts: { ptyAvailable?: boolean } = {}) {
   const w = window as unknown as { okDesktop?: unknown };
   if (present) {
-    // The Terminal subsection additionally gates on the host's pty capability
-    // (`config.ptyAvailable`, false where node-pty is unavailable).
     w.okDesktop = { config: { ptyAvailable: opts.ptyAvailable ?? true } };
   } else {
     w.okDesktop = undefined;
@@ -147,7 +131,6 @@ describe('SettingsDialogShell terminal subsection (desktop-only)', () => {
     const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
 
-    // The former standalone sidebar item is gone for every host.
     expect(screen.queryByTestId('settings-sidebar-item-terminal')).toBeNull();
 
     await searchTerminal(user);
@@ -157,10 +140,6 @@ describe('SettingsDialogShell terminal subsection (desktop-only)', () => {
     expect(probeActiveIds.at(-1)).toBe('project-preferences');
   });
 
-  // A legacy `#settings/terminal` link used to resolve to the page id alone,
-  // dropping the user at the top of a four-block page with nothing indicating
-  // which block they asked for. The alias carries the block anchor so the deep
-  // link lands where the equivalent search result does.
   test('a legacy terminal deep link anchors the block, not just the page', async () => {
     setDesktopHost(true);
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} initialSection="terminal" />);
@@ -173,10 +152,6 @@ describe('SettingsDialogShell terminal subsection (desktop-only)', () => {
     });
   });
 
-  // The mechanism is proven by the terminal case above; these guard the other
-  // two DATA entries in the alias map, which a typo'd anchor would break
-  // silently. Deep links are user-facing (bookmarks, onboarding toasts), so a
-  // silent regression means a link that quietly stops landing anywhere useful.
   test.each([
     ['content-rules', 'project-preferences', 'probe-content-rules-block'],
     ['sharing', 'sync', 'probe-sharing-block'],

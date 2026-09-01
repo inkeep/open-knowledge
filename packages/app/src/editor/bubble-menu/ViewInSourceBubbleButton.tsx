@@ -1,20 +1,3 @@
-/**
- * "View in source" entry for the WYSIWYG bubble menu — jumps from the current
- * selection to its markdown source. Activating it flips the editor to source
- * mode and lands the selected block's source range centered and flashed, caret
- * at its start, so a user reading a passage can inspect or fix its markdown
- * without re-scrolling.
- *
- * The jump targets the selection's block: `requestViewInSource` reads the
- * selection start, which is where the bubble bar is anchored anyway.
- *
- * Unlike the icon-only siblings in this bar, this entry is keyboard-operable.
- * The action lives on `onClick`, which a focused button fires from both a mouse
- * click and a keyboard Enter/Space press; `onMouseDown` only suppresses the
- * focus shift so the selection stays painted through the flip, matching the bar
- * convention without moving the action off the keyboard-reachable path.
- */
-
 import { useLingui } from '@lingui/react/macro';
 import type { Editor } from '@tiptap/react';
 import type { ReactNode } from 'react';
@@ -33,10 +16,6 @@ export function ViewInSourceBubbleButton({ editor }: { editor: Editor }): ReactN
   const jump = (): void => {
     const docName = getEditorDocName(editor);
     const ydoc = getYDoc(editor);
-    // Read the doc identity at activation time, not render time: the pooled
-    // editor can be torn down between the bubble rendering and the click. With
-    // no registered doc name or Y.Doc there is nothing to navigate into, so the
-    // entry no-ops rather than dispatching a flip that would land nowhere.
     if (docName === null || !ydoc) return;
     requestViewInSource({ editor, docName, ytext: ydoc.getText('source') });
   };

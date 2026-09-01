@@ -1,13 +1,3 @@
-/**
- * Pins the two guards on the conflict composer prefill.
- *
- * The seed writes into the user's typing surface, and its draft is global +
- * localStorage-backed — so a seed that clobbers, or one that is never withdrawn,
- * follows the user well past the conflict that justified it.
- *
- * Substrate: jsdom.
- */
-
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -19,12 +9,6 @@ const { useConflictComposerPrefill } = await import('./use-conflict-composer-pre
 const ENTRY = { file: 'notes/roadmap.md', detectedAt: '2026-08-25T00:00:00.000Z' };
 const DOC2 = { file: 'notes/doc2.md', detectedAt: '2026-08-25T00:00:00.000Z' };
 
-/**
- * Stand-in for the composer input handle. `setText` and `clear` invoke the
- * content-change callback synchronously because the real `ComposerMentionInput`
- * does — `setContent` does not fire `onUpdate`, so the handle calls the host
- * back by hand. A fake that only assigns hides every self-notification bug.
- */
 function makeInput(initial = '') {
   let text = initial;
   let onChange: (() => void) | null = null;
@@ -39,7 +23,6 @@ function makeInput(initial = '') {
       onChange?.();
     },
     read: () => text,
-    /** Wire the host's content-change relay, as BottomComposer's prop does. */
     wire: (cb: () => void) => {
       onChange = cb;
     },
@@ -57,7 +40,6 @@ describe('useConflictComposerPrefill', () => {
     const input = makeInput();
     renderHook(() => useConflictComposerPrefill('notes/roadmap', { current: input }));
 
-    // "all" is the payload's one constraint: every region, not just the first.
     expect(input.read()).toBe('Resolve all the merge conflicts in notes/roadmap.md.');
   });
 
@@ -68,8 +50,6 @@ describe('useConflictComposerPrefill', () => {
   });
 
   test('never clobbers a draft the user is part-way through', () => {
-    // Reachable in normal use: conflicts arrive from a background sync, not only
-    // from a navigation the user initiated.
     conflictsState = { conflicts: [ENTRY] };
     const input = makeInput('what does this function do?');
     renderHook(() => useConflictComposerPrefill('notes/roadmap', { current: input }));
@@ -77,8 +57,6 @@ describe('useConflictComposerPrefill', () => {
   });
 
   test('re-seeds when switching to another conflicted doc', () => {
-    // Clicking between conflicted files left the instruction naming the file the
-    // user had just left, because a seeded draft reads as "occupied".
     conflictsState = { conflicts: [ENTRY, DOC2] };
     const input = makeInput();
     const { rerender } = renderHook(
@@ -93,9 +71,6 @@ describe('useConflictComposerPrefill', () => {
   });
 
   test('reports an untouched seed as not-composing, and an edited one as composing', () => {
-    // The composer attaches every doc visited "while still drafting". A seed
-    // nobody typed must not count, or clicking through conflicts silently
-    // attaches them all.
     conflictsState = { conflicts: [ENTRY] };
     const input = makeInput();
     const { result, rerender } = renderHook(() =>
@@ -110,8 +85,6 @@ describe('useConflictComposerPrefill', () => {
   });
 
   test('a re-seed does not retire itself as a user edit', () => {
-    // `setText` calls the host's change handler synchronously, so the seed's own
-    // write arrives looking exactly like typing.
     conflictsState = { conflicts: [ENTRY, DOC2] };
     const input = makeInput();
     const { result, rerender } = renderHook(
@@ -126,9 +99,6 @@ describe('useConflictComposerPrefill', () => {
   });
 
   test('recognises a seed restored from a previous session', () => {
-    // The draft persists to localStorage, so a seed outlives the process that
-    // wrote it and returns at mount looking exactly like the user typed it.
-    // Reading it as a draft in progress is what made every clicked doc attach.
     conflictsState = { conflicts: [ENTRY, DOC2] };
     const restored = 'Resolve all the merge conflicts in notes/roadmap.md.';
     const input = makeInput(restored);
@@ -140,7 +110,6 @@ describe('useConflictComposerPrefill', () => {
 
   test('re-targets a restored seed for the doc actually open', () => {
     conflictsState = { conflicts: [ENTRY, DOC2] };
-    // Restored while the user is now looking at doc2.
     const input = makeInput('Resolve all the merge conflicts in notes/roadmap.md.');
     renderHook(() => useConflictComposerPrefill('notes/doc2', { current: input }));
     expect(input.read()).toBe('Resolve all the merge conflicts in notes/doc2.md.');

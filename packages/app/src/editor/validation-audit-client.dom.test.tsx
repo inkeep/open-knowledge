@@ -1,11 +1,3 @@
-/**
- * Behavioral tests for the unified-audit client: `runValidationAudit` hits
- * `GET /api/audit` with the right scoping query, and `useDocLinkFindings`
- * serves the doc's links-plane findings via the SAME endpoint (canonical
- * predicate — no divergent doc-scope determination), refreshing on the CC1
- * `backlinks`, `local-targets`, and file-inventory push relays.
- */
-
 import type { ValidationAuditResponse } from '@inkeep/open-knowledge-core';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -100,7 +92,6 @@ describe('useDocLinkFindings', () => {
     const { result } = renderHook(() => useDocLinkFindings('notes'));
     await waitFor(() => expect(result.current.findings).toHaveLength(1));
 
-    // The link target gets created elsewhere — the index push heals this doc.
     fetchBody = { files: [], fileCount: 1, errorCount: 0, warningCount: 0, warnings: [] };
     act(() => emitDocumentsChanged(['backlinks']));
     await waitFor(() => expect(result.current.status).toBe('loaded'));
@@ -110,12 +101,9 @@ describe('useDocLinkFindings', () => {
     act(() => emitDocumentsChanged(['local-targets']));
     await waitFor(() => expect(fetchUrls).toHaveLength(3));
 
-    // The broad inventory signal is a correctness backstop for existence
-    // changes whose narrower local-target generation signal is missed.
     act(() => emitDocumentsChanged(['files']));
     await waitFor(() => expect(fetchUrls).toHaveLength(4));
 
-    // Unrelated channels do not refetch.
     act(() => emitDocumentsChanged(['tags']));
     expect(fetchUrls).toHaveLength(4);
   });
@@ -145,9 +133,6 @@ describe('useDocLinkFindings', () => {
     );
     await waitFor(() => expect(result.current.findings).toHaveLength(1));
 
-    // Park the next fetch unresolved: doc B's findings must read EMPTY during
-    // the in-flight window, never doc A's stale list (which would render A's
-    // dead links — and store counts — under B's name).
     let resolveNext: (r: Response) => void = () => {};
     globalThis.fetch = (() => new Promise<Response>((r) => (resolveNext = r))) as typeof fetch;
     rerender({ doc: 'b' });

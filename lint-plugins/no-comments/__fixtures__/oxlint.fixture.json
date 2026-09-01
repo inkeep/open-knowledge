@@ -1,0 +1,6 @@
+{
+  "jsPlugins": ["../plugin.mjs"],
+  "rules": {
+    "no-comments/no-comments": ["error", { "scope": "all" }]
+  }
+}

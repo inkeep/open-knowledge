@@ -1,26 +1,3 @@
-/**
- * Fold a thread's flat `ThreadEvent[]` into the render model the thread view
- * draws: an ordered list of turns and system notices, with streamed message
- * chunks coalesced by `messageId`, tool calls tracked by `toolCallId` through
- * their status transitions, and the latest plan kept as a live checklist.
- *
- * The fold is INCREMENTAL: `ThreadRenderModelBuilder.sync(events)` applies
- * only the events it hasn't seen, so a streaming turn costs O(new events) per
- * update instead of re-folding the whole log — the full re-fold made long
- * transcripts progressively more sluggish (each chunk re-paid every string
- * concat since turn start). Item updates are copy-on-write: an untouched
- * transcript row keeps its object identity across snapshots; only rows that
- * actually changed get new ones.
- *
- * Kept pure (no React) so it is unit-testable and the components stay thin
- * renderers over this model.
- *
- * The two title fallbacks below resolve at fold time rather than at render,
- * because `title` is a plain string the follow-file matcher also reads. The
- * cost is that rows folded before a language switch keep the language they
- * were folded in — a historical transcript row, which the next fold corrects.
- */
-
 import {
   type CodexLegacyAgentIdentity,
   isCodexLegacyWarningUpdate,
@@ -34,22 +11,13 @@ import type {
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t } from '@lingui/core/macro';
 
-/**
- * A rendered turn. Discriminated on `role` so the compiler holds the
- * "user turns only" rule the two extra fields carry, rather than a comment:
- * agent text arrives as chunks that coalesce into one bubble, so no single
- * instant describes it, and it never carries attachment parts.
- */
 type RenderedMessage =
   | {
       kind: 'message';
       role: 'user';
       text: string;
       messageId: string;
-      /** Attachment parts that rode this message on send. Frozen at send time
-       *  by the server so a replayed transcript renders exactly what was sent. */
       attachments?: readonly import('@inkeep/open-knowledge-core/acp/thread-protocol').AttachmentPart[];
-      /** When the event carrying this message was logged. */
       sentAt?: number;
     }
   | {
@@ -65,15 +33,10 @@ export interface RenderedToolCall {
   title: string;
   toolKind: string;
   status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  /** Diffs the agent attached to this call (path + before/after). */
   diffs: Array<{ path: string; oldText: string | null; newText: string }>;
-  /** Terminal ids embedded in the call (live output rendered elsewhere). */
   terminalIds: string[];
-  /** Plain text/content result blocks. */
   content: string[];
-  /** File locations the agent touched (follow-the-agent). */
   locations: Array<{ path: string; line?: number }>;
-  /** The adapter-reported raw tool input (MCP calls carry docName args here). */
   rawInput: unknown;
 }
 
@@ -84,132 +47,58 @@ export interface RenderedPermission {
   toolKind: string;
   options: PermissionOption[];
   resolved: { optionId: string | null; auto: boolean } | null;
-  /** The tool call this prompt gates. Null if the agent omitted it. */
   toolCallId: string | null;
-  /**
-   * That tool call is in the transcript, so its row can carry this outcome and
-   * the prompt need not restate it as a second card. False keeps the standalone
-   * card as the fallback — an outcome must never become unreachable just
-   * because the call it gated never showed up.
-   */
   mergedIntoToolCall: boolean;
 }
 
 interface RenderedNotice {
   kind: 'notice';
-  /** The server's legacy headline string — empty for structured failures. */
   text: string;
   tone: 'info' | 'error';
-  /**
-   * Structured failure the view renders as translated copy plus a disclosure.
-   * Null for notices that carry only a server-composed string (older
-   * transcripts, and any failure site that hasn't been classified yet).
-   */
   failure: ThreadFailureDetail | null;
-  /**
-   * A later `ready` answered this failure — the launch it complained about
-   * eventually worked, so the card no longer describes anything the user can
-   * act on. Kept in the log (positions are load-bearing) and skipped by the
-   * view.
-   */
   superseded?: boolean;
-  /**
-   * How many identical error events collapsed into this notice. 1 for a
-   * single failure; N when the launch retried and every attempt failed with
-   * the same `reason` + `agentMessage` + `machineDetail`. See the coalesce
-   * block in `applyEvent(status)` for the exact match rule.
-   */
   attempts: number;
 }
 
-/**
- * Operational status the agent's runtime reported mid-turn — how the session
- * is configured or behaving — as opposed to the answer the agent authored.
- *
- * Deliberately NOT a variant of `RenderedNotice`, which models a thread
- * failure: that shape carries retry, supersession and attempt state, and none
- * of it is answerable on passive guidance. Keeping them apart is what makes a
- * Retry button on this row unrepresentable rather than merely unrendered.
- *
- * `source` and `severity` are single-member unions on purpose. The protocol's
- * own typed notice is not deliverable by any released ACP SDK yet, so its arm
- * gets discriminated in beside this one when it becomes reachable, rather than
- * leaving fields nothing can populate today.
- */
 interface RenderedAgentNotice {
   kind: 'agent_notice';
   source: 'codex_legacy';
   severity: 'warning';
-  /** The producer's event text, byte for byte. Never rewritten or translated. */
   text: string;
-  /**
-   * Seq of the retained event this was minted from. Carried because arrival
-   * behaviour depends on which side of the replay window an event fell on, and
-   * that question is only answerable per event: counting notices cannot
-   * separate the tail of a replayed log from a live arrival that landed in the
-   * same batch.
-   */
   seq: number;
 }
 
-/**
- * Live state of one ACP terminal (a command OK ran for the agent), folded
- * from `terminal_*` events. Rendered inside the tool call that embeds the
- * terminal id — terminals are not transcript items of their own.
- */
 export interface RenderedTerminal {
   terminalId: string;
   command: string;
   args: string[];
   output: string;
-  /** The transcript copy dropped output (display bound), not the command's. */
   truncated: boolean;
-  /** null while the command is still running. */
   exit: { exitCode: number | null; signal: string | null } | null;
 }
 
-/** Keep at most this much of a terminal's output in the render model (tail wins). */
 const TERMINAL_RENDER_CHAR_CAP = 64_000;
 
 interface RenderedRuntimeConsent {
   kind: 'runtime_consent';
   requestId: string;
   runtime: 'node' | 'uv';
-  /** "Node.js" / "uv". */
   displayName: string;
-  /** The interpreter it unlocks — "npx" / "uvx". */
   provides: string;
   version: string;
   approxSizeMB: number;
   sourceHost: string;
   agentName: string;
-  /** Absent on events persisted before the field existed — those were `missing`. */
   reason: 'missing' | 'broken' | 'damaged';
-  /** null while awaiting the user's answer. */
   resolved: 'granted' | 'declined' | 'timeout' | null;
-  /**
-   * Install lifecycle after a grant, driven by the follow-on thread status:
-   * `running` while downloading, `done` once the launch proceeds (spawning),
-   * `failed` if the launch errored out. Keeps a completed card from showing a
-   * stuck spinner on replay.
-   */
   install: 'running' | 'done' | 'failed' | null;
-  /** Latest download progress once granted (bytes), else null. */
   progress: { receivedBytes: number; totalBytes: number | null } | null;
 }
 
-/**
- * Pi's bridge extension for this project, as one transcript row: the consent
- * prompt while it is pending, and its settled outcome afterwards. A status
- * event can arrive with no prompt before it (a file OK won't touch already
- * sits at the managed path), which is why `requestId` is nullable — that row
- * is a limitation notice, not an answered question.
- */
 interface RenderedPiBridgePrompt {
   requestId: string;
   agentName: string;
   cwd: string;
-  /** Other extensions in that folder the trust grant would also turn on. */
   otherExtensions: readonly string[];
 }
 
@@ -218,18 +107,9 @@ interface RenderedPiBridgeOutcome {
   detail: string | null;
 }
 
-/**
- * A Pi bridge row is one of two things, tagged so the renderer narrows instead
- * of guarding a state that cannot exist: a row the user was asked about (which
- * may still be awaiting its outcome), or a standing limitation notice, which is
- * an outcome nobody was asked about. `outcome` alone can't carry the tag — a
- * property only discriminates when its type is a union of unit types, and an
- * object-or-null is not.
- */
 interface RenderedPiBridgeBase {
   kind: 'pi_bridge';
   bridgePath: string;
-  /** null while awaiting the user's answer. */
   decision: 'granted' | 'declined' | 'timeout' | null;
 }
 
@@ -259,18 +139,9 @@ export interface PlanEntry {
 export interface ThreadRenderModel {
   items: RenderedItem[];
   plan: PlanEntry[];
-  /** True while the current prompt turn is streaming. */
   turnActive: boolean;
-  /** Context-window fill from the agent's `usage_update` (tokens). */
   tokenUsage: { used?: number; size?: number } | null;
-  /** Terminals by id, for tool calls that embed them (`terminalIds`). */
   terminals: Record<string, RenderedTerminal>;
-  /**
-   * Permission prompts keyed by the tool call they gate, so a call's row can
-   * show its own approval instead of a sibling card repeating the tool name.
-   * Maintained by the fold rather than derived per render — same reason
-   * `terminals` is: a streamed turn re-renders on every chunk.
-   */
   permissionsByToolCall: Record<string, RenderedPermission>;
 }
 
@@ -280,11 +151,6 @@ function textFromContent(content: unknown): string | null {
   return c.type === 'text' && typeof c.text === 'string' ? c.text : null;
 }
 
-/**
- * Failures a successful launch retires. The startup reasons only: a `prompt`
- * failure happened inside a live session, so a later `ready` says nothing
- * about it and the user still needs to see it.
- */
 function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
   return (
     failure !== null &&
@@ -295,13 +161,6 @@ function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
 }
 
 export class ThreadRenderModelBuilder {
-  /**
-   * Which agent is answering. Required rather than optional because one
-   * producer's payloads are read differently from every other's, and a
-   * defaulted identity would silently fold a thread as "not that producer" —
-   * the failure would be an absent notice, which looks exactly like a healthy
-   * transcript. Callers with no identity to offer pass null explicitly.
-   */
   constructor(private readonly agent: CodexLegacyAgentIdentity | null) {}
 
   private items: RenderedItem[] = [];
@@ -309,17 +168,13 @@ export class ThreadRenderModelBuilder {
   private turnActive = false;
   private tokenUsage: ThreadRenderModel['tokenUsage'] = null;
   private terminals: Record<string, RenderedTerminal> = {};
-  /** Item index by toolCallId / permission requestId / `role:messageId`. */
   private toolCallIndex = new Map<string, number>();
   private permissionIndex = new Map<string, number>();
-  /** Item index of the permission gating a given toolCallId. */
   private permissionByToolCall = new Map<string, number>();
   private permissionsByToolCall: Record<string, RenderedPermission> = {};
   private messageIndex = new Map<string, number>();
   private runtimeConsentIndex = new Map<string, number>();
-  /** Item index of the Pi bridge card by consent requestId. */
   private piBridgeIndex = new Map<string, number>();
-  /** Item index of the most recent consent card — progress events target it. */
   private lastConsentIndex: number | null = null;
   private appliedCount = 0;
   private dirty = false;
@@ -332,20 +187,9 @@ export class ThreadRenderModelBuilder {
     permissionsByToolCall: {},
   };
 
-  /**
-   * Apply any events beyond what was applied already and return the current
-   * model. The snapshot is referentially stable while no new events arrive —
-   * safe as a `useSyncExternalStore` getter. A shorter array than previously
-   * seen means the log was rebuilt (thread dropped and re-added); the
-   * builder starts over.
-   */
   sync(events: readonly ThreadEvent[]): ThreadRenderModel {
     if (events.length < this.appliedCount) this.reset();
     for (let i = this.appliedCount; i < events.length; i++) {
-      // The array index IS the event's seq. The store keeps that true on the
-      // way in — it dedupes an overlapping batch and pads a batch that opens
-      // above the tail — so a caller assembling events by hand owes the same
-      // alignment.
       this.applyEvent(events[i], i);
     }
     this.appliedCount = events.length;
@@ -396,7 +240,6 @@ export class ThreadRenderModelBuilder {
           message.attachments = event.attachments;
         }
         this.items.push(message);
-        // A user turn resets streaming message coalescing.
         this.messageIndex.clear();
         break;
       }
@@ -408,13 +251,7 @@ export class ThreadRenderModelBuilder {
         this.messageIndex.clear();
         break;
       case 'status':
-        // A terminal exit ends any dangling turn. A persisted transcript can
-        // end with `turn_started` and no `turn_ended` — the agent process
-        // exited before the prompt settled — which would otherwise replay as a
-        // perpetual "working" spinner. A later `turn_started` (resume) re-arms.
         if (event.status === 'exited') this.turnActive = false;
-        // A granted runtime install resolves when the launch moves on: the
-        // agent spawns (done) or the thread errors (failed).
         if (this.lastConsentIndex !== null) {
           const c = this.items[this.lastConsentIndex];
           if (c?.kind === 'runtime_consent' && c.install === 'running') {
@@ -430,13 +267,6 @@ export class ThreadRenderModelBuilder {
           }
         }
         if (event.status === 'ready') {
-          // A launch that eventually worked answers every failure it took to
-          // get there: those notices were the ways in, and one of them landed.
-          // Left standing they pile up at the top of a healthy thread — amber
-          // cards about a sign-in the user already completed.
-          //
-          // Marked, never removed: six index maps hold positions into `items`,
-          // so dropping an element would silently retarget every one of them.
           for (let index = 0; index < this.items.length; index += 1) {
             const item = this.items[index];
             if (
@@ -449,8 +279,6 @@ export class ThreadRenderModelBuilder {
           }
         }
         if (event.status === 'error' || event.status === 'auth_required') {
-          // A structured failure alone is enough: the view composes its own
-          // copy from `reason`, so the server no longer has to ship a string.
           if (event.failure !== undefined || (event.detail ?? '') !== '') {
             const next: RenderedNotice = {
               kind: 'notice',
@@ -459,20 +287,7 @@ export class ThreadRenderModelBuilder {
               failure: event.failure ?? null,
               attempts: 1,
             };
-            // Coalesce adjacent identical failures into ONE card whose
-            // attempt count grows. The launch's retry loop fires a status
-            // event per attempt, and without this the transcript stacked
-            // three visually-identical error cards for one bad spawn — the
-            // reader had to click through each to find the retry button on
-            // the last. Same `reason` + `agentMessage` + `machineDetail` +
-            // `tone` + text is our proxy for "the same failure, again"; if
-            // any of those differ the failure is genuinely new and gets its
-            // own card.
             const last = this.items[this.items.length - 1];
-            // A superseded notice was retired by a later `ready`; merging into
-            // it would carry `superseded: true` forward via the spread and the
-            // live failure would render nowhere (ThreadView filters superseded
-            // out entirely). Force a new card in that case.
             if (last?.kind === 'notice' && last.superseded !== true && isSameFailure(last, next)) {
               this.items[this.items.length - 1] = {
                 ...last,
@@ -494,8 +309,6 @@ export class ThreadRenderModelBuilder {
           options: event.options,
           resolved: null,
           toolCallId,
-          // The gated call may not have streamed in yet; `tool_call` back-fills
-          // this when it lands, so the order of the two events doesn't matter.
           mergedIntoToolCall: toolCallId !== null && this.toolCallIndex.has(toolCallId),
         };
         this.permissionIndex.set(event.requestId, this.items.length);
@@ -561,7 +374,6 @@ export class ThreadRenderModelBuilder {
             requestId: event.requestId,
             agentName: event.agentName,
             cwd: event.cwd,
-            // Persisted events from before this field existed replay without it.
             otherExtensions: event.otherExtensions ?? [],
           },
           bridgePath: event.bridgePath,
@@ -582,8 +394,6 @@ export class ThreadRenderModelBuilder {
         const index =
           event.requestId === undefined ? undefined : this.piBridgeIndex.get(event.requestId);
         const target = index === undefined ? undefined : this.items[index];
-        // Fold onto the card that asked, so one row carries question and
-        // answer. A status with no card of its own to update stands alone.
         if (index !== undefined && target?.kind === 'pi_bridge') {
           this.items[index] = { ...target, outcome };
           break;
@@ -650,10 +460,6 @@ export class ThreadRenderModelBuilder {
     }
   }
 
-  /**
-   * Mark the permission gating `toolCallId` as carried by that call's row.
-   * No-op when no prompt gated it, or when it is already merged.
-   */
   private mergePermissionInto(toolCallId: string): void {
     const index = this.permissionByToolCall.get(toolCallId);
     if (index === undefined) return;
@@ -667,13 +473,6 @@ export class ThreadRenderModelBuilder {
   private pushMessageChunk(role: RenderedMessage['role'], messageId: string, text: string): void {
     const key = `${role}:${messageId}`;
     const index = this.messageIndex.get(key);
-    // Coalesce streamed chunks only while the message is still the transcript
-    // tail. Most adapters send no messageId (everything keys to 'default'),
-    // so without the tail check every later chunk glues onto the FIRST
-    // bubble and tool calls pile up beneath it — instead of the
-    // chronological output → tool call → output the transcript should read
-    // as. Anything in between (tool call, permission, notice, user turn)
-    // starts a fresh block.
     if (index !== undefined && index === this.items.length - 1) {
       const existing = this.items[index] as RenderedMessage;
       this.items[index] = { ...existing, text: existing.text + text };
@@ -688,11 +487,6 @@ export class ThreadRenderModelBuilder {
       case 'agent_message_chunk': {
         const text = textFromContent(update.content);
         if (text === null) break;
-        // Decided per retained event, before coalescing: once two events have
-        // been glued into one bubble the producer's own boundary is gone, and
-        // recovering it would mean guessing where the warning ended inside a
-        // larger body. All-or-nothing on the whole event, so a near miss keeps
-        // its bytes and follows the ordinary path untouched.
         if (isCodexLegacyWarningUpdate(update, this.agent)) {
           this.items.push({
             kind: 'agent_notice',
@@ -732,9 +526,6 @@ export class ThreadRenderModelBuilder {
         mergeToolContent(call, update.content);
         this.toolCallIndex.set(update.toolCallId, this.items.length);
         this.items.push(call);
-        // The prompt for this call arrived first (the usual order: the agent
-        // asks, then streams the call). Now that the row exists to carry the
-        // outcome, fold the standalone card away.
         this.mergePermissionInto(update.toolCallId);
         break;
       }
@@ -743,8 +534,6 @@ export class ThreadRenderModelBuilder {
         if (index === undefined) break;
         const existing = this.items[index];
         if (existing.kind !== 'tool_call') break;
-        // Copy-on-write, arrays included — the previous snapshot keeps the
-        // untouched row while mergeToolContent appends to the copy.
         const call: RenderedToolCall = {
           ...existing,
           diffs: [...existing.diffs],
@@ -775,7 +564,6 @@ export class ThreadRenderModelBuilder {
         break;
       }
       case 'usage_update': {
-        // Spec shape: context-window fill at the update's top level.
         const u = update as { used?: unknown; size?: unknown };
         this.tokenUsage = {
           used: typeof u.used === 'number' ? u.used : undefined,
@@ -784,7 +572,6 @@ export class ThreadRenderModelBuilder {
         break;
       }
       default: {
-        // Pre-spec adapters ride usage on a nested `usage` key instead.
         const usage = (update as { usage?: { used?: number; size?: number } }).usage;
         if (usage !== undefined) this.tokenUsage = { used: usage.used, size: usage.size };
         break;
@@ -793,7 +580,6 @@ export class ThreadRenderModelBuilder {
   }
 }
 
-/** One-shot fold — the non-incremental entry point for tests and tooling. */
 export function buildThreadRenderModel(
   events: readonly ThreadEvent[],
   agent: CodexLegacyAgentIdentity | null,
@@ -801,15 +587,6 @@ export function buildThreadRenderModel(
   return new ThreadRenderModelBuilder(agent).sync(events);
 }
 
-/**
- * How a permission request ended, classified by the CHOSEN option's kind —
- * not by mere presence of an optionId. Picking the agent's own "No, reject"
- * option is a denial and must never summarize as "Approved".
- *
- * `dismissed` is the no-classifiable-answer terminal state (timeout, turn
- * cancel, agent exit, or an optionId matching none of the offered options):
- * nobody approved or denied, the request just stopped mattering.
- */
 export type PermissionOutcome =
   | { kind: 'approved'; auto: boolean; optionName: string | null }
   | { kind: 'denied'; auto: boolean; optionName: string | null }
@@ -822,23 +599,14 @@ export function resolvePermissionOutcome(
   const resolved = item.resolved;
   if (resolved === null) return null;
   if (resolved.optionId === null) {
-    // No option chosen: an explicit user deny (our Deny button sends the
-    // ACP `cancelled` outcome) vs. an automatic expiry.
     return resolved.auto
       ? { kind: 'dismissed' }
       : { kind: 'denied', auto: false, optionName: null };
   }
   const chosen = item.options.find((option) => option.optionId === resolved.optionId);
   if (chosen === undefined) {
-    // An optionId that matches nothing in the request can't be classified —
-    // claiming "approved" for it could mislabel a refusal.
     return { kind: 'dismissed' };
   }
-  // Classify from both prefixes rather than treating "not a refusal" as assent.
-  // The four known kinds partition cleanly, but a kind added by a later ACP
-  // release would otherwise be labelled "Approved" — the wrong direction to be
-  // wrong in for a security decision. An unrecognized kind is an answer we
-  // can't read, which is what `dismissed` already means.
   const denied = chosen.kind.startsWith('reject');
   const approved = chosen.kind.startsWith('allow');
   if (!denied && !approved) return { kind: 'dismissed' };
@@ -865,12 +633,6 @@ function normalizeLocations(locations: unknown): Array<{ path: string; line?: nu
     }));
 }
 
-/**
- * Two error notices are "the same failure again" when everything the reader
- * would see matches: tone, headline string, and every field of the structured
- * failure the card composes copy from. `attempts` is deliberately excluded —
- * it's the counter we bump on match, not a match input.
- */
 function isSameFailure(a: RenderedNotice, b: RenderedNotice): boolean {
   if (a.tone !== b.tone) return false;
   if (a.text !== b.text) return false;

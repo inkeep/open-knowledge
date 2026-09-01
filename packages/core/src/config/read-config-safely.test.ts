@@ -8,12 +8,10 @@ import { isKnownConfigError } from './errors.ts';
 import { readConfigSafely } from './read-config-safely.ts';
 import { REMOVED_KEYS } from './removed-keys.ts';
 
-/** True when `value` is a non-null, non-array object. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Set a (possibly nested) leaf on `root`, creating intermediate objects. */
 function setPath(root: Record<string, unknown>, path: readonly string[], leaf: unknown): void {
   let cur = root;
   for (let i = 0; i < path.length - 1; i++) {
@@ -24,7 +22,6 @@ function setPath(root: Record<string, unknown>, path: readonly string[], leaf: u
   cur[path[path.length - 1] as string] = leaf;
 }
 
-/** Whether a (possibly nested) leaf at `path` is present in `value`. */
 function leafPresent(value: unknown, path: readonly string[]): boolean {
   let cur: unknown = value;
   for (let i = 0; i < path.length - 1; i++) {
@@ -56,9 +53,6 @@ describe('readConfigSafely', () => {
       expect(result.source).toBeUndefined();
       expect(result.value.content.dir).toBe('.');
       expect(result.value.autoSync.enabled).toBeNull();
-      // Pins the on-by-default egress posture at the read layer the server's
-      // readLinkPreviewsEnabled() relies on: a genuinely-absent project-local
-      // config resolves to external link previews enabled.
       expect(result.value.linkPreviews.enabled).toBe(true);
     }
   });
@@ -86,8 +80,7 @@ describe('readConfigSafely', () => {
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.error.code).toBe('YAML_PARSE');
-      expect(result.value.content.dir).toBe('.'); // defaults
-      // File should have been sidelined.
+      expect(result.value.content.dir).toBe('.');
       expect(existsSync(path)).toBe(false);
       expect(result.sidelinedTo).toBeDefined();
       if (result.sidelinedTo) {
@@ -95,14 +88,10 @@ describe('readConfigSafely', () => {
         expect(result.sidelinedTo).toContain('.invalid-');
       }
     }
-    // Warning was logged.
     expect(warnings.length).toBeGreaterThan(0);
   });
 
   test('removed keys → valid=true, keys stripped, siblings preserved, file not sidelined', () => {
-    // Strip-and-continue: dead keys are removed from the resolved value and
-    // reported as diagnostics, but every live sibling keeps its on-disk value
-    // and the file is left in place. A stale key no longer discards the file.
     const path = resolve(testDir, 'stale.yml');
     writeFileSync(
       path,
@@ -113,38 +102,21 @@ describe('readConfigSafely', () => {
     const result = readConfigSafely({ absPath: path, warn: (msg) => warnings.push(msg) });
     expect(result.valid).toBe(true);
     if (result.valid) {
-      // Live sibling keeps its on-disk value, not a schema default.
       expect(result.value.content.dir).toBe('docs');
-      // Both removed keys are gone from the resolved value.
       expect(leafPresent(result.value, ['folders'])).toBe(false);
       expect(leafPresent(result.value, ['server', 'host'])).toBe(false);
-      // One diagnostic per removed key.
       const removed = result.diagnostics.filter((d) => d.code === 'REMOVED_KEY');
       const dotted = removed.map((d) => (d.code === 'REMOVED_KEY' ? d.path.join('.') : ''));
       expect(dotted).toContain('folders');
       expect(dotted).toContain('server.host');
       expect(removed).toHaveLength(2);
     }
-    // File left in place — a removed key is not a reason to sideline.
     expect(existsSync(path)).toBe(true);
     const siblings = readdirSync(testDir).filter((f) => f.includes('.invalid-'));
     expect(siblings).toEqual([]);
   });
 
   test('an unrecognized theme id degrades that slot only; siblings survive; file not sidelined', () => {
-    // The discriminating test for opening the palette fields from a closed enum
-    // to a shape-constrained string. A saved-theme id is by construction absent
-    // from the built-in registry; under the old closed enum it failed
-    // whole-document validation, which this reader handled as corruption —
-    // replacing EVERY user preference with defaults and sidelining the file.
-    // The fields now accept the id shape, so the reader keeps every sibling and
-    // the unknown id degrades to the default palette only at resolve time.
-    //
-    // This FAILS on an unmodified checkout: `colorThemeLight: saved-*` trips
-    // SCHEMA_INVALID, `value` becomes defaults (wordWrap true, theme unset), and
-    // the file is renamed aside — so the sibling-survival assertions below all
-    // fail. Asserting only "the config still parses" would NOT discriminate: the
-    // old behavior also yields a parseable config, by discarding the user's.
     const path = resolve(testDir, 'global.yml');
     writeFileSync(
       path,
@@ -163,22 +135,13 @@ describe('readConfigSafely', () => {
 
     expect(result.valid).toBe(true);
     if (result.valid) {
-      // An unrelated sibling (a different section) keeps its authored value.
       expect(result.value.editor.wordWrap).toBe(false);
-      // A sibling WITHIN appearance survives too.
       expect(result.value.appearance.theme).toBe('dark');
-      // The dangling id is preserved verbatim, not stripped or rewritten.
       expect(result.value.appearance.colorThemeLight).toBe('saved-my-personal');
-      // The known slot is untouched.
       expect(result.value.appearance.colorThemeDark).toBe('dracula');
     }
-    // Resolve-time degradation: the unknown id falls back to `default`; the
-    // known one still resolves to itself — the other slot is unaffected.
     expect(resolveThemePlugin('saved-my-personal').id).toBe('default');
     expect(resolveThemePlugin('dracula').id).toBe('dracula');
-    // The file is intact — a dangling reference is never a reason to sideline.
-    // This is the command-line read path, the only one that produces a
-    // `.invalid-*` file, so asserting its absence is meaningful here.
     expect(existsSync(path)).toBe(true);
     const siblings = readdirSync(testDir).filter((f) => f.includes('.invalid-'));
     expect(siblings).toEqual([]);
@@ -210,7 +173,7 @@ describe('readConfigSafely', () => {
     writeFileSync(path, yaml, 'utf-8');
     const result = readConfigSafely({
       absPath: path,
-      warn: () => {}, // silence
+      warn: () => {},
     });
     expect(result.valid).toBe(false);
     if (!result.valid) {
@@ -223,7 +186,6 @@ describe('readConfigSafely', () => {
         expect(issue.source?.file).toBe(path);
         expect(issue.source?.line).toBe(2);
       }
-      // File sidelined.
       expect(existsSync(path)).toBe(false);
       expect(result.sidelinedTo).toBeDefined();
     }
@@ -245,9 +207,6 @@ describe('readConfigSafely', () => {
   });
 
   test('sideline rename failure logs warning and falls through (file stays in place)', () => {
-    // Simulate a schema-invalid file with sideline=false to verify the
-    // warn-and-fall-through pathway. The schema-invalid sideline-disabled case
-    // asserts `sidelinedTo` is undefined; here we verify the warn path fires.
     const path = resolve(testDir, 'broken.yml');
     writeFileSync(path, 'appearance:\n  theme: midnight\n', 'utf-8');
     const warnings: string[] = [];
@@ -266,17 +225,13 @@ describe('readConfigSafely', () => {
     writeFileSync(path, 'appearance:\n  theme: midnight\n', 'utf-8');
     const result = readConfigSafely({
       absPath: path,
-      // Real ISO format includes colons; helper should sanitize them.
       timestamp: '2026-04-29T01:23:45.678Z',
       warn: () => {},
     });
     expect(result.valid).toBe(false);
     if (!result.valid && result.sidelinedTo) {
-      // Colons + dots inside the timestamp portion get replaced.
       const tail = result.sidelinedTo.split('.invalid-')[1] ?? '';
       expect(tail.includes(':')).toBe(false);
-      // Note: `.invalid-` itself contains a dot, so we check the timestamp
-      // portion specifically — colons are the platform-portable concern.
     }
   });
 
@@ -285,7 +240,7 @@ describe('readConfigSafely', () => {
     writeFileSync(path, 'appearance:\n  theme: midnight\n', 'utf-8');
     const result = readConfigSafely({ absPath: path, warn: () => {} });
     expect(result.valid).toBe(false);
-    expect(result.value.content.dir).toBe('.'); // schema default
+    expect(result.value.content.dir).toBe('.');
   });
 
   test('valid YAML with unknown fields (looseObject) is accepted', () => {
@@ -304,10 +259,8 @@ describe('readConfigSafely', () => {
     const result = readConfigSafely({ absPath: path });
     expect(result.valid).toBe(true);
     expect(existsSync(path)).toBe(true);
-    // No `.invalid-*` siblings created.
     const siblings = readdirSync(testDir).filter((f) => f.includes('.invalid-'));
     expect(siblings).toEqual([]);
-    // Original content preserved.
     expect(readFileSync(path, 'utf-8')).toContain('dir: docs');
   });
 });
@@ -322,9 +275,6 @@ describe('readConfigSafely — strip-and-continue invariant', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // The regression that matters: for EVERY registry key, a config carrying that
-  // key plus a live sibling must resolve the sibling to its on-disk value, strip
-  // the dead key, and stay valid + un-sidelined.
   for (const entry of REMOVED_KEYS) {
     const dotted = entry.path.join('.');
     test(`${dotted}: sibling resolves to on-disk value; key stripped; one diagnostic`, () => {
@@ -337,8 +287,8 @@ describe('readConfigSafely — strip-and-continue invariant', () => {
 
       expect(result.valid).toBe(true);
       if (result.valid) {
-        expect(result.value.content.dir).toBe('docs'); // sibling, not a default
-        expect(leafPresent(result.value, entry.path)).toBe(false); // key stripped
+        expect(result.value.content.dir).toBe('docs');
+        expect(leafPresent(result.value, entry.path)).toBe(false);
         const removed = result.diagnostics.filter((d) => d.code === 'REMOVED_KEY');
         expect(removed).toHaveLength(1);
         const [diag] = removed;
@@ -394,10 +344,6 @@ describe('readConfigSafely — diagnostics on the invalid arm', () => {
   });
 
   test('a file that exists but cannot be read reports UNREADABLE, not silence', () => {
-    // A directory where a file is expected reproduces the same class as EACCES
-    // or a symlink loop: the path exists, so the missing-file arm is skipped,
-    // but the read throws. Reporting nothing here makes an unreadable layer
-    // indistinguishable from a clean one on every downstream surface.
     const path = resolve(dir, 'a-directory.yml');
     mkdirSync(path, { recursive: true });
     const result = readConfigSafely({ absPath: path, sideline: false, warn: () => {} });
@@ -406,8 +352,6 @@ describe('readConfigSafely — diagnostics on the invalid arm', () => {
   });
 
   test('a removed key is still reported when the same file also fails schema validation', () => {
-    // Both problems surface in one pass. Reporting only the schema error would
-    // send the user back for a second round once they fixed it.
     const path = resolve(dir, 'both-problems.yml');
     writeFileSync(path, 'appearance:\n  theme: midnight\nserver:\n  host: 0.0.0.0\n', 'utf-8');
     const result = readConfigSafely({ absPath: path, sideline: false, warn: () => {} });

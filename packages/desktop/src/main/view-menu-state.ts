@@ -38,20 +38,6 @@ export class EditorViewMenuStateRegistry {
   }
 }
 
-/**
- * The View-menu state main holds before the first renderer push lands.
- * Defaults match the renderer's resolved config defaults so the menu
- * reflects the right state at startup: Show hidden files + Show .ok
- * folders + Show only markdown files off, Show skills section on, both
- * Expand/Collapse rendered (no smart-hide), sidebar + doc panel assumed
- * visible (the common wide-window startup), terminal hidden with no live
- * session, agents panel hidden.
- *
- * `canViewInSource` is the one field that defaults to the RESTRICTIVE value
- * rather than the likely one: it gates a context-menu row, and a row offered
- * before the renderer has said the jump is live would silently do nothing.
- * Absent is better than inert for a row the user has to read past.
- */
 export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot {
   return {
     showHiddenFiles: false,
@@ -71,13 +57,6 @@ export function createDefaultEditorViewMenuState(): EditorViewMenuStateSnapshot 
   };
 }
 
-/**
- * The slice of `MenuDeps` derived from the renderer-pushed snapshot plus the
- * menu-action dispatchers that round-trip back to the renderer. `Pick` keeps
- * every key checked against `MenuDeps` — a spread into the menu-install call
- * would let a misnamed field pass silently (spreads skip excess-property
- * checks).
- */
 type ViewMenuStateDeps = Pick<
   MenuDeps,
   | 'showHiddenFilesChecked'
@@ -108,13 +87,6 @@ type ViewMenuStateDeps = Pick<
   | 'onCollapseAll'
 >;
 
-/**
- * Map the view-menu snapshot onto menu deps. Pure and separate from the
- * Electron entry point so the field/action wiring stays unit-testable — the
- * type mirrors pin the snapshot SHAPE, but nothing else checks that each
- * field lands on the right dep or that each toggle dispatches the right
- * menu-action ID.
- */
 export function buildViewMenuStateDeps(
   state: EditorViewMenuStateSnapshot,
   sendMenuAction: (action: OkMenuAction) => void,

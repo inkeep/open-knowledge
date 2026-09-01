@@ -1,8 +1,3 @@
-/**
- * `server-lock` check tests — exercises every LockState branch (missing /
- * alive / foreign-host / dead-pid / corrupt) and the no-lockdir case.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -58,9 +58,6 @@ describe('useSkillHostToggles', () => {
       installed: false,
     } as unknown as SkillsListEntry;
     const actions = { install, installingName: null } as unknown as SkillActions;
-    // The toolbar pill and the sidebar menu mount the hook independently — the
-    // pill used to keep reading "not installed" while the menu already showed
-    // the checkmark.
     const pill = renderHook(() => useSkillHostToggles(skill, actions));
     const menu = renderHook(() => useSkillHostToggles(skill, actions));
 

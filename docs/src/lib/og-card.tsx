@@ -1,33 +1,9 @@
-/**
- * Shared OpenGraph card primitives. Three card variants share the same
- * visual language (dot grid background, wordmark top-left, body bottom-
- * left): BrandCard (site-wide fallback + invalid/unsupported splash),
- * DocPageCard (per-docs-page using page title), ShareCard (valid share-
- * splash with filename + repo path).
- *
- * Why satori-specific quirks live here, not in the standard component
- * library: satori does NOT reliably render CSS radial-gradient backgrounds,
- * url(svg-data-url) tiled patterns, or SVG <pattern> fills. The dot grid
- * and mask therefore brute-force <circle> elements with JS-computed per-
- * dot opacity. The standard component library renders in a real browser
- * and has different reliability characteristics.
- */
 import type { ReactNode } from 'react';
 import { OK_WORDMARK_DATA_URL } from './ok-wordmark.data';
 import { SITE_HEADLINE } from './site';
 
 export const OG_SIZE = { width: 1200, height: 630 } as const;
 export const OG_CONTENT_TYPE = 'image/png';
-/**
- * Response headers for every OG-image route (home, per-docs-page, share).
- *
- * `X-Robots-Tag: noindex` keeps these card images out of search indexes
- * WITHOUT a robots.txt `Disallow`. A `Disallow` blocks Twitterbot (which
- * honors robots.txt) from fetching the card, so the image silently fails to
- * render in X/Twitter link previews while still loading on scrapers that
- * ignore robots.txt (Facebook, Slack). `noindex` at the response layer lets
- * every crawler fetch the image but tells indexers not to list it.
- */
 export const OG_RESPONSE_HEADERS = {
   'Cache-Control': 'public, max-age=31536000, immutable',
   'X-Robots-Tag': 'noindex',
@@ -36,7 +12,7 @@ export const OG_RESPONSE_HEADERS = {
 const BG = '#fbf9f4';
 const TEXT = '#1a1a1a';
 const MUTED = '#71717a';
-const ACCENT = '#3784ff'; // matches --slide-accent (light)
+const ACCENT = '#3784ff';
 const DOT_COLOR = '#e3e3e1';
 const DOT_SPACING = 24;
 const DOT_RADIUS = 1.8;
@@ -44,13 +20,10 @@ const MASK_INNER = 0.7;
 const MASK_OUTER = 1.3;
 const PAD_X = 72;
 const PAD_Y = 64;
-// Platforms (X/Twitter, iMessage, Slack) overlay a title/domain chip across the
-// bottom-left of the card. Reserve extra bottom space so body text clears it.
 const SAFE_BOTTOM = 96;
 const CARD_W = OG_SIZE.width;
 const CARD_H = OG_SIZE.height;
 
-// Must match the wordmark SVG's viewBox aspect ratio, else satori stretches it.
 const WORDMARK_NATURAL_W = 1307;
 const WORDMARK_NATURAL_H = 252;
 const WORDMARK_HEIGHT = 44;
@@ -65,10 +38,6 @@ interface MaskEllipse {
   ry: number;
 }
 
-/**
- * Renders a uniform dot grid with elliptical fade-to-zero regions behind
- * the supplied mask centers, so dots don't fight with text.
- */
 function DotGrid({ masks }: { masks: MaskEllipse[] }) {
   const cols = Math.ceil(CARD_W / DOT_SPACING);
   const rows = Math.ceil(CARD_H / DOT_SPACING);
@@ -129,7 +98,6 @@ function Wordmark() {
   );
 }
 
-/** lucide `git-branch`, inlined for satori (matches the splash page's branch row). */
 function GitBranchIcon() {
   return (
     // biome-ignore lint/a11y/noSvgWithoutTitle: rasterized to PNG by satori; ARIA never reaches an a11y tree.
@@ -151,7 +119,6 @@ function GitBranchIcon() {
   );
 }
 
-/** Blue uppercase tag above a card headline (mirrors the site's section eyebrow). */
 function Eyebrow({ label }: { label: string }) {
   return (
     <span
@@ -225,11 +192,6 @@ function CardFrame({ masks, children }: { masks: MaskEllipse[]; children: ReactN
 const LOGO_MASK: MaskEllipse = { cx: 200, cy: 86, rx: 260, ry: 70 };
 const BODY_MASK: MaskEllipse = { cx: 400, cy: 420, rx: 650, ry: 220 };
 
-/**
- * Site-wide brand card. Used by app/opengraph-image.tsx (covers home and
- * any route without its own OG image) AND as the fallback rendering for
- * invalid/unsupported share-splash URLs.
- */
 export function BrandCard() {
   return (
     <CardFrame masks={[LOGO_MASK, BODY_MASK]}>
@@ -253,10 +215,6 @@ export function BrandCard() {
   );
 }
 
-/**
- * Per-doc-page card. Page title becomes the bottom-left headline;
- * description rides below as a muted subtitle.
- */
 export function DocPageCard({
   title,
   description,
@@ -289,17 +247,12 @@ export function DocPageCard({
   );
 }
 
-/** Drop one or two notches for long titles so they fit the bottom-left band. */
 function titleFontSize(title: string): number {
   if (title.length > 36) return 64;
   if (title.length > 24) return 76;
   return 88;
 }
 
-/**
- * Share-splash happy-path card. Bespoke layout — filename anchors the
- * composition; repo path + optional branch ride below as a muted line.
- */
 export function ShareCard({
   filename,
   repoPath,

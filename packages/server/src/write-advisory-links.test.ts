@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { computeWriteAdvisoryLinks, type WriteAdvisoryLink } from './write-advisory-links.ts';
 
-/** Existence oracle from a fixed set of content-root-relative file paths. */
 function fileOracle(...paths: string[]): (rel: string) => boolean {
   const set = new Set(paths);
   return (rel) => set.has(rel);
@@ -9,11 +8,6 @@ function fileOracle(...paths: string[]): (rel: string) => boolean {
 
 describe('computeWriteAdvisoryLinks', () => {
   test('a folder oracle exempts wiki and inline links to existing folders (both planes)', () => {
-    // The graph scan owns wiki + inline entries and the assessment plane owns
-    // the evidence-carrying rest; both must consult the injected folder
-    // oracle, or an MCP write response reports a link broken while the
-    // Problems tab and the editor resolve it. `assets` is asset-only — no doc
-    // descendants — so only the injected oracle can prove it.
     const md = 'See [[assets]] and [dir](./assets) and [[missing-folder]].';
     const links = computeWriteAdvisoryLinks(
       md,
@@ -30,8 +24,6 @@ describe('computeWriteAdvisoryLinks', () => {
       '\n',
     );
     const links = computeWriteAdvisoryLinks(md, 'notes', new Set<string>(), fileOracle());
-    // Document (inline + wiki) and ordinary-file LINKS are the graph scan's
-    // pre-existing contract — a plain triple with no local-target evidence.
     expect(links).toEqual([
       { href: './guide', resolvedTo: 'guide', reason: 'no-such-doc' },
       { href: './data.csv', resolvedTo: 'data.csv', reason: 'no-such-file' },
@@ -87,8 +79,6 @@ describe('computeWriteAdvisoryLinks', () => {
   test('adds a reference-style target once, pointing at its shared definition', () => {
     const md = ['See [the spec][spec] and [again][spec].', '', '[spec]: ./spec.pdf'].join('\n');
     const links = computeWriteAdvisoryLinks(md, 'notes', new Set<string>(), fileOracle());
-    // Two uses of one reference resolve to one href — deduped to a single write
-    // advisory entry that carries the definition repair pointer.
     expect(links).toEqual([
       {
         href: './spec.pdf',
@@ -261,9 +251,6 @@ describe('computeWriteAdvisoryLinks', () => {
   });
 
   test('a JSX src-ref to a missing board survives the inline-href reconciliation filter', () => {
-    // The lossless extractor cannot observe JSX attributes, so without the
-    // sourceForm passthrough this entry would be filtered out and a write
-    // embedding a missing board would report no broken links at all.
     const links = computeWriteAdvisoryLinks(
       '<Excalidraw src="board.excalidraw" />\n',
       'notes/index',
@@ -291,12 +278,6 @@ describe('computeWriteAdvisoryLinks', () => {
   });
 
   test('a JSX src-ref survives when a markdown-looking link with the identical href scans first', () => {
-    // The byte scanner has no comment skip, so the markdown-shaped link inside
-    // the HTML comment records the href first — with no sourceForm. The scan
-    // dedupes per (plane, href), so the JSX record still lands as its own
-    // entry; the markdown-plane one (never observed by the lossless
-    // extractor) is dropped by the reconciliation filter. Keyed on href alone
-    // the JSX record would be swallowed and the missing board unreported.
     const md = ['<!-- [b](board.excalidraw) -->', '<Excalidraw src="board.excalidraw" />', ''].join(
       '\n',
     );

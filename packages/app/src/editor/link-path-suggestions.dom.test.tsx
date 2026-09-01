@@ -63,7 +63,6 @@ describe('LinkPathSuggestionInput', () => {
 
     expect(screen.getByRole('listbox', { name: 'Path suggestions' })).toBeDefined();
     expect(screen.getByRole('option', { name: '/docs/install Page' })).toBeDefined();
-    // Full path is exposed as a hover tooltip so a truncated row is still readable.
     expect(screen.getByTitle('/docs/install')).toBeDefined();
   });
 
@@ -113,9 +112,6 @@ describe('LinkPathSuggestionInput', () => {
   });
 
   test('stays silent for a bare name with no match — no empty-state flash', () => {
-    // A scheme-less value that matches nothing (e.g. a URL-in-progress like
-    // example.com) must not pop the "No matching paths" empty-state. Only an
-    // empty browse or an explicit leading slash surfaces that state.
     render(<Harness initialValue="zzz-no-such-page" />);
 
     fireEvent.focus(screen.getByRole('combobox', { name: 'Link target' }));
@@ -268,10 +264,6 @@ describe('LinkPathSuggestionInput', () => {
   });
 
   test('after Escape dismisses the panel, keys reach the parent onKeyDown', () => {
-    // Suggestions still EXIST for the value after dismissal — only the panel is
-    // hidden. Keys must not be swallowed against the invisible panel: the next
-    // Escape has to reach the parent popover/dialog (which closes on it) and
-    // Enter has to reach the parent's apply handler.
     const seen: string[] = [];
     render(
       <LinkPathSuggestionInput

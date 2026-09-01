@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import { parseSignInOutput, shortenUrl } from './sign-in-output';
 
 describe('parseSignInOutput', () => {
-  // The shape Cline 3.0.54 actually prints, captured from a real sign-in.
   test('pulls the code and URL out of a device-code flow', () => {
     const parsed = parseSignInOutput([
       '[acp/auth] Starting OAuth login for cline…',
@@ -12,11 +11,9 @@ describe('parseSignInOutput', () => {
 
     expect(parsed.code).toBe('CRQT-NXNT');
     expect(parsed.url).toBe('https://authkit.cline.bot/device?user_code=CRQT-NXNT');
-    // Both announcement lines are represented by the code and the link now.
     expect(parsed.lines).toEqual(['Starting OAuth login for cline…']);
   });
 
-  // The code the server issued beats one scraped from a sentence.
   test('prefers the code carried in the URL', () => {
     const parsed = parseSignInOutput([
       'Type ABCD-EFGH if prompted',
@@ -26,8 +23,6 @@ describe('parseSignInOutput', () => {
     expect(parsed.code).toBe('WDJB-MJHT');
   });
 
-  // Nothing recognized must still reach the user — silence would be worse
-  // than prose, since this is the only channel the sign-in has.
   test('hands back anything it does not understand', () => {
     const parsed = parseSignInOutput(['[auth] check your email', 'we sent a magic link']);
 
@@ -36,7 +31,6 @@ describe('parseSignInOutput', () => {
     expect(parsed.lines).toEqual(['check your email', 'we sent a magic link']);
   });
 
-  // Ordinary words must not be mistaken for a code.
   test('does not invent a code out of prose', () => {
     expect(parseSignInOutput(['Opening your browser to finish signing in']).code).toBeUndefined();
     expect(parseSignInOutput(['ERROR: token expired']).code).toBeUndefined();

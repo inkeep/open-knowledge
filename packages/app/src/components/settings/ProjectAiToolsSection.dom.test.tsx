@@ -115,8 +115,6 @@ describe('ProjectAiToolsSection', () => {
   });
 
   test('shows the unavailable fallback (not a stuck skeleton) when the status fetch rejects', async () => {
-    // A rejecting status() must land on the loadFailed branch, not hang in the
-    // loading skeleton — otherwise the section silently dead-ends with no signal.
     const bridge = {
       projectIntegrations: {
         status: async () => {
@@ -147,7 +145,6 @@ describe('ProjectAiToolsSection', () => {
     expect(screen.getByTestId('project-ai-tools-editor-checkbox-codex')).toBeTruthy();
     await expandEditors();
     expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
-    // The project skill moved to Skills Studio; this page names where.
     expect(screen.queryByTestId('project-ai-tools-skill-uninstall')).toBeNull();
     expect(screen.getByTestId('project-ai-tools-skills-moved').textContent).toContain(
       'Skills Studio',
@@ -160,7 +157,6 @@ describe('ProjectAiToolsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('project-ai-tools-editor-checkbox-claude')).toBeTruthy();
     });
-    // Radix Checkbox reflects state via aria-checked.
     expect(
       screen.getByTestId('project-ai-tools-editor-checkbox-claude').getAttribute('aria-checked'),
     ).toBe('true');
@@ -179,9 +175,7 @@ describe('ProjectAiToolsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('project-ai-tools-editor-followup-claude')).toBeTruthy();
     });
-    // Foreign row (checked) also carries its follow-up.
     expect(screen.getByTestId('project-ai-tools-editor-followup-codex')).toBeTruthy();
-    // not-installed cursor row has no follow-up yet.
     await expandEditors();
     expect(screen.queryByTestId('project-ai-tools-editor-followup-cursor')).toBeNull();
   });

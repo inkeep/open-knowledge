@@ -37,8 +37,6 @@ describe('computeChangedRange', () => {
     const before = doc('alpha', 'omega');
     const after = doc('alpha', 'omega', 'appended');
     const range = computeChangedRange(before, after);
-    // The change must start at the END of the shared prefix, not at 0 — this
-    // is the whole point (a full-body replace must not report the whole doc).
     expect(range).not.toBeNull();
     expect(range?.from).toBeGreaterThanOrEqual(before.content.size - 1);
     expect(range?.to).toBeGreaterThan(range?.from ?? 0);
@@ -50,28 +48,22 @@ describe('computeChangedRange', () => {
     const after = doc('alpha', 'MIDDLE-edited', 'omega');
     const range = computeChangedRange(before, after);
     expect(range).not.toBeNull();
-    // Prefix "alpha" (7) is shared; suffix "omega" is shared. The range sits
-    // strictly inside, not spanning the whole doc.
     expect(range?.from).toBeGreaterThan(0);
     expect(range?.to).toBeLessThan(after.content.size);
   });
 
   test('a prepended paragraph starts at the top', () => {
     const range = computeChangedRange(doc('omega'), doc('alpha', 'omega'));
-    // Near the very top (position 1 is inside the first paragraph, where the
-    // text first diverges) — not deep in the document.
     expect(range?.from).toBeLessThanOrEqual(1);
   });
 
   test('pure deletion yields no positive range', () => {
     const range = computeChangedRange(doc('alpha', 'omega'), doc('alpha'));
-    // Everything after "alpha" was removed — nothing to highlight in the new doc.
     expect(range === null || range.to <= range.from).toBe(true);
   });
 });
 
 describe('blockRangeToPositions', () => {
-  // paragraphs: 'alpha'(nodeSize 7) 'omega'(7) 'appended'(10); content.size 24.
   test('maps an appended block index to its tail PM range', () => {
     const range = blockRangeToPositions(doc('alpha', 'omega', 'appended'), 2, 3);
     expect(range).toEqual({ from: 14, to: 24 });
@@ -93,7 +85,6 @@ describe('blockRangeToPositions', () => {
   });
 
   test('out-of-bounds `to` clamps to the tail; fully-past range → null', () => {
-    // The doc shrank since the server stamped the range — clamp, do not throw.
     expect(blockRangeToPositions(doc('alpha', 'omega'), 1, 9)).toEqual({ from: 7, to: 14 });
     expect(blockRangeToPositions(doc('alpha', 'omega'), 5, 9)).toBeNull();
   });

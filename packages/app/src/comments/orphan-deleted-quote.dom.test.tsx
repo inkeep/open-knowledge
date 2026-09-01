@@ -1,13 +1,3 @@
-/**
- * What an orphaned card says, and what it still shows.
- *
- * Losing the passage used to print a bare "the anchored text is gone" and drop
- * the quote with it, so a panel of orphans was a column of identical blue
- * notices with no way to tell which comment had been on what. Orphaning mutates
- * state alone — the stored words survive — so the card shows them as the last
- * thing the comment was on.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -51,8 +41,6 @@ describe('an orphaned card', () => {
   });
 
   test('says the original text was deleted, in words', () => {
-    // The strikethrough is reinforcement, not the message — a screen reader and
-    // a monochrome display both get the fact from the sentence.
     renderCard();
     expect(screen.getByText(/The original text was deleted/)).toBeTruthy();
   });
@@ -63,9 +51,6 @@ describe('an orphaned card', () => {
   });
 
   test('carries no status badge — the block below is the only statement', () => {
-    // The state used to be announced twice: a badge in the header and the
-    // sentence two lines under it. The sentence sits next to the words it is
-    // about, so it is the one that stays. The wire state is still `orphaned`.
     renderCard();
     expect(screen.queryByText(/[Oo]rphan/)).toBeNull();
     expect(screen.queryByText('Text deleted')).toBeNull();
@@ -78,7 +63,6 @@ describe('an orphaned card', () => {
   });
 
   test('an orphan with no stored passage says so without inventing a quote', () => {
-    // A whole-property comment carries no quote. The sentence still has to run.
     renderCard({ anchor: null });
     expect(screen.getByText(/The original text was deleted/)).toBeTruthy();
     expect(screen.queryByText(/“/)).toBeNull();

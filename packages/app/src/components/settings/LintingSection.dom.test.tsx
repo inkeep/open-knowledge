@@ -1,10 +1,3 @@
-/**
- * RTL mount tests for the linter Settings sections (the lint-plugin model).
- * Behavior is driven through a mocked project ConfigContext binding and asserted
- * on the exact CRDT patch payloads (per-plugin toggle) and on the native-rule
- * editor's write calls + gated visibility of controls.
- */
-
 import {
   type Config,
   type ConfigBinding,
@@ -20,8 +13,6 @@ import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { describedTextOf } from './settings-a11y.test-helper';
 
-// Radix primitives reach for DOM globals the jsdom preload doesn't expose;
-// hoist the same shims the sibling settings DOM tests use.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -47,7 +38,6 @@ let mockProjectSynced = true;
 let mockProjectBinding: ConfigBinding | null = null;
 const generatedIndexApiCalls: boolean[] = [];
 let mockGeneratedIndexActive: boolean | null = null;
-/** Drives `git.state` in the settings response; null keeps the healthy default. */
 let mockGeneratedIndexGitState:
   | 'not-applicable'
   | 'ready'
@@ -55,12 +45,10 @@ let mockGeneratedIndexGitState:
   | 'conflict'
   | 'unavailable'
   | null = null;
-/** Drives the POST outcome; null keeps the applied-cleanly default. */
 let mockGeneratedIndexApplyResult: {
   applied: boolean;
   reason?: 'git-conflict' | 'git-unavailable' | 'config-write';
 } | null = null;
-/** Makes the settings fetch reject, which is the notice's `connection` path. */
 let mockGeneratedIndexFetchRejects = false;
 let mockSkillsState:
   | { status: 'idle' | 'loading' }
@@ -92,8 +80,6 @@ async function generatedIndexFetch(input: string | URL | Request, init?: Request
   if (init?.method === 'POST') generatedIndexApiCalls.push(requested);
   const applyResult =
     init?.method === 'POST' ? (mockGeneratedIndexApplyResult ?? { applied: true }) : {};
-  // The server reports `enabled` by re-reading config, so a POST that did not
-  // apply reports the value that is still on disk, not the one asked for.
   const effectiveEnabled =
     'applied' in applyResult && applyResult.applied === false
       ? configuredGeneratedIndexEnabled()
@@ -126,10 +112,6 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
-// The markdownlint editor reads native rules via `useProjectLintConfig()` and
-// writes via `writeMarkdownlintRule`. Mock the lint-config client so the panel's
-// data is controllable and writes are observable. The other exports keep their
-// benign jsdom behavior (fetches fail → null), matching the unmocked module.
 let mockProjectLintData: unknown = null;
 const writeMarkdownlintRuleCalls: Array<[string, unknown]> = [];
 function projectDataWithMarkdownlintRules(
@@ -155,8 +137,6 @@ vi.doMock('@/editor/lint-config-client', () => ({
   fetchEffectiveLintConfig: async () => null,
   writeMarkdownlintRule: async (ruleId: string, value: unknown) => {
     writeMarkdownlintRuleCalls.push([ruleId, value]);
-    // Match the production discriminated union so tests exercise the success
-    // branch (a bare LintConfigResponse would read as ok: undefined → error path).
     return { ok: true, response: mockProjectLintData };
   },
 }));
@@ -178,8 +158,6 @@ vi.doMock('@/lib/skills-api', () => ({
   },
 }));
 
-// The enable notice is a toast; capture it instead of rendering a Toaster so the
-// action's deep-link target is assertable without sonner's portal + timers.
 interface ToastOptions {
   id?: string;
   description?: string;
@@ -211,7 +189,6 @@ const {
 
 interface SliceOverrides {
   markdownlint?: Record<string, unknown>;
-  /** Omitted entirely when absent, so the okf-off default stays representable. */
   okf?: Record<string, unknown>;
 }
 
@@ -243,7 +220,6 @@ function makeBinding(options: { ok?: boolean } = {}): {
   return { binding, calls };
 }
 
-/** A config where every project plugin reads as OFF, so a click ENABLES it. */
 function configWithNoPluginsEnabled(): Config {
   return { contentRules: {} } as unknown as Config;
 }
@@ -285,17 +261,11 @@ describe('ProjectPluginsManageSection', () => {
     mockProjectBinding = binding;
     render(<ProjectPluginsManageSection />);
     expect(screen.getByTestId('settings-plugin-toggle-markdownlint')).toBeDefined();
-    // The user-scope theme toggle is NOT here — it lives in the User → Plugins page.
     expect(screen.queryByTestId('settings-plugin-toggle-theme')).toBeNull();
-    // The project audit lives in the Problems panel, not Settings — no runner here.
     expect(screen.queryByTestId('settings-linting-audit')).toBeNull();
     expect(screen.getByTestId('settings-plugins-audit-pointer').textContent).toContain(
       'Run a project audit from the Problems panel',
     );
-    // Beta tags follow `LINT_PLUGIN_META.beta`, so this asserts the rendered
-    // rows against that registry rather than a hardcoded plugin name — a
-    // graduation flips one flag and this test moves with it. The negative half
-    // is the point: a plugin without the flag must not show the tag.
     const list = screen.getByTestId('settings-plugins-list');
     const labelled = (badge: HTMLElement) => badge.closest('label')?.textContent ?? '';
     const tagged = within(list).getAllByText('Beta').map(labelled).sort();
@@ -304,21 +274,14 @@ describe('ProjectPluginsManageSection', () => {
     for (const label of expected) {
       expect(tagged.some((text) => text.includes(label))).toBe(true);
     }
-    // markdownlint is GA — its row carries no tag.
     expect(tagged.some((text) => text.includes('markdownlint'))).toBe(false);
   });
 
   test('every plugin toggle is described by its own row description', () => {
-    // Hand-rolled rows do not get the aria-describedby wiring that the
-    // schema-driven SettingsField gets for free from FormControl, so a screen
-    // reader on the switch would otherwise hear the plugin name and nothing
-    // about what the plugin does.
     const { binding } = makeBinding();
     mockProjectBinding = binding;
     render(<ProjectPluginsManageSection />);
 
-    // Every plugin, because their descriptions come from separate branches of
-    // PluginManageDescription and each carries the same screen-reader promise.
     expect(describedTextOf('settings-plugin-toggle-markdownlint')).toContain(
       'Common markdown issues',
     );
@@ -345,9 +308,7 @@ describe('ProjectPluginsManageSection', () => {
     mockProjectBinding = binding;
     render(<ProjectPluginsManageSection />);
     const toggle = screen.getByTestId('settings-plugin-toggle-okf');
-    // Off — okf is absent from the mock config's contentRules.
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    // The row states the plugin's user-facing purpose without implementation detail.
     const row = toggle.closest('div');
     expect(row?.textContent).toContain(
       'Keeps your knowledge base aligned with the Open Knowledge Format.',
@@ -365,8 +326,6 @@ describe('ProjectPluginsManageSection', () => {
   });
 
   test('enabling a plugin offers its settings panel, and the offer deep-links there', async () => {
-    // The gap this closes: enabling happens here, but the plugin is configured
-    // on its own page — which can sit scrolled off screen in the sidebar.
     mockProjectConfig = configWithNoPluginsEnabled();
     const { binding } = makeBinding();
     mockProjectBinding = binding;
@@ -381,10 +340,6 @@ describe('ProjectPluginsManageSection', () => {
   });
 
   test('the notice carries a per-plugin id so repeat toggles replace rather than stack', async () => {
-    // The fixed id is the whole mechanism behind "toggling the same plugin
-    // repeatedly replaces the notice"; without this assertion that claim is
-    // just a docstring. Duration and description are the other two options the
-    // notice depends on and nothing else pinned.
     mockProjectConfig = configWithNoPluginsEnabled();
     const { binding } = makeBinding();
     mockProjectBinding = binding;
@@ -404,7 +359,6 @@ describe('ProjectPluginsManageSection', () => {
   test('disabling a plugin says nothing (nothing new to configure)', async () => {
     const { binding } = makeBinding();
     mockProjectBinding = binding;
-    // configWith({}) leaves markdownlint enabled, so this click turns it OFF.
     render(<ProjectPluginsManageSection />);
     await userEvent.click(screen.getByTestId('settings-plugin-toggle-markdownlint'));
     expect(successToasts).toHaveLength(0);
@@ -454,19 +408,15 @@ describe('UserPluginsManageSection', () => {
   test('the Themes toggle writes the user-scope enabled patch', async () => {
     const { binding } = makeBinding();
     mockProjectBinding = binding;
-    // The theme plugin is user-scope, so it writes through the user binding.
     const { binding: userBinding, calls: userCalls } = makeBinding();
     render(<UserPluginsManageSection userBinding={userBinding} />);
     await userEvent.click(screen.getByTestId('settings-plugin-toggle-theme'));
     expect(userCalls).toContainEqual({ appearance: { colorThemeEnabled: false } });
-    // Turning it OFF is not an invitation to go configure it.
     expect(successToasts).toHaveLength(0);
   });
 
   test('re-enabling Themes offers its panel too (the user-scope plugin is not special-cased)', async () => {
     const { binding: userBinding } = makeBinding();
-    // Absent-or-false is the only way `colorThemeEnabled` reads as off; the
-    // default is on, so start from an explicit false.
     mockUserConfig = { appearance: { colorThemeEnabled: false } } as unknown as Config;
     render(<UserPluginsManageSection userBinding={userBinding} />);
 
@@ -487,7 +437,6 @@ describe('UserPluginsManageSection', () => {
 
   test('enabling Slides writes the user-scope enabled patch and offers its panel', async () => {
     const { binding: userBinding, calls: userCalls } = makeBinding();
-    // Slides ships off, so the default (absent) config reads as off — a click enables it.
     render(<UserPluginsManageSection userBinding={userBinding} />);
 
     await userEvent.click(screen.getByTestId('settings-plugin-toggle-slides'));
@@ -501,21 +450,16 @@ describe('UserPluginsManageSection', () => {
 
   test('disabling Slides writes enabled:false and does not offer its panel', async () => {
     const { binding: userBinding, calls: userCalls } = makeBinding();
-    // Read as on so the click turns it off.
     mockUserConfig = { slides: { enabled: true } } as unknown as Config;
     render(<UserPluginsManageSection userBinding={userBinding} />);
 
     await userEvent.click(screen.getByTestId('settings-plugin-toggle-slides'));
 
     expect(userCalls).toContainEqual({ slides: { enabled: false } });
-    // Turning it OFF is not an invitation to go configure it.
     expect(successToasts).toHaveLength(0);
   });
 });
 
-// Row-level browser behavior (search, filters, toggles, MD043 editor, severity
-// chips) is covered in markdownlint-rule-browser.dom.test.tsx; this block pins
-// the section wrapper: header + browser mount + the config-source description.
 describe('MarkdownlintPluginSection', () => {
   test('renders the full-catalog rule browser', () => {
     mockProjectLintData = projectDataWithMarkdownlintRules({ default: true });
@@ -528,14 +472,11 @@ describe('MarkdownlintPluginSection', () => {
     expect(screen.getByTestId('settings-linting-markdownlint-rules')).toBeDefined();
     expect(screen.getByTestId('markdownlint-rule-search')).toBeDefined();
     expect(screen.getByTestId('markdownlint-rule-row-MD001')).toBeDefined();
-    // markdownlint is a project-scope plugin — the header carries a Project badge.
     expect(screen.getByTestId('settings-scope-badge-project')).toBeDefined();
     expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
   });
 
   test('links its docs page from the panel header', () => {
-    // The standing counterpart to the enable toast — whoever lands here later
-    // (or after the toast expired) still has a route to the how-to.
     mockProjectLintData = projectDataWithMarkdownlintRules({ default: true });
     render(
       <TooltipProvider>
@@ -548,15 +489,10 @@ describe('MarkdownlintPluginSection', () => {
     expect(docs.getAttribute('href')).toBe(
       'https://openknowledge.ai/docs/advanced/content-rules/markdownlint',
     );
-    // A link list full of bare "Learn more" tells a screen-reader user nothing;
-    // the accessible name names the destination and keeps the visible text.
     expect(docs.getAttribute('aria-label')).toBe('Learn more about markdownlint');
   });
 
   test('names the project config file in the description when one is present', () => {
-    // When the project has a committed `.markdownlint.*`, the description
-    // switches to a different UX context — it names the file and says it
-    // governs linting — and interpolates the filename via <Trans>.
     mockProjectLintData = projectDataWithMarkdownlintRules({ MD010: false }, '.markdownlint.json');
     render(
       <TooltipProvider>
@@ -569,10 +505,6 @@ describe('MarkdownlintPluginSection', () => {
   });
 });
 
-// The panel is a per-rule config surface: identity header plus one switch per
-// registered OKF rule. The plugin's own on/off toggle lives on the manage page
-// above, and the sidebar only offers this panel once the plugin is on — so there
-// is no parent-disabled state to pin here.
 describe('OkfPluginSection', () => {
   function renderPanel() {
     render(
@@ -595,7 +527,6 @@ describe('OkfPluginSection', () => {
     const panel = screen.getByTestId('settings-plugin-okf');
     expect(panel).toBeDefined();
     expect(within(panel).getByText('OKF')).toBeDefined();
-    // okf is a project-scope plugin — the header carries a Project badge.
     expect(screen.getByTestId('settings-scope-badge-project')).toBeDefined();
     expect(screen.queryByTestId('settings-scope-badge-user')).toBeNull();
     expect(panel.textContent).toContain(
@@ -604,9 +535,6 @@ describe('OkfPluginSection', () => {
   });
 
   test('the header carries the Beta tag and a link to the plugin docs', () => {
-    // The manage row and this header are separate render sites; a badge on the
-    // row says nothing about whether the panel someone actually configures the
-    // plugin in shows its maturity.
     const { binding } = makeBinding();
     mockProjectBinding = binding;
     renderPanel();
@@ -706,10 +634,8 @@ describe('OkfPluginSection', () => {
     mockProjectBinding = binding;
     renderPanel();
     const list = screen.getByTestId('settings-okf-rules-list');
-    // Every registered rule is addressable — not a hardcoded subset.
     for (const id of OKF_RULE_IDS) {
       const toggle = within(list).getByTestId(`settings-okf-rule-toggle-${id}`);
-      // Absent from config = on. This is the load-bearing default.
       expect(toggle.getAttribute('aria-checked')).toBe('true');
     }
     expect(screen.getByTestId('settings-plugin-okf').textContent).toContain(
@@ -718,9 +644,6 @@ describe('OkfPluginSection', () => {
   });
 
   test('rules render inside their declared group, and every rule is reachable through one', () => {
-    // The groups are the only structure a reader has for deciding what to
-    // silence — a rule rendered outside its group, or a group that quietly
-    // swallowed another's rules, is invisible to the per-id assertions above.
     const { binding } = makeBinding();
     mockProjectBinding = binding;
     renderPanel();
@@ -732,10 +655,8 @@ describe('OkfPluginSection', () => {
         expect(within(block).getByTestId(`settings-okf-rule-toggle-${id}`)).toBeDefined();
         seen.push(id);
       }
-      // Each rule in the group carries its own sentence, not a bare id.
       expect(block.textContent?.length ?? 0).toBeGreaterThan(group.ids.join('').length);
     }
-    // No rule is orphaned outside a group, and none is rendered twice.
     expect([...seen].sort()).toEqual([...OKF_RULE_IDS].sort());
     expect(new Set(seen).size).toBe(seen.length);
   });
@@ -756,17 +677,12 @@ describe('OkfPluginSection', () => {
     );
   });
 
-  // These assert only the patch SHAPE the pane emits. What that shape does to the
-  // document is pinned by core's config-patch tests — a payload assertion alone
-  // once passed while re-enabling was silently impossible.
   test('turning a rule off sends that rule as false', async () => {
     const { binding, calls } = makeBinding();
     mockProjectBinding = binding;
     mockProjectConfig = configWith({ okf: { rules: { 'log-shape': false } } });
     renderPanel();
     await userEvent.click(screen.getByTestId('settings-okf-rule-toggle-index-shape'));
-    // Only the touched key is sent: the walker leaves unmentioned keys alone, so
-    // an already-disabled sibling needs no re-sending to survive.
     expect(calls).toContainEqual({
       contentRules: { okf: { rules: { 'index-shape': false } } },
     });
@@ -778,8 +694,6 @@ describe('OkfPluginSection', () => {
     mockProjectConfig = configWith({ okf: { rules: { 'index-shape': false } } });
     renderPanel();
     await userEvent.click(screen.getByTestId('settings-okf-rule-toggle-index-shape'));
-    // `null` is the walker's delete signal. Omitting the key means "leave alone",
-    // which would strand the rule in the off state with no way back.
     expect(calls).toContainEqual({
       contentRules: { okf: { rules: { 'index-shape': null } } },
     });
@@ -835,22 +749,11 @@ describe('OkfPluginSection', () => {
       name: 'Maintain generated indexes in every folder?',
     });
 
-    // Select the dismiss by role rather than slot: it is wrapped in
-    // `DialogClose asChild`, so the rendered element carries the close slot
-    // while still emitting the Button's own variant attribute.
     const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
     const confirm = within(dialog).getByTestId('settings-okf-generate-index-confirm-accept');
 
     expect(cancel.getAttribute('data-variant')).toBe('outline');
     expect(confirm.getAttribute('data-variant')).toBe('default');
-    // Asserted on the merged class list rather than on the authored prop, so
-    // this holds whether the treatment arrives from the variant or from a
-    // hand-added className. The fill tokens are the point of the assertion:
-    // `data-variant` reports the authored prop, but `cn`'s tailwind-merge lets
-    // a hand-added `bg-*` override the variant's fill while `data-variant`
-    // still reads `default`. That is the same hand-added-className shape the
-    // bug this test guards was authored in, so the merged list is the only
-    // place a demotion of that form shows up.
     expectVisualClassTokens(confirm.className, [
       'font-mono',
       'uppercase',
@@ -922,9 +825,6 @@ describe('OkfPluginSection', () => {
     await waitFor(() => expect(generatedIndexApiCalls).toEqual([false]));
   });
 
-  // The notice has four branches. The Git-conflict one is covered end-to-end in
-  // okf-generated-index-settings.e2e.ts against a real .gitattributes; the three
-  // below need a server response the E2E cannot stage, so they are pinned here.
   test('a config that could not be saved says so rather than reporting generation on', async () => {
     const user = userEvent.setup();
     const { binding } = makeBinding();
@@ -965,7 +865,6 @@ describe('OkfPluginSection', () => {
 
     const notice = await screen.findByTestId('settings-okf-generate-index-status');
     expect(notice.textContent).toContain('could not confirm the required Git merge rule');
-    // Distinct from the conflict branch, which blames a competing attribute.
     expect(notice.textContent).not.toContain('another Git attribute');
   });
 });

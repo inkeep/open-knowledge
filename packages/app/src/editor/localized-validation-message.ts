@@ -3,7 +3,6 @@ import { t } from '@lingui/core/macro';
 
 type Diagnostic = ValidationDocResult['diagnostics'][number];
 
-/** Localize structured local-target findings without parsing server prose. */
 export function localizedValidationMessage(diagnostic: Diagnostic): string {
   const evidence = diagnostic.localTarget;
   if (diagnostic.source !== 'links' || evidence === undefined) return diagnostic.message;

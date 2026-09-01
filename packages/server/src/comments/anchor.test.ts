@@ -31,7 +31,6 @@ describe('createAnchor', () => {
 
   test('widens context until a repeated quote is a unique triple', () => {
     const body = 'alpha X beta. gamma X delta.';
-    // "X" appears twice; a 1-char context must widen to disambiguate.
     const first = body.indexOf('X');
     const anchor = createAnchor(body, first, first + 1, 1);
     const triple = anchor.prefix + anchor.exact + anchor.suffix;
@@ -77,7 +76,6 @@ describe('refind', () => {
     expect(res.status).toBe('anchored');
     if (res.status === 'anchored') {
       expect(shifted.slice(res.start, res.end)).toBe('minimal downtime');
-      // the raw saved offsets would have pointed at the wrong words
       expect(res.start).not.toBe(anchor.start);
     }
   });
@@ -91,35 +89,26 @@ describe('refind', () => {
     const dup = 'alpha TARGET omega ... beta TARGET zeta';
     const first = dup.indexOf('TARGET');
     const a = createAnchor(dup, first, first + 'TARGET'.length, 6);
-    // Insert text above so the fast path misses and quote-search runs.
     const shifted = `PADDING PADDING ${dup}`;
     const res = refind(shifted, a);
     expect(res.status).toBe('anchored');
     if (res.status === 'anchored') {
-      // should land on the FIRST occurrence (its context matches "alpha ")
       expect(shifted.slice(res.start, res.end)).toBe('TARGET');
       expect(shifted.slice(0, res.start).endsWith('alpha ')).toBe(true);
     }
   });
 
   test('never lands on the wrong words: prefers nearest when context ties', () => {
-    // identical context around two hits → nearest-to-old-position wins
     const line = 'x TARGET y x TARGET y';
     const first = line.indexOf('TARGET');
     const second = line.indexOf('TARGET', first + 1);
     const a = createAnchor(line, second, second + 'TARGET'.length, 2);
     const res = refind(line, a);
-    // fast path hits (unchanged body) → exact same offsets
     expect(res).toEqual({ status: 'anchored', start: second, end: second + 'TARGET'.length });
   });
 });
 
 describe('refind — a deleted passage with an identical twin elsewhere', () => {
-  // The reported bug: delete the commented passage while the same words exist
-  // somewhere else. The survivor is a lone, clean hit of the quote, and a lone
-  // hit used to be accepted without consulting the stored context at all — the
-  // comment re-anchored onto words nobody commented on, with prefix and suffix
-  // in open disagreement.
   const doc =
     'The northern site reports TARGET PHRASE beside the river delta. ' +
     'Unrelated closing notes mention TARGET PHRASE near the archive vault.';
@@ -127,8 +116,6 @@ describe('refind — a deleted passage with an identical twin elsewhere', () => 
   test('orphans instead of sliding onto the surviving twin', () => {
     const first = doc.indexOf('TARGET PHRASE');
     const a = createAnchor(doc, first, first + 'TARGET PHRASE'.length);
-    // Delete the commented occurrence (and its neighbourhood, so no bracket
-    // survives to recover from); the twin remains untouched.
     const afterDelete = doc.slice(doc.indexOf('Unrelated'));
     const res = refind(afterDelete, a);
     expect(res.status).toBe('orphaned');
@@ -137,7 +124,6 @@ describe('refind — a deleted passage with an identical twin elsewhere', () => 
   test('still follows the commented occurrence when it is the one that survives', () => {
     const second = doc.indexOf('TARGET PHRASE', doc.indexOf('TARGET PHRASE') + 1);
     const a = createAnchor(doc, second, second + 'TARGET PHRASE'.length);
-    // The OTHER copy is deleted; the commented one keeps its neighbourhood.
     const afterDelete = doc.slice(doc.indexOf('Unrelated'));
     const res = refind(afterDelete, a);
     expect(res.status).toBe('anchored');
@@ -148,8 +134,6 @@ describe('refind — a deleted passage with an identical twin elsewhere', () => 
   });
 
   test('a unique passage whose surroundings were rewritten is still followed', () => {
-    // The floor asks for a TRACE, not preservation: editing around a passage is
-    // normal and must not orphan it.
     const body = 'Alpha beta gamma UNIQUE WORDS delta epsilon zeta.';
     const at = body.indexOf('UNIQUE WORDS');
     const a = createAnchor(body, at, at + 'UNIQUE WORDS'.length);
@@ -163,29 +147,18 @@ describe('refind — a deleted passage with an identical twin elsewhere', () => 
 });
 
 describe('refind — deleting the selection leaves a seam', () => {
-  // The stronger version of the twin problem: the passage's WHOLE neighbourhood
-  // is duplicated (a sentence copied elsewhere after the comment was made), so
-  // the twin's context matches the stored context honestly and no context
-  // score can tell them apart. What does: deleting exactly the selected text
-  // closes the gap between the stored prefix and suffix, and that seam at the
-  // old spot is positive evidence of the deletion.
   const sentence = 'The chord stages into the agents panel specifically, naming its target.';
   const body = `Intro paragraph first. ${sentence} Later, the decision restates it: ${sentence}`;
 
   test('orphans on the seam even though the twin matches the context honestly', () => {
     const first = body.indexOf('the agents panel');
     const a = createAnchor(body, first, first + 'the agents panel'.length);
-    // The COMMENTED occurrence is deleted exactly; the twin keeps the same
-    // sentence, so its surroundings genuinely match the stored context.
     const afterDelete = body.slice(0, first) + body.slice(first + 'the agents panel'.length);
     const res = refind(afterDelete, a);
     expect(res.status).toBe('orphaned');
   });
 
   test('typing into the seam is an edit again, not a deletion', () => {
-    // No twin here: the point is the probe's own boundary. Once the gap holds
-    // content, `prefix + suffix` is no longer literal in the body, so the probe
-    // stands down and the bracket recovery resolves the rewrite as before.
     const unique = 'Setup text sits here. The chord stages into the agents panel today. Done.';
     const at = unique.indexOf('the agents panel');
     const a = createAnchor(unique, at, at + 'the agents panel'.length);
@@ -200,9 +173,6 @@ describe('refind — deleting the selection leaves a seam', () => {
 });
 
 describe('refind — a passage that was edited, not removed', () => {
-  // The reported behaviour: commenting on "needs space", then editing it to
-  // "needs more space", dropped the comment. Editing the text you commented on
-  // is the likeliest next action, so orphaning there was backwards.
   const BODY = 'Intro line.\n\nThe layout needs space around the header.\n\nOutro line.';
 
   function anchorOn(quote: string, body = BODY) {
@@ -218,8 +188,6 @@ describe('refind — a passage that was edited, not removed', () => {
     expect(result.status).toBe('anchored');
     if (result.status !== 'anchored') return;
     expect(edited.slice(result.start, result.end)).toBe('needs more space');
-    // Flagged so the caller re-captures the quote; a stale `exact` would be
-    // handed to an agent as text to act on.
     expect(result.rewritten).toBe(true);
   });
 
@@ -242,7 +210,6 @@ describe('refind — a passage that was edited, not removed', () => {
 
   test('a passage deleted outright still orphans', () => {
     const anchor = anchorOn('needs space');
-    // Brackets collapse together — nothing between them is a removal, not an edit.
     const edited = BODY.replace('needs space ', '');
     const result = refind(edited, anchor);
     expect(result.status).toBe('orphaned');
@@ -252,15 +219,10 @@ describe('refind — a passage that was edited, not removed', () => {
     const anchor = anchorOn('needs space');
     const huge = 'x'.repeat(500);
     const edited = BODY.replace('needs space', huge);
-    // The boundaries still match, but growing 11 chars to 500 is a replacement.
     expect(refind(edited, anchor).status).toBe('orphaned');
   });
 
   test('orphans rather than guessing when the brackets are ambiguous', () => {
-    // Brackets that repeat cannot identify which span the reviewer meant, so
-    // the bracket path declines instead of picking one. Constructed directly:
-    // via `createAnchor` the context would widen until unique, which is exactly
-    // what keeps this case rare in practice.
     const anchor = { exact: 'mid', prefix: 'X ', suffix: ' Y', start: 2, end: 5 };
     const edited = 'X changed Y and later X other Y';
 
@@ -268,9 +230,6 @@ describe('refind — a passage that was edited, not removed', () => {
   });
 
   test('a repeated quote edited in one place does not drag the comment elsewhere', () => {
-    // The exact text still exists at the other occurrences, so the pre-existing
-    // quote search handles it — the bracket path never runs. Pinned because the
-    // two paths must not fight: whatever it picks has to be real text.
     const repeated = 'The layout needs space around the header.\n'.repeat(3);
     const at = repeated.indexOf('needs space');
     const anchor = createAnchor(repeated, at, at + 'needs space'.length);
@@ -283,20 +242,9 @@ describe('refind — a passage that was edited, not removed', () => {
   });
 });
 
-/**
- * Ranking a repeated passage whose only distinguishing context is in an
- * adjacent block.
- *
- * The captured context joins blocks with a single `\n`; the body separates them
- * with `\n\n` and spends `- ` on every list item. Scored byte-exact, that
- * disagreed at the first seam character and returned zero for every candidate,
- * so the ranking was inert and the caller took the first hit — persisting a
- * comment on the third item against the first.
- */
 describe('bestByContext across a block seam', () => {
   const BODY = ['- hi', '- hi', '- hi', '', 'the marker paragraph', '', '- hi', '- hi'].join('\n');
 
-  /** `[start, end)` of the nth (1-based) list item's text. */
   function nth(n: number): number {
     let at = -1;
     for (let i = 0; i < n; i += 1) at = BODY.indexOf('- hi', at + 1);
@@ -339,12 +287,6 @@ describe('bestByContext across a block seam', () => {
 });
 
 describe('refind — a passage whose NEIGHBOURS were edited', () => {
-  // Sister to the editor's `anchor-nearby-edit.test.ts`. A stored context is
-  // sliced out of the body, so around a list item it carries that item's `1. `
-  // and its neighbour's `2. `; scoring it as though it were rendered text put a
-  // marker at the seam and zeroed every candidate, so the evidence gate could
-  // never be met and re-find fell through to bracket recovery — which needs the
-  // surroundings intact. Editing beside a comment then orphaned it.
   const BODY = [
     '## Steps',
     '',
@@ -359,16 +301,10 @@ describe('refind — a passage whose NEIGHBOURS were edited', () => {
     return createAnchor(body, at, at + QUOTE.length);
   }
 
-  /**
-   * Every case prepends a paragraph, far enough away to leave the stored context
-   * untouched. It moves the passage off its saved offsets, so the fast path
-   * cannot answer and the quote search — the thing the gate guards — has to.
-   */
   function editedFar(...edits: readonly (readonly [string, string])[]): string {
     return edits.reduce((body, [from, to]) => body.replace(from, to), `Intro.\n\n${BODY}`);
   }
 
-  /** Asserts re-find lands on the quote itself, not merely somewhere. */
   function expectResolvesTo(edited: string) {
     const result = refind(edited, anchorOn());
     expect(result.status).toBe('anchored');

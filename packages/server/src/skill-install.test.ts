@@ -1,12 +1,3 @@
-/**
- * Unit tests for installUserSkill + buildAndOpenSkill.
- *
- * `installUserSkill` writes directly (no subprocess), so these tests assert
- * against real files under a fresh `mkdtempSync`-backed HOME — never the real
- * `~/`. `buildAndOpenSkill` still shells out for the OS file association, and
- * mocks it via the injectable `spawnFn`.
- */
-
 import type { SpawnOptions } from 'node:child_process';
 import {
   existsSync,
@@ -56,27 +47,21 @@ function freshHome(): string {
   return mkdtempSync(join(tmpdir(), 'ok-skill-install-'));
 }
 
-/** Create a host's dotdir so `detectUserSkillHosts` counts it as installed. */
 function installHost(home: string, hostDir: string): void {
   mkdirSync(join(home, hostDir), { recursive: true });
 }
 
-/** Every host dir OK knows about — the candidate set detection filters. */
 const ALL_HOST_DIRS = HOSTS_WITH_USER_SKILL_DIR.map((h) => h.hostDir);
 
-/** Top-level entries a run created under HOME, sorted. */
 function homeEntries(home: string): string[] {
   return readdirSync(home).sort();
 }
 
-// State lives at `~/.ok/skill-state.yml` as a single YAML document.
 const YAML_REL = ['.ok', 'skill-state.yml'] as const;
 function yamlPathFor(home: string): string {
   return join(home, ...YAML_REL);
 }
 
-// Track-1 installs the slim discovery bundle; the disk-presence gate probes
-// its install dir, NOT the pre-split `open-knowledge` dir.
 const CENTRAL_SKILL_REL = ['.agents', 'skills', 'open-knowledge-discovery'] as const;
 function centralSkillDirFor(home: string): string {
   return join(home, ...CENTRAL_SKILL_REL);
@@ -86,35 +71,22 @@ function hostSkillDirFor(home: string, hostDir: string): string {
   return join(home, hostDir, 'skills', 'open-knowledge-discovery');
 }
 
-/**
- * Pretend a prior install already wrote the central source. Pairs with
- * writeSidecar to simulate a real prior install — without both, the
- * skip-current gate correctly rejects the sidecar as stale.
- */
 function writeCentralSkill(home: string): void {
   const dir = centralSkillDirFor(home);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'SKILL.md'), '# stub\n', 'utf-8');
 }
 
-/** Find the warn record carrying a specific structured `event` field. */
 function findWarn(records: RecordedLog[], event: string): RecordedLog | undefined {
   return records.find((r) => r.level === 'warn' && (r.data as { event?: string }).event === event);
 }
 
-/** Pretend a pre-split `open-knowledge` user-global skill dir exists at one host. */
 function writeLegacyUserSkill(home: string, hostDir = '.claude'): void {
   const dir = join(home, hostDir, 'skills', 'open-knowledge');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'SKILL.md'), '# legacy\n', 'utf-8');
 }
 
-/**
- * Stage a `cli-hosts` entry in the YAML state file. `content` is the raw
- * version string the test wants the gate to read. Empty / malformed
- * content writes a YAML whose `version` field will fail schema validation
- * — the read path then returns null (fail-soft contract).
- */
 function writeSidecar(home: string, content: string): void {
   const dir = join(home, '.ok');
   mkdirSync(dir, { recursive: true });
@@ -130,10 +102,6 @@ function writeSidecar(home: string, content: string): void {
   writeFileSync(yamlPathFor(home), yaml, 'utf-8');
 }
 
-/**
- * Returns the cli-hosts version + '\n' or null. Reads the YAML and
- * projects out the version field via a tolerant regex.
- */
 function readSidecarIfExists(home: string): string | null {
   let raw: string;
   try {
@@ -155,7 +123,6 @@ beforeEach(async () => {
   currentVersion = await readServerVersion();
 });
 
-/** Read the JSONL install-event log written under a test HOME. */
 function readInstallEvents(home: string): Array<Record<string, unknown>> {
   let raw: string;
   try {
@@ -170,16 +137,6 @@ function readInstallEvents(home: string): Array<Record<string, unknown>> {
     .map((l) => JSON.parse(l) as Record<string, unknown>);
 }
 
-// ─── Scope discipline (issue #820) ─────────────────────────────────────────
-//
-// The regression this suite exists to prevent: `ok init` once shelled out to
-// `npx skills add … --agent '*'`, which bypassed that CLI's host detection and
-// created a skill dir in every one of the ~75 hosts it knows — 51 of them for
-// tools the reporter had never installed. OK writes agent INSTRUCTIONS, so a
-// dir for an absent tool is a scope-of-consent violation, not just clutter.
-// These tests pin the contract: writes land ONLY in detected hosts, and a home
-// with no agent host gets nothing at all.
-
 describe('installUserSkill — scope discipline', () => {
   test('no agent host detected → returns "no-hosts" and writes NO skill dirs', async () => {
     const home = freshHome();
@@ -188,7 +145,6 @@ describe('installUserSkill — scope discipline', () => {
     const result = await installUserSkill({ home, logger });
 
     expect(result).toBe('no-hosts');
-    // Only OK's own state dir may appear — no host dotdirs, no `.agents`.
     expect(homeEntries(home)).toEqual(['.ok']);
     expect(existsSync(centralSkillDirFor(home))).toBe(false);
     expect(
@@ -235,9 +191,6 @@ describe('installUserSkill — scope discipline', () => {
     expect(events.at(-1)?.reason).toBe('no-hosts');
   });
 
-  // The decline gate used to live only in the callers, so a caller that forgot
-  // it would reinstall a bundle the user had turned off — and a decline also
-  // removes the bundle from disk, so the reinstall reverses an explicit choice.
   test('an explicitly declined bundle is never installed, even with a host present', async () => {
     const home = freshHome();
     installHost(home, '.claude');
@@ -251,9 +204,6 @@ describe('installUserSkill — scope discipline', () => {
     expect(readInstallEvents(home).at(-1)?.reason).toBe('declined');
   });
 
-  // `force` bypasses the VERSION fast-path, not consent — `ok init` passes it on
-  // every bundle, so letting it through the decline gate would make a re-init
-  // silently undo an opt-out.
   test('force does not override an explicit decline', async () => {
     const home = freshHome();
     installHost(home, '.claude');
@@ -263,15 +213,9 @@ describe('installUserSkill — scope discipline', () => {
     expect(existsSync(centralSkillDirFor(home))).toBe(false);
   });
 
-  // An UNREADABLE decision is not "no decision". Collapsing the two would
-  // install a bundle whose recorded state may be an explicit decline — and a
-  // decline also deletes the files, so reversing it is visible to the user.
   test('an unreadable decision file declines rather than installing', async () => {
     const home = freshHome();
     installHost(home, '.claude');
-    // A directory where the state file belongs: reads fail with EISDIR, which
-    // is neither ENOENT (absent) nor a parse error (both of which read as
-    // "fresh install" by design).
     mkdirSync(join(home, '.ok', 'skill-state.yml'), { recursive: true });
     const { logger, records } = makeRecordingLogger();
 
@@ -286,8 +230,6 @@ describe('installUserSkill — scope discipline', () => {
     ).toBe(true);
   });
 
-  // Absent decision means "first install", not "declined" — the reclaim sweeps
-  // own the `?? installedOnDisk` grandfathering, this path must not import it.
   test('no recorded decision still installs', async () => {
     const home = freshHome();
     installHost(home, '.claude');
@@ -325,7 +267,6 @@ describe('installUserSkill — scope discipline', () => {
   });
 });
 
-/** Declare custom roots in the placements ledger `resolveBuiltinSkillHosts` reads. */
 function seedDeclaredRoots(home: string, roots: string[]): void {
   const dir = join(home, '.ok', 'local');
   mkdirSync(dir, { recursive: true });
@@ -390,7 +331,6 @@ describe('installUserSkill — fresh install', () => {
 
     expect(result).toBe('installed');
     expect(readSidecarIfExists(home)).toBe(`${currentVersion}\n`);
-    // The success log names real paths rather than asserting unverified detection.
     const installed = records.find(
       (r) => (r.data as { event?: string }).event === 'skill-install.installed',
     );
@@ -466,7 +406,6 @@ describe('installUserSkill — idempotency (skip-current)', () => {
     const result = await installUserSkill({ home });
 
     expect(result).toBe('skip-current');
-    // Untouched: the gate short-circuits before any host write.
     expect(existsSync(hostSkillDirFor(home, '.claude'))).toBe(false);
   });
 
@@ -558,8 +497,6 @@ describe('installUserSkill — failure modes', () => {
     installHost(home, '.claude');
     const { logger, records } = makeRecordingLogger();
 
-    // Make both destinations unwritable by planting a FILE where the writer
-    // needs a directory — `mkdirSync` then fails with ENOTDIR/EEXIST.
     writeFileSync(join(home, '.agents'), 'not a dir\n', 'utf-8');
     writeFileSync(join(home, '.claude', 'skills'), 'not a dir\n', 'utf-8');
 
@@ -576,7 +513,6 @@ describe('installUserSkill — failure modes', () => {
     installHost(home, '.cursor');
     const { logger, records } = makeRecordingLogger();
 
-    // Only the cursor destination is blocked.
     writeFileSync(join(home, '.cursor', 'skills'), 'not a dir\n', 'utf-8');
 
     const result = await installUserSkill({ home, logger });
@@ -589,13 +525,6 @@ describe('installUserSkill — failure modes', () => {
     ).toBe(true);
   });
 });
-
-// ─── buildAndOpenSkill ─────────────────────────────────────────────────────
-//
-// Shared primitive that produces `openknowledge.skill` and hands it to the OS
-// file association. Consumed by the `ok install-skill` CLI, the
-// `POST /api/install-skill` endpoint, and (in principle) the Electron skill
-// bridge — every test here protects all three call sites at once.
 
 describe('buildAndOpenSkill', () => {
   function makeFakeSpawn(capture: {
@@ -711,19 +640,12 @@ describe('buildAndOpenSkill', () => {
       spawnFn: makeFakeSpawn({ threw: new Error('EACCES: permission denied') }),
     });
 
-    // Build succeeded; handoff failed soft.
     expect(result.status).toBe('built');
     expect(result.handoffError?.reason).toBe('spawn-error');
     expect(result.handoffError?.message).toContain('EACCES');
     expect(result.outputPath).toBeDefined();
   });
 });
-
-// ─── buildAndOpenSkill install-state gate ─────────────────────
-//
-// The skip-current gate is what stops `buildAndOpenSkill` from rebuilding
-// the `.skill` zip on every Cowork click. Direct tests for the composed
-// flow — the helpers in skill-state.ts have their own unit coverage.
 
 describe('buildAndOpenSkill — install-state gate', () => {
   function makeNoopSpawn(): SpawnLike {
@@ -773,14 +695,11 @@ describe('buildAndOpenSkill — install-state gate', () => {
     expect(result.status).toBe('skip-current');
     expect(result.skillVersion).toBe(currentVersion);
     expect(typeof result.recordedAt).toBe('string');
-    // No bundle was written.
     let outExists = false;
     try {
       readFileSync(join(home, 'should-not-build.skill'));
       outExists = true;
-    } catch {
-      /* expected */
-    }
+    } catch {}
     expect(outExists).toBe(false);
   });
 
@@ -825,14 +744,12 @@ describe('buildAndOpenSkill — install-state gate', () => {
 
   test('subsequent invocation after a successful build hits the gate', async () => {
     const home = freshHome();
-    // First call: fresh build, populates state.
     const first = await buildAndOpenSkill({
       home,
       out: join(home, 'first.skill'),
       noOpen: true,
     });
     expect(first.status).toBe('built');
-    // Second call: gate matches, skips rebuild.
     const second = await buildAndOpenSkill({
       home,
       out: join(home, 'second.skill'),
@@ -843,9 +760,6 @@ describe('buildAndOpenSkill — install-state gate', () => {
 });
 
 describe('installUserSkill — home guard', () => {
-  // Every path, including the recursive `rmSync` inside `replaceSkillDir`,
-  // is built with `join(home, …)`, which is RELATIVE when home is. Returns
-  // rather than throws: the function's contract is never-throws.
   test.each([
     '',
     '.',
@@ -856,11 +770,6 @@ describe('installUserSkill — home guard', () => {
     expect(findWarn(records, 'skill-install.failed')?.data).toMatchObject({
       reason: 'home-not-absolute',
     });
-    // Not even the event log. `report` appends to `<home>/.ok/`, which for a
-    // relative home lands in the process cwd — the first cut of this guard ran
-    // AFTER `report` and littered the repo with `packages/server/.ok/` and
-    // `packages/server/relative/home/.ok/`. Same bug class as the guard itself,
-    // one layer over.
     expect(existsSync(join(process.cwd(), bogus, '.ok'))).toBe(false);
   });
 

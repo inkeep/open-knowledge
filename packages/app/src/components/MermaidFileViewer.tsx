@@ -1,25 +1,3 @@
-/**
- * Read-only viewer for a standalone Mermaid diagram file
- * (`.mmd` / `.mermaid`). Fetches the raw text via the ungated
- * `/api/asset-text` endpoint — same fetch path as `TextViewer` — and hands
- * the source to the editor's `<Mermaid>` component. Because Mermaid is
- * the single-source-of-truth renderer here (identical theming + parse-
- * error advisory as ` ```mermaid ` fences inside docs), keeping the file
- * viewer as a thin wrapper avoids a parallel diagram-render surface.
- *
- * The segmented Diagram ⇄ Source toggle mirrors `EditorModeToggle` (same
- * `ToggleGroup` primitives, sizing, and top-of-pane placement) so the
- * file viewer reads as "the same control we use for md docs" rather
- * than a bespoke pane. MermaidView's own error state renders the
- * offending source below its advisory; we hide that copy inside this
- * wrapper so parse failures show exactly one path to the raw bytes —
- * the Source toggle.
- *
- * STOP: do not bind this viewer to a Y.Doc. `.mmd`/`.mermaid` are NOT in
- * `SUPPORTED_DOC_EXTENSIONS` — the file is read-only by contract. Editing
- * .mmd in place is a separate slice.
- */
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Code, Workflow } from 'lucide-react';
 import { useState } from 'react';
@@ -33,7 +11,6 @@ import { resolveViewerOpenFile } from './viewer-open-file';
 
 type MermaidFileViewerProps = ViewerTextSource & {
   fileName: string;
-  /** Lowercased, dot-stripped (e.g. `mmd`, not `.MMD`). */
   extension: string;
 };
 
@@ -131,22 +108,10 @@ export function MermaidFileViewer({ fileName, extension, ...source }: MermaidFil
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {mode === 'diagram' ? (
-          // `[&_.mermaid-error-source]:hidden` suppresses MermaidView's
-          // in-error raw-source `<pre>` — the Source toggle already carries
-          // that responsibility, and rendering the file twice on parse
-          // failure (advisory + inline source pane below) reads as
-          // duplication rather than diagnosis.
           <div className="flex h-full min-h-0 flex-col p-3 [&_.mermaid-error-source]:hidden">
             <MermaidView chart={text} className="min-h-0 flex-1" />
           </div>
         ) : (
-          // Source-mode fallback and copy-the-raw-bytes affordance. Reusing
-          // `TextViewer` (rather than a bare `<pre>`) so theme, line
-          // numbering, Cmd-A, and read-only semantics match every other
-          // source view in the app. The extension stays `mmd` even for
-          // `.mermaid` files — CodeMirror has no Mermaid grammar so it
-          // falls through to plain-text anyway; the label just needs to
-          // read consistently.
           <TextViewer {...source} fileName={fileName} extension={extension} />
         )}
       </div>

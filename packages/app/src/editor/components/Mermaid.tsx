@@ -1,43 +1,3 @@
-/**
- * MermaidView — WYSIWYG renderer for the canonical `<Mermaid>` block descriptor.
- *
- * Mermaid is browser-only (no first-party SSR per upstream issue #3650),
- * which fits OK's Vite + React 19 client perfectly. The library is lazy-
- * imported on first mount to keep the editor's first-load JS unaffected
- * for documents without diagrams; cost at first diagram is ~150 KB
- * gzipped (entry ~11 KB + lazy diagram-type chunks 24-45 KB each).
- *
- * Rendering + editing are delegated to `visimer`
- * (`@visimer/core` + `@visimer/dom`): the canvas view
- * renders through our own lazy `mermaid` instance (full fidelity, same
- * theming as before), correlates the SVG back to source entities, and
- * overlays interaction — click-select with a per-entity action popover
- * (shape / edge-type / color pickers, delete, …), double-click in-place
- * label editing, drag-to-connect, sequence-message drag-reorder. Every
- * gesture compiles to a minimal text edit against the chart source,
- * which we commit through the same write paths the old inline editor
- * used. There is deliberately NO external editing toolbar — all edit
- * affordances live on the diagram itself.
- *
- * Source-of-truth flow: the `chart` prop is canonical. Canvas gestures
- * mutate the package editor's internal code and surface through its
- * `change` event (origin !== 'external'), which we commit outward
- * (JSX-host `setNodeMarkup` or the standalone-doc `editBinding`). Remote
- * CRDT edits arrive as a new `chart` prop and re-enter the package via
- * `setCode(chart, 'external')`, which re-renders without echoing back.
- *
- * Why the canvas can host contenteditable labels inside ProseMirror's
- * tree (the old implementation portalled inputs to `document.body`):
- * PM's DOMObserver only reacts to selection changes while the PM view
- * itself has focus (`hasFocusAndSelection`); the canvas moves focus to
- * its own container / label, so PM stays out. Child-list/character
- * mutations inside the NodeView body are ignored by TipTap's default
- * `ignoreMutation` (they're outside the contentDOM). The remaining
- * hazard — PM's own event handlers reacting to canvas clicks/keys — is
- * closed by the bubble-phase stopPropagation guard on the canvas
- * container below.
- */
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { PanzoomObject } from '@panzoom/panzoom';
 import type { MermaidWysiwygEditor } from '@visimer/core';
@@ -62,20 +22,6 @@ import { cn } from '@/lib/utils.ts';
 import { useJsxComponentHost } from './jsx-host-context.tsx';
 import { useAppColorMode } from './use-app-color-mode.ts';
 
-// MermaidFence descriptor declares a single `chart` prop. `id` and `theme`
-// are absent because neither is expressible in ` ```mermaid ` fence syntax,
-// and no production code path can thread them to this component (the
-// promoter emits `{chart}` only). Re-adding either to this interface would
-// create a parallel render-side surface that nothing reaches.
-/**
- * Write binding for the chart source that backs WYSIWYG editing. Decouples
- * `MermaidView` from its edit host so the SAME canvas machinery serves two
- * surfaces: a codefenced ` ```mermaid ` fence (source lives on a TipTap
- * `jsxComponent` node) and a standalone `.mmd` doc (source is a CRDT
- * `Y.Text`). Reads flow the other way — the `chart` prop is pushed into the
- * canvas on every external change — so the binding only needs the commit
- * direction.
- */
 export interface MermaidSourceBinding {
   canEdit: boolean;
   commitChart: (next: string) => void;
@@ -84,18 +30,7 @@ export interface MermaidSourceBinding {
 interface MermaidProps {
   chart?: string;
   className?: string;
-  /**
-   * When provided, WYSIWYG edits write back through this binding instead of
-   * the JSX-component host (the standalone `.mmd` doc path). Absent for
-   * codefenced fences, which derive the binding from `useJsxComponentHost()`.
-   */
   editBinding?: MermaidSourceBinding;
-  /**
-   * Renders the toolbar's expand control and receives its click. The host
-   * decides whether the diagram is expandable and owns the lightbox state;
-   * `MermaidLightbox` passes no handler to its own inner `MermaidView`, so a
-   * dialog can never nest another one.
-   */
   onExpand?: () => void;
 }
 
@@ -108,27 +43,12 @@ const MERMAID_ZOOM_MIN = 0.5;
 const MERMAID_ZOOM_MAX = 4;
 const MERMAID_ZOOM_STEP = 0.25;
 
-/**
- * Compensate Panzoom's `maxScale` so it caps zoom relative to the SVG's
- * natural (viewBox) size, not its fit-shrunk painted size. Given `MERMAID_ZOOM_MAX`
- * as the "max multiple of natural size" intent, a fit-shrunk diagram
- * (`paintedWidth < viewBoxWidth`) needs a proportionally larger `maxScale`
- * so the user can still zoom to `MERMAID_ZOOM_MAX * natural`. Diagrams that
- * paint at or above natural size keep the raw `MERMAID_ZOOM_MAX` floor.
- */
 export function compensatedMaxScale(paintedWidth: number, viewBoxWidth: number): number {
   if (viewBoxWidth <= 0 || paintedWidth <= 0) return MERMAID_ZOOM_MAX;
   const displayScale = paintedWidth / viewBoxWidth;
   return Math.max(MERMAID_ZOOM_MAX, MERMAID_ZOOM_MAX / displayScale);
 }
 
-/**
- * The lightbox mounts a second canvas over the same chart. It must stay
- * read-only even inside an editable JSX host (two live edit surfaces would
- * race their commits), and handing it a binding rather than relying on the
- * host context also enables the whole-viewport wheel-pan the standalone-doc
- * surface gets — the dialog owns its viewport the same way.
- */
 const LIGHTBOX_VIEW_BINDING: MermaidSourceBinding = {
   canEdit: false,
   commitChart: () => {},
@@ -144,34 +64,15 @@ const buttonProps: ComponentProps<typeof Button> = {
   className: 'border-border',
 };
 
-/**
- * One-time initialization. Called lazily on the first render attempt so
- * documents without Mermaid pay nothing; the retrying cache clears itself
- * on rejection, so a transient network failure during the first import
- * doesn't disable Mermaid for the entire session.
- */
 const loadMermaid = createRetryingLoader(() => import('mermaid').then((mod) => mod.default));
 
 const loadWysiwyg = createRetryingLoader(() =>
   Promise.all([import('@visimer/core'), import('@visimer/dom')]),
 );
 
-/**
- * Mermaid's built-in `dark` theme covers node fills and text but leaves
- * sequence-diagram notes on a hardcoded pastel yellow (`#EDF2AE`) that
- * clashes on a dark background, and its actor-box colors read as bright
- * white. Override the load-bearing `themeVariables` so notes, actors,
- * labels, and arrow signals track the OK dark palette. Values are
- * intentionally plain hex — mermaid derives contrast colors from these
- * strings and CSS variables don't survive its color-math step.
- */
 const MERMAID_DARK_THEME_VARIABLES = {
-  // Match OK's mono-ish design language rather than mermaid's default
-  // Trebuchet MS. The stack tracks common OS monospace faces used by
-  // the surrounding editor UI.
   fontFamily:
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-  // Nodes + primaries (flowchart cores, actor boxes).
   background: '#0b0b0d',
   primaryColor: '#1c1c1f',
   primaryTextColor: '#f5f5f7',
@@ -183,52 +84,31 @@ const MERMAID_DARK_THEME_VARIABLES = {
   tertiaryTextColor: '#f5f5f7',
   tertiaryBorderColor: '#2a2a2e',
   mainBkg: '#1c1c1f',
-  // Edges and connectors — muted grey. Mermaid's built-in `dark` theme
-  // pins these near-white, which reads as a set of harsh white lines
-  // stitched across a dark canvas; the reference styling uses a dim
-  // grey for every non-content stroke.
   lineColor: '#5a5a63',
   textColor: '#f5f5f7',
-  // Sequence-diagram actors + arrows.
   actorBkg: '#1c1c1f',
   actorBorder: '#2a2a2e',
   actorTextColor: '#f5f5f7',
   actorLineColor: '#4a4a52',
   signalColor: '#8b8b93',
   signalTextColor: '#a1a1a9',
-  // alt / opt / loop group chrome — dashed borders + label pill.
   labelBoxBkgColor: '#1c1c1f',
   labelBoxBorderColor: '#4a4a52',
   labelTextColor: '#a1a1a9',
   loopTextColor: '#a1a1a9',
-  // Flowchart-specific overrides. Mermaid's default `dark` theme paints
-  // `.node rect` with a near-white border via `nodeBorder`; the
-  // reference styling wants the node fill to read as a single dark
-  // shape with no visible outline. Cluster (subgraph) fills track the
-  // same tone so nested clusters read as tiers not colored boxes.
   nodeBorder: '#1c1c1f',
   clusterBkg: '#141416',
   clusterBorder: '#2a2a2e',
   defaultLinkColor: '#5a5a63',
   edgeLabelBackground: '#0b0b0d',
   titleColor: '#a1a1a9',
-  // Sequence-diagram Note over/left of/right of. A bold amber solid
-  // reads as an intentional callout on a dark canvas — matches the
-  // reference styling far better than the muted brown from the first
-  // pass here.
   noteBkgColor: '#c88a1e',
   noteTextColor: '#ffffff',
   noteBorderColor: '#c88a1e',
-  // Activation (self-arrow) chrome.
   activationBkgColor: '#2c2c30',
   activationBorderColor: '#3a3a40',
 } as const;
 
-/**
- * Mermaid config for the canvas view. `MermaidCanvasView` owns the
- * `initialize` calls (at construction and via `setMermaidConfig` on
- * theme flips); this builder keeps the palette in one place.
- */
 function mermaidConfigFor(colorMode: 'light' | 'dark'): Record<string, unknown> {
   return {
     startOnLoad: false,
@@ -243,14 +123,6 @@ export const loadPanzoom = createRetryingLoader(() =>
   import('@panzoom/panzoom').then((mod) => mod.default),
 );
 
-/**
- * Events that must never escape the canvas into ProseMirror while the
- * diagram is editable. The canvas owns selection (click), label editing
- * (dblclick + typing), entity deletion (Delete/Backspace), and its own
- * undo (mod+Z) — any of these reaching PM would double-handle: PM would
- * NodeSelect the block, delete the whole fence on Backspace, or run the
- * document-level undo alongside the canvas one.
- */
 const CANVAS_CONTAINED_EVENTS = [
   'mousedown',
   'mouseup',
@@ -266,35 +138,15 @@ const CANVAS_CONTAINED_EVENTS = [
 export function MermaidView({ chart = '', className, editBinding, onExpand }: MermaidProps) {
   const { t } = useLingui();
   const [state, setState] = useState<RenderState>({ status: 'rendering', error: '' });
-  // Bumped to re-run the canvas-creation effect after a lazy-import
-  // failure so a later chart edit retries the load (the module-level
-  // promise caches clear themselves on rejection).
   const [loadAttempt, setLoadAttempt] = useState(0);
-  // Mermaid's palette bakes the theme into the SVG at render time, so it
-  // rides the shared class-list-observing hook rather than CSS variables.
   const colorMode = useAppColorMode();
   const host = useJsxComponentHost();
-  // An explicit `editBinding` (standalone `.mmd` doc) wins; otherwise editing is
-  // gated on the JSX host being editable (codefenced fence).
   const canEdit = editBinding ? editBinding.canEdit : (host?.editor.isEditable ?? false);
   const canvasRef = useRef<HTMLDivElement>(null);
-  // `useJsxComponentHost()` returns a fresh object literal on every
-  // parent render (JsxComponentView constructs `{editor, getPos, ...}`
-  // inline), so putting `host` directly in a `useEffect` dep would
-  // re-create the canvas on every unrelated re-render of the wrapper.
-  // Keep effect deps stable and read the live host through a ref that
-  // we sync on each render.
   const hostRef = useRef(host);
-  // Sync the ref in a layout effect (runs after render, before paint).
-  // Handlers can only fire after paint, so this is early enough to
-  // always be current, and it avoids the "Cannot access refs during
-  // render" React violation of assigning inside the render body.
   useLayoutEffect(() => {
     hostRef.current = host;
   }, [host]);
-  // Same ref treatment for the optional standalone binding: the parent may
-  // hand a fresh object each render, so read it live through the ref inside
-  // handlers to keep the canvas-creation effect deps stable.
   const editBindingRef = useRef(editBinding);
   useLayoutEffect(() => {
     editBindingRef.current = editBinding;
@@ -314,20 +166,13 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
   const editorRef = useRef<MermaidWysiwygEditor | null>(null);
   const viewRef = useRef<MermaidCanvasView | null>(null);
   const panzoomRef = useRef<PanzoomObject | null>(null);
-  // Drives PanzoomControls' `unavailable` — the zoom/pan buttons must not
-  // look live when the panzoom chunk never loaded.
   const [panzoomFailed, setPanzoomFailed] = useState(false);
   const maxScaleObsRef = useRef<ResizeObserver | null>(null);
   const loadFailedRef = useRef(false);
 
   const hasChart = Boolean(chart.trim());
 
-  // Create the package editor + canvas view once the lazy modules land.
-  // Lives for the whole non-empty life of the component; chart / theme /
-  // editability updates are applied by the sync effects below.
   useEffect(() => {
-    // `loadAttempt` re-arms this effect after a failed lazy import (bumped by
-    // the chart-sync effect below); its value is otherwise unused.
     void loadAttempt;
     if (!hasChart) return;
     let disposed = false;
@@ -337,8 +182,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
     setState({ status: 'rendering', error: '' });
     void loadPanzoom().catch(() => undefined);
 
-    // Write the new chart source back. Standalone binding wins; otherwise
-    // dispatch one `setNodeMarkup` on the JSX-host `jsxComponent` node.
     function commitChartSource(newChart: string): void {
       const binding = editBindingRef.current;
       if (binding) {
@@ -352,11 +195,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
       const node = h.editor.state.doc.nodeAt(pos);
       if (!node || node.type.name !== 'jsxComponent') return;
       const currentProps = (node.attrs.props as Record<string, unknown>) ?? {};
-      // `setNodeMarkup` throws `RangeError` when `pos` has been
-      // invalidated by a concurrent CRDT update between `getPos()` and
-      // dispatch. That's a benign miss (the user's next mount resyncs
-      // from the new canonical state) so we drop it. Any other
-      // exception is a real bug and must surface.
       try {
         h.editor.view.dispatch(
           h.editor.state.tr.setNodeMarkup(pos, null, {
@@ -370,27 +208,17 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
       }
     }
 
-    // (Re-)attach the pan/zoom controller to the freshly rendered SVG —
-    // the canvas view replaces its SVG host's innerHTML on every render,
-    // so the previous Panzoom target is gone.
     function attachPanzoom(): void {
       const svgElement = canvasRef.current?.querySelector<SVGElement>('svg');
       const previous = panzoomRef.current;
       panzoomRef.current = null;
       previous?.destroy();
       if (svgElement?.namespaceURI !== 'http://www.w3.org/2000/svg') return;
-      // The package pins the SVG's inline max-width to 100%; restore
-      // mermaid's own natural-width cap (the viewBox width) so small
-      // diagrams don't upscale past their rendered size — matching how
-      // the SVG string used to land verbatim. Structural check (not
-      // `instanceof SVGSVGElement`) so DOM-emulated test substrates
-      // without the SVG constructor globals stay on the happy path.
       const viewBox = (svgElement as Partial<SVGSVGElement>).viewBox?.baseVal;
       if (viewBox && viewBox.width > 0) svgElement.style.maxWidth = `${viewBox.width}px`;
       loadPanzoom()
         .then((Panzoom) => {
           if (disposed) return;
-          // A newer render may have replaced the SVG while Panzoom loaded.
           if (canvasRef.current?.querySelector('svg') !== svgElement) return;
           panzoomRef.current?.destroy();
           const panzoom = Panzoom(svgElement, {
@@ -404,21 +232,11 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
           });
           panzoomRef.current = panzoom;
           setPanzoomFailed(false);
-          // Everything past this point is optional polish on an ALREADY
-          // working panzoom — a throw here must not fall into the chain's
-          // catch and flag the controls unavailable over a live instance.
           try {
             maxScaleObsRef.current?.disconnect();
             maxScaleObsRef.current = null;
             if (viewBox && viewBox.width > 0) {
               const vbW = viewBox.width;
-              // `getBoundingClientRect().width` is transform-inclusive, so
-              // measuring it AFTER the user has zoomed would fold the zoom
-              // factor into `displayScale` and re-introduce the bug this
-              // compensation exists to solve. The initial call runs right
-              // after Panzoom mounts (no transform yet) so bounding-rect is
-              // fine; the ResizeObserver callback reads `contentRect.width`
-              // instead — untransformed content box.
               const applyMaxScale = (width: number) => {
                 if (disposed || panzoomRef.current !== panzoom) return;
                 if (width <= 0) return;
@@ -450,14 +268,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
         });
     }
 
-    // Surfaces that own their whole viewport — the standalone `.mmd` doc
-    // and the lightbox, both of which arrive with an explicit binding — get
-    // wheel-pan: a two-finger trackpad scroll should pan the canvas, not do
-    // nothing. Codefenced fences deliberately skip this so a wheel over an
-    // inline diagram scrolls the enclosing page. Bound once per mount (not per
-    // render) so re-renders don't accumulate listeners; reads
-    // panzoomRef.current on each event so it always targets the current
-    // Panzoom instance (attachPanzoom destroys+replaces it every render).
     if (editBindingRef.current) {
       const scrollContainer = canvasRef.current;
       if (scrollContainer) {
@@ -470,10 +280,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
             return;
           }
           e.preventDefault();
-          // Scale-compensate: pan translates in element-local units, which
-          // panzoom then scales when it applies transform. Dividing by the
-          // current scale keeps a two-finger swipe tracking the fingers 1:1
-          // at every zoom level.
           const scale = typeof pz.getScale === 'function' ? pz.getScale() : 1;
           const denom = scale > 0 ? scale : 1;
           pz.pan(-e.deltaX / denom, -e.deltaY / denom, { relative: true });
@@ -500,9 +306,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
         viewRef.current = view;
         offs.push(
           editor.on('change', ({ code, origin }) => {
-            // 'external' marks our own prop-driven `setCode` round-trips;
-            // everything else (canvas gestures, package history) is a user
-            // edit that must land in the real source of truth.
             if (origin === 'external') return;
             commitChartSource(code);
           }),
@@ -513,10 +316,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
               setState({ status: 'ready', error: '' });
               attachPanzoom();
             } else if (!hasRendered) {
-              // Before the first successful render there is no diagram to
-              // keep on screen — surface the full error chrome. After one,
-              // the canvas keeps the last good SVG and shows the package's
-              // compact error badge instead (error-tolerant mid-edit).
               setState({ status: 'error', error: error ?? '' });
             }
           }),
@@ -542,15 +341,11 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
     };
   }, [hasChart, loadAttempt]);
 
-  // External chart updates (remote CRDT edits, source-mode typing) re-enter
-  // the package editor without echoing back through the commit path.
   useEffect(() => {
     const editor = editorRef.current;
     if (editor && chart !== editor.code) {
       editor.setCode(chart, 'external');
     } else if (!editorRef.current && loadFailedRef.current && chart.trim()) {
-      // The lazy import failed before a canvas existed — retry on the next
-      // chart change (mirrors the old per-render retry behavior).
       loadFailedRef.current = false;
       setLoadAttempt((n) => n + 1);
     }
@@ -564,12 +359,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
     viewRef.current?.setMermaidConfig(mermaidConfigFor(colorMode));
   }, [colorMode]);
 
-  // Keep every canvas interaction out of ProseMirror's reach while
-  // editable. Bubble-phase on the container: the package's own handlers
-  // (svg-level, and its container keydown) still run — stopPropagation
-  // only severs the path UP into PM's editor DOM. Read-only surfaces
-  // (file viewer, read-only docs) leave events alone so the block keeps
-  // its normal NodeSelection behavior.
   useEffect(() => {
     const container = canvasRef.current;
     if (!container || !canEdit || !hasChart) return;
@@ -581,11 +370,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
   }, [canEdit, hasChart]);
 
   if (!hasChart) {
-    // Reached in read-only render contexts and the edit-modal preview with an
-    // empty draft. The editor's authoring path renders a click-to-edit
-    // placeholder card upstream (JsxComponentView), so this stays passive and
-    // non-interactive — but it MUST hold real height: a zero-height stub
-    // collapses the block and clips the hover chrome (the sliver bug).
     return (
       <div
         className={cn(
@@ -617,10 +401,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
       title={state.status === 'error' ? state.error : undefined}
     >
       {state.status === 'error' && (
-        // Error banner sits ABOVE the source — readers' eyes land on the
-        // diagnosis first, then the offending code. The destructive-toned
-        // chrome here mirrors `PropertyPanel`'s malformed-FM banner so the
-        // same visual language signals "agent-visible error" across surfaces.
         <>
           <div
             role="alert"
@@ -636,14 +416,11 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
               </pre>
             </div>
           </div>
-          {/* The chart source shows WHAT the author wrote so they can locate
-              the offending line/column the parser message refers to. */}
+          {}
           <pre className="mermaid-error-source">{chart}</pre>
         </>
       )}
-      {/* The canvas stays mounted across error/rendering states so the
-          package view (and any in-flight edit session) survives — a fixed
-          source re-renders straight back to `ready` without a remount. */}
+      {}
       <div
         contentEditable={false}
         className={cn(
@@ -666,12 +443,6 @@ export function MermaidView({ chart = '', className, editBinding, onExpand }: Me
   );
 }
 
-/**
- * Full-screen diagram viewer. Reusing `MermaidView` as the body is what buys
- * pan/zoom, theming, and live CRDT chart updates for free. Hosts keep this
- * mounted and drive `open` — closing by unmounting would skip Radix's exit
- * animation.
- */
 export function MermaidLightbox({
   chart,
   open,
@@ -686,17 +457,10 @@ export function MermaidLightbox({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="h-[calc(100dvh-5rem)] w-[calc(100dvw-5rem)] max-w-none gap-0 p-2 pt-10 duration-200 sm:max-w-none"
-        // A wider zoom travel than the dialog default, so opening reads as
-        // the inline diagram growing into the modal. The enter/exit scale
-        // vars feed tw-animate-css's keyframes; inline style wins over the
-        // default zoom-in-95 class without fighting tailwind-merge.
         style={{ '--tw-enter-scale': '0.92', '--tw-exit-scale': '0.92' } as React.CSSProperties}
       >
         <DialogTitle className="sr-only">{t`Mermaid diagram`}</DialogTitle>
-        {/* The canvas silently ignores edit gestures here (read-only binding),
-            so say the mode out loud rather than letting ignored clicks read
-            as a bug. Sits in the top band `pt-10` reserves, which also keeps
-            the dialog's bare close button off the canvas. */}
+        {}
         <span className="absolute top-2 left-3 flex h-7 items-center text-xs text-muted-foreground">
           {t`View only`}
         </span>
@@ -708,11 +472,6 @@ export function MermaidLightbox({
   );
 }
 
-/**
- * The 3x3 pan/zoom control grid shared by every panzoom-backed snapshot
- * surface (the mermaid canvas, the Excalidraw lightbox). `label` names the
- * toolbar for AT; `onExpand` fills the otherwise-empty top-left cell.
- */
 export function PanzoomControls({
   panzoomRef,
   label,
@@ -724,13 +483,10 @@ export function PanzoomControls({
   label: string;
   testId: string;
   onExpand?: () => void;
-  /** True when the pan/zoom chunk never loaded, so the controls render disabled. */
   unavailable?: boolean;
 }) {
   const { t } = useLingui();
   const reducedMotion = useReducedMotion();
-  // Controls must not look live when the pan/zoom chunk failed to load —
-  // every click would silently no-op. Expand stays active (host-owned).
   const panButtonProps = { ...buttonProps, disabled: unavailable };
   const labels = {
     zoomIn: t`Zoom in`,
@@ -744,8 +500,6 @@ export function PanzoomControls({
     toolbar: label,
   } as const;
 
-  // Panzoom translates the SVG element itself, so +y moves the diagram down
-  // and the viewport up — an Up arrow needs to pass +MERMAID_PAN_STEP.
   const panBy = (x: number, y: number) => {
     panzoomRef.current?.pan(x, y, {
       animate: !reducedMotion,

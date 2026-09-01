@@ -44,10 +44,6 @@ function connectSystemDoc(port: number): {
         return;
       }
       const result = CC1DerivedViewPayloadSchema.safeParse(raw);
-      // Only track 'files' channel signals — backlinks/graph signals from
-      // server observer processing should not affect file-event assertions.
-      // Mismatched-channel payloads (server-info, branch-switched) parse-fail
-      // here and are silently skipped.
       if (result.success && result.data.ch === 'files') {
         signals.push(result.data);
       }
@@ -74,7 +70,6 @@ describe('CC1 broadcast — L1 integration', () => {
       const fileName = `cc1-test-${crypto.randomUUID()}.md`;
       writeFileSync(join(server.contentDir, fileName), '# hello\n', 'utf-8');
 
-      // Wait for watcher + debounce + broadcast
       await wait(500);
 
       expect(signals.length).toBeGreaterThanOrEqual(1);
@@ -111,23 +106,12 @@ describe('CC1 broadcast — L1 integration', () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(provider);
-      // Settle before baselining: the server fires a deliberate all-channel
-      // defense-in-depth nudge at the end of initAsync (debounced 100 ms), and
-      // a client that connects inside that window — exactly what happens when
-      // this test runs in isolation right after boot — receives a ch:files
-      // signal caused by no test write. 300 ms (3x the CC1 debounce) absorbs
-      // it into the baseline; all count assertions below are deltas.
       await wait(300);
       const baseline = signals.length;
 
       for (let i = 0; i < 10; i++) {
         const fileName = `cc1-mono-${i}-${crypto.randomUUID()}.md`;
         writeFileSync(join(server.contentDir, fileName), `# file ${i}\n`, 'utf-8');
-        // Await THIS create's debounced broadcast before the next write.
-        // Event-driven pacing keeps the creates "spaced" by construction: the
-        // next watcher event can never land inside the previous create's
-        // 100 ms trailing-debounce window, so signals cannot coalesce no
-        // matter how much delivery jitter the platform watcher introduces.
         const expected = baseline + i + 1;
         try {
           await pollUntil(() => signals.length >= expected, 5000, 20);
@@ -137,13 +121,9 @@ describe('CC1 broadcast — L1 integration', () => {
               `(have ${signals.length - baseline} test signals) — watcher event lost?`,
           );
         }
-        // Equality (not >=) pins "exactly one ch:files signal per create".
         expect(signals.length).toBe(expected);
       }
 
-      // Trailing settle (3x debounce): a duplicate or straggler broadcast
-      // after the final create must fail the equality below, matching the
-      // over-emission coverage the pre-rewrite fixed-wait version had.
       await wait(300);
       expect(signals.length).toBe(baseline + 10);
 
@@ -160,9 +140,6 @@ describe('CC1 broadcast — L1 integration', () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(provider);
-      // Same baseline-delta discipline as the spaced-creates test above: in
-      // isolated execution the boot nudge's ch:files signal would otherwise
-      // count against the <=5 band.
       await wait(300);
       const baseline = signals.length;
 
@@ -171,11 +148,8 @@ describe('CC1 broadcast — L1 integration', () => {
         writeFileSync(join(server.contentDir, fileName), `# burst ${i}\n`, 'utf-8');
       }
 
-      // Wait for debounce to settle
       await wait(500);
 
-      // Expect a small number of signals (debounce collapses the burst)
-      // The exact number depends on watcher batching, but should be much less than 50
       const burstSignals = signals.length - baseline;
       expect(burstSignals).toBeLessThanOrEqual(5);
       expect(burstSignals).toBeGreaterThanOrEqual(1);
@@ -189,20 +163,16 @@ describe('CC1 broadcast — L1 integration', () => {
     try {
       await waitForSync(provider);
 
-      // Create a file first
       const fileName = `cc1-update-test-${crypto.randomUUID()}.md`;
       const filePath = join(server.contentDir, fileName);
       writeFileSync(filePath, '# original\n', 'utf-8');
 
-      // Wait for the create signal
       await wait(500);
       const createCount = signals.length;
       expect(createCount).toBeGreaterThanOrEqual(1);
 
-      // Now update the file (should NOT trigger ch:files)
       writeFileSync(filePath, '# updated content\n', 'utf-8');
 
-      // Wait and verify no new signal
       await wait(500);
       expect(signals.length).toBe(createCount);
     } finally {
@@ -211,12 +181,8 @@ describe('CC1 broadcast — L1 integration', () => {
   });
 
   test('skip surface: no __system__ state in any subsystem', async () => {
-    // After server has been running with CC1 active, verify no leaked state
-
-    // No __system__.md on disk
     expect(existsSync(join(server.contentDir, '__system__.md'))).toBe(false);
 
-    // File index has no __system__ entry
     const docsRes = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
     const body = (await docsRes.json()) as { documents: Array<{ docName: string }> };
     const systemDocs = body.documents.filter((d) => d.docName === '__system__');
@@ -235,50 +201,30 @@ describe('CC1 broadcast — L1 integration', () => {
     expect(String(body.title)).toContain('reserved');
   });
 
-  // CC1 forgery guard. Hocuspocus's MessageReceiver relays every
-  // BroadcastStateless message to all peers on the same document with
-  // no source filter — the server's `beforeHandleMessage` extension
-  // hook rejects inbound BroadcastStateless on `__system__` before the
-  // relay can run. Without this gate, a malicious client could open a
-  // `__system__` WebSocket and forge `branch-switched` (wipes IDB on
-  // every peer) or `disk-ack` (advances the SV watermark past
-  // unsynced bytes, re-opening the content-loss bug class).
   test('forged BroadcastStateless on __system__ does not relay to other peers', async () => {
-    // Legitimate subscriber that should NEVER receive a forged payload.
     const { provider: subscriber, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(subscriber);
       await wait(50);
       const baselineCount = signals.length;
 
-      // Construct a forged BroadcastStateless message. Format:
-      //   [varString documentName][varUint MessageType.BroadcastStateless=6]
-      //   [varString payload]
-      // Open a raw WebSocket so we can write the framing manually —
-      // HocuspocusProvider's `sendStateless` only emits MessageType.Stateless
-      // (5), not BroadcastStateless (6).
       const enc = encoding.createEncoder();
       encoding.writeVarString(enc, SYSTEM_DOC_NAME);
-      encoding.writeVarUint(enc, 6); // MessageType.BroadcastStateless
+      encoding.writeVarUint(enc, 6);
       encoding.writeVarString(
         enc,
         JSON.stringify({ v: 1, ch: 'files', seq: 999 } satisfies CC1DerivedViewPayload),
       );
       const forgedFrame = encoding.toUint8Array(enc);
 
-      // Raw WS attacker connection.
       const attackerWs = new WebSocket(`ws://127.0.0.1:${server.port}/collab/${SYSTEM_DOC_NAME}`);
       await new Promise<void>((resolve, reject) => {
         attackerWs.onopen = () => resolve();
         attackerWs.onerror = (e) => reject(new Error(`ws error: ${String(e)}`));
       });
       attackerWs.send(forgedFrame);
-      // Wait long enough for the server to process the message + relay
-      // (or, with the guard, throw + close). 200ms covers
-      // beforeHandleMessage dispatch + connection.close().
       await wait(200);
 
-      // Subscriber must NOT have received the forged payload.
       expect(signals.length).toBe(baselineCount);
       attackerWs.close();
     } finally {
@@ -307,13 +253,11 @@ describe('CC1 broadcast — L1 integration', () => {
     }
   });
 
-  // ─── delete DiskEvent → ch:'files' signal ─────────────────────────
   test('file delete triggers ch:files signal', async () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(provider);
 
-      // Create first
       const fileName = `cc1-delete-test-${crypto.randomUUID()}.md`;
       const filePath = join(server.contentDir, fileName);
       writeFileSync(filePath, '# to be deleted\n', 'utf-8');
@@ -321,11 +265,9 @@ describe('CC1 broadcast — L1 integration', () => {
       const createCount = signals.length;
       expect(createCount).toBeGreaterThanOrEqual(1);
 
-      // Delete it
       unlinkSync(filePath);
       await wait(500);
 
-      // One more signal should have arrived for the delete
       expect(signals.length).toBeGreaterThan(createCount);
       const deleteSignal = signals[signals.length - 1];
       expect(deleteSignal.v).toBe(1);
@@ -336,13 +278,11 @@ describe('CC1 broadcast — L1 integration', () => {
     }
   });
 
-  // ─── rename DiskEvent → ch:'files' signal ─────────────────────────
   test('file rename triggers ch:files signal', async () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
       await waitForSync(provider);
 
-      // Create first
       const oldName = `cc1-rename-old-${crypto.randomUUID()}.md`;
       const newName = `cc1-rename-new-${crypto.randomUUID()}.md`;
       const oldPath = join(server.contentDir, oldName);
@@ -352,11 +292,9 @@ describe('CC1 broadcast — L1 integration', () => {
       const createCount = signals.length;
       expect(createCount).toBeGreaterThanOrEqual(1);
 
-      // Rename it
       renameSync(oldPath, newPath);
       await wait(600);
 
-      // At least one more signal should have arrived for the rename
       expect(signals.length).toBeGreaterThan(createCount);
       const lastSignal = signals[signals.length - 1];
       expect(lastSignal.v).toBe(1);
@@ -366,7 +304,6 @@ describe('CC1 broadcast — L1 integration', () => {
     }
   });
 
-  // ─── reconcile({docName:'__system__'}) → noop ──────────────────────
   test('reconcile with __system__ docName returns noop', () => {
     const result = reconcile({
       docName: SYSTEM_DOC_NAME,
@@ -377,7 +314,6 @@ describe('CC1 broadcast — L1 integration', () => {
     expect(result.kind).toBe('noop');
   });
 
-  // ─── backlinkIndex skips __system__ entries ────────────────────────
   test('BacklinkIndex.updateDocument(__system__, ...) is a no-op', () => {
     const idx = new BacklinkIndex({
       projectDir: server.contentDir,
@@ -387,28 +323,21 @@ describe('CC1 broadcast — L1 integration', () => {
     idx.updateDocument(SYSTEM_DOC_NAME, [{ target: 'some-page', snippet: null }]);
     idx.updateDocumentFromMarkdown(SYSTEM_DOC_NAME, '# Has [[some-page]] link');
 
-    // Forward graph must not carry a __system__ source entry
     expect(idx.getForwardLinks(SYSTEM_DOC_NAME)).toEqual([]);
 
-    // Backward graph must not carry __system__ as a source for any target
     const backlinks = idx.getBacklinks('some-page');
     expect(backlinks.find((b) => b.source === SYSTEM_DOC_NAME)).toBeUndefined();
 
-    // deleteDocument with __system__ is also a no-op (should not throw)
     expect(() => idx.deleteDocument(SYSTEM_DOC_NAME)).not.toThrow();
   });
 
-  // ─── AgentSessionManager refuses __system__ ────────────────────────
   test('AgentSessionManager.getSession(__system__) throws', async () => {
     await expect(server.instance.sessionManager.getSession(SYSTEM_DOC_NAME)).rejects.toThrow(
       /reserved/i,
     );
   });
 
-  // ─── applyExternalChange with __system__ is a no-op ────────────────
   test('applyExternalChange(__system__, content) does not throw and does not mutate', () => {
-    // The pseudo-doc has been pre-materialized by createServer; applyExternalChange must
-    // return immediately without touching its Y.Doc.
     const systemDoc = server.instance.hocuspocus.documents.get(SYSTEM_DOC_NAME);
     const beforeXmlLen = systemDoc?.getXmlFragment('default').length ?? 0;
     const beforeTextLen = systemDoc?.getText('source').length ?? 0;
@@ -429,10 +358,7 @@ describe('CC1 broadcast — L1 integration', () => {
     expect(afterTextLen).toBe(beforeTextLen);
   });
 
-  // ─── Latency p95 < 500ms (local, 2s CI loose budget) ───────────────
   test('disk-to-signal latency p95 under budget', async () => {
-    // Use a fresh provider with a timestamp-capturing onStateless callback so we
-    // measure actual arrival delta, not the wait(500) upper bound.
     const doc = new Y.Doc();
     const arrivals: Array<{ seq: number; at: number }> = [];
     const provider = new HocuspocusProvider({
@@ -444,24 +370,16 @@ describe('CC1 broadcast — L1 integration', () => {
         try {
           const parsed = JSON.parse(payload) as CC1DerivedViewPayload;
           arrivals.push({ seq: parsed.seq, at: performance.now() });
-        } catch {
-          // ignore
-        }
+        } catch {}
       },
     });
     try {
       await waitForSync(provider);
-      // Boot-nudge settle + baseline snapshot: pair only signals caused by
-      // THIS test's writes, or the all-channel init nudge displaces the
-      // arrival indices (same failure class as the spaced-creates fix above).
       await wait(300);
       const arrivalBaseline = arrivals.length;
 
       const sendTimes: number[] = [];
 
-      // 20 spaced writes, event-driven pacing: wait for each write's signal
-      // to arrive before the next write, so watcher jitter cannot compress
-      // gaps into the debounce window and mispair arrivals to sendTimes.
       const N = 20;
       for (let i = 0; i < N; i++) {
         const fileName = `cc1-latency-${i}-${crypto.randomUUID()}.md`;
@@ -471,7 +389,6 @@ describe('CC1 broadcast — L1 integration', () => {
         await pollUntil(() => arrivals.length >= arrivalBaseline + i + 1, 5000, 20);
       }
 
-      // Pair each write to its own arrival (post-baseline slice).
       const testArrivals = arrivals.slice(arrivalBaseline);
       const paired = Math.min(sendTimes.length, testArrivals.length);
       const latencies: number[] = [];
@@ -487,7 +404,6 @@ describe('CC1 broadcast — L1 integration', () => {
       const p95Idx = Math.max(0, Math.floor(latencies.length * 0.95) - 1);
       const p95 = latencies[p95Idx];
 
-      // CI loose bound: 2s. Local target: <500ms.
       expect(p95).toBeLessThan(2000);
     } finally {
       provider.destroy();

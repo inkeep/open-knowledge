@@ -349,7 +349,7 @@ function stripPercentDelimiters(p: Paragraph): Paragraph | null {
 
   const middleHasContent = p.children.slice(1, -1).some((ch) => {
     if (ch.type === 'text') return ch.value.trim().length > 0;
-    return true; // any non-text child counts as content
+    return true;
   });
   const hasContent =
     middleHasContent || strippedFirst.trim().length > 0 || strippedLast.trim().length > 0;

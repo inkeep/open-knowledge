@@ -72,19 +72,16 @@ describe('probeOwnManagedEditorMcpEntry', () => {
     const home = tmp();
     expect(probeOwnManagedEditorMcpEntry('claude', cwd, home)).toBeNull();
 
-    // Foreign command — never stand down for a server that isn't ours.
     writeJson(join(cwd, '.mcp.json'), {
       mcpServers: { 'open-knowledge': { command: 'evil', args: [] } },
     });
     expect(probeOwnManagedEditorMcpEntry('claude', cwd, home)).toBeNull();
 
-    // Canonical command but tampered args — a different chain body, not ours.
     writeJson(join(cwd, '.mcp.json'), {
       mcpServers: { 'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', 'rm -rf /'] } },
     });
     expect(probeOwnManagedEditorMcpEntry('claude', cwd, home)).toBeNull();
 
-    // Unparseable config — never throws, counts as a miss.
     writeFileSync(join(cwd, '.mcp.json'), '{not json');
     expect(probeOwnManagedEditorMcpEntry('claude', cwd, home)).toBeNull();
   });
@@ -92,8 +89,6 @@ describe('probeOwnManagedEditorMcpEntry', () => {
   test('hits when the canonical entry carries harness policy siblings (an env overlay)', () => {
     const cwd = tmp();
     const home = tmp();
-    // command+args are OK's canonical chain → the harness launches OK's server
-    // regardless of the extra `env` key, so we still skip injecting a duplicate.
     writeJson(join(cwd, '.mcp.json'), {
       mcpServers: { 'open-knowledge': { ...publishedEntry(), env: { X: '1' } } },
     });
@@ -103,9 +98,6 @@ describe('probeOwnManagedEditorMcpEntry', () => {
   test("hits despite Codex's churny per-tool approval policy (the tools subtable)", () => {
     const cwd = tmp();
     const home = tmp();
-    // Exactly the shape Codex writes as the user approves tools mid-session:
-    // `[mcp_servers.open-knowledge.tools.exec] approval_mode = "approve"` parses
-    // to a `tools` key on the entry. It must NOT break the match.
     mkdirSync(join(cwd, '.codex'), { recursive: true });
     writeFileSync(
       join(cwd, '.codex', 'config.toml'),
@@ -164,9 +156,6 @@ describe('probeOwnManagedEditorMcpEntry', () => {
   test('version-proof: hits a future chain body carrying the ok-mcp marker', () => {
     const cwd = tmp();
     const home = tmp();
-    // A hypothetical bumped chain (`# ok-mcp-v2`) an existing install would
-    // carry after we ship a new CHAIN — must still count as ours, or the
-    // duplicate-injection collision resurfaces until everyone re-runs `ok init`.
     writeJson(join(cwd, '.mcp.json'), {
       mcpServers: {
         'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v2\nexec foo mcp'] },
@@ -196,13 +185,11 @@ describe('probeOwnManagedEditorMcpEntry', () => {
       configPath: join(cwd, 'opencode.json'),
     });
 
-    // Disabled entry means the harness will NOT load it — keep injecting.
     writeJson(join(cwd, 'opencode.json'), {
       mcp: { 'open-knowledge': { ...openCodePublished(), enabled: false } },
     });
     expect(probeOwnManagedEditorMcpEntry('opencode', cwd, home)).toBeNull();
 
-    // Chain-shape (split command/args) inside opencode's config is foreign.
     writeJson(join(cwd, 'opencode.json'), {
       mcp: { 'open-knowledge': publishedEntry() },
     });
@@ -213,18 +200,15 @@ describe('probeOwnManagedEditorMcpEntry', () => {
 describe('entryRunsOwnManagedServer', () => {
   test('matches OK chain shapes by marker, ignoring policy siblings', () => {
     expect(entryRunsOwnManagedServer(publishedEntry())).toBe(true);
-    // Version bump: a future body still carries the stable marker → hit.
     expect(
       entryRunsOwnManagedServer({ command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v9\nexec x'] }),
     ).toBe(true);
-    // Windows chain shape.
     expect(
       entryRunsOwnManagedServer({
         command: 'powershell',
         args: ['-NoProfile', '-NonInteractive', '-Command', '# ok-mcp-win-v1\nexit 0'],
       }),
     ).toBe(true);
-    // Churny/benign siblings don't change what runs → hit.
     expect(entryRunsOwnManagedServer({ ...publishedEntry(), env: { X: '1' } })).toBe(true);
     expect(
       entryRunsOwnManagedServer({
@@ -235,15 +219,11 @@ describe('entryRunsOwnManagedServer', () => {
   });
 
   test('misses disabled, foreign, and non-chain entries', () => {
-    // Explicitly disabled → the harness will not load it → inject.
     expect(entryRunsOwnManagedServer({ ...publishedEntry(), enabled: false })).toBe(false);
-    // Right interpreter + flags but a body without the marker → foreign.
     expect(entryRunsOwnManagedServer({ command: '/bin/sh', args: ['-l', '-c', 'rm -rf /'] })).toBe(
       false,
     );
-    // Foreign interpreter → miss.
     expect(entryRunsOwnManagedServer({ command: 'evil', args: [] })).toBe(false);
-    // Wrong flag prefix even with the marker in the body → miss.
     expect(entryRunsOwnManagedServer({ command: '/bin/sh', args: ['-c', '# ok-mcp-v1'] })).toBe(
       false,
     );
@@ -254,15 +234,12 @@ describe('entryRunsOwnManagedServer', () => {
 describe('openCodeEntryRunsOwnManagedServer', () => {
   test('matches on identity (type + enabled + argv), ignoring policy siblings', () => {
     expect(openCodeEntryRunsOwnManagedServer(openCodePublished())).toBe(true);
-    // enabled: false → the harness will not load it → does not cover us.
     expect(openCodeEntryRunsOwnManagedServer({ ...openCodePublished(), enabled: false })).toBe(
       false,
     );
-    // An extra `environment` sibling doesn't change which server runs → hit.
     expect(
       openCodeEntryRunsOwnManagedServer({ ...openCodePublished(), environment: { X: '1' } }),
     ).toBe(true);
-    // Foreign argv → miss.
     expect(
       openCodeEntryRunsOwnManagedServer({
         type: 'local',
@@ -270,7 +247,6 @@ describe('openCodeEntryRunsOwnManagedServer', () => {
         command: ['/bin/sh', '-c', 'x'],
       }),
     ).toBe(false);
-    // Chain-shape (wrong envelope) → miss.
     expect(openCodeEntryRunsOwnManagedServer(buildManagedServerEntry({ mode: 'published' }))).toBe(
       false,
     );

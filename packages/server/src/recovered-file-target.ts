@@ -13,11 +13,6 @@ interface ReconcileRecoveredFileTargetOptions {
   invalidateReferencedAssetsCache: (() => void) | null;
 }
 
-/**
- * Repair every inventory layer after the local-target sweep detects a file event
- * the platform watcher missed. The file index and referenced-asset cache must
- * advance together or link diagnostics can disagree until another disk event.
- */
 export function reconcileRecoveredFileTarget({
   watcher,
   contentDir,

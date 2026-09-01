@@ -8,15 +8,6 @@ import { createApiExtension } from './api-extension.test-helper.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
-/**
- * Characterization for GET /api/asset-text ahead of the assets-service
- * extraction — this endpoint had no direct coverage. The pins mirror the
- * documented posture that deliberately DIFFERS from /api/asset: any
- * extension is admitted (no ASSET_EXTENSIONS gate) and ignored files are
- * served (no contentFilter gate) — path containment is the load-bearing
- * check, plus the 1 MiB viewer cap.
- */
-
 interface Harness {
   baseURL: string;
   close: () => Promise<void>;

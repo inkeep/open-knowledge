@@ -38,9 +38,6 @@ interface CliOverrides {
   skillRemoveFails?: McpWiringEditorId[];
 }
 
-/** Two editors: `claude` (config + skill) and `codex` (config + skill).
- *  `claude-desktop` has no project surface (both paths null) to prove rows are
- *  omitted for unsupported editors. */
 function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & {
   writes: McpWiringEditorId[];
   removals: McpWiringEditorId[];
@@ -154,7 +151,6 @@ describe('registerProjectIntegrationsSettings — status', () => {
     const s = await status();
     expect(s.hasProject).toBe(true);
     expect(s.available).toBe(true);
-    // claude-desktop (no project config) is absent.
     expect(s.editors.map((e) => e.id)).toEqual(['claude', 'codex']);
     const claude = s.editors.find((e) => e.id === 'claude');
     expect(claude?.configPath).toBe('.mcp.json');
@@ -261,13 +257,10 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const { status } = register(cli);
     const r = await status();
     expect(r.skill).not.toBeNull();
-    // Reach and paths are derived from ONE walk of the capable editors, so they
-    // can never disagree about which editors are involved.
     expect(r.skill?.hosts).toEqual(['claude', 'codex']);
     expect(r.skill?.paths.length).toBe(2);
     expect(r.skill?.size).toEqual({ alwaysOn: 140, onTrigger: 1495, onDemand: 0 });
     expect(r.skill?.sourceDir).toBe('/bundled/project');
-    // The bundle's own description, not a hand-written subtext that can drift.
     expect(r.skill?.description).toBe('Teaches coding agents in this project.');
   });
 
@@ -280,8 +273,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
       },
     });
     const r = await status();
-    // Still a row — installed state and destinations come from disk, not the
-    // bundle — but with no cost figure and no preview affordance.
     expect(r.skill).not.toBeNull();
     expect(r.skill?.hosts).toEqual(['claude', 'codex']);
     expect(r.skill?.size).toBeUndefined();
@@ -310,13 +301,9 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const r = await set({ component: { kind: 'skill' }, enabled: false });
     expect(r.ok).toBe(true);
     expect(cli.skillRemovals).toEqual(['claude', 'codex']);
-    expect(cli.skillWrites).toEqual([]); // never crosses into the install branch
+    expect(cli.skillWrites).toEqual([]);
   });
 
-  // The writing half of the toggle-persistence fix. The reading half (reclaim
-  // honouring the decision) is pinned in skill-reclaim.test.ts; without these,
-  // dropping the record call silently restores the toggle-is-a-lie bug and only
-  // the reclaim test's injected reader hides it.
   test('switching the skill ON records the decision and counts the install', async () => {
     const cli = makeCli();
     const { set } = register(cli);
@@ -336,8 +323,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
   });
 
   test('a partial failure still records the choice but counts no install', async () => {
-    // The decision is the user's INTENT, so it is recorded either way; the
-    // install count must reflect what actually landed.
     const cli = makeCli({ skillWriteFails: ['codex'] as McpWiringEditorId[] });
     const { set } = register(cli);
     await set({ component: { kind: 'skill' }, enabled: true });
@@ -351,7 +336,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const r = await set({ component: { kind: 'skill' }, enabled: false });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toContain('codex');
-    // The whole fan-out still runs — one editor's failure doesn't abort the rest.
     expect(cli.skillRemovals).toEqual(['claude', 'codex']);
   });
 

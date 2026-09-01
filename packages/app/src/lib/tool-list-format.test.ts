@@ -19,8 +19,6 @@ describe('formatToolList', () => {
   });
 
   test('an unset locale falls back to the runtime default instead of throwing', () => {
-    // `i18n.locale` is '' before Lingui activates, and Intl rejects an empty
-    // string rather than treating it as "unspecified".
     expect(formatToolList(['Claude', 'Cursor'], '')).toContain('Claude');
   });
 

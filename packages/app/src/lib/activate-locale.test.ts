@@ -3,8 +3,6 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { dynamicActivate } from './activate-locale';
 import { i18n } from './i18n';
 
-// The Lingui singleton is process-wide, so a test that leaves a non-English
-// locale active would change what every later test in this file reads.
 afterEach(async () => {
   await dynamicActivate(FALLBACK_LOCALE);
 });

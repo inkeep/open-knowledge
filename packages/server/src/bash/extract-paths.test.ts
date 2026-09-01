@@ -15,7 +15,7 @@ describe('extractReferencedPaths — cat', () => {
 
   test('multiple cat args', () => {
     const paths = extractReferencedPaths('', [stage('cat', 'a.md', 'b.mdx', 'c.txt')]);
-    expect(paths).toEqual(['a.md', 'b.mdx']); // c.txt not a wiki extension
+    expect(paths).toEqual(['a.md', 'b.mdx']);
   });
 
   test('cat with flag args are skipped', () => {

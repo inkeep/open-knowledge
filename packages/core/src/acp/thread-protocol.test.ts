@@ -49,7 +49,6 @@ describe('parseThreadClientFrame', () => {
         JSON.stringify({ op: 'steer', threadId: 't', reqId: 'r', content: 'do this instead' }),
       ),
     ).toMatchObject({ op: 'steer', threadId: 't', reqId: 'r', content: 'do this instead' });
-    // Unlike `prompt`, empty content is refused — a steer cancels a turn.
     expect(
       parseThreadClientFrame(
         JSON.stringify({ op: 'steer', threadId: 't', reqId: 'r', content: '' }),
@@ -102,8 +101,6 @@ describe('parseThreadClientFrame', () => {
         }),
       ),
     ).toMatchObject({ op: 'queue_edit', reqId: 'qe-1' });
-    // Absent is the fire-and-forget shape and stays valid — the parser adds no
-    // reqId of its own, so the socket keeps answering it silently.
     expect(
       parseThreadClientFrame(
         JSON.stringify({ op: 'queue_edit', threadId: 't', id: 'q1', content: 'new text' }),
@@ -135,7 +132,6 @@ describe('parseThreadClientFrame', () => {
     expect(
       parseThreadClientFrame(JSON.stringify({ op: 'queue_hold', threadId: 't', id: 'q1' })),
     ).toBeNull();
-    // A truthy string is the shape a hand-rolled client sends; it is not a hold.
     expect(
       parseThreadClientFrame(
         JSON.stringify({ op: 'queue_hold', threadId: 't', id: 'q1', held: 'true' }),
@@ -193,9 +189,6 @@ describe('parseThreadClientFrame', () => {
   });
 
   test('runtime_consent_response validates the granted/declined outcome', () => {
-    // `remember` is gone from the type but a pre-removal renderer still sends
-    // it. The frame must survive: rejecting it would park the launch forever
-    // on a grant the user did click.
     expect(
       parseThreadClientFrame(
         JSON.stringify({
@@ -219,7 +212,6 @@ describe('parseThreadClientFrame', () => {
         }),
       ),
     ).toMatchObject({ outcome: { kind: 'declined' } });
-    // Unknown outcome kind and missing ids reject.
     expect(
       parseThreadClientFrame(
         JSON.stringify({
@@ -241,8 +233,6 @@ describe('parseThreadClientFrame', () => {
     ).toBeNull();
   });
 
-  // Its own op rather than a reuse of the runtime one: the two park different
-  // waits, and a shared frame would let either answer resolve the other.
   test('pi_bridge_consent_response validates the granted/declined outcome', () => {
     expect(
       parseThreadClientFrame(

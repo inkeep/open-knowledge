@@ -4,8 +4,6 @@ import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { restartServerFailureMessage } from '@/lib/restart-collab-server';
 import { runDisconnectRestart } from './use-sync-toasts';
 
-// spyOn (not vi.doMock) so the sonner mock can't leak into sibling test
-// files in the same `bun test` run.
 const errorSpy = vi.spyOn(toast, 'error').mockImplementation((() => 'err-id') as never);
 
 afterEach(() => {

@@ -6,22 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed seed group (`seed/plan`, `seed/packs`
- * reads; `seed/apply`, `seed/install-pack-skill` mutating) over a REAL socket
- * through the composed `bootServer` stack: verb gating, real handler
- * responses, and the shared admission posture. The wire cannot distinguish
- * the mutating gate from the read gate (both apply the same loopback +
- * workspace-Host checks), so the mutating DECLARATION is pinned at the table
- * tier in `http/seed-routes.test.ts`; the rebound-Host pins here hold that
- * the admission outcome is unchanged across the lift.
- *
- * The rig seeds `<contentDir>/.ok/config.yml`, so `seed/plan` runs past its
- * prerequisite check and serves a real plan; no request below writes to disk
- * (`apply` refuses before `applySeed` on the malformed-plan pin).
- */
-
-/** Every path in the group, with the verbs the legacy record dispatched. */
 const METHOD_SURFACE: ReadonlyArray<{ path: string; unsupported: string; allow: string }> = [
   { path: '/api/seed/plan', unsupported: 'POST', allow: 'GET' },
   { path: '/api/seed/packs', unsupported: 'POST', allow: 'GET' },
@@ -29,7 +13,6 @@ const METHOD_SURFACE: ReadonlyArray<{ path: string; unsupported: string; allow: 
   { path: '/api/seed/install-pack-skill', unsupported: 'GET', allow: 'POST' },
 ];
 
-/** Legacy `MUTATING_ROUTES` members (declaration pinned in the table suite). */
 const MUTATING_ROUTES = ['/api/seed/apply', '/api/seed/install-pack-skill'];
 
 let tmpRoot: string;
@@ -104,7 +87,6 @@ describe('seed group over the composed listener — served natively', () => {
 
   test('mutating pair refuses a rebound Host before the verb check (403, no Allow leak)', async () => {
     for (const path of MUTATING_ROUTES) {
-      // GET is the wrong verb for both — the mutating gate must answer first.
       const res = await rawRequest(server.port, path, { headers: { Host: 'evil.example' } });
       expect(res.status, path).toBe(403);
       expect(res.headers.allow, path).toBeUndefined();

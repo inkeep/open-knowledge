@@ -306,7 +306,7 @@ export function enumerateFallbackRegions(src: string): FallbackRegion[] {
       }
     }
 
-    if (matchIdx === -1) continue; // orphan close with no matching open — drop
+    if (matchIdx === -1) continue;
 
     for (let i = stack.length - 1; i > matchIdx; i--) {
       const open = stack[i];
@@ -439,7 +439,7 @@ function tryPerBlockFallback(
     }
   }
 
-  if (!anySucceeded) return null; // every block failed — no improvement over whole-doc
+  if (!anySucceeded) return null;
   if (!anyFailed) {
     return {
       type: 'doc',

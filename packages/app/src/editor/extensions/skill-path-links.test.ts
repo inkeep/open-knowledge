@@ -21,9 +21,7 @@ describe('BUNDLE_PATH_RE', () => {
   });
 
   test('stays inert for everything else', () => {
-    // Whole-span anchoring: a path mentioned mid-span is not a link.
     expect(BUNDLE_PATH_RE.test('see references/x.md for detail')).toBe(false);
-    // Only the two bundle roots; no escapes; no bare filenames or flags.
     expect(BUNDLE_PATH_RE.test('assets/logo.png')).toBe(false);
     expect(BUNDLE_PATH_RE.test('references/../secrets')).toBe(false);
     expect(BUNDLE_PATH_RE.test('../../../../scripts/lume-bake/')).toBe(false);
@@ -80,7 +78,6 @@ describe('skillBundlePathNavHash (PRD-7607)', () => {
       { scope: 'project', name: 'foo', path: `${projectSkillDoc}.md` },
       'references/bar.md',
     );
-    // Same buffer the sidebar's openFile targets — a plain `#/<docName>` hash.
     expect(skillBundlePathNavHash(target, projectSkillDoc, 'references/bar.md')).toBe(
       `#/${editableDoc}`,
     );

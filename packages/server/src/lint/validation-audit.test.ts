@@ -1,10 +1,3 @@
-/**
- * Unit tests for the unified validation audit: the validator registry fanning
- * out to the real lint walk (`auditProject`) and a real in-memory
- * `BacklinkIndex` and `LocalTargetIndex` over a temp content tree, merged into
- * one source-tagged diagnostic plane.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,7 +32,6 @@ const lintOn: LinterConfig = {
   },
 };
 
-// MD010 (hard tabs) is on by default; a doc with a tab produces a diagnostic.
 const DOC_WITH_TAB = '# Title\n\n\tindented with a tab\n';
 
 beforeEach(() => {
@@ -52,11 +44,6 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/**
- * Write the doc to disk AND index it into both derived indexes — the three views
- * production keeps in sync (disk for the lint walk, the graph for wiki/inline-md
- * document dead-links, the local-target index for file/image/reference targets).
- */
 function seedDoc(docName: string, markdown: string): void {
   const abs = join(root, `${docName}.md`);
   mkdirSync(join(abs, '..'), { recursive: true });
@@ -66,11 +53,6 @@ function seedDoc(docName: string, markdown: string): void {
   admitted.add(docName);
 }
 
-/**
- * Mark an ordinary-file target as present in the local-target inventory — what
- * the watcher's all-files snapshot does in production. Order-independent: the
- * index reassesses any source already pointing at this path.
- */
 function seedFile(contentRootRelativePath: string): void {
   localTargets.setFileTarget(contentRootRelativePath, true);
 }
@@ -87,10 +69,6 @@ function deps(overrides: Partial<ValidationAuditDeps> = {}): ValidationAuditDeps
     projectDir: root,
     contentDir: root,
     baseConfig: lintOn,
-    // The reader composes the two real derived indexes the way
-    // DerivedDocumentIndex does — the graph for document dead-links, the
-    // local-target index for file/image/reference targets — so the projection
-    // is tested against real assessment data, not a stand-in.
     derivedDocumentIndex: {
       getDeadLinks: (a, s) => index.getDeadLinks(a, s),
       getLocalTargetAssessmentsForSources: (s) => localTargets.getAssessmentsForSources(s),
@@ -116,7 +94,6 @@ describe('runValidationAudit', () => {
     expect(result.files[1]?.diagnostics).toEqual([
       {
         range: { start: { line: 2, character: 4 }, end: { line: 2, character: 4 } },
-        // Default posture: broken links are warnings (validation.links).
         severity: 'warning',
         source: 'links',
         code: 'dead-link',
@@ -128,8 +105,6 @@ describe('runValidationAudit', () => {
     expect(result.warningCount).toBeGreaterThan(1);
     expect(result.fileCount).toBe(2);
     expect(result.ran).toEqual(['markdownlint', 'links']);
-    // The engine plane must survive the wire schema untouched — the audit
-    // route serializes through it.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
   });
 
@@ -161,7 +136,6 @@ describe('runValidationAudit', () => {
     const off = await runValidationAudit(createProjectValidators(deps({ linksValidation: 'off' })));
     expect(off.files.every((f) => f.diagnostics.every((d) => d.source !== 'links'))).toBe(true);
     expect(off.ran).toEqual(['markdownlint']);
-    // A deliberate off is not a degradation — no warning in the plane.
     expect(off.warnings).toEqual([]);
   });
 
@@ -253,10 +227,6 @@ describe('runValidationAudit', () => {
     expect(result.warnings).toContain(
       'source family "links" validation failed: backlink index is not configured',
     );
-    // A degraded validator stays in `ran`. Dropping it would report
-    // `['markdownlint']` beside a warning that link checking broke, which an
-    // agent reads as "links are not validated in this project" and stops
-    // repairing them.
     expect(result.ran).toEqual(['markdownlint', 'links']);
   });
 
@@ -320,19 +290,13 @@ describe('runValidationAudit', () => {
 
     const result = await runValidationAudit([...createProjectValidators(deps()), boom]);
 
-    // The lint validator's results survive the sibling validator's throw.
     expect(result.files.map((f) => f.file)).toEqual(['dirty.md']);
     expect(result.files[0]?.diagnostics.some((d) => d.code === 'MD010')).toBe(true);
-    // The throw becomes a validator-tagged warning, not an unhandled rejection.
     expect(result.warnings).toContain('source family "okf" validation failed: kaboom');
     expect(result.ran).toEqual(['markdownlint', 'links', 'okf']);
   });
 
   test('a lint-walk failure keeps its label whatever the enabled plugin count is', async () => {
-    // The label is a static property of the validator, not a function of how
-    // many lint families the project happens to enable. Deriving it from
-    // `sourceFamilies.length === 1` made the same walk failure report as
-    // `markdownlint` on one project and `lint` on the next.
     const walkFailure = async (baseConfig: LinterConfig) => {
       const validators = createProjectValidators(deps({ baseConfig, linksValidation: 'off' }));
       const lint = validators.find((validator) => validator.id === 'lint');
@@ -357,9 +321,6 @@ describe('runValidationAudit', () => {
   });
 
   test('a project-validator failure reports under its public source family', async () => {
-    // `okf-project` is an internal engine id that appears in no `ran` array and
-    // no diagnostic `source`; the family it contributes to is what a caller can
-    // join against.
     const okfOn = {
       ...lintOn,
       plugins: { ...lintOn.plugins, okf: { enabled: true } },
@@ -381,8 +342,6 @@ describe('runValidationAudit', () => {
   });
 
   test('a dead link from an admitted-but-unsaved source still names a file', async () => {
-    // Admitted in the index but not on disk yet: docFilePathFor returns null, so
-    // the finding falls back to the default extension rather than emitting null.
     const fakeIndex = {
       getDeadLinks: () => [
         {
@@ -406,13 +365,10 @@ describe('runValidationAudit', () => {
     expect(result.files).toHaveLength(1);
     expect(result.files[0]?.file).toBe('unsaved.md');
     expect(result.files[0]?.diagnostics[0]?.range.start).toEqual({ line: 3, character: 2 });
-    // A malformed finding (file: null) would fail the wire schema and 500 the route.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
   });
 
   test('a dead link from a pre-position cache degrades to the start of the doc', async () => {
-    // Entries deserialized from a cache written before positions were indexed
-    // carry no line/column; the finding degrades to the doc start, not undefined.
     const fakeIndex = {
       getDeadLinks: () => [
         { target: 'ghost', sources: [{ source: 'legacy', anchor: null, snippet: null }] },
@@ -435,7 +391,6 @@ describe('runValidationAudit', () => {
       start: { line: 0, character: 0 },
       end: { line: 0, character: 0 },
     });
-    // An undefined position would fail the wire schema and 500 the route.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
   });
 
@@ -474,7 +429,6 @@ describe('runValidationAudit', () => {
 describe('local-target findings (files, images, reference-style)', () => {
   test('a missing ordinary-file link is a positioned finding with file evidence and no create affordance', async () => {
     seedDoc('doc', '# Doc\n\n[report](./report.pdf)\n');
-    // report.pdf is never seeded — the file does not exist.
 
     const result = await runValidationAudit(createProjectValidators(deps()));
 
@@ -486,7 +440,6 @@ describe('local-target findings (files, images, reference-style)', () => {
     expect(d?.code).toBe('dead-link');
     expect(d?.severity).toBe('warning');
     expect(d?.message).toBe('Link target "report.pdf" does not resolve to an existing file.');
-    // Files never offer Create page.
     expect(d?.linkTarget).toBeUndefined();
     expect(d?.localTarget).toEqual({
       href: './report.pdf',
@@ -498,7 +451,6 @@ describe('local-target findings (files, images, reference-style)', () => {
       resolutionMethod: 'source-relative',
     });
     expect(d?.range.start).toEqual({ line: 2, character: 0 });
-    // New evidence survives the wire schema round trip untouched.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
   });
 
@@ -581,11 +533,9 @@ describe('local-target findings (files, images, reference-style)', () => {
       expect(d.localTarget?.sourceForm).toBe('markdown-reference');
       expect(d.localTarget?.targetKind).toBe('file');
       expect(d.localTarget?.reason).toBe('no-such-file');
-      // All uses of one label share one repair location: the definition line.
       expect(d.localTarget?.definition).toEqual({ line: 4, label: 'r' });
       expect(d.linkTarget).toBeUndefined();
     }
-    // The two uses are positioned independently, not collapsed to one.
     expect(diagnostics.map((d) => d.range.start.character)).toEqual([0, 13]);
   });
 
@@ -595,8 +545,6 @@ describe('local-target findings (files, images, reference-style)', () => {
     const result = await runValidationAudit(createProjectValidators(deps()));
 
     const d = result.files[0]?.diagnostics[0];
-    // The graph does not extract reference-style links, so this is the only
-    // finding — and a missing document, unlike a file, is create-eligible.
     expect(result.files[0]?.diagnostics).toHaveLength(1);
     expect(d?.linkTarget).toBe('ghost-doc');
     expect(d?.localTarget?.targetKind).toBe('document');
@@ -626,10 +574,6 @@ describe('local-target findings (files, images, reference-style)', () => {
 
     const result = await runValidationAudit(createProjectValidators(deps()));
 
-    // Both planes see this occurrence, and exactly one finding reaches the
-    // panel. The surviving row is the assessment plane's: it carries the same
-    // create-page `linkTarget` the graph row did, plus the canonical evidence
-    // the graph cannot produce.
     const diagnostics = result.files[0]?.diagnostics ?? [];
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]?.linkTarget).toBe('ghost-doc');
@@ -680,7 +624,6 @@ describe('local-target findings (files, images, reference-style)', () => {
   });
 
   test('a legacy validation payload with no localTarget field still parses', () => {
-    // A finding written before this field existed must remain valid on the wire.
     const legacy = {
       files: [
         {
@@ -707,7 +650,6 @@ describe('local-target findings (files, images, reference-style)', () => {
 });
 
 describe('the OKF project validator', () => {
-  /** OKF on, everything else off, so the plane carries only project findings. */
   const okfOnly: LinterConfig = {
     ...DEFAULT_LINTER_CONFIG,
     plugins: {
@@ -717,7 +659,6 @@ describe('the OKF project validator', () => {
     },
   } as LinterConfig;
 
-  /** Write a file without indexing it — these checks judge the tree, not link graph. */
   function writeFile(rel: string, body = '---\ntype: Note\n---\n\nBody.\n'): void {
     const abs = join(root, rel);
     mkdirSync(join(abs, '..'), { recursive: true });
@@ -733,9 +674,6 @@ describe('the OKF project validator', () => {
     writeFile('index.md', '# Index\n\n* [a](a.md) - a\n');
     writeFile('a.md');
     const result = await auditOkf();
-    // Both the okf lint plugin (through the lint walk) and the okf project
-    // validator select this family, and they fold into one public id — so the
-    // roster must not double-count them.
     expect(result.ran).toEqual(['okf']);
   });
 
@@ -748,10 +686,6 @@ describe('the OKF project validator', () => {
   });
 
   test('a DOC-SCOPED audit still reports — the shape the Problems panel asks for', async () => {
-    // The panel scopes to the open document, which resolves to a FILE path. Handing that
-    // to the tree walk as a directory made `readdir` throw and the validator return
-    // nothing, so every project finding was invisible in the panel while the
-    // whole-project tests stayed green.
     writeFile('guide.md');
     writeFile('guide.mdx');
     const scoped = await runValidationAudit(
@@ -765,8 +699,6 @@ describe('the OKF project validator', () => {
   });
 
   test('a doc-scoped audit keeps its sibling context', async () => {
-    // Scoping to one file still walks its directory, so a shadowed .mdx is still known
-    // to be shadowed. Linting the file alone would silently downgrade the message.
     writeFile('guide.md');
     writeFile('guide.mdx');
     const scoped = await runValidationAudit(
@@ -818,8 +750,6 @@ describe('the OKF project validator', () => {
   });
 
   test('a single rule can be switched off without silencing its siblings', async () => {
-    // The two now run in different validators — casing per document, .mdx over the tree —
-    // and one toggle map governs both.
     writeFile('Index.md');
     writeFile('guide.mdx');
     const oneOff = {
@@ -836,9 +766,6 @@ describe('the OKF project validator', () => {
   });
 
   test('a scoped audit sees only its subtree', async () => {
-    // Honest limitation, pinned rather than papered over: scoping narrows the walk, so
-    // a violation outside the scope reports nothing. A reader scoping an audit should
-    // not read that silence as a clean project.
     writeFile('Index.md');
     mkdirSync(join(root, 'sub'), { recursive: true });
     writeFile('sub/keeper.md');
@@ -858,8 +785,6 @@ describe('the OKF project validator', () => {
 
 describe('toValidationCountsPlane', () => {
   test('tallies the merged plane per file and per source, dropping the bodies', async () => {
-    // One doc carrying BOTH a lint finding and a dead link, so the split is
-    // observable rather than inferred.
     seedDoc('a', '# A\n\n\tTab line.\n\nSee [[ghost]].\n');
     seedDoc('b', '# B\n\n\tTab line.\n');
     const result = await runValidationAudit(createProjectValidators(deps()));
@@ -871,7 +796,6 @@ describe('toValidationCountsPlane', () => {
     expect(a?.lint.warningCount).toBeGreaterThan(0);
     expect(a?.lint.errorCount).toBe(0);
 
-    // Rollups and the file set carry over from the enumerated plane verbatim.
     expect(counts.files.map((f) => f.file)).toEqual(result.files.map((f) => f.file));
     expect(counts.fileCount).toBe(result.fileCount);
     expect(counts.errorCount).toBe(result.errorCount);
@@ -914,27 +838,9 @@ describe('toValidationCountsPlane', () => {
 });
 
 describe('skill-bundle doc scoping', () => {
-  // The gate's contract — what it covers and its recorded boundaries — is
-  // `isProblemsPlaneExcludedDoc`'s JSDoc (`cc1-broadcast.ts`), with the closed
-  // name table in `cc1-broadcast.test.ts`. These tests pin the shapes end to
-  // end through the validator: bundles under a skills root (`scripts/**`
-  // included) and the managed aliases, plus the boundaries — source-keyed only,
-  // doc scope included, raw graph view un-gated, and both a visible-path skills
-  // root and a dot-dir doc outside any skills root still reported.
-
   const LIVE_SKILL_MD =
     '# Live skill\n\nSee [[live-skill-ghost]] and [artifact](artifacts/output.md).\n';
 
-  /**
-   * Index a live skill doc (`__skill__/global/...` managed artifact or
-   * `__extskill__/...` editable-unmanaged external): live-indexed, never on
-   * disk at a content-root path.
-   *
-   * The markdown link in the seeded body is load-bearing, not redundant with
-   * the wiki link: `BacklinkIndex` registers these docs node-only and never
-   * ingests their body links, so the graph plane carries nothing for them and
-   * the local-target plane is the only one that can produce a finding.
-   */
   function seedLiveSkillDoc(docName: string): void {
     index.updateDocumentFromMarkdown(docName, LIVE_SKILL_MD);
     localTargets.setSource(docName, LIVE_SKILL_MD);
@@ -943,8 +849,6 @@ describe('skill-bundle doc scoping', () => {
 
   test('project skill bundle docs project no findings into the plane', async () => {
     seedDoc('control', '# Control\n\nSee [[ghost]].\n');
-    // Both link forms the validator projects: a wiki dead link (graph plane)
-    // and a relative markdown link to an absent file (local-target plane).
     seedDoc(
       '.claude/skills/record-a-decision/SKILL',
       '# Record a decision\n\nSee [[skill-ghost]] and [artifact](decisions/0007-use-rest-api.md).\n',
@@ -956,8 +860,6 @@ describe('skill-bundle doc scoping', () => {
 
     const result = await runValidationAudit(createProjectValidators(deps()));
 
-    // Control: the ordinary doc's dead link survives the gate. The exact file
-    // set additionally catches an over-broad predicate reaching other docs.
     const control = result.files.find((f) => f.file === 'control.md');
     expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
 
@@ -969,11 +871,6 @@ describe('skill-bundle doc scoping', () => {
     seedLiveSkillDoc('__skill__/global/record-a-decision');
     seedLiveSkillDoc('__skill__/global/record-a-decision/references/patterns');
 
-    // Positive control. The graph plane cannot carry these: `BacklinkIndex`
-    // registers global skill bundle docs node-only and never ingests their body
-    // links, so the wiki link contributes no edge and only the local-target
-    // plane can produce a finding here. Prove it holds one, or the emptiness
-    // assertion below would pass against a source that never had anything.
     const assessed = await localTargets.getAssessmentsForSources([
       '__skill__/global/record-a-decision',
     ]);
@@ -991,9 +888,6 @@ describe('skill-bundle doc scoping', () => {
 
   test('project skill bundle scripts docs project no findings into the plane', async () => {
     seedDoc('control', '# Control\n\nSee [[ghost]].\n');
-    // `scripts/**` members are not graph nodes, so a predicate keyed on the
-    // SKILL/references doc shapes would miss them. The gate matches the whole
-    // bundle dir under the skills root, so they are covered.
     seedDoc(
       '.claude/skills/record-a-decision/scripts/notes',
       '# Notes\n\nSee [[skill-script-ghost]] and [artifact](fixtures/sample-output.md).\n',
@@ -1012,8 +906,6 @@ describe('skill-bundle doc scoping', () => {
     seedLiveSkillDoc('__extskill__/record-a-decision');
     seedLiveSkillDoc('__extskill__/record-a-decision/references/patterns');
 
-    // Positive control, as in the global-skill case above: prove the plane that
-    // can carry a finding for this shape actually holds one.
     const assessed = await localTargets.getAssessmentsForSources([
       '__extskill__/record-a-decision',
     ]);
@@ -1036,10 +928,6 @@ describe('skill-bundle doc scoping', () => {
       '# Record a decision\n\nSee [[skill-ghost]] and [artifact](decisions/0007-use-rest-api.md).\n',
     );
 
-    // The exclusion is total across scopes: the open doc's Problems tab and
-    // the source-mode link diagnostics ride this same doc-scoped request, so
-    // scoping to the file itself must not reintroduce what the project scope
-    // withholds.
     const result = await runValidationAudit(createProjectValidators(deps()), {
       targetPath: '.claude/skills/record-a-decision/SKILL.md',
     });
@@ -1048,11 +936,6 @@ describe('skill-bundle doc scoping', () => {
   });
 
   test('folder templates keep their link findings', async () => {
-    // Templates sit under `.ok/` but are not a skill bundle, so the gate never
-    // reaches them. Pinned through the projection loops, not just the
-    // predicate: an inverted `continue` guard would suppress them while the
-    // name-level unit test stayed green. A broken link here is copied into
-    // every doc created from the template.
     seedDoc('control', '# Control\n\nSee [[ghost]].\n');
     seedDoc('.ok/templates/daily', '# Daily\n\nSee [[template-ghost]].\n');
 
@@ -1063,10 +946,6 @@ describe('skill-bundle doc scoping', () => {
   });
 
   test('a dot-dir doc outside any skills root keeps its link findings', async () => {
-    // The gate is scoped to the skills root, not the host dotdir. Prose like
-    // `.github/CI_RUNBOOK` is admitted content whose broken links are real
-    // defects, so it stays in the plane. Note the lint walk skips it on its own
-    // axis, so this doc gets link findings but no markdownlint rows.
     seedDoc('control', '# Control\n\nSee [[ghost]].\n');
     seedDoc('.github/CI_RUNBOOK', '# Runbook\n\nSee [[runbook-ghost]].\n');
 
@@ -1079,10 +958,6 @@ describe('skill-bundle doc scoping', () => {
   });
 
   test('a skill bundle at a visible custom root stays in the plane', async () => {
-    // A custom skill root need not be dot-rooted. Such bundles are addressable
-    // and read as ordinary content on every sibling axis (file-tree rows,
-    // hidden-doc classification), so the plane keeps their findings — the rule
-    // holding at its boundary, not an uncovered case.
     seedDoc('team/skills/record-a-decision/SKILL', '# Custom root\n\nSee [[custom-root-ghost]].\n');
 
     const result = await runValidationAudit(createProjectValidators(deps()));
@@ -1092,9 +967,6 @@ describe('skill-bundle doc scoping', () => {
   });
 
   test('dead links from an ordinary doc INTO a skill bundle are still reported', async () => {
-    // The gate keys on the SOURCE doc. A user-authored doc whose broken link
-    // NAMES a skill path is an ordinary finding and must survive — common
-    // right after a skill is renamed or uninstalled.
     seedDoc(
       'control',
       '# Control\n\nWiki: [[.claude/skills/absent/SKILL]]\n\nMd: [skill](.claude/skills/absent/SKILL.md)\n',
@@ -1112,9 +984,6 @@ describe('skill-bundle doc scoping', () => {
       '# Record a decision\n\nSee [[skill-ghost]].\n',
     );
 
-    // The gate lives at the validator's projection point, not in the index:
-    // `GET /api/dead-links` / MCP `links({ kind: "dead" })` stay the raw graph
-    // view over every indexed edge, hidden sources included.
     const raw = await index.getDeadLinks([...admitted]);
     expect(
       raw.some(({ sources }) =>

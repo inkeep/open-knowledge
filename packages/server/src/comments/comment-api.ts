@@ -1,31 +1,5 @@
-/**
- * HTTP route module for comments — the app's door to the comment store
- * (agents reach comments through the dispatch payload, not this API; there is
- * no comments MCP surface in v1). Thin adapters over {@link CommentService}:
- * parse + validate the request, thread identity for attribution, call the
- * service, emit an RFC 9457 / schema-validated response.
- *
- * Wired into `api-extension.ts` as two `methodRouter` dispatchers:
- *   GET  /api/comments[?doc=<docName>]   list threads — one doc, or project-wide
- *   POST /api/comments                   create a thread { docName, start, end, body, queue? }
- *   GET    /api/comment?id=<threadId>    read one thread
- *   POST   /api/comment                  mutate { action, ... }
- *   DELETE /api/comment?id=<threadId>    delete a thread outright (destructive)
- *
- * Mutations multiplex on `action` so the route surface stays two paths:
- * `edit` | `resolve` | `reopen` | `replace` | `queue` | `unqueue`, plus the
- * dispatch pair `dispatch-prepare` / `dispatch-complete` and their batch forms
- * `dispatch-prepare-batch` / `dispatch-complete-batch` (an ordered `ids` array
- * — the reviewer's selection). Identity is threaded per mutation via
- * `extractActorIdentity` (the mutating sub-handlers below), the same boundary
- * rename/rollback use.
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Principal } from '@inkeep/open-knowledge-core';
-// The wire schemas live in core, shared with the app so neither side restates
-// the other's shape. Only `CommentThreadMetaSchema` doubles as the on-disk
-// shape; the envelopes below are wire-only.
 import {
   CompleteBatchSuccessSchema,
   DeleteSuccessSchema,
@@ -51,10 +25,6 @@ import { CommentThreadMetaSchema } from './types.ts';
 export interface CommentApiDeps {
   service: CommentService;
   getPrincipal: (() => Principal | null) | undefined;
-  /**
-   * Fired after any successful mutation so connected clients refetch (the CC1
-   * `comments` derived-view channel). Optional — omit in tests.
-   */
   onChanged?: () => void;
 }
 
@@ -67,25 +37,13 @@ export interface CommentApi {
 }
 
 const HANDLER = 'comments';
-/** Tight body budget — comment payloads are small; matches loopback-only handlers. */
 const BODY_LIMITS = { maxBytes: 64 * 1024, timeoutMs: 10_000 } as const;
-/** Cap on one dispatch batch. Well above any realistic review pass; bounds the work per request. */
 const BATCH_MAX = 200;
 
-/**
- * Where the passage is: body offsets, or the quoted text for callers whose
- * coordinate system isn't body offsets (the rich-text editor has ProseMirror
- * positions, which markdown syntax + frontmatter make non-equivalent).
- */
 const PassageRefSchema = {
   start: z.number().int().nonnegative().optional(),
   end: z.number().int().nonnegative().optional(),
   quote: z.string().min(1).optional(),
-  /**
-   * Rendered text either side of the caller's selection — how a repeated quote
-   * says which occurrence it meant. Bounded: it only has to out-score the other
-   * candidates, not reproduce the document.
-   */
   prefix: z.string().max(1000).optional(),
   suffix: z.string().max(1000).optional(),
 } as const;
@@ -93,28 +51,13 @@ const PassageRefSchema = {
 const CreateRequestSchema = z.object({
   docName: z.string().min(1),
   ...PassageRefSchema,
-  /**
-   * Comment on a frontmatter key instead of a body passage. The passage fields
-   * above then apply to that VALUE rather than the body: send a `quote` to
-   * comment on a passage inside it, or omit one to comment on the whole thing.
-   */
   propertyKey: z.string().min(1).optional(),
-  /** Steps into the key's value — `[2]` for the third tag, `["name"]` for a field. */
   propertyPath: z.array(z.union([z.string(), z.number().int().nonnegative()])).optional(),
   body: z.string(),
-  /** Post straight into the dispatch queue (queue-first compose flow). */
   queue: z.boolean().optional(),
   summary: z.string().optional(),
 });
 
-/**
- * A thread id is a server-minted UUID, and the store joins it into a path. An
- * id is therefore never caller data in the ordinary sense: `../threads/<id>`
- * escapes the comments directory, and the ACP thread store one level over names
- * its files with the very same `.meta.json` / `.ndjson` pair — so an unvalidated
- * id on the delete route reaches real agent transcripts. Constraining the shape
- * here is what keeps every id a leaf name; nothing downstream re-checks.
- */
 const ThreadIdSchema = z.uuid();
 
 const MutateRequestSchema = z.discriminatedUnion('action', [
@@ -144,8 +87,6 @@ const MutateRequestSchema = z.discriminatedUnion('action', [
     id: ThreadIdSchema,
     summary: z.string().optional(),
   }),
-  // Batch forms. `ids` is the selected set in intended run order; the
-  // client drives select/deselect and sends only what stays checked.
   z.object({
     action: z.literal('dispatch-prepare-batch'),
     ids: z.array(ThreadIdSchema).min(1).max(BATCH_MAX),
@@ -162,8 +103,6 @@ export function createCommentApi(deps: CommentApiDeps): CommentApi {
   const { service, getPrincipal, onChanged } = deps;
 
   async function list(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // `doc` absent = the project-wide view (the queue panel spans docs you do
-    // not have open).
     const docName = new URL(req.url ?? '', 'http://localhost').searchParams.get('doc') ?? undefined;
     try {
       const threads = await service.listThreads(docName);
@@ -173,12 +112,6 @@ export function createCommentApi(deps: CommentApiDeps): CommentApi {
     }
   }
 
-  /**
-   * The `?id=` of a single-thread route, or null once a 400 has been sent.
-   * Shared by `read` and `remove` so the two can't drift — `remove` is the
-   * destructive one, and a validated id there is what keeps the store's
-   * `join` on a leaf name (see {@link ThreadIdSchema}).
-   */
   function threadIdParam(req: IncomingMessage, res: ServerResponse): string | null {
     const id = new URL(req.url ?? '', 'http://localhost').searchParams.get('id');
     if (!id) {
@@ -253,9 +186,6 @@ export function createCommentApi(deps: CommentApiDeps): CommentApi {
     try {
       switch (parsed.action) {
         case 'edit': {
-          // Identity gate, not attribution: the service records no author for an
-          // edit (the event log that did was dropped). Kept because a mutation
-          // arriving from nobody is worth refusing on its own.
           if (!authorFromActor(actor)) {
             return badRequest(res, 'An identity is required to edit a comment.');
           }
@@ -336,15 +266,6 @@ export function createCommentApi(deps: CommentApiDeps): CommentApi {
     }
   }
 
-  /** Emit a mutation result + signal connected clients to refetch. */
-  /**
-   * DELETE a thread outright — the one destructive operation on this surface.
-   *
-   * Distinct from `unqueue` (drop from the batch, keep the comment) and from
-   * `resolve` (close it, keep the history). Deliberately a separate HTTP verb
-   * rather than another `action`, so it can never be reached by a body typo on
-   * a mutate call. Both files are removed; the conversation does not survive.
-   */
   async function remove(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const id = threadIdParam(req, res);
     if (id === null) return;
@@ -365,7 +286,6 @@ export function createCommentApi(deps: CommentApiDeps): CommentApi {
   return { list, read, create, mutate, remove };
 }
 
-/** Read + Zod-validate a JSON body; emits a 400 and returns null on failure. */
 async function parseBody<T extends z.ZodType>(
   req: IncomingMessage,
   res: ServerResponse,

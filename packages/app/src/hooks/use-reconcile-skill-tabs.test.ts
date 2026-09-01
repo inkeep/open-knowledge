@@ -13,14 +13,6 @@ import {
   tabIdsForSkillFile,
 } from './use-reconcile-skill-tabs';
 
-/**
- * Unit coverage for the open-skill-tab reconciler: an agent/MCP/server-side
- * scope move or a delete only broadcasts `files` (no client tab retarget), so an
- * open SKILL or skill-FILE tab is left pointing at a doc that no longer exists.
- * The reconciler retargets a moved SKILL tab, and closes any tab (including a
- * reference-FILE tab) whose skill is gone — the lingering-tab-after-delete bug.
- *
- */
 describe('parseSkillTabDocName', () => {
   test('parses a project skill content doc (SKILL-level, rel null)', () => {
     expect(parseSkillTabDocName('.ok/skills/demo/SKILL')).toEqual({
@@ -84,8 +76,6 @@ describe('tabIdsForSkill', () => {
 describe('tabIdsForSkillFile', () => {
   test('selects both tab shapes for the deleted file, and only that file', () => {
     const skill = { scope: 'project', name: 'demo', path: '.agents/skills/demo/SKILL.md' } as const;
-    // A script opens as a dedicated skill-file tab; an editable `.md` reference
-    // opens as an ordinary doc tab at its ext-less live doc name.
     const scriptTab = skillFileTabId({
       scope: 'project',
       name: 'demo',
@@ -125,10 +115,6 @@ describe('skillFileForDocName', () => {
   });
 
   test('carries a .mdx extension through, from the SAME doc name', () => {
-    // Both extensions strip to this one doc name, so the round-trip guard cannot
-    // separate them — whichever extension the caller supplies is the one acted
-    // on. Pinned because it is the whole reason a delete miss has to report
-    // failure rather than success.
     expect(skillFileForDocName('.agents/skills/demo/references/notes', [demo], '.mdx')).toEqual({
       skill: demo,
       filePath: 'references/notes.mdx',
@@ -149,8 +135,6 @@ describe('skillFileForDocName', () => {
   });
 
   test('declines when the skill dir does not round-trip to the doc name', () => {
-    // Same skill NAME, different on-disk dir — reconstructing against it would
-    // address a file in the wrong folder.
     const moved: SkillsListEntry = { ...demo, path: '.claude/skills/demo/SKILL.md' };
     expect(skillFileForDocName('.agents/skills/demo/references/notes', [moved], '.md')).toBeNull();
   });
@@ -174,8 +158,6 @@ describe('computeSkillTabReconcile', () => {
   });
 
   test('retargets an orphaned project SKILL tab to the OTHER scope when the skill moved there', () => {
-    // demo was moved project → global; its project content doc no longer exists,
-    // but it now exists at global scope.
     const actions = computeSkillTabReconcile(
       ['.ok/skills/demo/SKILL'],
       [{ scope: 'global', name: 'demo', path: '~/.claude/skills/demo/SKILL.md' }],
@@ -190,8 +172,6 @@ describe('computeSkillTabReconcile', () => {
   });
 
   test('retargets an orphaned global SKILL tab to the project entry REAL doc', () => {
-    // The entry's real path drives the retarget — minting a shape here opened
-    // phantom `.ok/skills` tabs for in-place skills (store-fossil class).
     const actions = computeSkillTabReconcile(
       [skillLiveDocName('global', 'demo')],
       [{ scope: 'project', name: 'demo', path: '.agents/skills/demo/SKILL.md' }],
@@ -214,16 +194,11 @@ describe('computeSkillTabReconcile', () => {
   });
 
   test('closes a reference FILE tab when its skill is deleted (§2.4)', () => {
-    // Editing `references/notes` when the skill is deleted — the file doc is gone,
-    // so its tab must close rather than linger on a dead doc.
     const actions = computeSkillTabReconcile(['.ok/skills/demo/references/notes'], []);
     expect(actions).toEqual([{ kind: 'close', docName: '.ok/skills/demo/references/notes' }]);
   });
 
   test('closes a reference FILE tab when its skill moved scope and the SKILL tab carries it', () => {
-    // A file tab is not retargeted to its own new-scope name (that name is not
-    // reconstructed); the SKILL tab retargets to the new scope, so the skill
-    // stays open and the file tab can just close.
     const actions = computeSkillTabReconcile(
       ['.ok/skills/demo/SKILL', '.ok/skills/demo/references/notes'],
       [{ scope: 'global', name: 'demo', path: '~/.claude/skills/demo/SKILL.md' }],
@@ -238,9 +213,6 @@ describe('computeSkillTabReconcile', () => {
     ]);
   });
 
-  // Clicking a skill and then one of its bundle files leaves the FILE tab as the
-  // only tab for that skill — the file replaces the SKILL preview tab. Closing
-  // it on a scope move emptied the Skills surface, which fell back to Files.
   test('retargets a lone bundle FILE tab to the new scope SKILL doc on a scope move', () => {
     const actions = computeSkillTabReconcile(
       ['.claude/skills/demo/mocking'],
@@ -270,8 +242,6 @@ describe('computeSkillTabReconcile', () => {
     ]);
   });
 
-  // A companion doc lives outside `references/`, so the canonical parsers drop
-  // it. Unseen here, a delete left its tab on a doc that no longer exists.
   test('closes a companion bundle tab when its skill is deleted', () => {
     expect(computeSkillTabReconcile(['.claude/skills/demo/mocking'], [])).toEqual([
       { kind: 'close', docName: '.claude/skills/demo/mocking' },
@@ -300,16 +270,11 @@ describe('scope-move window', () => {
   const projectTab = '.claude/skills/grill-me/SKILL';
 
   test('does NOT close a skill tab while its move is still in flight', () => {
-    // The window a move passes through: source row optimistically hidden, and
-    // the destination row has not landed. Treating that as a deletion drops the
-    // user's tab, leaving an empty "New tab" with the surface falling to Files.
     const actions = computeSkillTabReconcile([projectTab], [], () => true);
     expect(actions).toEqual([]);
   });
 
   test('still closes a tab for a skill that is genuinely gone', () => {
-    // The guard must not swallow real deletions — that is what the reconciler
-    // exists for.
     const actions = computeSkillTabReconcile([projectTab], [], () => false);
     expect(actions).toEqual([{ kind: 'close', docName: projectTab }]);
   });
@@ -327,9 +292,6 @@ describe('scope-move window', () => {
 });
 
 describe('computeSkillTabReconcile round-trip (project -> global -> project)', () => {
-  // The field failure this pins: move a skill out and back in one session and
-  // the row went dead. Each hop must be a RETARGET, never a close, and the
-  // final state must be a no-op against the tab that followed the skill home.
   test('outbound hop retargets the open tab to the global doc', () => {
     const actions = computeSkillTabReconcile(
       ['.agents/skills/demo/SKILL'],
@@ -364,9 +326,6 @@ describe('computeSkillTabReconcile round-trip (project -> global -> project)', (
   });
 
   test('a mid-flight snapshot with the skill at NEITHER scope defers while a write is pending', () => {
-    // Between the delete half and the create half of a move, a stale list has
-    // the skill nowhere. With the write marked pending the tab must survive;
-    // closing here is how "moved it and now it is gone" happens.
     const actions = computeSkillTabReconcile(['.agents/skills/demo/SKILL'], [], () => true);
     expect(actions).toEqual([]);
   });

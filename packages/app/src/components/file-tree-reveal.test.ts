@@ -4,9 +4,6 @@ import { revealActiveRow } from './file-tree-reveal';
 
 type RevealModel = Pick<FileTree, 'getFocusedPath' | 'scrollToPath'>;
 
-// `revealActiveRow` delegates to Pierre's imperative `scrollToPath` (beta.4+),
-// so the contract is "scroll the active row into view without stealing focus."
-// A spy on the model is the behavior surface — no DOM/shadow-root walking left.
 function makeModel(focusedPath: string | null) {
   const scrollToPath = vi.fn(() => {});
   const model = {

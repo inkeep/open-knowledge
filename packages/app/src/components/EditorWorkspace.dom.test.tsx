@@ -423,11 +423,6 @@ describe('EditorWorkspace', () => {
   });
 
   test('adopts the resolved pane layout on a header canvas that mounts after it', () => {
-    // The real header canvas is portaled into the app header, so it can mount a
-    // commit after the panel group reports its layout. A restored session
-    // reports once, on mount: if that report is lost the tab groups keep the
-    // persisted percentages while the panes render the layout the pane minimum
-    // forced, and nothing ever reconciles them.
     const view = render(
       <EditorWorkspace
         renderHeader={() => <header data-testid="main-editor-header" />}
@@ -436,8 +431,6 @@ describe('EditorWorkspace', () => {
     );
     expect(view.container.querySelector('[data-editor-pane-tab-group]')).toBeNull();
 
-    // What the panel group resolves once MIN_EDITOR_PANE_WIDTH raises pane-b:
-    // not the 60/40 the panes carry as their persisted size.
     act(() => layoutChange?.({ 'editor-pane:pane-a': 45, 'editor-pane:pane-b': 55 }));
 
     view.rerender(
@@ -456,12 +449,6 @@ describe('EditorWorkspace', () => {
   });
 
   test('does not replay a resolved layout onto a different pane set', () => {
-    // The replay is keyed on the pane set it was resolved for. A layout the
-    // group resolved for {pane-a, pane-b} describes nothing about a workspace
-    // that now holds {pane-a, pane-c}, and replaying it would hold the
-    // surviving strip at a share the panes no longer render — the mirror image
-    // of the misalignment this fix removes. The mocked group does not report
-    // again on re-render, which is what isolates the guard here.
     const workspace = () => (
       <EditorWorkspace
         renderHeader={(tabs) => <header data-testid="main-editor-header">{tabs}</header>}
@@ -474,8 +461,6 @@ describe('EditorWorkspace', () => {
       view.container.querySelector<HTMLElement>('[data-editor-pane-tab-group]')?.style.flexGrow,
     ).toBe('45');
 
-    // pane-b is gone and pane-a carries a new size, so the stale 45 and the
-    // value this pane set actually renders are distinguishable.
     panes = [
       { ...multiPaneFixture[0], size: 70 },
       { ...multiPaneFixture[1], id: 'pane-c', size: 30 },

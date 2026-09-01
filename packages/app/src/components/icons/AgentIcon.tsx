@@ -7,7 +7,6 @@ import { CopilotIcon } from './copilot';
 import { CursorIcon } from './cursor';
 import { WindsurfIcon } from './windsurf';
 
-/** Map `icon` identifier (from `iconFromClientName`) to its SVG component. Unknown agents fall back to Sparkles. */
 export function AgentIcon({ icon, ...props }: { icon?: string } & SVGProps<SVGSVGElement>) {
   if (icon === 'claude') return <ClaudeIcon {...props} />;
   if (icon === 'cursor') return <CursorIcon {...props} />;

@@ -1,15 +1,3 @@
-/**
- * TagDialog — opens in response to `ok:tag-click` events fired by the
- * editor's TagClickPlugin. Fetches `/api/tags/:name` for the clicked
- * value and lists every doc that mentions the tag (including hierarchy
- * rollup, since the server-side index keys on expanded prefixes).
- *
- * Mounts once at app shell scope (EditorPane). The plugin path keeps the
- * mount point decoupled from the editor instance — different worktrees /
- * Activity-pool slots all dispatch onto the same `document` listener, so
- * the dialog stays a singleton regardless of editor lifecycle.
- */
-
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
@@ -27,12 +15,6 @@ import { parseApiError } from '@/lib/parse-api-error';
 interface TagDocEntry {
   docName: string;
   title: string;
-  /**
-   * The doc's authored tags that fall under the queried prefix. When the
-   * user clicks `#frontend` and a doc has `#frontend/component`, this is
-   * `['frontend/component']` — the dialog renders these as chips so the
-   * rollup is visible. Empty array (defensive) is treated as "no chips".
-   */
   matchingTags?: string[];
   snippet: string | null;
 }
@@ -64,13 +46,6 @@ export function TagDialog() {
   const [open, setOpen] = useState(false);
   const [tag, setTag] = useState<string | null>(null);
   const [fetchState, setFetchState] = useState<FetchState>({ kind: 'idle' });
-  // Sequence counter for stale-fetch protection. Each click increments;
-  // the resolve handlers compare-and-bail when the in-flight fetch is no
-  // longer the most recent. Without this, clicking #frontend then #backend
-  // before frontend's request resolved would let frontend's docs land in
-  // state under the #backend dialog title — the title (`tag` state) updates
-  // synchronously, but `setFetchState` from the older promise wins the race
-  // when its network round-trip is slower than the user's next click.
   const fetchSeqRef = useRef(0);
 
   useEffect(() => {
@@ -111,8 +86,7 @@ export function TagDialog() {
         <DialogHeader>
           <DialogTitle>
             <Trans>
-              {/* `break-all` so a long single-word tag breaks mid-string
-                  instead of overflowing the dialog. */}
+              {}
               Documents tagged <span className="font-mono break-all">#{tagName}</span>
             </Trans>
           </DialogTitle>
@@ -131,10 +105,6 @@ interface TagDialogBodyProps {
   onSelectDoc: (docName: string) => void;
 }
 
-/**
- * Pulled out of the parent so the static-render test can exercise each
- * fetch state in isolation without driving a real fetch.
- */
 export function TagDialogBody({ fetchState, tag, onSelectDoc }: TagDialogBodyProps) {
   if (fetchState.kind === 'idle' || fetchState.kind === 'loading') {
     return (

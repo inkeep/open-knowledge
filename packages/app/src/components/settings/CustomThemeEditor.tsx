@@ -40,19 +40,6 @@ import { ThemePreviewCanvas } from './ThemePreviewCanvas';
 
 const SCHEMES_URL = 'https://github.com/tinted-theming/schemes';
 
-/**
- * Editor for one user-owned saved theme's base16 scheme.
- *
- * Two ways in: paste a scheme from the base16 ecosystem (the fast path — any of
- * the several hundred published schemes works unmodified), or adjust the
- * sixteen slots by hand. Saved-theme edits replace that theme's file in place. When
- * the edited palette is active, edits apply to the DOM optimistically so the
- * whole app previews as you type. Light/dark mode comes from the scheme's own
- * variant.
- *
- * Slot names are opaque on their own, so every slot carries its role in the
- * label and lights up the surfaces it drives in the preview on hover/focus.
- */
 export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding }) {
   const { t } = useLingui();
   const {
@@ -75,8 +62,6 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
   const modePreference = merged?.appearance?.theme;
   const selection = resolveColorThemeSelection(merged?.appearance, themes);
   const slotMode = resolveModePreference(modePreference, systemTheme === 'dark');
-  // Live preview only when the edited scheme is the palette actually on screen.
-  // It may be assigned to the other mode's slot, where an edit shouldn't repaint.
   const isActive = selection[slotMode] === editingThemeId;
   const applicationStateRef = useRef({
     editorStateKey,
@@ -99,8 +84,6 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     };
   });
 
-  // Local working copy for smooth live editing; re-sync when committed config
-  // changes underneath us (another window, a reset, a hand-edit).
   const [scheme, setScheme] = useState<Base16Scheme>(committed);
   const draftsRef = useRef<Record<string, Base16Scheme>>({});
   const themeIncarnationsRef = useRef(themeIncarnations);
@@ -127,11 +110,8 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
     Record<string, 'saving' | 'saved' | 'problem'>
   >({});
   const autoSaveStatus = autoSaveStatuses[editorStateKey] ?? 'idle';
-  // Which slot the pointer/keyboard is on, so the preview can ring its surfaces.
   const [hoveredSlot, setHoveredSlot] = useState<Base16Slot | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<Base16Slot>('base00');
-  // A config written before base16 still carries the six seed colors. It reads
-  // correctly (they upgrade into slots), but the next write should normalize it.
   const needsLegacyMigration = hasLegacyCustomSeed(merged?.appearance?.customTheme);
 
   function setWorkingScheme(next: Base16Scheme) {
@@ -232,23 +212,16 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
   function onPick(slot: Base16Slot, value: string) {
     const next = { ...scheme, palette: { ...scheme.palette, [slot]: value } };
     setWorkingScheme(next);
-    // Only push valid hex to the live DOM preview — an invalid partial the user
-    // is mid-typing shouldn't repaint the app with a broken color.
     if (isHexColor(value)) preview(next);
   }
 
   function commit(slot: Base16Slot, value: string) {
-    // Invalid input stays visible (with its inline error) so the user can
-    // correct it — no silent revert, and nothing is written to config until the
-    // value is a valid 6-digit hex.
     if (!isHexColor(value)) return;
     if (isEditingSavedTheme) {
       persistSavedTheme({ ...scheme, palette: { ...scheme.palette, [slot]: value } });
       return;
     }
     if (needsLegacyMigration) {
-      // First edit against a pre-base16 config: write the resolved scheme in
-      // full and retire the old keys, rather than leaving a half-format behind.
       const next = { ...scheme, palette: { ...scheme.palette, [slot]: value } };
       userBinding.patch({ appearance: { customTheme: customThemeWritePatch(next) } });
       return;
@@ -297,13 +270,8 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
         await write(yaml);
         toast.success(t`Theme copied as base16 YAML`);
         return;
-      } catch {
-        // Denied or unavailable — fall through to the in-page path below.
-      }
+      } catch {}
     }
-    // Clipboard can be denied (permission, insecure context). Drop the YAML
-    // into the paste box rather than failing silently — it stays selectable and
-    // copyable by hand, and re-importing it is a no-op.
     setPaste(yaml);
     setPasteError(null);
     toast.error(t`Couldn’t reach the clipboard — the theme is in the box below.`);
@@ -398,7 +366,7 @@ export function CustomThemeEditor({ userBinding }: { userBinding: ConfigBinding 
         </div>
       </div>
 
-      {/* Preview first: it is the thing that makes the slots below legible. */}
+      {}
       <ThemePreviewCanvas scheme={scheme} highlightSlot={hoveredSlot} className="w-full" />
 
       <ColorWorkbench

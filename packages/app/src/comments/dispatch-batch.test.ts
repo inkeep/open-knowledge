@@ -1,22 +1,7 @@
-/**
- * Batch dispatch carries EVERY selected comment.
- *
- * Pins the "only one comment got sent" class of bug: the batch must reach the
- * composer with all queued items, and the composed instruction must name each
- * one. A regression here is invisible to typecheck — the call succeeds, it just
- * carries less than it should.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import { composeCommentBatchInstruction } from './comment-chips';
 
 vi.mock('./comments-client', () => {
-  // Everything the factory needs must be defined INSIDE it — `vi.mock` is
-  // hoisted above module-level declarations.
-  //
-  // `createdAt` ascends with the thread number, so t1 was written first. The
-  // batch must ship in that order; the panel lists threads newest-first, and
-  // inheriting that sort once numbered the composed prompt backwards.
   const metas = [
     {
       threadId: 't1',
@@ -82,7 +67,6 @@ vi.mock('./comments-client', () => {
   };
 });
 
-/** The batch send, with everything but the hand-off left at its default. */
 function dispatchWith(
   store: typeof import('./store'),
   compose: (items: readonly { threadId: string; payload: unknown }[]) => Promise<boolean>,
@@ -97,8 +81,6 @@ describe('dispatchComments', () => {
     const store = await import('./store');
     await store.refresh();
 
-    // Guards the guard: all three must actually be queued, or the assertions
-    // below would pass against a broken batch.
     expect(store.getSelectedQueue()).toHaveLength(3);
 
     const seen: number[] = [];
@@ -107,22 +89,17 @@ describe('dispatchComments', () => {
       return true;
     });
 
-    expect(seen).toEqual([3]); // ONE compose call carrying all three
+    expect(seen).toEqual([3]);
     expect(shipped).toHaveLength(3);
-    // and all three are marked complete, not just the first
     const api = await import('./comments-client');
     expect(api.completeDispatchBatch).toHaveBeenCalledWith(['t1', 't2', 't3']);
   });
 
   test('the batch ships in the order the comments were written', async () => {
-    // Regression: the queue inherited `allThreads`' newest-first sort, so a
-    // reviewer who wrote three comments in order got them numbered 3, 2, 1 in
-    // the composed prompt. Run order and display order are different concerns.
     vi.resetModules();
     const store = await import('./store');
     await store.refresh();
 
-    // t1 is the oldest comment (see the fixture) and must lead.
     expect(store.getQueue()).toEqual(['t1', 't2', 't3']);
 
     const order: string[] = [];
@@ -144,10 +121,6 @@ describe('dispatchComments', () => {
   });
 
   test('a second send while one is in flight is dropped, not duplicated', async () => {
-    // Regression: nothing drains the queue until `completeDispatchBatch` lands,
-    // so a second Enter during the server's anchor re-find read the same ids and
-    // handed the identical batch to a second agent turn. Neither the composer
-    // nor the panel disables its send across that window.
     vi.resetModules();
     const store = await import('./store');
     await store.refresh();
@@ -163,22 +136,19 @@ describe('dispatchComments', () => {
       await held;
       return true;
     });
-    // Same tick as a double-tap on Enter, while `first` sits in its compose.
     await vi.waitFor(() => expect(composed).toHaveLength(1));
     const second = await dispatchWith(store, async (items) => {
       composed.push(items.length);
       return true;
     });
 
-    expect(second).toEqual([]); // shipped nothing
+    expect(second).toEqual([]);
     release();
     expect(await first).toEqual(['t1', 't2', 't3']);
-    expect(composed).toEqual([3]); // ONE compose, not two
+    expect(composed).toEqual([3]);
   });
 
   test('a send is possible again once the in-flight one finishes', async () => {
-    // The guard must clear on the way out — a flag that leaks would wedge the
-    // queue for the rest of the session.
     vi.resetModules();
     const store = await import('./store');
     await store.refresh();
@@ -188,9 +158,6 @@ describe('dispatchComments', () => {
   });
 
   test('the Queue panel Send delivers ONE turn carrying every comment', async () => {
-    // Regression: this path used to loop and hand off one comment at a time,
-    // which fragmented a review into N agent threads (and surfaced as "only one
-    // got sent"). It must call the hand-off exactly once, with all three items.
     vi.resetModules();
     const store = await import('./store');
     await store.refresh();
@@ -207,14 +174,9 @@ describe('dispatchComments', () => {
   });
 
   test('a hand-off that only stages can decline to resolve', async () => {
-    // Appending to a live session leaves the text UNSENT in its input, so the
-    // threads stay queued — the human still has to press enter. Same dispatch
-    // path, one flag apart.
     vi.resetModules();
     const store = await import('./store');
     await store.refresh();
-    // `resetModules` re-imports the store but the client mock is the same
-    // object, so its call log still holds the earlier tests' sends.
     vi.clearAllMocks();
 
     const shipped = await store.dispatchComments({
@@ -228,9 +190,6 @@ describe('dispatchComments', () => {
   });
 
   test('deselecting drops the selected count the chip shows', async () => {
-    // The chip counts what a send would CARRY. If it counted the whole queue,
-    // unchecking an item would leave the number unchanged and the control would
-    // give no feedback.
     vi.resetModules();
     const store = await import('./store');
     await store.refresh();
@@ -238,7 +197,6 @@ describe('dispatchComments', () => {
 
     store.toggleQueueSelection('t2');
     expect(store.getSelectedQueue()).toHaveLength(2);
-    // still queued — deselecting excludes it from this send, it doesn't remove it
     expect(store.getQueue()).toHaveLength(3);
 
     store.toggleQueueSelection('t2');
@@ -289,17 +247,12 @@ describe('composeCommentBatchInstruction — the pinned passage', () => {
   ];
 
   test('carries a selection that belongs to no comment', () => {
-    // The bug: the composer rendered the selection pill above the send and the
-    // batch payload then dropped it, so a passage you deliberately highlighted
-    // reached the agent nowhere.
     const prompt = composeCommentBatchInstruction(items, 'Work through these', {
       docName: 'recipes/one',
       markdown: '- 2 tbsp neutral oil',
     });
 
     expect(prompt).toContain('2 tbsp neutral oil');
-    // Labelled apart from the numbered comments — otherwise it reads as a
-    // review item whose request went missing.
     expect(prompt).toContain('not a comment');
     expect(prompt.indexOf('The comment:')).toBeLessThan(prompt.indexOf('2 tbsp neutral oil'));
   });
@@ -329,8 +282,6 @@ describe('composeCommentBatchInstruction — a quote that repeats', () => {
   };
 
   test('says which occurrence is meant', () => {
-    // Offsets would look precise and be wrong: they shift the moment the agent
-    // makes its first edit in the batch. Surrounding text re-locates itself.
     const prompt = composeCommentBatchInstruction([{ ...base, repeats: true }], '');
     expect(prompt).toContain('appears more than once');
     expect(prompt).toContain('1 tsp honey or maple');
@@ -388,16 +339,12 @@ describe('the composed instruction for a property comment', () => {
     const out = composeCommentBatchInstruction([propertyItem], '');
     expect(out).toContain('on the `date` property (frontmatter)');
     expect(out).toContain('this should be the publish date');
-    // No blockquote: there is no passage, and an empty one would read as a
-    // comment on a blank line.
     expect(out).not.toContain('>');
   });
 
   test('a removed key is called out as lost, naming the key', () => {
     const out = composeCommentBatchInstruction([{ ...propertyItem, anchorLost: true }], '');
     expect(out).toContain('`date` is no longer in this document');
-    // The passage wording would be wrong here — nothing was edited or removed
-    // from the prose.
     expect(out).not.toContain('this passage is no longer in the document');
   });
 

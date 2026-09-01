@@ -1,14 +1,3 @@
-/**
- * Shipped skill assets must call `links` / `audit` with parameter names the MCP tool
- * actually declares (`docName` / `sourceDocNames` shipped for months
- * and errored or silently audited the whole corpus). The key lists mirror the
- * `inputSchema`s in `src/mcp/tools/links.ts` and `src/mcp/tools/audit.ts` — update
- * all three together.
- *
- * Also guards the prose: no shipped skill may frame `audit` as a dead-link-only
- * check, since it merges lint + links. Wording for the project bundle specifically
- * is pinned in `skill-linking-contract.test.ts` — keep the two in their own lanes.
- */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -38,7 +27,6 @@ describe('shipped skills call links()/audit() with declared parameter names', ()
     test(file.slice(SKILLS_DIR.length + 1), () => {
       expect.hasAssertions();
       for (const [, tool, body] of calls) {
-        // Matches `key:` and ES2015 shorthand `{ kind, document }`.
         const keys = [...body.matchAll(/(?:^|,)\s*([A-Za-z_]+)\s*(?=[:,]|$)/g)].map((m) => m[1]);
         for (const key of keys) {
           expect(

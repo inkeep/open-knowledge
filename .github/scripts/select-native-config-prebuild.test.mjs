@@ -16,13 +16,7 @@ import {
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const workflow = (name) => readFileSync(join(REPO_ROOT, '.github', 'workflows', name), 'utf8');
 
-/**
- * Exact bounds of a staging step: its `- name:` up to the next sibling step, so
- * an assertion cannot run past it into a neighbouring step's shell.
- */
 const stagingStep = (yaml) => {
-  // Throw rather than slice(-1), which returns the file's last character and
-  // makes every negative assertion below pass vacuously on a renamed step.
   const start = yaml.indexOf('- name: Stage native-config prebuilt binaries');
   if (start === -1) throw new Error('no "Stage native-config prebuilt binaries" step');
   const rest = yaml.slice(start);
@@ -30,12 +24,6 @@ const stagingStep = (yaml) => {
   return end === -1 ? rest : rest.slice(0, end);
 };
 
-/**
- * A commit graph as a chain, oldest first, each with the native-config tree it
- * carries. Ancestry is index order; anything absent from the chain is an
- * unresolvable object, which the real git boundary reports as "not an ancestor"
- * and "no tree".
- */
 const chainFixture = (chain) => {
   const index = new Map(chain.map((c, i) => [c.sha, { ...c, position: i }]));
   return {
@@ -48,12 +36,10 @@ const chainFixture = (chain) => {
   };
 };
 
-// The graph that wedged v0.58.10: the release tag sits behind the newest green
-// prebuild, and an older prebuild carries byte-identical native-config source.
 const RELEASE_REGRESSION = chainFixture([
-  { sha: '98556f27', tree: 'eb09e361' }, // 2026-07-24 prebuild — ancestor of the tag
-  { sha: 'b2b06a46', tree: 'eb09e361' }, // v0.58.10's commit
-  { sha: '7d5af880', tree: 'e1a1c0e4' }, // #3648 — newest prebuild, DESCENDANT of the tag
+  { sha: '98556f27', tree: 'eb09e361' },
+  { sha: 'b2b06a46', tree: 'eb09e361' },
+  { sha: '7d5af880', tree: 'e1a1c0e4' },
 ]);
 
 const CANDIDATES_NEWEST_FIRST = [
@@ -91,9 +77,6 @@ describe('selectPrebuildRun', () => {
   });
 
   test('skips an ancestor whose native-config source differs from the release', () => {
-    // The shape a FAILED intermediate prebuild leaves: the newest green ancestor
-    // predates a native-config change the release already carries, so its
-    // binaries no longer match the Rust source being shipped.
     const graph = chainFixture([
       { sha: 'stale', tree: 'T1' },
       { sha: 'release', tree: 'T2' },
@@ -170,8 +153,6 @@ describe('describeSelectionFailure', () => {
     });
     expect(reason).toContain('v9.9.9');
     expect(reason).toContain('release ref');
-    // The whole point: it must NOT blame the prebuild runs, which is the
-    // misdirection this module exists to stop.
     expect(reason).not.toContain('32317026296');
   });
 
@@ -186,9 +167,6 @@ describe('describeSelectionFailure', () => {
 });
 
 describe('step extraction', () => {
-  // Pins the guard in stagingStep(). Every other call passes a document that
-  // contains the step, so the throw is otherwise dead code and dropping it
-  // silently restores the degenerate one-character slice.
   test('stagingStep() throws on a document with no staging step', () => {
     expect(() => stagingStep('name: nothing that matches\n')).toThrow(
       /Stage native-config prebuilt binaries/,
@@ -240,8 +218,6 @@ describe('listPrebuildRuns', () => {
   });
 
   test('reports a spawn failure, which leaves stderr empty', () => {
-    // `gh` missing from PATH sets status null and stderr '', so keying only on
-    // stderr threw "…failed: " with nothing after the colon.
     expect(() =>
       listPrebuildRuns({
         run: () => ({ status: null, stdout: '', stderr: '', error: new Error('spawn gh ENOENT') }),
@@ -298,9 +274,6 @@ describe('main', () => {
 });
 
 describe('workflow wiring', () => {
-  // Both publish paths staged binaries with the same `--limit 1` bash, and both
-  // wedged the same way. Ratcheted here so a future edit cannot reintroduce
-  // newest-run selection in either one, or quietly drop one of them.
   for (const name of ['desktop-release.yml', 'release.yml']) {
     test(`${name} stages through the shared selector`, () => {
       const step = stagingStep(workflow(name));
@@ -310,24 +283,12 @@ describe('workflow wiring', () => {
     });
 
     test(`${name} runs the selector from the workflow's own commit`, () => {
-      // The checkout is the RELEASE ref, so a tag cut before the selector landed
-      // carries no copy of it. Resolving the script from $GITHUB_SHA is what
-      // makes a re-fire on such a tag run current release machinery — without
-      // it the fix only reaches tags cut after it merged, and the releases it
-      // exists to unblock stay blocked.
       const step = stagingStep(workflow(name));
       expect(step).toContain('$GITHUB_SHA:.github/scripts/select-native-config-prebuild.mjs');
       expect(step).toContain('cp .github/scripts/select-native-config-prebuild.mjs');
     });
 
     test(`${name} still splits beta degradation from stable refusal`, () => {
-      // Pin the BRANCH, not the token. `IS_STABLE` on its own also appears in
-      // the step's `env:` block, which sits inside this slice, so the original
-      // `toContain('IS_STABLE')` stayed green with the ENTIRE stable-refusal
-      // branch deleted — caught by mutation testing in review. The `::error::`
-      // wording differs between the two workflows (`stable release` vs
-      // `stable @latest release`), so match that loosely and pin the structure
-      // around it.
       const step = stagingStep(workflow(name));
       expect(step).toContain('degrade_or_fail');
       expect(step).toMatch(
@@ -337,11 +298,6 @@ describe('workflow wiring', () => {
     });
 
     test(`${name} asserts the selector's output shape, not just non-emptiness`, () => {
-      // Pin the guard as ONE contiguous block, the rejecting branch included.
-      // Asserting the shape pattern and the `if` separately leaves the
-      // `degrade_or_fail` deletable with this test still green — the identical
-      // hole the IS_STABLE ratchet had. Both were caught by mutation testing,
-      // which is the only thing that proves a ratchet of this shape works.
       const step = stagingStep(workflow(name));
       expect(step).toContain("selection_shape='^[0-9]+'$'\\t''[0-9a-f]{7,40}$'");
       expect(step).toMatch(

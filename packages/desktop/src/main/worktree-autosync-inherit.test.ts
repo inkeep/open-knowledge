@@ -7,9 +7,6 @@ import { parse as parseYaml } from 'yaml';
 import { getLogger } from './desktop-logger.ts';
 import { resolveRootAutoSyncMode, seedWorktreeAutoSync } from './worktree-autosync-inherit.ts';
 
-// Capture the seed site's structured telemetry without touching the real pino
-// destination. `getLogger` caches by subsystem, so the spy intercepts the same
-// instance the module resolves at call time.
 function captureSeedLogs(): {
   entries: Array<{ data: Record<string, unknown>; msg: string }>;
   restore: () => void;

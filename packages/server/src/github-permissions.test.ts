@@ -1,12 +1,3 @@
-/**
- * Tests for the push-permission probe.
- *
- * Boundaries are mocked (HTTP via injected `fetch`, gh detection + credential
- * store via injected fakes); the probe's own classification + token-resolution
- * logic is exercised for real. Telemetry assertions use the InMemoryMetric
- * harness from `frontmatter-telemetry.test.ts`.
- */
-
 import { metrics } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -25,8 +16,6 @@ import {
   type ProbeTokenStore,
   type PushPermission,
 } from './github-permissions.ts';
-
-// ─── Fakes at the system boundaries ──────────────────────────────────────────
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Response): {
   fetch: FetchFn;
@@ -71,8 +60,6 @@ function fakeStore(token: string | null): { store: ProbeTokenStore; hosts: strin
 function authHeader(init?: RequestInit): string | undefined {
   return (init?.headers as Record<string, string> | undefined)?.Authorization;
 }
-
-// ─── Classification ───────────────────────────────────────────────────────────
 
 describe('checkPushPermission — classification', () => {
   const cases: Array<{
@@ -195,10 +182,6 @@ describe('checkPushPermission — classification', () => {
   });
 
   test('an AbortError-shaped rejection without the timer firing → unknown/network', async () => {
-    // Synthetic AbortError-shape but the AbortController.abort() was never
-    // called (timer didn't fire). `ac.signal.aborted` is false → classifier
-    // routes to `network`, not `timeout`. Distinguishes "fetch synthesized
-    // an AbortError" from "our 5s ceiling actually fired."
     const fetchFn: FetchFn = (_input, init) =>
       Promise.reject(
         Object.assign(new Error('The operation was aborted'), {
@@ -216,11 +199,6 @@ describe('checkPushPermission — classification', () => {
   });
 
   test('probe-timeout firing (signal.aborted === true) → unknown/timeout', async () => {
-    // Mock fetch that hangs until the AbortSignal aborts, then rejects.
-    // Matches how real fetch behaves under abort. With _timeoutMs=20ms,
-    // the timer fires before the test gives up, and the catch branches
-    // on `ac.signal.aborted === true` → `timeout`. Production keeps the
-    // 5s ceiling; this seam exercises the branch without the wait.
     const fetchFn: FetchFn = (_input, init) =>
       new Promise((_resolve, reject) => {
         const sig = init?.signal;
@@ -243,8 +221,6 @@ describe('checkPushPermission — classification', () => {
   });
 });
 
-// ─── Token resolution order (Tier A → Tier B/C → anonymous) ──────────────────
-
 describe('checkPushPermission — token resolution', () => {
   test('Tier A: gh token is used and the credential store is not consulted', async () => {
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
@@ -257,7 +233,7 @@ describe('checkPushPermission — token resolution', () => {
       _fetchFn: fetch,
     });
     expect(authHeader(calls[0]?.init)).toBe('Bearer ghs_tier_a_token');
-    expect(hosts).toEqual([]); // store untouched when gh wins
+    expect(hosts).toEqual([]);
   });
 
   test('Tier B/C: falls back to the stored token when gh is unavailable', async () => {
@@ -285,10 +261,8 @@ describe('checkPushPermission — token resolution', () => {
       tokenStore: store,
       _fetchFn: fetch,
     });
-    // Signed-out — distinct from a working-but-read-only credential so the UI
-    // can offer a reconnect affordance.
     expect(result).toEqual({ kind: 'denied', reason: 'not-authenticated' });
-    expect(calls).toHaveLength(0); // no credential ⇒ no push ⇒ no probe
+    expect(calls).toHaveLength(0);
   });
 
   test('anonymous: omitting both detectGh and tokenStore short-circuits without a request', async () => {
@@ -303,9 +277,6 @@ describe('checkPushPermission — token resolution', () => {
   });
 
   test('anonymous + transport ssh → unknown/ssh-unverified with NO HTTP call', async () => {
-    // Self-hosted forge (Gitea/Forgejo) pushed over SSH: no gh/OK token can
-    // ever exist for that host, but the push auths with SSH keys. The probe
-    // must abstain, not deny — denying pauses sync for a fully working setup.
     const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
     const { store } = fakeStore(null);
     const result = await checkPushPermission({
@@ -335,9 +306,6 @@ describe('checkPushPermission — token resolution', () => {
   });
 
   test('anonymous + explicit transport https → denied/not-authenticated unchanged', async () => {
-    // HTTPS pushes auth with tokens; no token ⇒ the push cannot succeed, so
-    // the signed-out denial (and its Sign-in affordance) stays correct —
-    // including for GHES over HTTPS.
     const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
     const result = await checkPushPermission({
       owner: 'acme',
@@ -351,8 +319,6 @@ describe('checkPushPermission — token resolution', () => {
   });
 
   test('anonymous + github.com over SSH is lenient too (deliberate)', async () => {
-    // A github.com user with SSH keys and no gh CLI / stored token pushes
-    // fine; keying leniency on transport (not host) un-breaks them as well.
     const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
     const result = await checkPushPermission({
       owner: 'inkeep',
@@ -366,8 +332,6 @@ describe('checkPushPermission — token resolution', () => {
   });
 
   test('transport ssh with a resolved credential still probes normally', async () => {
-    // Transport only gates the ANONYMOUS branch. With a token the API answer
-    // is authoritative regardless of how git would transport the push.
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
     const result = await checkPushPermission({
       owner: 'inkeep',
@@ -398,9 +362,6 @@ describe('checkPushPermission — token resolution', () => {
   });
 });
 
-// ─── Declared-account identity ────────────────────────────────────────────────
-
-/** Recording gh fake: captures each (host, login) request, replays `result`. */
 function ghRecording(result: ReturnType<DetectGhFn>): {
   fn: DetectGhFn;
   calls: Array<{ host?: string; login?: string }>;
@@ -431,8 +392,6 @@ describe('checkPushPermission — declared-account identity', () => {
       _fetchFn: fetch,
     });
     expect(gh.calls).toEqual([{ host: 'github.com', login: 'alice' }]);
-    // Honored declaration: the denial names alice and carries no declared-miss
-    // fields — the account was used; the denial is real.
     expect(result).toEqual({
       kind: 'denied',
       reason: 'private-no-access',
@@ -442,7 +401,6 @@ describe('checkPushPermission — declared-account identity', () => {
 
   test('a declared-account fallback names the account actually used, never the declared one', async () => {
     const { fetch } = mockFetch(() => jsonResponse(404));
-    // gh could not serve alice: the active account answered (no resolvedLogin).
     const gh = ghRecording({ available: true, token: 'ghs_bob_token', fallback: true });
     const result = await checkPushPermission({
       owner: 'o',
@@ -497,8 +455,6 @@ describe('checkPushPermission — declared-account identity', () => {
       },
       _fetchFn: fetch,
     });
-    // Still the real classification — not unknown/network — with the
-    // declared miss intact and only the name missing.
     expect(result).toEqual({
       kind: 'denied',
       reason: 'private-no-access',
@@ -535,7 +491,6 @@ describe('checkPushPermission — declared-account identity', () => {
       owner: 'o',
       repo: 'r',
       detectGh: ghUnavailable(),
-      // Would name 'eve' if the stored tier ever borrowed the gh listing.
       detectGhAccounts: () => [{ login: 'eve', active: true }],
       tokenStore: store,
       _fetchFn: fetch,
@@ -575,8 +530,6 @@ describe('checkPushPermission — declared-account identity', () => {
       detectGhAccounts: () => [{ login: 'bob', active: true }],
       _fetchFn: fetch,
     });
-    // The pino fallback warning is the sole trace of a push that would
-    // succeed as the wrong identity — the result stays bare.
     expect(result).toEqual({ kind: 'allowed' });
   });
 
@@ -599,10 +552,6 @@ describe('checkPushPermission — declared-account identity', () => {
     expect(calls).toHaveLength(0);
   });
 
-  // GitHub logins are case-insensitive, and hand-written remote URLs carry
-  // whatever casing the user typed — a casing-only difference is the same
-  // account, and claiming it missed would point a correctly-configured user
-  // at a non-problem.
   test('a casing-only difference between declared and resolved is not a miss', async () => {
     const { fetch } = mockFetch(() => jsonResponse(200, { permissions: { push: false } }));
     const gh = ghRecording({ available: true, token: 'ghs_alice_token', fallback: true });
@@ -619,8 +568,6 @@ describe('checkPushPermission — declared-account identity', () => {
     expect(result).not.toHaveProperty('declaredSource');
   });
 });
-
-// ─── Request shape ────────────────────────────────────────────────────────────
 
 describe('checkPushPermission — request shape', () => {
   test('hits api.github.com/repos/OWNER/REPO with the GitHub user-agent + accept', async () => {
@@ -639,8 +586,6 @@ describe('checkPushPermission — request shape', () => {
   });
 
   test('GHES host routes through /api/v3 base', async () => {
-    // github.com → api.github.com; any other host → https://<host>/api/v3
-    // (matches packages/cli/src/auth/device-flow.ts convention).
     const { fetch, calls } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
     await checkPushPermission({
       owner: 'acme',
@@ -685,8 +630,6 @@ describe('checkPushPermission — request shape', () => {
     expect(calls).toHaveLength(1);
   });
 });
-
-// ─── Telemetry (bounded cardinality, no repo/url leakage) ────────────────────
 
 interface MetricHarness {
   exporter: InMemoryMetricExporter;
@@ -817,7 +760,6 @@ describe('checkPushPermission — telemetry', () => {
     const allowedCounterKeys = ['denied_reason', 'error_class', 'outcome'];
     for (const p of points) {
       const keys = Object.keys(p.attributes).sort();
-      // counter carries all three bounded labels; histogram carries only `outcome`
       expect(keys.every((k) => allowedCounterKeys.includes(k))).toBe(true);
       const serialized = JSON.stringify(p.attributes);
       expect(serialized).not.toContain('secret-owner-abc');

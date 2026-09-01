@@ -3,10 +3,6 @@ import { describe, expect, test } from 'vitest';
 import type { KeepaliveScheduler, MinimalWebSocket } from './keepalive.ts';
 import { startKeepalive } from './keepalive.ts';
 
-// ── Deterministic scheduler ─────────────────────────────────────────────
-// Holds timers in a sorted queue keyed by dueAt. `advance(ms)` fires every
-// timer whose deadline has been reached. No wall-clock dependency.
-
 interface ManualScheduler extends KeepaliveScheduler {
   advance: (ms: number) => void;
   pending: () => number;
@@ -30,9 +26,6 @@ function createScheduler(): ManualScheduler {
     },
     advance(ms) {
       now += ms;
-      // Fire every due timer; a timer's callback can schedule new ones with
-      // future deadlines — they're only fired if they become due within the
-      // same advance() call.
       for (let pass = 0; pass < 100; pass++) {
         const due = queue.filter((e) => e.dueAt <= now);
         if (due.length === 0) return;
@@ -47,12 +40,8 @@ function createScheduler(): ManualScheduler {
   };
 }
 
-// ── Fake WebSocket ─────────────────────────────────────────────────────
-// Tracks listeners, exposes `fire('open'|'close'|'error')` so tests drive
-// the connection lifecycle deterministically.
-
 class FakeWebSocket implements MinimalWebSocket {
-  readyState = 0; // CONNECTING
+  readyState = 0;
   url: string;
   closed = false;
   private listeners: Record<string, Array<() => void>> = {
@@ -68,11 +57,11 @@ class FakeWebSocket implements MinimalWebSocket {
   }
   close(): void {
     this.closed = true;
-    this.readyState = 3; // CLOSED
+    this.readyState = 3;
     this.fire('close');
   }
   fire(type: 'open' | 'close' | 'error'): void {
-    if (type === 'open') this.readyState = 1; // OPEN
+    if (type === 'open') this.readyState = 1;
     if (type === 'close') this.readyState = 3;
     for (const l of this.listeners[type]) l();
   }
@@ -98,7 +87,6 @@ describe('startKeepalive', () => {
     expect(opened[0].url).toContain('ws://localhost:12345/collab/keepalive');
     expect(opened[0].url).toContain(`pid=${process.pid}`);
 
-    // Simulate server accepting the upgrade
     opened[0].fire('open');
     expect(handle.isConnected()).toBe(true);
     handle.close();
@@ -119,18 +107,15 @@ describe('startKeepalive', () => {
 
     await runMicrotasks();
     expect(calls).toBe(1);
-    expect(scheduler.pending()).toBe(1); // reconnect timer armed
+    expect(scheduler.pending()).toBe(1);
 
     scheduler.advance(100);
     await runMicrotasks();
-    expect(calls).toBe(2); // retried
+    expect(calls).toBe(2);
 
     handle.close();
   });
 
-  // The two connect-path catch blocks must reconnect, not die — a rethrow or a
-  // self-close here would silently kill the keepalive, exactly the failure this
-  // primitive exists to prevent.
   test('schedules a reconnect when resolveWsUrl rejects', async () => {
     const scheduler = createScheduler();
     const handle = startKeepalive({
@@ -143,7 +128,7 @@ describe('startKeepalive', () => {
     });
 
     await runMicrotasks();
-    expect(scheduler.pending()).toBe(1); // reconnect timer armed, not dead
+    expect(scheduler.pending()).toBe(1);
     handle.close();
   });
 
@@ -159,7 +144,7 @@ describe('startKeepalive', () => {
     });
 
     await runMicrotasks();
-    expect(scheduler.pending()).toBe(1); // reconnect timer armed, not dead
+    expect(scheduler.pending()).toBe(1);
     handle.close();
   });
 
@@ -171,10 +156,6 @@ describe('startKeepalive', () => {
       scheduler,
       initialBackoffMs: 100,
       maxBackoffMs: 1000,
-      // Pin jitter to 0 so the backoff timing is fully deterministic
-      // (without this, the production default `Math.random` jitter would
-      // shrink the wait to a value in [ceil/2, ceil), making this timing-
-      // sensitive test ~2% flake-prone per run).
       rng: () => 0,
       createWebSocket: (url) => {
         const fake = new FakeWebSocket(url);
@@ -186,19 +167,17 @@ describe('startKeepalive', () => {
     await runMicrotasks();
     expect(opened.length).toBe(1);
 
-    // First disconnect — reconnects after 100ms
     opened[0].fire('close');
     expect(scheduler.pending()).toBe(1);
     scheduler.advance(100);
     await runMicrotasks();
     expect(opened.length).toBe(2);
 
-    // Second disconnect without ever opening — backoff doubles to 200ms
     opened[1].fire('close');
     scheduler.advance(100);
     await runMicrotasks();
-    expect(opened.length).toBe(2); // not yet fired
-    scheduler.advance(100); // total 200ms elapsed since close
+    expect(opened.length).toBe(2);
+    scheduler.advance(100);
     await runMicrotasks();
     expect(opened.length).toBe(3);
 
@@ -212,8 +191,6 @@ describe('startKeepalive', () => {
       resolveWsUrl: async () => 'ws://localhost:12345',
       scheduler,
       initialBackoffMs: 100,
-      // Pin jitter to 0 for deterministic backoff timing (see comment on
-      // the sibling backoff test above).
       rng: () => 0,
       createWebSocket: (url) => {
         const fake = new FakeWebSocket(url);
@@ -223,14 +200,12 @@ describe('startKeepalive', () => {
     });
 
     await runMicrotasks();
-    // Connect: fires open, then closes. Backoff should STAY at initial (100ms).
     opened[0].fire('open');
     opened[0].fire('close');
     scheduler.advance(100);
     await runMicrotasks();
     expect(opened.length).toBe(2);
 
-    // Second connection never opens — backoff doubles to 200ms
     opened[1].fire('close');
     scheduler.advance(100);
     await runMicrotasks();
@@ -304,7 +279,6 @@ describe('startKeepalive', () => {
     expect(opened[0].closed).toBe(true);
     expect(scheduler.pending()).toBe(0);
 
-    // Advance past any backoff — no more WS should open.
     scheduler.advance(60_000);
     await runMicrotasks();
     expect(opened.length).toBe(1);
@@ -374,16 +348,10 @@ describe('startKeepalive', () => {
     });
     await runMicrotasks();
     expect(opened.length).toBe(1);
-    // encodeURIComponent: /→%2F, =→%3D, &→%26
     expect(opened[0].url).toContain('connectionId=user%2Fagent%3D1%262');
     handle.close();
   });
 
-  // The keepalive deliberately carries NO client version metadata: it has no
-  // refusable requests, and the clients that use it (MCP shim, desktop main)
-  // already send their version over HTTP. This guards against version params
-  // creeping into the keepalive URL — which would lock unused fields into the
-  // append-only client-version wire contract.
   test('URL carries no client version params', async () => {
     const scheduler = createScheduler();
     const opened: FakeWebSocket[] = [];
@@ -405,10 +373,6 @@ describe('startKeepalive', () => {
     handle.close();
   });
 
-  // Browser portability: `process` is undefined in a Vite build, so the
-  // primitive must never read `process.pid`. When the caller omits `pid` (the
-  // browser keepalive), the URL carries no `pid=` param and is still a valid
-  // bare keepalive handshake — proving the builder doesn't depend on `process`.
   test('URL omits pid when no pid option is provided (browser-safe)', async () => {
     const scheduler = createScheduler();
     const opened: FakeWebSocket[] = [];
@@ -423,16 +387,11 @@ describe('startKeepalive', () => {
     });
     await runMicrotasks();
     expect(opened.length).toBe(1);
-    // The bare, identity-free, pid-free form: exactly the path, no query.
     expect(opened[0].url).toBe('ws://localhost:12345/collab/keepalive');
     expect(opened[0].url).not.toContain('pid=');
     handle.close();
   });
 
-  // Presence-invisible mode (desktop main, and now the web app): a keepalive
-  // that supplies a connectionId but omits the identity triplet must NOT carry
-  // any identity params, so the server counts it for idle-shutdown without
-  // bootstrapping a phantom presence-bar entry.
   test('URL carries no identity params when displayName/clientName/colorSeed are omitted', async () => {
     const scheduler = createScheduler();
     const opened: FakeWebSocket[] = [];

@@ -7,10 +7,6 @@ import {
 } from '@/test-utils/visual-contract';
 
 vi.doMock('@/components/OkBlob', () => ({
-  // `onRage` is exposed as a click so the reveal gate can be driven from a test.
-  // The real OkBlob fires it on the third rapid click inside its rage window and
-  // again on every rapid click that holds the rage, so one click here stands for
-  // one rage click there.
   OkBlob: ({
     celebrateSignal,
     size,
@@ -52,9 +48,6 @@ describe('EmptyStateHeader runtime behavior', () => {
     expect(screen.getByTestId('ok-blob-probe').getAttribute('data-size')).toBe('64');
 
     const root = screen.getByTestId('ok-blob-probe').parentElement;
-    // Stacked and start-aligned by default; the centered row is a container
-    // query, not the base layout — the blob sits above the title in a narrow
-    // pane and beside it once the pane is wide enough.
     expectVisualClassTokens(root?.className, [
       'flex',
       'flex-col',
@@ -85,14 +78,8 @@ describe('EmptyStateHeader rage-streak reveal gate', () => {
     return screen.getByTestId('ok-blob-probe');
   }
 
-  /** Spacing between clicks — comfortably inside the streak window. */
   const CLICK_GAP_MS = 500;
 
-  /**
-   * Drive `count` rage clicks in a row. Driven off the threshold rather than a
-   * literal count so retuning the gate does not silently turn these into tests
-   * of a cadence the product no longer has.
-   */
   function rage(
     blob: HTMLElement,
     now: { mockReturnValue(value: number): unknown },
@@ -130,8 +117,6 @@ describe('EmptyStateHeader rage-streak reveal gate', () => {
     const blob = await mount(onRageStreak);
 
     rage(blob, now, RAGE_STREAK_TO_REVEAL - 1);
-    // The click that would have completed the streak lands too late to count,
-    // so it starts a new one instead of finishing the old.
     rage(blob, now, 1, 60_000);
     expect(onRageStreak).not.toHaveBeenCalled();
   });

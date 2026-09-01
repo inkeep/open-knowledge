@@ -1,23 +1,3 @@
-/**
- * Starvation contract for the worker-homed presence keepalive.
- *
- * Peers prune a presence entry after `outdatedTimeout` (30s) with no update.
- * The vendored renewal runs on a main-thread timer a backgrounded tab
- * throttles to ~1/min, so the entry would cross the prune line; the heartbeat
- * re-homes the renewal on an unthrottled worker clock. This drives that
- * renewal logic through an injected ticker + clock against REAL y-protocols
- * Awareness objects (real lastUpdated/clock bookkeeping, real update fan-out to
- * a wired peer). It does NOT reproduce real browser throttling — that is only
- * observable at a browser/long-run rung and is carried as an open residual,
- * not claimed here.
- *
- * Time base: y-protocols stamps `lastUpdated` from a reference to `Date.now`
- * captured at import, so fake timers can't reach it. Instead the heartbeat's
- * `now` is injected and each simulated renewal instant is written back into the
- * awareness meta, keeping the awareness's stamp and the heartbeat's clock in
- * one controlled time base.
- */
-
 import { describe, expect, it } from 'vitest';
 import {
   Awareness,
@@ -41,7 +21,6 @@ class ManualTicker implements HeartbeatTicker {
   }
 }
 
-/** Pin the awareness's local stamp into the test-controlled time base. */
 function setLastUpdated(aw: Awareness, t: number): void {
   const meta = aw.meta.get(aw.clientID);
   if (meta) aw.meta.set(aw.clientID, { clock: meta.clock, lastUpdated: t });
@@ -71,7 +50,6 @@ describe('AwarenessHeartbeat starvation contract', () => {
     heartbeat.setAwareness(clientAw);
     heartbeat.start();
 
-    // Publish at t=0. The publish is the first "fresh" instant.
     clientAw.setLocalState({ user: { name: 'me' } });
     setLastUpdated(clientAw, 0);
     const peerClockAtPublish = peerAw.meta.get(clientAw.clientID)?.clock ?? -1;
@@ -79,16 +57,12 @@ describe('AwarenessHeartbeat starvation contract', () => {
     const renewInstants: number[] = [0];
     clientAw.on('update', () => renewInstants.push(clock));
 
-    // Worker ticks every 15s (its unthrottled cadence), well past the 30s line.
     for (const t of [15_000, 30_000, 45_000, 60_000]) {
       clock = t;
       ticker.fire();
-      setLastUpdated(clientAw, t); // the renewal (if any) landed at this instant
+      setLastUpdated(clientAw, t);
     }
 
-    // Every tick renewed (15s ≥ the 15s threshold), so the peer observed four
-    // fresh updates and the largest gap between renewals stays under the prune
-    // window — the entry never goes outdated.
     expect(renewInstants).toEqual([0, 15_000, 30_000, 45_000, 60_000]);
     let maxGap = 0;
     for (let i = 1; i < renewInstants.length; i++) {
@@ -97,7 +71,7 @@ describe('AwarenessHeartbeat starvation contract', () => {
     expect(maxGap).toBeLessThan(outdatedTimeout);
 
     const peerClockNow = peerAw.meta.get(clientAw.clientID)?.clock ?? -1;
-    expect(peerClockNow - peerClockAtPublish).toBe(4); // peer saw each renewal
+    expect(peerClockNow - peerClockAtPublish).toBe(4);
 
     heartbeat.stop();
     clientAw.destroy();
@@ -112,8 +86,6 @@ describe('AwarenessHeartbeat starvation contract', () => {
 
     let clock = 0;
     const ticker = new ManualTicker();
-    // Registered but never started — models the clamped main thread with no
-    // worker assist. Ticks that do fire must not renew.
     const heartbeat = new AwarenessHeartbeat(ticker, { now: () => clock });
     heartbeat.setAwareness(aw);
 
@@ -125,7 +97,7 @@ describe('AwarenessHeartbeat starvation contract', () => {
     });
 
     clock = 45_000;
-    ticker.fire(); // heartbeat not started → inert
+    ticker.fire();
 
     expect(updates).toBe(0);
     const lastUpdated = aw.meta.get(aw.clientID)?.lastUpdated ?? 0;
@@ -152,7 +124,7 @@ describe('AwarenessHeartbeat starvation contract', () => {
       updates += 1;
     });
 
-    clock = 5_000; // only 5s elapsed, under the 15s threshold
+    clock = 5_000;
     ticker.fire();
 
     expect(updates).toBe(0);
@@ -166,10 +138,10 @@ describe('AwarenessHeartbeat starvation contract', () => {
     const ticker = new ManualTicker();
     const heartbeat = new AwarenessHeartbeat(ticker);
     heartbeat.start();
-    expect(() => ticker.fire()).not.toThrow(); // no awareness registered
+    expect(() => ticker.fire()).not.toThrow();
 
     const doc = new Y.Doc();
-    const aw = new Awareness(doc); // local state null (never published)
+    const aw = new Awareness(doc);
     heartbeat.setAwareness(aw);
     expect(() => ticker.fire()).not.toThrow();
 
@@ -193,7 +165,6 @@ describe('AwarenessHeartbeat starvation contract', () => {
     awA.setLocalState({ user: { name: 'a' } });
     setLastUpdated(awA, 0);
 
-    // Wrong instance → no-op; awA is still registered and renews when stale.
     heartbeat.clearAwareness(awB);
     clock = 20_000;
     ticker.fire();
@@ -201,7 +172,6 @@ describe('AwarenessHeartbeat starvation contract', () => {
     expect(clockAfterRenew).toBeGreaterThan(0);
     setLastUpdated(awA, 20_000);
 
-    // Correct instance → clears; a later stale tick no longer renews.
     heartbeat.clearAwareness(awA);
     clock = 60_000;
     ticker.fire();

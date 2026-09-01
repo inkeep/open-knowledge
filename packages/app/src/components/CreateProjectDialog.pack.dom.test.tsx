@@ -9,11 +9,6 @@ import type {
   OkSeedPackInfo,
 } from '@/lib/desktop-bridge-types';
 
-// The create-new dialog's pack half: the same configurator the in-project seed
-// dialog shows (root chooser + live preview), planned against a project that
-// does not exist yet. Everything here is about what the user sees before
-// clicking Create and what that click sends.
-
 interface PlanCall {
   packId?: OkPackId;
   rootDir?: string;
@@ -43,12 +38,7 @@ const plans: Record<string, OkScaffoldPlan> = {
   },
 };
 
-// When set, `plan()` fails with this error kind. `invalid-root` is what the
-// real handler answers for a rootDir the planner rejects (`../x`, `/x`);
-// `internal` stands in for a preview that could not be computed at all.
 let planFailure: { kind: 'invalid-root' | 'internal'; message: string } | null = null;
-// When set, `plan()` rejects instead of resolving — the IPC bridge itself
-// failing, which is a structurally different path from a resolved `ok: false`.
 let planRejection: Error | null = null;
 
 vi.doMock('@/lib/seed-client', () => ({
@@ -153,9 +143,6 @@ async function renderDialog(bridge: OkDesktopBridge, initialPackId?: OkPackId) {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
-  // A caller-supplied pack now lands on the review screen, which is a gate in
-  // front of the form. These tests are about the form, so step through it. The
-  // review screen has its own tests below.
   if (initialPackId !== undefined) {
     fireEvent.click(await screen.findByTestId('create-review-continue'));
     await act(async () => {
@@ -164,8 +151,6 @@ async function renderDialog(bridge: OkDesktopBridge, initialPackId?: OkPackId) {
   }
 }
 
-/** Renders with a pack and stops on the review screen, for tests about review
- *  itself rather than the form behind it. */
 async function renderDialogAtReview(bridge: OkDesktopBridge, initialPackId: OkPackId) {
   const { CreateProjectDialog } = await import('./CreateProjectDialog');
   render(
@@ -185,8 +170,6 @@ async function renderDialogAtReview(bridge: OkDesktopBridge, initialPackId: OkPa
   });
 }
 
-/** Radix renders the radio as a button; the label wraps a whole Field, so the
- *  id is the stable handle. */
 function clickRadio(id: string) {
   const radio = document.getElementById(id);
   if (radio === null) throw new Error(`no radio ${id}`);
@@ -223,13 +206,8 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await waitFor(() => {
       expect(planCalls.length).toBeGreaterThan(0);
     });
-    // `knowledge-base` declares `defaultSubfolder: 'brain'`; the pack still
-    // previews (and seeds) at the project root until the user says otherwise.
     expect(planCalls[0]?.rootDir).toBeUndefined();
     expect(planCalls[0]?.packId).toBe('knowledge-base');
-    // The editor-detection probe is a round-trip: the first preview goes out
-    // before it lands, and the re-plan once it does is what reports the pack's
-    // skills as installable.
     await waitFor(() => {
       expect(planCalls.at(-1)?.preview).toEqual({ skillsInstallable: true });
     });
@@ -251,7 +229,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
 
     clickRadio('create-seed-root-subfolder');
 
-    // The pack's `defaultSubfolder` pre-filled the input, so the re-plan uses it.
     await waitFor(() => {
       expect(planCalls.at(-1)?.rootDir).toBe('brain');
     });
@@ -273,10 +250,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('Create stays disabled while the pack preview is in an error state', async () => {
-    // A subfolder the planner rejects ('../x', '/x') is non-empty, so the
-    // empty-name guard lets it through. With no preview gate the user can
-    // submit: runCreateNew's best-effort catch swallows the SeedRootDirError
-    // and the project opens with no pack and no error shown.
     const { bridge, createNewCalls } = makeBridge();
     planFailure = {
       kind: 'invalid-root',
@@ -287,9 +260,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await userEvent.type(screen.getByTestId('create-name'), 'Wiki');
     await screen.findByTestId('create-pack-preview-error');
 
-    // Bounded absence check: everything else that gates Create (the cascade
-    // probe, the name) settles well inside this window, so if the preview gate
-    // is missing the button flips to enabled here.
     await expect(
       waitFor(
         () => {
@@ -304,15 +274,10 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('a preview that cannot be computed at all still lets the project be created', async () => {
-    // The counterpart to the rejected-rootDir case: an internal or transport
-    // failure is not something the user can fix by editing the form, and the
-    // pack is secondary to creating the project — so Create must stay live
-    // rather than stranding them on a permanently disabled button.
     const { bridge, createNewCalls } = makeBridge();
     planFailure = { kind: 'internal', message: 'Failed to fetch' };
     await renderDialogAtReview(bridge, 'knowledge-base');
 
-    // The error annotates the manifest, so it surfaces on the review screen.
     await screen.findByTestId('create-pack-preview-error');
     fireEvent.click(screen.getByTestId('create-review-continue'));
     await submit('Wiki');
@@ -324,16 +289,11 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('a rejected preview request also leaves the project creatable', async () => {
-    // The sibling of the case above, and a structurally separate branch: this
-    // is the IPC bridge rejecting rather than the handler answering `ok:false`.
-    // Both must stay non-blocking, and they can diverge independently.
     const { bridge, createNewCalls } = makeBridge();
     planRejection = new Error("Error invoking remote method 'ok:seed:plan': read ECONNRESET");
     await renderDialogAtReview(bridge, 'knowledge-base');
 
     const alert = await screen.findByTestId('create-pack-preview-error');
-    // The raw transport string is a console concern, not something to put in
-    // front of someone who can still create their project.
     expect(alert.textContent).not.toContain('ECONNRESET');
 
     fireEvent.click(screen.getByTestId('create-review-continue'));
@@ -344,10 +304,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('reopening the dialog restores the pack default subfolder', async () => {
-    // Closing goes through NavigatorApp's onOpenChange, which clears both the
-    // pending pack and the pack list; reopening re-supplies the same array
-    // instance. A subfolder typed into a cancelled attempt must not survive
-    // that round trip and reach createNew unnoticed.
     const { bridge } = makeBridge();
     const { CreateProjectDialog } = await import('./CreateProjectDialog');
     const props = { onOpenChange: () => {}, bridge };
@@ -387,8 +343,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('an empty subfolder name blocks Create and says why', async () => {
-    // Distinct from the rejected-rootDir case: an empty name never reaches the
-    // planner, so the guard has to be local to the form.
     const { bridge, createNewCalls } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
 
@@ -411,9 +365,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('says where the pack lands when the project is an enclosing git repo', async () => {
-    // The project becomes the repo, not the folder being created, so "project
-    // root" would read as the repo's top level. Main anchors the pack at the
-    // new folder; the dialog has to say so.
     const { bridge } = makeBridge();
     (bridge.fs.findEnclosingGitRoot as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       gitRoot: '/Users/test/code/acme',
@@ -428,18 +379,12 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('the root chooser is announced with its own heading', async () => {
-    // Without the association the radios are announced with no group context —
-    // "project root" and "in a subfolder" on their own say nothing about what
-    // is being placed.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
     expect(screen.getByRole('radiogroup', { name: /Where should it live/ })).not.toBeNull();
   });
 
   test('picking a pack moves focus onto the review screen', async () => {
-    // The clicked card unmounts with the grid, so without an explicit move
-    // focus lands on the body and a keyboard user loses their place. Picking
-    // now advances to review, so its continue button is the target.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
     fireEvent.click(screen.getByTestId('create-change-pack'));
@@ -463,10 +408,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('opening on review focuses the primary action, not Change pack', async () => {
-    // The launcher-chip path opens straight on review. Each screen mounts its
-    // own body, so a focus target belonging to another screen is null here and
-    // the call silently no-ops — leaving the browser to take the first tabbable
-    // node, which is Change pack: the control that discards the chosen pack.
     const { bridge } = makeBridge();
     await renderDialogAtReview(bridge, 'knowledge-base');
 
@@ -477,15 +418,11 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('Change pack moves focus into the grid it opens', async () => {
-    // Same hazard in the other direction: the button unmounts with its own
-    // step, so without a handoff focus falls to the document body.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
 
     fireEvent.click(screen.getByTestId('create-change-pack'));
 
-    // Assert WHICH element took focus, not merely that something did — a
-    // `!== document.body` check passes for any stray tabbable node.
     await waitFor(() => {
       const cards = document.querySelectorAll('[data-slot="pack-card"]');
       expect(cards.length).toBeGreaterThan(0);
@@ -494,8 +431,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('each step announces itself to assistive tech', async () => {
-    // The dialog stays mounted across steps, so Radix's one-shot announcement
-    // on open does not cover the transitions.
     const { bridge } = makeBridge();
     await renderDialogAtReview(bridge, 'knowledge-base');
 
@@ -508,8 +443,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('a typed project name survives a trip out to the grid and back', async () => {
-    // Change pack is not destructive: only closing the dialog resets the form.
-    // Re-picking from the grid returns to the form with the name still there.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
 
@@ -522,9 +455,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('an unresolved pack id opens the grid rather than a half-built review', async () => {
-    // The review body needs a resolved pack; the footer only reads the step. An
-    // id that matches nothing would pair the configure form with review's
-    // buttons, so the step derivation checks the id resolves, not just exists.
     const { bridge } = makeBridge();
     const { CreateProjectDialog } = await import('./CreateProjectDialog');
     render(
@@ -545,12 +475,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('switching packs from the grid does not strand review on a subfolder error', async () => {
-    // `rootChoice` is a form choice, not a pack property, so it survives a pack
-    // switch — but `subfolder` is re-defaulted from the incoming pack. Switch
-    // from a pack that declares a default to one that does not, while "In a
-    // subfolder" is selected, and the subfolder goes empty: the preview turns
-    // into a BLOCKING error and review renders that instead of the manifest,
-    // with no field on screen to fix it.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
 
@@ -562,18 +486,12 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     fireEvent.click(screen.getByTestId('create-change-pack'));
     await userEvent.click(await screen.findByRole('button', { name: /Plain notes/ }));
 
-    // Review must show what the pack adds, not a form error it cannot resolve.
     await screen.findByTestId('create-review-body');
     expect(screen.queryByTestId('create-pack-preview-error')).toBeNull();
     await screen.findByText('daily/');
   });
 
   test('re-picking the same pack from the grid keeps the subfolder choice', async () => {
-    // The cross-pack switch above resets `rootChoice` because the incoming
-    // pack re-defaults `subfolder`, which can leave it empty and blocking.
-    // Re-picking the pack already selected re-defaults nothing, so the reset
-    // has nothing to protect against and only destroys the user's choice —
-    // "Change pack" is supposed to be non-destructive.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
 
@@ -585,7 +503,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     fireEvent.click(screen.getByTestId('create-change-pack'));
     await userEvent.click(await screen.findByRole('button', { name: /Knowledge base/ }));
 
-    // Back through review to the form the choice was made on.
     await screen.findByTestId('create-review-body');
     fireEvent.click(screen.getByTestId('create-review-continue'));
     await screen.findByTestId('create-project-form');
@@ -599,10 +516,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('the grid has no route back to review — only Cancel, which closes', async () => {
-    // A prior revision gave review and the grid a Back apiece pointing at each
-    // other, so a chip user bounced between two screens with no way out. One
-    // named action ("Change pack") with one destination (the grid), and the
-    // grid's only secondary closes outright.
     const onOpenChange = vi.fn(() => {});
     const { bridge } = makeBridge();
     const { CreateProjectDialog } = await import('./CreateProjectDialog');
@@ -619,12 +532,9 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     );
     await screen.findByTestId('create-review-body');
 
-    // Review offers Change pack, and no Cancel of its own.
     expect(screen.queryByTestId('create-cancel')).toBeNull();
     fireEvent.click(screen.getByTestId('create-change-pack'));
 
-    // On the grid: no Change pack (already there), and Cancel closes rather
-    // than returning to review.
     await screen.findByRole('button', { name: /Plain notes/ });
     expect(screen.queryByTestId('create-change-pack')).toBeNull();
 
@@ -633,9 +543,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('the configure screen names the skills the AI-tools box decides', async () => {
-    // The review screen already counted these skills; the box that decides
-    // whether they install is a screen later. Unticking has to visibly cancel
-    // them rather than silently subtracting from a number already read.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
 
@@ -643,7 +550,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     expect(note.textContent).toContain('1 skill');
     expect(note.textContent).toContain('installs');
 
-    // Untick "Connect AI tools" — the count stays, the consequence flips.
     await userEvent.click(screen.getByRole('checkbox'));
 
     await waitFor(() => {
@@ -654,8 +560,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
   });
 
   test('the manifest renders on review and not on the configure screen', async () => {
-    // The whole point of the split: the configure screen carries only inputs
-    // the user can act on, and the pack's contents are read once, before it.
     const { bridge } = makeBridge();
     await renderDialogAtReview(bridge, 'knowledge-base');
 
@@ -674,7 +578,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     });
 
     fireEvent.click(screen.getByTestId('create-change-pack'));
-    // The grid replaces the form; no Create until a pack is picked again.
     expect(screen.queryByTestId('create-submit')).toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: /Plain notes/ }));
@@ -682,7 +585,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await waitFor(() => {
       expect(planCalls.at(-1)?.packId).toBe('plain-notes');
     });
-    // Re-picking re-enters review, so the swapped pack's manifest is read there.
     await screen.findByText('daily/');
 
     fireEvent.click(screen.getByTestId('create-review-continue'));

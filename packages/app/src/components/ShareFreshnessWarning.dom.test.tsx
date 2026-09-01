@@ -1,25 +1,10 @@
-/**
- * Matrix coverage for the share popover's freshness warning row. Prop-driven
- * (the `GitSyncStatus` is passed directly, not mocked through the hook), so each
- * cell of freshness × syncEnabled × pushPermission is exercised in isolation.
- *
- * Substrate: jsdom via `bun run test:dom`.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { GitSyncStatus } from '@/hooks/use-git-sync-status';
 
-// The Sync now CTA fires a real fetch through `triggerSync`; stub it so the
-// click is observable without a network dependency (the landed transition is
-// driven by re-rendering with an updated status, not by this call resolving).
-// A mutable impl lets one test drive a rejected trigger (offline / server down).
 let triggerSyncImpl: () => Promise<void> = () => Promise.resolve();
 vi.doMock('@/lib/trigger-sync', () => ({ triggerSync: () => triggerSyncImpl() }));
 
-// "Enable auto-sync" enables in place via the project-local config binding
-// (through useSyncEnabledWriter). Capture the writes so a test can assert the
-// off → on transition instead of a navigation.
 let autoSyncWrites: boolean[] = [];
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
@@ -77,8 +62,6 @@ describe('ShareFreshnessWarning', () => {
     const row = screen.getByTestId('share-freshness-row');
     expect(row.textContent).toContain("This doc isn't on GitHub yet");
     expect(row.textContent).toContain("won't work until it's pushed");
-    // A rendered icon is the non-color cue that makes the warning perceivable
-    // without relying on the tint alone.
     expect(row.querySelector('svg')).not.toBeNull();
   });
 
@@ -185,15 +168,11 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
         kind="doc"
       />,
     );
-    // The row CTA opens the off → on confirmation gate rather than navigating
-    // the sender away to the settings surface.
     fireEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     const dialog = screen.getByRole('dialog');
     expect(window.location.hash).toBe('');
-    expect(autoSyncWrites).toEqual([]); // nothing written until the user confirms
+    expect(autoSyncWrites).toEqual([]);
 
-    // Confirming the gate enables auto-sync in place via the project-local
-    // config binding.
     fireEvent.click(within(dialog).getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     expect(autoSyncWrites).toEqual([true]);
   });
@@ -222,7 +201,6 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
     expect(screen.getByRole('button', { name: /Syncing/ })).not.toBeNull();
 
-    // A completed sync bumps lastSyncUtc — the "push landed" signal.
     rerender(
       <ShareFreshnessWarning
         freshness="absent"
@@ -262,8 +240,6 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
   });
 
   test('Sync now reverts to actionable when the trigger itself fails, never a stuck spinner', async () => {
-    // The trigger never lands (offline / server down): no CC1 status update
-    // follows, so without recovery the button would spin "Syncing" forever.
     triggerSyncImpl = () => Promise.reject(new Error('offline'));
     render(
       <ShareFreshnessWarning
@@ -275,7 +251,6 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
     expect(screen.getByRole('button', { name: /Syncing/ })).not.toBeNull();
 
-    // The rejected trigger drops back to the actionable Sync now button.
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Sync now' })).not.toBeNull();
     });
@@ -328,10 +303,8 @@ describe('ShareFreshnessWarning — empty folder', () => {
     const text = row.textContent ?? '';
     expect(text).toContain("Git can't track this folder");
     expect(text).toContain(FACT);
-    // Nothing here claims a push would help.
     expect(text).not.toContain("isn't on GitHub yet");
     expect(text).not.toContain("hasn't synced to GitHub yet");
-    // Every CTA is a dead end for a folder git cannot represent.
     expect(screen.queryByRole('button', { name: 'Enable Auto (Pull and Push)' })).toBeNull();
     expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
@@ -382,7 +355,6 @@ describe('ShareFreshnessWarning — empty folder', () => {
         kind="folder"
       />,
     );
-    // A sync completes elsewhere (the auto-sync cadence) and bumps lastSyncUtc.
     rerender(
       <ShareFreshnessWarning
         freshness="empty"

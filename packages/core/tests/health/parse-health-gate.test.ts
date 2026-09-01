@@ -1,20 +1,3 @@
-/**
- * Parse-health gate synthetic-regression tests.
- *
- * We exercise both:
- *
- *   1. `compareParseHealth` as a pure comparison — fake sample + fake
- *      baseline, deterministic assertions. Proves the gate logic fails
- *      correctly when counters exceed thresholds.
- *   2. `harvestParseHealth` with a small injected fixture containing a
- *      known-broken MDX fragment — proves the harvest path correctly
- *      increments block-level fallback, and that compareParseHealth
- *      picks it up end-to-end.
- *
- * The full fidelity-corpus harvest is the tier-2 CI job's concern, not
- * this file's (it's minutes-long). These tests are sub-second.
- */
-
 import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../../src/extensions/shared.ts';
 import { MarkdownManager } from '../../src/markdown/index.ts';
@@ -94,22 +77,6 @@ describe('compareParseHealth (R19 synthetic gate)', () => {
 });
 
 describe('harvestParseHealth (R19 end-to-end fixture harvest)', () => {
-  /**
-   * Inject known-broken MDX fragments into a fixture copy. Each class in
-   * `fixtures/mdx/crash-taxonomy.json` that was probed during implementation
-   * to cross the counter threshold is pinned here — the parameterised loop
-   * below turns "probed during development" into "enforced by CI" so a
-   * regression that silently breaks the reachability of any one class fails
-   * the gate rather than going undetected.
-   *
-   * The 5 classes below (C02, C15, C16, C17, C20) each reliably produce
-   * `parseFallback.blockLevel === 1, wholeDoc === 0` via
-   * `parseWithFallback`'s recursive split-then-rejoin path:
-   * `parse()` throws, the recursion isolates the broken block, emits a
-   * `rawMdxFallback` node, and the rest of the document parses clean. Other
-   * classes in the taxonomy either clean-parse or degrade
-   * without incrementing the counter — not useful for this gate.
-   */
   const CRASH_CLASSES: ReadonlyArray<{ id: string; input: string; className: string }> = [
     {
       id: 'C02',
@@ -138,7 +105,7 @@ describe('harvestParseHealth (R19 end-to-end fixture harvest)', () => {
     },
   ];
 
-  const CRASH_MDX = CRASH_CLASSES[3].input; // C17 — used by the end-to-end gate test.
+  const CRASH_MDX = CRASH_CLASSES[3].input;
 
   test('clean corpus ⇒ counters remain zero', () => {
     const corpus = ['# Heading\n\nParagraph.\n', 'Just text.\n', '- list item 1\n- list item 2\n'];
@@ -151,8 +118,6 @@ describe('harvestParseHealth (R19 end-to-end fixture harvest)', () => {
     test(`${cls.id} (${cls.className}) ⇒ block-level fallback increments, whole-doc stays 0`, () => {
       const sample = harvestParseHealth({ corpus: [cls.input] });
       expect(sample.parseFallback.blockLevel).toBeGreaterThan(0);
-      // Whole-doc fallback should NOT fire: the block-level path is enough
-      // to isolate the broken fragment and keep the rest of the doc alive.
       expect(sample.parseFallback.wholeDoc).toBe(0);
     });
   }
@@ -166,8 +131,6 @@ describe('harvestParseHealth (R19 end-to-end fixture harvest)', () => {
   });
 
   test('shared MarkdownManager instance can be reused across harvests', () => {
-    // Proves the gate is compatible with the cached-processor pattern:
-    // a single MarkdownManager instance handles many parses without state bleed.
     const mm = new MarkdownManager({ extensions: sharedExtensions });
     const clean = harvestParseHealth({
       manager: mm,

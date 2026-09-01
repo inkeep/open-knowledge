@@ -1,16 +1,3 @@
-/**
- * Executes the real language pre-paint script out of `index.html` against
- * caches written by the real writer, and asserts the `<html>` state it produces.
- *
- * This is the only coverage of that path. The script cannot import anything —
- * it runs before any bundle — so it reads the cache's field names (`locale`,
- * `dir`) as string literals with no compile-time link to
- * `use-apply-config-language.ts`. Renaming a field there updates every
- * TypeScript consumer while this script silently reads `undefined` and paints
- * the wrong language on every load, with nothing else in the suite going red.
- * Feeding real writer output through the real script is what couples the two.
- */
-
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,11 +10,6 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-/**
- * The language pre-paint script, lifted verbatim from `index.html`. Identified
- * by the cache key it reads rather than by position, so an added `<script>`
- * can't silently shift which one is under test.
- */
 function prePaintScript(): string {
   const html = readFileSync(resolve(here, '../../index.html'), 'utf8');
   const body = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
@@ -56,10 +38,8 @@ function reset(): void {
   localStorage.clear();
 }
 
-/** Seed the cache exactly as the app writes it — no hand-built JSON. */
 function seed(input: ApplyLanguageInput): void {
   applyLanguageToDom(input);
-  // Only the cache survives a reload; the live attributes do not.
   document.documentElement.removeAttribute('lang');
   document.documentElement.removeAttribute('dir');
 }
@@ -73,9 +53,6 @@ describe('language pre-paint script', () => {
   beforeEach(reset);
 
   test('has no inner newlines', () => {
-    // Biome's HTML formatter reindents inline-script content on every pass, so
-    // a multi-line body grows by four spaces per run and pre-commit never
-    // reaches a fixed point. Nothing at runtime can catch that.
     expect(script).not.toContain('\n');
   });
 
@@ -98,8 +75,6 @@ describe('language pre-paint script', () => {
   });
 
   test('a system preference paints the locale it last resolved to', () => {
-    // The sentinel survives in the cache, so nothing downstream can mistake the
-    // painted locale for a choice the user made.
     seed({ preference: 'system', locale: 'ur' });
     expect(JSON.parse(localStorage.getItem(LANGUAGE_CACHE_STORAGE_KEY) ?? '{}').pref).toBe(
       'system',
@@ -121,8 +96,6 @@ describe('language pre-paint script', () => {
   });
 
   test('a cache holding something that is not a language tag is ignored', () => {
-    // `lang` reaches CSS attribute selectors and font-family matching, so the
-    // value written to it is not free-form even though only this app writes it.
     for (const locale of ['', 'not a tag', '<script>', 'e'.repeat(80), 42, null]) {
       localStorage.setItem(LANGUAGE_CACHE_STORAGE_KEY, JSON.stringify({ locale, dir: 'rtl' }));
       runPrePaint();
@@ -131,9 +104,6 @@ describe('language pre-paint script', () => {
   });
 
   test('a cache with an unreadable direction still paints, left-to-right', () => {
-    // Direction is the field most likely to be lost to an older build's cache,
-    // and guessing `rtl` would flip the whole layout for a language that reads
-    // the other way.
     localStorage.setItem(LANGUAGE_CACHE_STORAGE_KEY, JSON.stringify({ locale: 'es' }));
     runPrePaint();
     expect(painted()).toEqual({ lang: 'es', dir: 'ltr' });
@@ -146,7 +116,6 @@ describe('language pre-paint script', () => {
     };
     try {
       expect(() => applyLanguageToDom({ preference: 'ar', locale: 'ar' })).not.toThrow();
-      // The running session is correct; only the next load's head start is lost.
       expect(painted()).toEqual({ lang: 'ar', dir: 'rtl' });
     } finally {
       Storage.prototype.setItem = original;

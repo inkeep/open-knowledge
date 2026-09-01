@@ -1,11 +1,3 @@
-/**
- * Runs the real Shiki against `okSyntaxTheme`. The theme's whole premise is
- * that a `var(...)` string survives tokenization as a token color instead of
- * being parsed as a color and rejected — assert it rather than trust it, since
- * a Shiki upgrade that started validating color syntax would otherwise fail
- * silently as unpainted code rather than as a thrown error.
- */
-
 import langTsx from '@shikijs/langs/tsx';
 import { createHighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
@@ -22,7 +14,6 @@ beforeAll(async () => {
   });
 });
 
-/** Flattened tokens for one line of tsx, keyed by content. */
 function colorOf(code: string, content: string): string | undefined {
   const { tokens } = highlighter.codeToTokens(code, {
     lang: 'tsx',
@@ -44,10 +35,6 @@ describe('okSyntaxTheme', () => {
   });
 
   test('paints a string and its delimiters from the one string slot', () => {
-    // The grammar emits the quotes as tokens of their own, and CodeMirror
-    // paints them with the body — so they must not fall through to the
-    // `punctuation` rule. Sharing the slot makes Shiki merge all three into a
-    // single token, which is what this asserts: a `"hi"` token exists at all.
     expect(colorOf('const s = "hi";\n', '"hi"')).toBe('var(--syntax-string)');
   });
 
@@ -61,13 +48,6 @@ describe('okSyntaxTheme', () => {
   });
 
   test('declares no chrome colors — only the editor foreground and background', () => {
-    // The regression this guards. `gitDecoration.*` and `terminal.ansi*` look
-    // like harmless metadata, but Pierre expands them into
-    // `--diffs-addition-color` / `--diffs-modified-color` and writes them at
-    // `:host`, where they outrank the `--diffs-*` block in globals.css and
-    // silently take over the fill of both halves of every merge conflict.
-    // Conflict fills are chrome and belong in the stylesheet; a color added
-    // here would move them back out of reach.
     expect(Object.keys(okSyntaxTheme.colors ?? {})).toEqual([
       'editor.foreground',
       'editor.background',

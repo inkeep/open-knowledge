@@ -43,7 +43,6 @@ describe('isSystemDoc', () => {
   });
 
   test('returns false for config doc names', () => {
-    // Predicates are disjoint by design — every callsite ORs them, never trades them.
     expect(isSystemDoc(CONFIG_DOC_NAME_PROJECT)).toBe(false);
     expect(isSystemDoc(CONFIG_DOC_NAME_PROJECT_LOCAL)).toBe(false);
     expect(isSystemDoc(CONFIG_DOC_NAME_USER)).toBe(false);
@@ -87,8 +86,6 @@ describe('isConfigDoc', () => {
   });
 
   test('membership is exact — lookalikes do NOT match', () => {
-    // STOP rule: the admission set is a public contract.
-    // Substring matches and prefix variants are deliberately rejected.
     expect(isConfigDoc('__config__/project.md')).toBe(false);
     expect(isConfigDoc('__config__/user')).toBe(false);
     expect(isConfigDoc('__config__/')).toBe(false);
@@ -153,13 +150,11 @@ describe('CC1Broadcaster', () => {
     broadcaster.signal('backlinks');
     await wait(70);
 
-    // 'files' should have fired at ~100ms, 'backlinks' not yet
     expect(broadcasts).toHaveLength(1);
     const first = CC1DerivedViewPayloadSchema.parse(JSON.parse(broadcasts[0]));
     expect(first.ch).toBe('files');
 
     await wait(50);
-    // 'backlinks' should have fired by now (~120ms after its signal)
     expect(broadcasts).toHaveLength(2);
     const second = CC1DerivedViewPayloadSchema.parse(JSON.parse(broadcasts[1]));
     expect(second.ch).toBe('backlinks');
@@ -257,7 +252,6 @@ describe('CC1Broadcaster', () => {
 
   test('emitBranchSwitched emits synchronously — no debounce', () => {
     broadcaster.emitBranchSwitched('feature-x');
-    // No wait — branch switches are discrete events, emit immediately.
     expect(broadcasts).toHaveLength(1);
   });
 
@@ -281,7 +275,6 @@ describe('CC1Broadcaster', () => {
   });
 
   test('emitBranchSwitched broadcasts on __system__ doc', () => {
-    // Remove __system__ — emit must be a no-op (graceful degradation like signal()).
     mockHocuspocus.documents.clear();
     broadcaster.emitBranchSwitched('main');
     expect(broadcasts).toHaveLength(0);
@@ -302,7 +295,6 @@ describe('CC1Broadcaster', () => {
     broadcaster.signal('files');
     await wait(120);
 
-    // First + third broadcasts are derived-view ('files'); second is branch-switched.
     const derived0 = CC1DerivedViewPayloadSchema.parse(JSON.parse(broadcasts[0]));
     const branchSwitch = CC1BranchSwitchedPayloadSchema.parse(JSON.parse(broadcasts[1]));
     const derived2 = CC1DerivedViewPayloadSchema.parse(JSON.parse(broadcasts[2]));
@@ -326,9 +318,6 @@ describe('CC1Broadcaster', () => {
   });
 
   test('emitDiskAck round-trips the state vector via base64', () => {
-    // Realistic SV: encoded by Y.js, several bytes including high bytes.
-    // The wire encoding (base64) must preserve byte-identity so the client's
-    // `decodeStateVector(payload.sv)` reproduces the original Uint8Array.
     const sv = new Uint8Array([0x00, 0x7f, 0x80, 0xff, 0x42, 0x10]);
     broadcaster.emitDiskAck('doc-a', sv);
     const payload = CC1DiskAckPayloadSchema.parse(JSON.parse(broadcasts[0]));
@@ -338,13 +327,10 @@ describe('CC1Broadcaster', () => {
 
   test('emitDiskAck emits synchronously — no debounce', () => {
     broadcaster.emitDiskAck('doc-a', new Uint8Array([1, 2, 3]));
-    // No wait — disk-ack tracks completed disk writes, emit immediately.
     expect(broadcasts).toHaveLength(1);
   });
 
   test('emitDiskAck seq increments monotonically across docs', () => {
-    // Per-document is irrelevant to seq — the seq is per-channel for
-    // observability uniformity, not for client-side ordering.
     broadcaster.emitDiskAck('doc-a', new Uint8Array([1]));
     broadcaster.emitDiskAck('doc-b', new Uint8Array([2]));
     broadcaster.emitDiskAck('doc-a', new Uint8Array([3]));
@@ -401,12 +387,6 @@ describe('CC1Broadcaster', () => {
     expect(snapshot.doc).toBe(Buffer.from([0x01, 0x02, 0x03]).toString('base64'));
   });
 
-  // Late-join recovery contract: the snapshot is the source of truth for
-  // `__system__`-disconnected clients to refresh `lastDiskAckedSV` on
-  // reconnect via `GET /api/server-info`. It MUST advance even when the
-  // broadcast itself was dropped (no `__system__` subscribers, document
-  // missing). Otherwise a client that reconnects after a brief drop
-  // would receive a stale snapshot and the missed-frame bug recurs.
   test('getLatestDiskAckSVsAsBase64 advances even when broadcast is dropped (no __system__ subscribers)', () => {
     mockHocuspocus.documents.clear();
     broadcaster.emitDiskAck('doc', new Uint8Array([0xab, 0xcd]));
@@ -448,7 +428,6 @@ describe('CC1Broadcaster', () => {
         },
       ],
     });
-    // No wait — rejections are discrete user-visible events, emit immediately.
     expect(broadcasts).toHaveLength(1);
   });
 
@@ -549,7 +528,6 @@ describe('CC1Broadcaster', () => {
     broadcaster.emitConfigIgnoreNestedError('b/.okignore', 'second ignore error');
 
     expect(broadcasts).toHaveLength(3);
-    // First broadcast is the derived-view 'files' channel; the next two are nested-error.
     const derived = CC1DerivedViewPayloadSchema.parse(JSON.parse(broadcasts[0]));
     const err1 = CC1ConfigIgnoreNestedErrorPayloadSchema.parse(JSON.parse(broadcasts[1]));
     const err2 = CC1ConfigIgnoreNestedErrorPayloadSchema.parse(JSON.parse(broadcasts[2]));
@@ -576,12 +554,7 @@ describe('CC1Broadcaster', () => {
   });
 
   test('emitConfigIgnoreNestedError does NOT throw when payload is invalid (catches Zod parse errors)', () => {
-    // Empty path violates schema's min(1) — emit must not throw, instead
-    // logs and increments error metric. This validates the defense-in-depth
-    // catch around the broadcast path: a malformed call site should not
-    // crash the watcher's debounce-fire callback.
     expect(() => broadcaster.emitConfigIgnoreNestedError('', 'something broke')).not.toThrow();
-    // The malformed payload was rejected by the schema, so no broadcast went out.
     expect(broadcasts).toHaveLength(0);
   });
 });
@@ -595,16 +568,10 @@ describe('isLinkIndexExcludedDoc', () => {
   });
 
   test('admits managed-artifact skills and template content docs as link-index sources', () => {
-    // Skills and folder-local templates both participate in the link graph:
-    // their outgoing links, backlinks, and authored tags index like ordinary
-    // documents. Only system + config docs are excluded here — the tree axis
-    // (which hides skills and `.ok` paths) is deliberately separate.
     expect(isLinkIndexExcludedDoc('__skill__/project/my-skill')).toBe(false);
     expect(isLinkIndexExcludedDoc('.ok/templates/daily')).toBe(false);
     expect(isLinkIndexExcludedDoc('docs/.ok/templates/meeting')).toBe(false);
     expect(isLinkIndexExcludedDoc('a/b/c/.ok/templates/note')).toBe(false);
-    // The stale synthetic tombstone never reaches the file index, so it is never
-    // a link-index source; it is kept out of the TREE by isReservedForUserTree.
     expect(isLinkIndexExcludedDoc('__template__/docs/my-template')).toBe(false);
   });
 
@@ -615,9 +582,6 @@ describe('isLinkIndexExcludedDoc', () => {
 });
 
 describe('isProblemsPlaneExcludedDoc', () => {
-  // Closed table, matching the convention its siblings follow: a doc class
-  // added to the validation plane must get a row here and in the predicate.
-
   test('excludes skill bundles under any skills root', () => {
     expect(isProblemsPlaneExcludedDoc('.claude/skills/record-a-decision/SKILL')).toBe(true);
     expect(isProblemsPlaneExcludedDoc('.agents/skills/write-a-spec/references/patterns')).toBe(
@@ -625,16 +589,10 @@ describe('isProblemsPlaneExcludedDoc', () => {
     );
     expect(isProblemsPlaneExcludedDoc('.github/skills/record-a-decision/SKILL')).toBe(true);
     expect(isProblemsPlaneExcludedDoc('.ok/skills/record-a-decision/SKILL')).toBe(true);
-    // `scripts/**` members are not graph nodes, so a predicate keyed on the
-    // SKILL/references doc shapes would miss them.
     expect(isProblemsPlaneExcludedDoc('.claude/skills/record-a-decision/scripts/notes')).toBe(true);
   });
 
   test('keeps admitted content that merely sits under a dot dir', () => {
-    // Scoped to the skills ROOT, never the host dotdir. Segment-matching
-    // `.github` would bury ordinary prose that is admitted content whose broken
-    // links are real defects — the discipline content-filter.ts states and pins
-    // for the sibling admission axis.
     expect(isProblemsPlaneExcludedDoc('.github/CI_RUNBOOK')).toBe(false);
     expect(isProblemsPlaneExcludedDoc('.changeset/wide-bug-report-dialog')).toBe(false);
     expect(isProblemsPlaneExcludedDoc('.vscode/notes')).toBe(false);
@@ -647,16 +605,10 @@ describe('isProblemsPlaneExcludedDoc', () => {
       isProblemsPlaneExcludedDoc('__skill__/global/record-a-decision/references/patterns'),
     ).toBe(true);
     expect(isProblemsPlaneExcludedDoc('__extskill__/record-a-decision')).toBe(true);
-    // Inert rather than a third class: the shared managed-artifact predicate
-    // matches this tombstone prefix, but no doc is ever stored under it, so the
-    // branch never fires on a real source.
     expect(isProblemsPlaneExcludedDoc('__template__/docs/my-template')).toBe(true);
   });
 
   test('keeps folder-local templates, which are authored content under a dot dir', () => {
-    // A broken link in a template is copied into every doc created from it,
-    // where it does report. Silencing the source would send the reader chasing
-    // the copies. The sibling suite above pins these as link-index sources.
     expect(isProblemsPlaneExcludedDoc('.ok/templates/daily')).toBe(false);
     expect(isProblemsPlaneExcludedDoc('docs/.ok/templates/meeting')).toBe(false);
     expect(isProblemsPlaneExcludedDoc('a/b/c/.ok/templates/note')).toBe(false);
@@ -665,11 +617,7 @@ describe('isProblemsPlaneExcludedDoc', () => {
   test('keeps ordinary documents, including a visible-path skills root', () => {
     expect(isProblemsPlaneExcludedDoc('docs/getting-started')).toBe(false);
     expect(isProblemsPlaneExcludedDoc('readme')).toBe(false);
-    // A dot INSIDE a segment is not a hidden segment.
     expect(isProblemsPlaneExcludedDoc('notes/v1.2/release')).toBe(false);
-    // A custom root the user typed at a visible path is ordinary content. Note
-    // a GLOBAL skill installed at such a root still resolves through the
-    // managed branch above and is excluded.
     expect(isProblemsPlaneExcludedDoc('team/skills/record-a-decision/SKILL')).toBe(false);
   });
 });
@@ -678,9 +626,6 @@ describe('isEditableTextDoc', () => {
   test('admits text-extension docNames and defers to a registered markdown twin', () => {
     expect(isEditableTextDoc('src/util.ts')).toBe(true);
     expect(isEditableTextDoc('readme.md')).toBe(false);
-    // A markdown file named `twin.ts.md` strips to docName `twin.ts` — the
-    // recorded extension must keep it OFF the verbatim text path, or four
-    // server dispatch sites would silently route it away from the bridge.
     registerDocExtension('twin.ts', '.md');
     expect(isEditableTextDoc('twin.ts')).toBe(false);
   });

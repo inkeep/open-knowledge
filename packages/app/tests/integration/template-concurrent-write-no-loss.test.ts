@@ -1,25 +1,3 @@
-/**
- * The template concurrent-writer reconcile on the CONTENT branch.
- *
- * Before the templates-as-content migration a template was a versioned managed
- * artifact, and `storeManagedArtifactDoc`'s disk-wins reconcile could discard an
- * author's live edit when a second writer changed the file underneath — a
- * content-loss gap this suite pinned under the synthetic `__template__/…` doc.
- *
- * Templates are ordinary content docs now (`<folder>/.ok/templates/<name>`), so
- * that managed path no longer runs for them. When a second writer changes the
- * file underneath the live doc and the doc is then stored, the content-branch
- * store is doc-authoritative: it writes the live doc to disk rather than
- * importing the divergent disk bytes back into the doc. So the author's pending
- * edit survives, the foreign bytes never replace it in the live doc, and neither
- * the `managed-artifact-reconcile` checkpoint nor its loss-ring site fires. This
- * test verifies that improvement end to end.
- *
- * Fidelity: real boot, real WS client, real `onStoreDocument` content branch,
- * real file lock, real shadow repo. The divergent write is a plain
- * `writeFileSync`; the store hook is invoked in the same turn.
- */
-
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -29,10 +7,8 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestClient, createTestServer, type TestServer } from './test-harness.ts';
 
-/** What the author had typed into the template and had not yet stored. */
 const AUTHOR_PENDING_LINE = 'Zzz author sentence pending when the reconcile fired.';
 
-/** What the concurrent writer put on disk underneath the live doc. */
 const FOREIGN_LINE = 'Foreign edit from a second OK window.';
 
 interface LossRingEvent {
@@ -77,7 +53,6 @@ function shadowGitRaw(s: TestServer, args: string[]): string {
   return execFileSync('git', ['--git-dir', dir, ...args], { encoding: 'utf-8' }).toString();
 }
 
-/** Every checkpoint the shadow holds, across all branch namespaces. */
 function listCheckpoints(s: TestServer): Array<{ sha: string; kind: string | null }> {
   return shadowGitRaw(s, ['for-each-ref', '--format=%(objectname)', 'refs/checkpoints'])
     .split('\n')
@@ -126,12 +101,10 @@ describe('template concurrent-write reconcile on the content branch', () => {
 
       const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
 
-      // v1 authored in the editor and persisted — this is what sets the LKG.
       const v1 = `---\ntitle: T\ndescription: d\n---\n\n# Template\n\nv1 body.\n`;
       client.doc.transact(() => client.ytext.insert(0, v1));
       await pollUntil(() => existsSync(tplFile) && readFileSync(tplFile, 'utf-8') === v1);
 
-      // The author keeps typing. These bytes are live and unstored.
       const live = client.ytext.toString();
       client.doc.transact(() => client.ytext.insert(live.length, `\n${AUTHOR_PENDING_LINE}\n`));
       await pollUntil(() =>
@@ -144,19 +117,11 @@ describe('template concurrent-write reconcile on the content branch', () => {
         ),
       );
 
-      // A second writer changes the file underneath us. Force the store in the
-      // same turn so the content-branch reconcile runs deterministically.
       mkdirSync(resolve(tplFile, '..'), { recursive: true });
       const foreign = `---\ntitle: T\ndescription: d\n---\n\n# Template\n\n${FOREIGN_LINE}\n`;
       writeFileSync(tplFile, foreign, 'utf-8');
       await storeImmediately(server, docName);
 
-      // The store is doc-authoritative: it writes the live doc to disk and does
-      // NOT import the divergent disk bytes back into the doc. So the author's
-      // pending line survives and the concurrent writer's foreign line never
-      // replaces it in the live doc — the inverse of the retired managed store,
-      // whose disk-wins reconcile imported the foreign bytes and discarded the
-      // author's edit.
       const rig = server;
       const docSource = rig.instance.hocuspocus.documents
         .get(docName)
@@ -165,9 +130,6 @@ describe('template concurrent-write reconcile on the content branch', () => {
       expect(docSource).toContain(AUTHOR_PENDING_LINE);
       expect(docSource).not.toContain(FOREIGN_LINE);
 
-      // The managed-store disk-wins reconcile never runs for a content doc, so
-      // its checkpoint kind and its loss-ring site never fire. (A regression that
-      // re-routed templates through the managed store would trip both.)
       expect(
         listCheckpoints(rig).filter((c) => c.kind === 'managed-artifact-reconcile'),
       ).toHaveLength(0);

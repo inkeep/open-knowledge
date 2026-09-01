@@ -5,13 +5,6 @@ import simpleGit, { type SimpleGit } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { resolveUpstreamChanges } from './server-factory.ts';
 
-/**
- * Unit coverage for the Timeline upstream-author recovery helper. A git pull
- * moves HEAD over an `oldHead..newHead` range; the helper maps each changed
- * `.md`/`.mdx` doc to the newest non-merge commit author that touched it, so the
- * reconcile can be attributed to a real author instead of the "File System"
- * writer.
- */
 describe('resolveUpstreamChanges', () => {
   let dir: string;
   let git: SimpleGit;
@@ -51,9 +44,6 @@ describe('resolveUpstreamChanges', () => {
   });
 
   test('maps a non-ASCII (Unicode) filename to its author', async () => {
-    // git quotes non-ASCII paths as "caf\303\251.md" under the default
-    // core.quotePath=true; resolveUpstreamChanges must disable that so the
-    // path maps to a real docName instead of falling back to file-system.
     const oldHead = await commitAs('Seed', 'seed@example.com', 'café.md', 'v0');
     const newHead = await commitAs('Ana Dev', 'ana@example.com', 'café.md', 'v1');
 

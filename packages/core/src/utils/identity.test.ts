@@ -11,8 +11,6 @@ import {
   iconFromClientName,
 } from './identity';
 
-// --- Stub browser globals for bun test environment ---
-
 const storage = new Map<string, string>();
 const localStorageStub = {
   getItem: (key: string) => storage.get(key) ?? null,
@@ -77,11 +75,9 @@ describe('colorFromSeed', () => {
   });
 
   test('HUMAN_COLORS and AGENT_COLORS produce different values for the same seed', () => {
-    // They have disjoint palette contents so this must be true
     const seed = 'test-seed';
     const human = colorFromSeed(seed, HUMAN_COLORS);
     const agent = colorFromSeed(seed, AGENT_COLORS);
-    // HUMAN_COLORS and AGENT_COLORS are disjoint palettes
     expect((HUMAN_COLORS as readonly string[]).includes(agent)).toBe(false);
     expect((AGENT_COLORS as readonly string[]).includes(human)).toBe(false);
   });
@@ -141,15 +137,12 @@ describe('iconFromClientName', () => {
     expect(iconFromClientName('codex-mcp-client')).toBe('openai');
   });
   test('maps ACP registry agent ids to brand icons', () => {
-    // An in-app agent thread keys presence by registry id, not clientInfo.name.
     expect(iconFromClientName('claude-acp')).toBe('claude');
     expect(iconFromClientName('codex-acp')).toBe('openai');
     expect(iconFromClientName('github-copilot-cli')).toBe('github');
     expect(iconFromClientName('cursor')).toBe('cursor');
   });
   test('registry agents with no brand icon keep the generic mark', () => {
-    // Not an oversight — there is no gemini/opencode/pi entry in the icon
-    // palette, so 'bot' is the honest answer.
     expect(iconFromClientName('gemini')).toBe('bot');
     expect(iconFromClientName('opencode')).toBe('bot');
     expect(iconFromClientName('pi-acp')).toBe('bot');

@@ -1,14 +1,3 @@
-/**
- * Window-scoped pub/sub carrying an "open an agent thread" launch from the
- * handoff menus to the dock (whose open-state + launch intent live in
- * EditorPane) — the ACP twin of `terminal-launch-events.ts`.
- *
- * The payload names a catalog agent (registry manifest id or custom entry id)
- * plus the composed prompt (never a command). Works on BOTH hosts — agent
- * threads are server-hosted, so unlike the terminal channel this one has no
- * desktop gate.
- */
-
 import { routeNoteWindowActionToMain } from '@/lib/note-window-main-actions';
 
 const THREAD_LAUNCH_EVENT = 'open-knowledge:agent-thread-launch';
@@ -16,15 +5,8 @@ const THREAD_LAUNCH_EVENT = 'open-knowledge:agent-thread-launch';
 export interface AgentThreadLaunchDetail {
   readonly agentSource: 'registry' | 'custom';
   readonly agentId: string;
-  /** Composed scope prompt, or null for a promptless "new chat". */
   readonly prompt: string | null;
-  /** Extension-less docName context the launch came from, when any. */
   readonly docName: string | null;
-  /**
-   * The user's raw typed text (create brief / instruction) for title
-   * derivation — kept out of `prompt` so the composed handoff preamble never
-   * becomes the tab label. Null when the launch carried no typed text.
-   */
   readonly titleHint: string | null;
 }
 

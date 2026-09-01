@@ -1,21 +1,8 @@
-/**
- * DOM tests for the settings-dialog search surface: the sidebar
- * search box, its result navigation, the enabled-plugin gating of rule results,
- * and the scroll-to-flash of a navigated field.
- *
- * Mirrors the mock harness in `SettingsDialogShell.dom.test.tsx`: the lazy body
- * is a synchronous probe that records the props it receives (so we can assert
- * `activeId` / `markdownlintRuleQuery` navigation) and renders a `[data-field]`
- * node for the active section (so the Shell's flash effect has a target).
- */
-
 import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Radix/cmdk reach for DOM globals the jsdom preload doesn't expose; hoist the
-// same shims the sibling shell test uses.
 type WindowGlobals = { MutationObserver?: typeof MutationObserver; NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -40,7 +27,6 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   }
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
-// jsdom does not implement scrollIntoView; the flash effect calls it.
 if (typeof HTMLElement.prototype.scrollIntoView !== 'function') {
   HTMLElement.prototype.scrollIntoView = () => {};
 }
@@ -57,7 +43,6 @@ const probeProps: BodyProps[] = [];
 let mockCollabUrl: string | null = 'ws://test.invalid';
 let mockProjectConfig: unknown = { contentRules: { markdownlint: { enabled: true } } };
 
-// A minimal fake catalog — the index reads only id/alias/aliases/name.
 const FAKE_RULE_CATALOG = [
   {
     id: 'MD013',
@@ -86,8 +71,6 @@ vi.doMock('@inkeep/open-knowledge-core', () => ({
   MARKDOWNLINT_RULE_CATALOG: FAKE_RULE_CATALOG,
 }));
 
-// The probe records props AND renders a `[data-field]` node for the active
-// preferences section so the Shell's imperative flash effect finds a target.
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({
   SettingsDialogBodyLazy: (props: BodyProps) => {
     probeProps.push(props);
@@ -161,12 +144,10 @@ describe('settings dialog search', () => {
 
     await user.type(screen.getByTestId('settings-search-input'), 'Sync');
     const result = await screen.findByTestId('settings-search-result-section:sync');
-    // While searching, the plain group nav is hidden.
     expect(screen.queryByTestId('settings-sidebar-item-preferences')).toBeNull();
 
     await user.click(result);
     expect(latestProbe()?.activeId).toBe('sync');
-    // Query cleared → group nav restored.
     expect(screen.getByTestId('settings-sidebar-item-preferences')).toBeDefined();
   });
 
@@ -188,7 +169,6 @@ describe('settings dialog search', () => {
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
 
     await user.type(screen.getByTestId('settings-search-input'), 'MD013');
-    // No rule result; the panel item is gone from the sidebar too.
     await waitFor(() => {
       expect(screen.getByTestId('settings-search-empty')).toBeDefined();
     });
@@ -203,7 +183,6 @@ describe('settings dialog search', () => {
     await waitFor(() => {
       expect(screen.getByTestId('settings-search-empty')).toBeDefined();
     });
-    // The polite live region announces the (zero) result count to SR users.
     expect(screen.getByTestId('settings-search-result-count').textContent).toContain('0');
   });
 

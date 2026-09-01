@@ -1,7 +1,3 @@
-/**
- * Unit tests for ConflictStore — CRUD and resolve strategies.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,14 +7,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { ConflictMarkersInContentError } from './conflict-errors.ts';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
 
-// ─── Test helpers ─────────────────────────────────────────────────────────────
-
 let tmpDir = '';
 let projectDir = '';
 let storePath = '';
 
 beforeEach(() => {
-  // Create unique temp dirs per test
   tmpDir = mkdtempSync(join(tmpdir(), 'conflict-store-test-'));
   projectDir = join(tmpDir, 'project');
   storePath = join(projectDir, '.ok', LOCAL_DIR, 'conflicts.json');
@@ -41,8 +34,6 @@ function makeEntry(file: string, overrides: Partial<ConflictEntry> = {}): Confli
 function readStore(): { version: number; branch: string; conflicts: ConflictEntry[] } {
   return JSON.parse(readFileSync(storePath, 'utf-8'));
 }
-
-// ─── CRUD tests ───────────────────────────────────────────────────────────────
 
 describe('ConflictStore CRUD', () => {
   test('starts empty when no conflicts.json exists', () => {
@@ -116,7 +107,6 @@ describe('ConflictStore CRUD', () => {
   });
 
   test('load() restores from persisted JSON', () => {
-    // Pre-write a conflicts.json
     const data = {
       version: 1,
       branch: 'feat/test',
@@ -146,13 +136,11 @@ describe('ConflictStore CRUD', () => {
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md'));
     store.setBranch('feat/new-branch');
-    store.addConflict(makeEntry('b.md')); // triggers save
+    store.addConflict(makeEntry('b.md'));
 
     expect(readStore().branch).toBe('feat/new-branch');
   });
 });
-
-// ─── resolveConflict() — strategy tests ──────────────────────────────────────
 
 describe('ConflictStore resolveConflict()', () => {
   test('throws when file is not tracked as a conflict', async () => {
@@ -163,9 +151,6 @@ describe('ConflictStore resolveConflict()', () => {
   });
 
   test("strategy 'content': refuses content that still carries conflict markers", async () => {
-    // Writing this would commit a document with literal `<<<<<<<` in it AND
-    // clear the tracked conflict, so the UI reports it solved while the file is
-    // broken. Refused before any git command runs.
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md'));
 
@@ -183,32 +168,22 @@ describe('ConflictStore resolveConflict()', () => {
     await expect(store.resolveConflict('a.md', 'content', markered)).rejects.toThrow(
       ConflictMarkersInContentError,
     );
-    // Typed, not bare: the HTTP boundary keys a 422 off this, so a bare Error
-    // would fall into the generic catch and become a 500 — which the
-    // `resolve_conflict` contract reads as a transient commit failure.
     await expect(store.resolveConflict('a.md', 'content', markered)).rejects.toMatchObject({
       name: 'ConflictMarkersInContentError',
       file: 'a.md',
     });
-    // Still tracked — a refused resolution must not clear the conflict.
     expect(store.count()).toBe(1);
   });
 
   test("strategy 'content': accepts a genuine resolution mentioning no markers", async () => {
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md'));
-    // Rejected later for lack of git, but NOT by the marker guard — proving the
-    // guard does not refuse ordinary content.
     await expect(
       store.resolveConflict('a.md', 'content', '# Pricing\n\nThe Team tier moves to $29.\n'),
     ).rejects.not.toThrow(/contains conflict markers/);
   });
 
   test("strategy 'content': accepts a resolution whose body contains a setext H1", async () => {
-    // Seven `=` is both a conflict separator and a Markdown setext H1
-    // underline. Refusing on the loose marker predicate made every document
-    // with such a heading unresolvable through the UI: the user accepts every
-    // hunk, presses Apply, and gets "Couldn't save the resolution" forever.
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md'));
     await expect(
@@ -222,20 +197,15 @@ describe('ConflictStore resolveConflict()', () => {
   });
 
   test("strategy 'mine'/'theirs': removes conflict from store when git succeeds", async () => {
-    // git is not available in unit test env (broken simple-git symlink).
-    // We verify that removeConflict() removes the entry, which is the contract
-    // regardless of which git commands were issued.
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md'));
 
-    // Directly simulate what resolveConflict does after git commands succeed:
     store.removeConflict('a.md');
     expect(store.count()).toBe(0);
     expect(readStore().conflicts).toHaveLength(0);
   });
 
   test("strategy 'content': writes content to disk and removes conflict", async () => {
-    // Create the file on disk to simulate a conflicted working tree
     const testFile = 'notes.md';
     const absPath = join(projectDir, testFile);
     writeFileSync(absPath, '<<<<<<< HEAD\nmy version\n=======\ntheir version\n>>>>>>>\n', 'utf-8');
@@ -246,28 +216,15 @@ describe('ConflictStore resolveConflict()', () => {
     const resolvedContent = '# Resolved\n\nManually merged content.\n';
     writeFileSync(absPath, resolvedContent, 'utf-8');
 
-    // Verify the file write works as expected
     const actualContent = readFileSync(absPath, 'utf-8');
     expect(actualContent).toBe(resolvedContent);
 
-    // Verify removeConflict is called after resolution
     store.removeConflict(testFile);
     expect(store.count()).toBe(0);
     expect(existsSync(storePath)).toBe(true);
     expect(readStore().conflicts).toHaveLength(0);
   });
 
-  // The path-traversal guard is the only
-  // defense against a malicious or buggy ConflictStore entry pointing at a
-  // file outside projectDir. The earlier `mine`/`theirs`/`content` tests
-  // exercise the store contract via `removeConflict()` but skip the actual
-  // `resolveConflict()` function (and therefore the guard), so the guard
-  // has zero direct coverage from those. These three tests fix that:
-  // path-traversal attempts via parent-traversal, absolute path, and a
-  // symlink-style escape — all on the `content` strategy path because it
-  // is the only strategy where the file path is written without git as the
-  // first action (git checkout for `mine`/`theirs` would reject the path
-  // upstream of the guard).
   test("strategy 'content' rejects path-traversal via parent components", async () => {
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('../../../etc/shadow.md'));
@@ -287,8 +244,6 @@ describe('ConflictStore resolveConflict()', () => {
   });
 
   test("strategy 'content' rejects sneaky parent traversal that resolves outside projectDir", async () => {
-    // A path like `subdir/../../escape.md` resolves to one directory above
-    // projectDir — the resolve() result must still pass the startsWith check.
     const store = new ConflictStore(projectDir, 'main');
     const sneaky = 'subdir/../../escape.md';
     store.addConflict(makeEntry(sneaky));
@@ -307,59 +262,21 @@ describe('ConflictStore resolveConflict()', () => {
     );
   });
 
-  // ─── strategy 'delete' + content '' contract ──────────────────────────
-  // These tests pin the foundational-contract fix for delete-vs-modify
-  // conflicts:
-  //
-  //   - The resolution surface MUST express a 'delete' primitive — none of
-  //     'mine'/'theirs'/'content' can honor "the file should not exist" on
-  //     DU/UD shapes.
-  //   - The empty-string predicate (`!content`) currently rejects
-  //     content === '' inside the 'content' strategy with the misleading
-  //     message "strategy 'content' requires content parameter".
-  //     this guard is INSIDE trusted
-  //     server code after the Zod wire boundary already validated `content`
-  //     is a string. this is masking,
-  //     not boundary defense. The fix MUST either (a) remove the guard
-  //     entirely (TS-narrowing already proves content !== undefined here), or
-  //     (b) leave the Zod boundary as the sole rejection point. Either way,
-  //     a downstream `Error` mentioning "requires content parameter" for a
-  //     legitimately-empty `""` input is wrong — the API layer already
-  //     produces a 400 with a field-specific message via the Zod refine.
-  //
   test("strategy 'delete' removes the file from disk and stages the deletion", async () => {
     const store = new ConflictStore(projectDir, 'main');
 
-    // Simulate a real merge-conflict file on disk (DU shape: theirs left in
-    // the working tree by git's modify/delete behavior).
     const testFile = 'foo.md';
     const absPath = join(projectDir, testFile);
     writeFileSync(absPath, 'their modification\n', 'utf-8');
     store.addConflict(makeEntry(testFile));
 
-    // The 'delete' strategy MUST be accepted by the type and the runtime.
-    // The contract: post-resolveConflict, the file is gone from disk + the
-    // conflict is removed from the store. (Git-side mechanics — `git rm`
-    // staging — are exercised in the integration tier where a real git
-    // repo is available.)
     // biome-ignore lint/suspicious/noExplicitAny: 'delete' is the new variant the test pins
     await store.resolveConflict(testFile, 'delete' as any).catch((e) => {
-      // Even if simple-git isn't available in this unit-test env, the
-      // failure mode MUST be the git invocation (not "unknown strategy")
-      // — the exhaustiveness check would throw
-      // "[conflicts] unknown resolve strategy: delete" today.
       if (e instanceof Error && e.message.includes('unknown resolve strategy')) {
         throw e;
       }
-      // Acceptable: git invocation failure (broken simple-git symlink in
-      // unit test env). The contract being pinned is that 'delete' is a
-      // RECOGNIZED variant — not the git mechanics.
     });
 
-    // Whether the actual `git rm` ran depends on simple-git availability;
-    // either way, 'delete' must NOT be rejected as an unknown strategy.
-    // (Once the fix lands and integration tests prove the git mechanics,
-    // this unit test stays as the contract gate.)
     expect(store.count()).toBeLessThanOrEqual(1);
   });
 
@@ -367,10 +284,6 @@ describe('ConflictStore resolveConflict()', () => {
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md'));
 
-    // The exhaustiveness check currently throws
-    // "[conflicts] unknown resolve strategy: delete" because 'delete' is
-    // not in the ResolveStrategy union. The fix extends the union; this
-    // assertion pins that the exhaustiveness check no longer fires.
     let thrown: Error | undefined;
     try {
       // biome-ignore lint/suspicious/noExplicitAny: pinning the new variant pre-fix
@@ -378,30 +291,12 @@ describe('ConflictStore resolveConflict()', () => {
     } catch (e) {
       thrown = e as Error;
     }
-    // ANY throw other than "unknown resolve strategy: delete" is acceptable
-    // — git mechanics failures from the test env (broken simple-git, no
-    // commits, etc.) are out of scope for this contract assertion.
     if (thrown !== undefined) {
       expect(thrown.message).not.toContain('unknown resolve strategy');
     }
   });
 
   test("strategy 'content' with empty string '' must NOT throw the misleading 'requires content parameter' error", async () => {
-    // Real failure-inducing input ("") is
-    // passed through the public method; assertion is on the user-visible
-    // outcome (the specific misleading message must not appear).
-    //
-    // The fix can satisfy this either by:
-    //   - Deleting the `!content` guard entirely (preferred —
-    //     the guard already narrows content to string, and the
-    //     resolution semantically allows empty content).
-    //   - Replacing it with `content === undefined` (less likely; the API
-    //     boundary already enforces non-undefined for strategy='content').
-    //
-    // Either way, the misleading message string "strategy 'content'
-    // requires content parameter" MUST disappear for the `content === ''`
-    // case at the unit boundary. (The schema-tier rejection at the Zod
-    // refine is a separate concern — see the integration tier.)
     const store = new ConflictStore(projectDir, 'main');
     const testFile = 'a.md';
     const absPath = join(projectDir, testFile);
@@ -414,8 +309,6 @@ describe('ConflictStore resolveConflict()', () => {
     } catch (e) {
       caught = e as Error;
     }
-    // If the call threw, it MUST NOT be the misleading "requires content
-    // parameter" message — that gate is the exact bug.
     if (caught !== undefined) {
       expect(caught.message).not.toContain('requires content parameter');
     }
@@ -434,14 +327,7 @@ describe('ConflictStore resolveConflict()', () => {
   });
 });
 
-// ─── resolveConflict() — working-tree variant (pull-only B1) ──────────────────
-
 describe('ConflictStore resolveConflict() — working-tree variant', () => {
-  /**
-   * Init a real git repo at projectDir with `file` committed at `remote`, then
-   * overwrite the working tree with `local` (the uncommitted overlay). Returns
-   * the committed blob SHA (the pin) and the HEAD SHA (to prove no commit runs).
-   */
   async function seedOverlay(
     file: string,
     remote: string,
@@ -473,7 +359,7 @@ describe('ConflictStore resolveConflict() — working-tree variant', () => {
 
     expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('REMOTE\n');
     expect(store.count()).toBe(0);
-    expect(await headSha()).toBe(before); // no commit created
+    expect(await headSha()).toBe(before);
   });
 
   test("'mine' keeps the overlay verbatim without committing", async () => {
@@ -489,12 +375,6 @@ describe('ConflictStore resolveConflict() — working-tree variant', () => {
   });
 
   test('the entry leaves the store BEFORE the resolved bytes reach disk', async () => {
-    // Ordering, not timing. Writing first opens a window the file watcher can
-    // land in: it re-seeds the doc from disk while the store still lists this
-    // file, and conflict-lifecycle-seed re-marks lifecycle.status='conflict'
-    // from an entry that is about to be deleted. That re-mark can outlive the
-    // resolve's own clear, leaving the doc flagged with no store entry behind
-    // it — which strands the conflict view on its loading state.
     const { blobSha } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
     const store = new ConflictStore(projectDir, 'main');
     store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
@@ -509,7 +389,6 @@ describe('ConflictStore resolveConflict() — working-tree variant', () => {
 
     await store.resolveConflict('a.md', 'content', 'HAND-MERGED\n');
 
-    // Still the pre-resolve bytes: the store was cleared first.
     expect(diskAtRemoval).toBe('LOCAL\n');
     expect(readFileSync(target, 'utf-8')).toBe('HAND-MERGED\n');
     expect(store.count()).toBe(0);
@@ -548,9 +427,6 @@ describe('ConflictStore resolveConflict() — working-tree variant', () => {
 
   test("'theirs' still throws for a blob-less entry from a corrupt store", async () => {
     const store = new ConflictStore(projectDir, 'main');
-    // addConflict now guards this invariant, so a blob-less working-tree entry
-    // can only arrive via a hand-edited / corrupt conflicts.json loaded from
-    // disk. Inject it past the guard to exercise the resolve-time defense.
     (store as unknown as { conflicts: unknown[] }).conflicts.push(
       makeEntry('a.md', { variant: 'working-tree' }),
     );

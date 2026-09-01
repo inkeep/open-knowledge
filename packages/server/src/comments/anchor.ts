@@ -1,13 +1,3 @@
-/**
- * Content-addressed anchoring — "remember the words, not the position."
- *
- * The durable record is the exact quoted text plus widened context; the
- * position is a fast-path hint only. Re-find runs an ordered fallback and
- * fails SAFE (flags orphaned) rather than ever guessing a wrong location. No
- * fuzzy matching: the quote is matched exactly; context only disambiguates
- * between multiple exact hits.
- */
-
 import {
   contextEvidenceFloor,
   contextMatchScore,
@@ -15,10 +5,8 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { Anchor } from './types.ts';
 
-/** Hypothesis uses 32 chars of context for web text; a reasonable markdown default. */
 const DEFAULT_CONTEXT_LEN = 32;
 
-/** A located passage as `[start, end)` — what both re-find and the create path score. */
 export interface Span {
   start: number;
   end: number;
@@ -29,20 +17,10 @@ export type RefindResult =
       status: 'anchored';
       start: number;
       end: number;
-      /**
-       * The quote itself changed — the range was recovered from its surrounding
-       * context, so the stored `exact` is stale and must be re-captured.
-       */
       rewritten?: boolean;
     }
   | { status: 'orphaned' };
 
-/**
- * Build an anchor for the selection `[start, end)` against `body`. Captures the
- * exact quote plus context on each side, widening the context until
- * `prefix+exact+suffix` is a unique literal so re-find can disambiguate a
- * repeated quote. Throws on an invalid range.
- */
 export function createAnchor(
   body: string,
   start: number,
@@ -62,9 +40,6 @@ export function createAnchor(
   let prefix = body.slice(Math.max(0, start - contextLen), start);
   let suffix = body.slice(end, Math.min(body.length, end + contextLen));
 
-  // Widen context only when the quote is ambiguous on its own. Grow the window
-  // (capped at whole-doc) until the triple is unique; if the surrounding text
-  // is genuinely identical, the position hint is the remaining tie-break.
   if (countOccurrences(body, exact) > 1) {
     let len = contextLen;
     while (!isUniqueTriple(body, prefix, exact, suffix) && len < body.length) {
@@ -76,45 +51,16 @@ export function createAnchor(
   return { exact, prefix, suffix, start, end };
 }
 
-/**
- * Semiont "reconcile at write time": the stored quote must be exactly what sits
- * at the offsets. Route handlers call this on a client-supplied anchor before
- * persisting — a mismatch means the client measured against a different body.
- */
 export function assertAnchorConsistent(body: string, anchor: Anchor): void {
   if (body.slice(anchor.start, anchor.end) !== anchor.exact) {
     throw new Error('anchor write-time invariant violated: quote does not match offsets');
   }
 }
 
-/** Every literal occurrence of `needle`, as spans. */
 export function literalSpans(haystack: string, needle: string): Span[] {
   return allOccurrences(haystack, needle).map((start) => ({ start, end: start + needle.length }));
 }
 
-/**
- * Narrow candidate occurrences to the ones whose surroundings best match the
- * context a caller captured. Returns EVERY candidate tied for the best score,
- * so a caller with a further tie-break of its own can apply it — this never
- * invents one, and with no context every candidate ties and the whole set comes
- * back untouched.
- *
- * Scoring is `contextMatchScore`, shared with the editor's copy of this
- * decision so the two cannot rank the same thread differently. It has to be
- * tolerant, and of more than this comment once claimed: the context was
- * captured against RENDERED text while `body` is markdown, so an exact
- * comparison collapses to zero not only when a `**` falls inside the window but
- * — far more often — at the very first block seam, where the captured text has
- * a single `\n` and the body has `\n\n`, `- `, `> ` or `#`. It scored zero for
- * every candidate on any context reaching past its own block, which is most of
- * them, and the ranking silently did nothing.
- *
- * `contextIsMarkdown` says where the caller's context came from, and the two
- * callers differ: a STORED anchor's context is a slice of the body and carries
- * its syntax, while the context a client sends with a fresh selection is
- * rendered text. Getting this wrong reintroduces the same collapse one side
- * over — see `syntaxInContext`.
- */
 export function bestByContext<T extends Span>(
   body: string,
   hits: readonly T[],
@@ -126,7 +72,6 @@ export function bestByContext<T extends Span>(
   let best: T[] = [];
   let bestScore = -1;
   for (const hit of hits) {
-    // `body` is markdown, so syntax is elastic here as well as whitespace.
     const score = contextMatchScore(
       body,
       hit,
@@ -143,39 +88,14 @@ export function bestByContext<T extends Span>(
   return best;
 }
 
-/**
- * Locate the anchor in the current `body`. Ordered, stop at first hit:
- *   1. fast path — the quote is still at the saved offsets;
- *   2. deletion probe — the stored surroundings, now TOUCHING, prove the
- *      passage was removed where it stood;
- *   3. quote search — find the quote; disambiguate multiple hits by context,
- *      then by nearest-to-old-position;
- *   4. orphan — nothing matched, or still ambiguous. Never guesses.
- */
 export function refind(body: string, anchor: Anchor): RefindResult {
   const { exact, prefix, suffix, start } = anchor;
   const end = start + exact.length;
 
-  // (1) fast path
   if (end <= body.length && body.slice(start, end) === exact) {
     return { status: 'anchored', start, end };
   }
 
-  // (2) deletion probe. Deleting exactly the selected text does not remove the
-  // stored context — it closes the gap between prefix and suffix, leaving the
-  // two concatenated at the old spot. Finding that seam is POSITIVE evidence of
-  // an in-place deletion, and it outranks any surviving occurrence of the
-  // quote: when the deleted passage's whole neighbourhood was duplicated
-  // elsewhere (a copied sentence, a repeated heading), the twin's surroundings
-  // legitimately match the stored context and no amount of context scoring can
-  // tell it from the original. The seam can.
-  //
-  // Two qualifiers keep the probe honest. Both context sides must exist — a
-  // one-sided context is a document edge, not a seam. And the full
-  // prefix+quote+suffix triple must be GONE: when the quote's own neighbours
-  // repeat the quote ("hi hi hi"), the seam string exists even with the
-  // passage intact, so adjacency alone proves nothing while the triple's
-  // absence does.
   if (
     prefix !== '' &&
     suffix !== '' &&
@@ -185,17 +105,8 @@ export function refind(body: string, anchor: Anchor): RefindResult {
     return { status: 'orphaned' };
   }
 
-  // (3) quote search
   const hits = allOccurrences(body, exact);
   if (hits.length === 0) return refindBetweenBrackets(body, anchor);
-  // Every acceptance below must show a trace of the stored surroundings. This
-  // is what keeps a deleted passage from re-anchoring onto an identical phrase
-  // elsewhere: the survivor is a lone, clean hit of the quote, and before this
-  // gate a lone hit was accepted without consulting the context at all — the
-  // exact "never guesses" this module's header promises, broken in the one
-  // case where guessing is invisible.
-  // A stored anchor's context was sliced out of the body, so it carries the
-  // body's markdown syntax and is condensed the same way the body is.
   const floor = contextEvidenceFloor(anchor, { syntaxInContext: true });
   const evidence = (span: Span): boolean =>
     floor === 0 ||
@@ -207,29 +118,21 @@ export function refind(body: string, anchor: Anchor): RefindResult {
     ) >= floor;
   if (hits.length === 1) {
     const span = { start: hits[0], end: hits[0] + exact.length };
-    // Not straight to orphaned: the true passage may have been EDITED (its
-    // quote no longer literal) while an untouched twin still matches — the
-    // bracket recovery can still find the real one by its intact surroundings.
     if (!evidence(span)) return refindBetweenBrackets(body, anchor);
     return { status: 'anchored', start: span.start, end: span.end };
   }
 
-  // disambiguate by how much of the stored context still surrounds each hit
   const best = bestByContext(
     body,
     hits.map((h) => ({ start: h, end: h + exact.length })),
     { prefix, suffix },
     { contextIsMarkdown: true },
   );
-  // Ranking says which candidate is LEAST bad; only the gate says whether the
-  // winner is any good. With the commented occurrence gone, every surviving
-  // twin scores near zero and the winner is an arbitrary wrong answer.
   if (!evidence(best[0])) return refindBetweenBrackets(body, anchor);
   if (best.length === 1) {
     return { status: 'anchored', start: best[0].start, end: best[0].end };
   }
 
-  // final tie-break: nearest to the old position
   let nearest: Span[] = [];
   let nearestDist = Number.POSITIVE_INFINITY;
   for (const h of best) {
@@ -244,28 +147,11 @@ export function refind(body: string, anchor: Anchor): RefindResult {
   if (nearest.length === 1) {
     return { status: 'anchored', start: nearest[0].start, end: nearest[0].end };
   }
-  // genuinely ambiguous — flag, never guess
   return { status: 'orphaned' };
 }
 
-/**
- * Recover a passage whose text was EDITED rather than removed.
- *
- * The stored prefix/suffix were widened at creation until the triple was
- * unique, so when both still occur exactly once and in order, whatever sits
- * between them is the passage — whatever it now says. The boundaries stay an
- * exact match; only the middle is allowed to have changed, which is what makes
- * this different from fuzzy matching: it cannot land on an unrelated passage,
- * because the surroundings have to be literally where they were.
- *
- * Ambiguity orphans rather than guesses, per the same rule the quote search
- * follows: more than one candidate bracket means we do not know which one the
- * reviewer meant.
- */
 function refindBetweenBrackets(body: string, anchor: Anchor): RefindResult {
   const { prefix, suffix, exact } = anchor;
-  // An empty side means the anchor sat at that end of the document; that
-  // boundary is the document edge and needs no match.
   const starts = prefix === '' ? [0] : allOccurrences(body, prefix).map((i) => i + prefix.length);
   const ends = suffix === '' ? [body.length] : allOccurrences(body, suffix);
   if (starts.length !== 1 || ends.length !== 1) return { status: 'orphaned' };
@@ -273,7 +159,6 @@ function refindBetweenBrackets(body: string, anchor: Anchor): RefindResult {
   const start = starts[0];
   const end = ends[0];
   if (end < start) return { status: 'orphaned' };
-  // A passage edited down to nothing is a removal, not an edit.
   if (end === start) return { status: 'orphaned' };
   const ceiling = rewriteCeiling(exact.length);
   if (end - start > ceiling) return { status: 'orphaned' };

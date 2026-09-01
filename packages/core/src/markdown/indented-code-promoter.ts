@@ -39,7 +39,7 @@ function promoteParagraphToCode(paragraph: Paragraph, source: string): Code | nu
 
   let lineStart = start;
   while (lineStart > 0 && source[lineStart - 1] !== '\n') lineStart--;
-  if (lineStart === start) return null; // no leading whitespace
+  if (lineStart === start) return null;
 
   const firstLinePrefix = source.slice(lineStart, start);
   if (!INDENT_RE.test(firstLinePrefix)) return null;

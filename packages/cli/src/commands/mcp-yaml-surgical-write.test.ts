@@ -7,13 +7,6 @@ import { CHAIN_V2, EDITOR_TARGETS, type EditorMcpTarget } from './editors.ts';
 import { writeEditorMcpConfig } from './init.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
 
-// Drive the real write spine against a temp Hermes `config.yaml`, exercising the
-// format-preserving `yaml` document path end to end through
-// `writeEditorMcpConfig`: comment/sibling preservation, the BOM/EOL/trailing-
-// newline wrapper, register-vs-update labeling, decline-on-unparseable, and the
-// reverse removal path. Hermes' whole config (models, tool filters) lives in
-// this same file, so touching only OK's own entry is load-bearing.
-
 let dir: string;
 
 function tempFile(name: string): string {
@@ -21,10 +14,6 @@ function tempFile(name: string): string {
   return join(dir, name);
 }
 
-// Override `detectPath` too (not just `configPath`): Hermes is
-// `offerOnlyWhenDetected`, so the availability gate probes the detect dir even
-// under `skipAvailabilityCheck`. Point it at the temp dir so the gate passes
-// deterministically instead of depending on a real `~/.hermes`.
 function hermesTargetForFile(configPath: string): EditorMcpTarget {
   return {
     ...EDITOR_TARGETS.hermes,
@@ -75,17 +64,10 @@ describe('surgical YAML MCP write', () => {
     expect(result.action).toBe('written');
 
     const after = readFileSync(configPath, 'utf-8');
-    // Comments + block-style content survive; the sibling's inline comment is
-    // preserved too. (yaml's AST round-trip may normalize whitespace INSIDE a
-    // flow collection — `["-y","x"]` → `[ "-y", "x" ]` — but never drops the
-    // comment or changes the value; the structural parse below is the fidelity
-    // proof. This matches how OK edits its own config.yml via parseDocument.)
     expect(after).toContain('# hand-written header');
     expect(after).toContain('# keep this note');
     expect(after).toContain('temperature: 0.7');
 
-    // Independent parse confirms data-equality: the sibling is untouched and our
-    // entry is added under the same `mcp_servers` map with the published chain.
     const parsed = parseYaml(after);
     expect(parsed.model).toBe('hermes-4');
     expect(parsed.temperature).toBe(0.7);
@@ -103,7 +85,6 @@ describe('surgical YAML MCP write', () => {
 
     writeHermes(configPath);
     const after = readFileSync(configPath, 'utf-8');
-    // Everything the user wrote survives verbatim; the new map is appended.
     expect(after).toContain('# my config');
     expect(after).toContain('model: hermes-4');
     expect(parseYaml(after).mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
@@ -111,8 +92,6 @@ describe('surgical YAML MCP write', () => {
 
   it('handles an empty `mcp_servers:` scalar (null) without throwing', () => {
     const configPath = tempFile('config.yaml');
-    // `mcp_servers:` with no body parses as Scalar(null); setIn must replace it
-    // with a map rather than throwing "Expected YAML collection".
     writeFileSync(configPath, 'model: hermes-4\nmcp_servers:\n');
 
     const result = writeHermes(configPath);
@@ -179,14 +158,12 @@ describe('surgical YAML MCP write', () => {
     writeHermes(configPath);
     const first = readFileSync(configPath, 'utf-8');
     const result = writeHermes(configPath);
-    // Entry already present + current: labeled overwritten, bytes unchanged.
     expect(result.action).toBe('overwritten');
     expect(readFileSync(configPath, 'utf-8')).toBe(first);
   });
 
   it('preserves a leading UTF-8 BOM byte-for-byte', () => {
     const configPath = tempFile('config.yaml');
-    // Explicit escape — never an invisible BOM literal in source.
     const original = '\uFEFF# bom config\nmodel: hermes-4\n';
     writeFileSync(configPath, original);
 
@@ -208,7 +185,6 @@ describe('surgical YAML MCP write', () => {
     expect(result.action).toBe('written');
 
     const after = readFileSync(configPath, 'utf-8');
-    // Every newline in the file is CRLF — no lone LF leaked in.
     expect(after.replace(/\r\n/g, '')).not.toContain('\n');
     expect(after).toContain('# crlf config');
     expect(parseYaml(after).mcp_servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
@@ -219,8 +195,6 @@ describe('surgical YAML MCP write', () => {
     () => {
       const configPath = tempFile('config.yaml');
       writeFileSync(configPath, '# my hermes config\nmodel: hermes-4\n');
-      // A tightened Hermes config (it can carry provider tokens under
-      // `mcp_servers.*.env`) must not be widened when OK adds its entry.
       chmodSync(configPath, 0o600);
 
       const result = writeHermes(configPath);
@@ -231,13 +205,11 @@ describe('surgical YAML MCP write', () => {
 
   it('declines a present, unparseable config (left byte-unchanged)', () => {
     const configPath = tempFile('config.yaml');
-    // Bad indentation / structure the yaml parser reports as an error.
     const original = 'model: hermes-4\n  bad: : : indent\n\t- mixed\n';
     writeFileSync(configPath, original);
 
     const result = writeHermes(configPath);
     expect(result.action).toBe('declined');
-    // The file OK couldn't safely parse is left exactly as it was.
     expect(readFileSync(configPath, 'utf-8')).toBe(original);
   });
 
@@ -259,7 +231,6 @@ describe('surgical YAML MCP write', () => {
     expect(outcome.kind).toBe('removed');
 
     const parsed = parseYaml(readFileSync(configPath, 'utf-8'));
-    // OK's entry is gone; the user's sibling + comment survive.
     expect(parsed.mcp_servers['open-knowledge']).toBeUndefined();
     expect(parsed.mcp_servers.github).toEqual({
       command: 'npx',
@@ -270,8 +241,6 @@ describe('surgical YAML MCP write', () => {
 
   it('leaves a foreign server sharing our key untouched on removal', () => {
     const configPath = tempFile('config.yaml');
-    // A server squatting on the `open-knowledge` name that is NOT OK's managed
-    // chain shape must be preserved, never deleted.
     writeFileSync(
       configPath,
       'mcp_servers:\n  open-knowledge:\n    command: not-ok\n    args: [evil]\n',

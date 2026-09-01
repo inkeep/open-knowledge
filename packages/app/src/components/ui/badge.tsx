@@ -12,12 +12,6 @@ const badgeVariants = cva(
         default: 'bg-primary text-primary-foreground [a]:hover:bg-primary/80',
         secondary: 'bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80',
         warning: 'bg-yellow-500/10 text-yellow-600 [a]:hover:bg-yellow-500/20',
-        // Solid counterpart to `warning`, for a count overlaid on an icon or
-        // button. The tinted `warning` chip reads as part of whatever sits
-        // behind it; an overlay needs its own fill plus a background-colored
-        // ring to separate it from the glyph underneath. Dark text on both amber
-        // shades, never white — white on amber-500 is ~2.1:1, under the WCAG AA
-        // floor for the small count digit; black on it is ~9.8:1.
         notification: 'bg-amber-500 text-black ring-1 ring-background dark:bg-amber-400',
         destructive:
           'bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20',
@@ -54,14 +48,6 @@ function Badge({
   );
 }
 
-/**
- * Cap for a `notification` count rendered as an overlay dot. Past this the
- * digits stop being legible at that size, and the exact number stops mattering
- * — the badge is a pointer to a surface that lists them. Shared so sibling
- * count badges don't drift to different thresholds. Counts over a wider domain
- * (all diagnostics on a document, not just its frontmatter) reasonably use a
- * larger cap of their own.
- */
 export const NOTIFICATION_BADGE_MAX = 9;
 
 export { Badge, badgeVariants };

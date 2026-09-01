@@ -18,65 +18,14 @@ export interface AgentIdentity {
     name: string;
     version: string;
   };
-  /** Derived: friendly brand name from clientInfo.name once handshake completes; connectionId beforehand. */
   displayName: string;
-  /** Derived: clientInfo.name once handshake completes; connectionId beforehand. */
   colorSeed: string;
 }
 
-/**
- * Request header by which the `ok mcp` shim forwards its keepalive WS
- * `connectionId` to the MCP HTTP endpoint. When present + valid, the MCP
- * HTTP session adopts this id as `AgentIdentity.connectionId` instead of
- * minting a fresh UUID.
- *
- * Without this unification the keepalive WS and the MCP HTTP session
- * generate distinct UUIDs: `setPresence` (write handlers, keyed by
- * `identity.connectionId`) lands the entry under `agent-<MCP_HTTP_UUID>`
- * while the 3 s `bumpPresenceTs` heartbeat ([mcp-mount.ts]) runs under
- * `agent-<KEEPALIVE_UUID>` and silently no-ops because the entry it tries
- * to refresh doesn't exist at that key. Result: the presence-bar icon
- * flickers — appears on each tool call's `setPresence` and disappears
- * ~5 s later when the client TTL filter elides the un-bumped entry. Same
- * mismatch breaks `clearPresence` on WS close.
- *
- * Header values are validated through the same `validateAgentId` checks
- * the keepalive WS path uses (regex + length cap + type guard) so
- * structured-log fields and broadcaster map keys never carry
- * attacker-controlled bytes.
- */
 export const MCP_CONNECTION_ID_HEADER = 'x-ok-connection-id';
 
-/**
- * Per-connection carrier for the hosted-agent fact on the HTTP MCP transport.
- *
- * The env marker that carries this on stdio (`OK_HOSTED_AGENT`) cannot travel
- * over HTTP, and the signal has to stay per-connection rather than
- * per-process: one shared server answers both the in-app agent panel and
- * external clients (an outside Cursor/Codex, an `ok start` consumer), and
- * those external clients legitimately want a navigable URL.
- *
- * Only an entry OK injects itself carries this header, and its absence is NOT
- * proof that the caller is external. A hosted agent whose harness loads OK's
- * own managed MCP entry from its editor config opens a connection OK never
- * wrote, so no marker rides it, and the marker cannot be put in that config
- * entry either — the same entry serves the user's ordinary, non-hosted use of
- * that editor. Absent is therefore treated as external deliberately, not
- * confidently: a plain URL is useless advice to an agent inside the app, but
- * an `ok open` steer is wrong advice to one outside it.
- */
 export const MCP_HOSTED_AGENT_HEADER = 'x-ok-hosted-agent';
 
-/**
- * Coerce an MCP client's self-reported `clientInfo.name` into a safe display
- * string: strip ASCII control characters, collapse internal whitespace,
- * truncate at 128 chars, and fall back when the result is empty.
- *
- * Used wherever a session minted under `AgentIdentity` derives `displayName`
- * / `colorSeed` from external input. The cap matches the value used in
- * agent-presence map keys and write-attribution log fields, so structured
- * logs can never carry attacker-controlled bytes past this boundary.
- */
 export function sanitizeClientName(name: string | undefined, fallback: string): string {
   const clean = Array.from(name ?? '')
     .map((char) => {

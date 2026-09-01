@@ -1,18 +1,3 @@
-/**
- * ReportBugDialog state-machine tests: compose → review → the Send hand-off,
- * plus the crash-context and note-preservation paths, all against a scripted
- * `window.okDesktop` bridge. Copy assertions pin the approved copy deck
- * strings; the path-identity assertions pin that the zip reviewed is the zip
- * sent.
- *
- * Send starts a background operation and closes the dialog, so nothing here
- * asserts a send OUTCOME — those layouts belong to BugReportSendToast and its
- * own DOM tests. What is asserted here is that no outcome can reach back into
- * the dialog.
- *
- * Substrate: jsdom via `bun run test:dom`.
- */
-
 import type {
   OkBugReportCrashDetectedEvent,
   OkBugReportCreateResult,
@@ -37,13 +22,9 @@ vi.doMock('@lingui/react/macro', () => ({
     <>{(value === 1 ? one : other).replace('#', String(value))}</>
   ),
   useLingui: () => ({ t: renderLinguiTemplate }),
-  // Both macro entrypoints alias to one shim module, so this mock also serves
-  // `@lingui/core/macro` — the bare `t` is what platform-labels.ts imports.
   t: renderLinguiTemplate,
 }));
 
-// Radix Dialog (focus trap) reaches for DOM globals the jsdom preload does not
-// expose on globalThis. Same hoist as CloneDialog.dom.test.tsx.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -76,11 +57,10 @@ const SUMMARY: ReportBundleSummary = {
 const CREATE_OK: OkBugReportCreateResult = {
   ok: true,
   zipPath: ZIP_PATH,
-  zipSizeBytes: 7130316, // renders as "6.8 MB"
+  zipSizeBytes: 7130316,
   summary: SUMMARY,
 };
 const SCREENSHOT: OkBugReportScreenshot = {
-  // A 1x1 transparent PNG stands in for the captured preview.
   dataUrl:
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
   width: 1200,
@@ -109,9 +89,7 @@ function installBridge(
   handlers: {
     create?: (request: CreateRequest) => Promise<OkBugReportCreateResult>;
     send?: (request: SendRequest) => Promise<OkBugReportSendResult>;
-    /** Omit to model a build without capture (the gate reveals with no screenshot). */
     captureScreenshot?: () => Promise<OkBugReportScreenshot | null>;
-    /** Omit to model a build predating the probe, which offers no dump row. */
     crashDumpAvailability?: () => Promise<{ available: boolean }>;
   } = {},
 ): BridgeLog {
@@ -136,8 +114,6 @@ function installBridge(
           ? handlers.send(request)
           : Promise.resolve({ ok: true as const, reference: 'OK-8H3KQD' });
       },
-      // Only present when a handler is supplied, so the default suite exercises
-      // the no-capture reveal path (matching a non-desktop / older bridge).
       ...(handlers.captureScreenshot
         ? {
             captureScreenshot: () => {
@@ -172,8 +148,6 @@ function installBridge(
       },
     },
   };
-  // The component reads `window.okDesktop`; the shared clipboard adapter reads
-  // `globalThis.okDesktop` — the jsdom preload keeps those objects distinct.
   for (const host of [window, globalThis] as unknown as Array<Record<string, unknown>>) {
     Object.defineProperty(host, 'okDesktop', { configurable: true, writable: true, value: bridge });
   }
@@ -190,11 +164,6 @@ function clearBridge() {
   }
 }
 
-/**
- * Let `count` animation frames elapse. The capture gate schedules on rAF, so a
- * test that only flushes microtasks cannot tell a gate that waits from one that
- * does not — it asserts before the first frame either way.
- */
 async function waitFrames(count: number): Promise<void> {
   for (let i = 0; i < count; i += 1) {
     await act(async () => {
@@ -223,12 +192,6 @@ async function renderDialog(
     crashContext?: import('./ReportBugDialogBody').ReportBugCrashContext;
     crashInvite?: OkBugReportCrashDetectedEvent;
   } = {},
-  /**
-   * Honour `onOpenChange` so a close actually unmounts the Radix content and
-   * `reopen()` drives a real second open cycle. Off by default: most tests only
-   * need the callback log, and holding the dialog open keeps their later
-   * queries answerable.
-   */
   options: { statefulOpen?: boolean } = {},
 ) {
   const { ReportBugDialog } = await import('./ReportBugDialog');
@@ -253,11 +216,6 @@ async function renderDialog(
     );
   }
   render(<Host />);
-  // ReportBugDialog is lazy-loaded — wait for the body chunk to resolve and
-  // mount before returning so callers' synchronous queries see the dialog.
-  // Generous deadline: the file's first render pays the chunk's cold
-  // transform+import cost, which can exceed findByRole's 1s default on a
-  // contended CI runner (only the failure path ever waits this long).
   await screen.findByRole('dialog', {}, { timeout: 15_000 });
   return {
     openChangeCalls,
@@ -281,25 +239,13 @@ describe('ReportBugDialog', () => {
 
   afterEach(async () => {
     cleanup();
-    // Restore any global a test replaced. Neither vitest config sets
-    // `restoreMocks`, and this file's whole subject is rAF-scheduled capture
-    // timing — a stub that survives one failing assertion turns a single real
-    // failure into a dozen whose blast radius points away from the cause.
     vi.restoreAllMocks();
-    // Uninstalling also forgets the recorded position, so one test's pointer
-    // cannot draw a marker into the next test's capture.
     stopPointerTracking?.();
     stopPointerTracking = undefined;
-    // The send manager is a module singleton every test in this file shares.
-    // An operation left mid-flight keeps its progress interval ticking and
-    // makes the next start for the same zip join the stale one instead of
-    // dispatching, so a leak here surfaces as an unrelated test failing.
     await vi.waitFor(() => {
       expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
     });
     clearBridge();
-    // Drop any launcher stand-in a test appended so it can't stall the next
-    // test's capture (the gate waits for these to clear before shooting).
     for (const el of document.querySelectorAll('[cmdk-root],[data-radix-popper-content-wrapper]')) {
       el.remove();
     }
@@ -324,7 +270,6 @@ describe('ReportBugDialog', () => {
 
     expect(screen.getByText('What to include')).not.toBeNull();
 
-    // The base tier is always included: checked and non-interactive.
     const logsCheckbox = screen.getByRole('checkbox', { name: /Logs & system info/ });
     expect(logsCheckbox.getAttribute('aria-checked')).toBe('true');
     expect(logsCheckbox.hasAttribute('disabled')).toBe(true);
@@ -413,17 +358,11 @@ describe('ReportBugDialog', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
 
-    // Closed at once, through the dialog's own onOpenChange path: mount sites
-    // hang their own work off that callback (the crash invite acks there).
     expect(openChangeCalls).toEqual([false]);
     await vi.waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    // The send is under way behind the closed dialog, carrying the composed
-    // note and the consent read off the bundle's own inventory (this fixture's
-    // summary carries no screenshot entry, so main must be told not to upload
-    // the capture it may still be holding).
     expect(log.sendCalls).toEqual([
       {
         zipPath: ZIP_PATH,
@@ -437,8 +376,6 @@ describe('ReportBugDialog', () => {
       },
     ]);
 
-    // No in-dialog upload UI survives anywhere: progress and the outcome are
-    // the toast's job now.
     expect(screen.queryByRole('progressbar')).toBeNull();
     expect(screen.queryByText('Uploading securely')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Sending report' })).toBeNull();
@@ -448,7 +385,6 @@ describe('ReportBugDialog', () => {
       await Promise.resolve();
     });
 
-    // The reference lands on the history row and in the toast, never back here.
     expect(screen.queryByDisplayValue('OK-8H3KQD')).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
@@ -485,8 +421,6 @@ describe('ReportBugDialog', () => {
     expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Thanks for the report!' })).toBeNull();
-    // The draft is offered by the toast's Open draft action, never launched
-    // for the reporter by this flow.
     expect(log.opened).toEqual([]);
   });
 
@@ -585,8 +519,6 @@ describe('ReportBugDialog', () => {
 
   test("a crash context folds React's component stack into the note, capped", async () => {
     const log = installBridge();
-    // 27 frames: two past the 25 kept, so the omission line is exercised.
-    // Fully-qualified locations, as React emits them.
     const frames = Array.from(
       { length: 27 },
       (_, i) => `    at Component${i} (/Users/someone/OpenKnowledge.app/bundle.js:1:${i})`,
@@ -603,8 +535,6 @@ describe('ReportBugDialog', () => {
 
     const note = log.createCalls[0]?.note ?? '';
     expect(note).toContain('Component stack:');
-    // Directory trimmed to the basename: keeps the source map coordinates,
-    // drops the home path the bundle was loaded from.
     expect(note).toContain('at Component0 (bundle.js:1:0)');
     expect(note).toContain('at Component24 (bundle.js:1:24)');
     expect(note).not.toContain('/Users/');
@@ -659,7 +589,6 @@ describe('ReportBugDialog', () => {
       'e.g. Switching projects while a sync was running',
     );
 
-    // The base logs row is always-on in the crash variant too.
     const logsCheckbox = screen.getByRole('checkbox', { name: /Logs & system info/ });
     expect(logsCheckbox.getAttribute('aria-checked')).toBe('true');
     expect(logsCheckbox.hasAttribute('disabled')).toBe(true);
@@ -675,8 +604,6 @@ describe('ReportBugDialog', () => {
 
     expect(screen.getByRole('button', { name: 'Not now' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
-    // The redaction note is suppressed here: the crash-dump row already
-    // qualifies redaction, and the banner carries the review-gate reassurance.
     expect(screen.queryByText(/secrets like api keys and tokens are redacted/i)).toBeNull();
   });
 
@@ -718,8 +645,6 @@ describe('ReportBugDialog', () => {
       },
     });
 
-    // A dirty shutdown that left no native crash dump: the invite still opens,
-    // but there is nothing to include, so no dead checkbox is offered.
     expect(screen.queryByRole('checkbox', { name: 'Crash dump' })).toBeNull();
     expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
 
@@ -730,8 +655,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('a crash invite that names the crashed version folds it in last', async () => {
-    // Last, not first: with an empty note these context lines ARE the note,
-    // and the intake takes the ticket title from the note's first line.
     const log = installBridge();
     await renderDialog({ crashInvite: { ...BOOT_INVITE, crashedAppVersion: '0.41.0' } });
 
@@ -748,8 +671,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('a crash invite with no crashed version composes the note without that line', async () => {
-    // An older build's dump, or a sentinel that predates the field, must not
-    // leave a dangling label a triager would read as a real value.
     const log = installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
 
@@ -770,17 +691,12 @@ describe('ReportBugDialog', () => {
   });
 
   test('a manually-opened report offers the dump main is holding, default unchecked', async () => {
-    // The report a user files right after a crash they were never prompted
-    // about is the one most likely to carry the decisive artifact — and it is
-    // exactly the report that used to withhold it.
     const log = installBridge({
       crashDumpAvailability: () => Promise.resolve({ available: true }),
     });
     await renderDialog();
 
     const dumpBox = screen.getByRole('checkbox', { name: 'Crash dump' });
-    // Unchecked: nothing about this open says the user is reporting that crash,
-    // so unredactable process memory rides along only on an explicit choice.
     expect(dumpBox.getAttribute('data-state')).toBe('unchecked');
 
     await userEvent.click(dumpBox);
@@ -797,8 +713,6 @@ describe('ReportBugDialog', () => {
     await screen.findByRole('checkbox', { name: 'Crash dump' });
     await createReport();
 
-    // `false`, not absent: the row was shown and the user left it off, which is
-    // a decision main records as `declined` — absent would read as never-offered.
     expect(log.createCalls[0]?.includeCrashDump).toBe(false);
   });
 
@@ -815,9 +729,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('offering a dump drops the blanket redaction reassurance', async () => {
-    // "Secrets are redacted automatically" directly above a row whose own hint
-    // says the dump cannot be redacted is a contradiction the reader has to
-    // resolve; the reassurance is suppressed wherever a dump is on offer.
     installBridge({ crashDumpAvailability: () => Promise.resolve({ available: true }) });
     await renderDialog();
 
@@ -837,8 +748,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('a crash invite reads availability off its own event, not the probe', async () => {
-    // The event already carries main's answer for the dump that crash left, and
-    // the invite opens unprompted — a second round-trip would only delay it.
     const log = installBridge({
       crashDumpAvailability: () => Promise.resolve({ available: false }),
     });
@@ -862,12 +771,9 @@ describe('ReportBugDialog', () => {
     });
     await renderDialog({ crashInvite: BOOT_INVITE });
 
-    // The dump rides in by default for a crash invite, so no click is needed.
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 
-    // The dump is copied byte-for-byte, so the last screen before send must
-    // not let "secrets redacted" stand unqualified.
     expect(
       screen.getByText(/6\.8 MB · secrets redacted · 3 files · crash dump not redacted/),
     ).not.toBeNull();
@@ -886,7 +792,6 @@ describe('ReportBugDialog', () => {
     const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     await renderDialog();
 
-    // Captured exactly once — before the dialog was revealed.
     expect(log.screenshotCalls).toBe(1);
 
     const shot = screen.getByRole('checkbox', { name: 'Screenshot' });
@@ -933,16 +838,11 @@ describe('ReportBugDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
 
-    // The screenshot rides under extra/, but the user already previewed it, so
-    // it must NOT trip the crash-dump "not redacted" wording.
     expect(screen.getByText(/6\.8 MB · secrets redacted · 3 files/)).not.toBeNull();
     expect(screen.queryByText(/crash dump not redacted/)).toBeNull();
   });
 
   test('a screenshot-bearing bundle tells main to upload the screenshot', async () => {
-    // The consent signal for the separate screenshot upload is read off the
-    // bundle's file inventory, not the checkbox state, so it cannot drift from the
-    // artifact the reporter reviewed if the checkbox is toggled after create.
     const log = installBridge({
       captureScreenshot: () => Promise.resolve(SCREENSHOT),
       create: () =>
@@ -964,8 +864,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('a trigger with no launcher captures at once, overlay still on screen', async () => {
-    // The case the shortcut exists for: the Radix popper on screen IS the bug.
-    // Waiting for it to unmount photographs the app after the defect went away.
     const popper = document.createElement('div');
     popper.setAttribute('data-radix-popper-content-wrapper', '');
     document.body.appendChild(popper);
@@ -981,9 +879,6 @@ describe('ReportBugDialog', () => {
       },
     });
     const { ReportBugDialog } = await import('./ReportBugDialog');
-    // Sampled after the dynamic import: on the first test to load the module a
-    // cold transform would otherwise land inside the measured window and race
-    // the 200ms assertion below.
     openedAt = performance.now();
     render(
       <TooltipProvider>
@@ -993,22 +888,12 @@ describe('ReportBugDialog', () => {
 
     await screen.findByRole('dialog');
     expect(log.screenshotCalls).toBe(1);
-    // The whole point: the overlay was in the frame rather than waited out.
     expect(popperAtCapture).toBe(true);
-    // A capture that waited out the settle deadline would ALSO find the popper
-    // present (it never unmounts here), so the two cases are told apart by the
-    // clock: the deadline is 500ms, and this path must not consult it at all.
-    // The bound sits well above the handful of milliseconds this path actually
-    // takes — it measures real wall-clock across two real rAF ticks, so a
-    // contended runner needs headroom — while staying under the deadline a
-    // waiting gate would hit.
     expect(capturedAfterMs).toBeLessThan(400);
     expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
   });
 
   test('a known pointer position is in the frame that gets captured, and gone once it settles', async () => {
-    // `capturePage()` omits the cursor, so a hover-state report would otherwise
-    // show a highlighted row and nothing explaining what highlighted it.
     stopPointerTracking = installPointerPositionTracker();
     movePointerTo(420, 260);
 
@@ -1029,17 +914,11 @@ describe('ReportBugDialog', () => {
 
     await screen.findByRole('dialog');
     expect(log.screenshotCalls).toBe(1);
-    // The marker is centred on the pointer by CSS, so these are the pointer's
-    // own viewport coordinates rather than a corner offset.
     expect(markerAtCapture).toEqual({ left: '420px', top: '260px' });
-    // It belongs to the shot, not to the app: nothing is left behind for the
-    // user to see once the dialog reveals.
     expect(document.querySelector('.ok-pointer-marker')).toBeNull();
   });
 
   test('with the pointer never moved, the capture runs with no marker and nothing else changes', async () => {
-    // A window reached by keyboard: there is no position to draw, and the spec
-    // is to omit the ring rather than guess one.
     stopPointerTracking = installPointerPositionTracker();
 
     let markersAtCapture = -1;
@@ -1057,9 +936,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('the screenshot hint promises a pointer marker only when one was drawn', async () => {
-    // The hint describes the image the user is deciding whether to share, so it
-    // has to track what the image actually carries. Three of the seven triggers
-    // never draw a ring; a blanket promise sends them looking for one.
     stopPointerTracking = installPointerPositionTracker();
     movePointerTo(120, 140);
     installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
@@ -1069,8 +945,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('with no marker drawn, the hint does not mention one', async () => {
-    // Same launcher-free path, but the pointer never moved, so
-    // `markPointerPosition` draws nothing and the copy must drop the clause.
     stopPointerTracking = installPointerPositionTracker();
     installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     await renderDialog();
@@ -1096,7 +970,6 @@ describe('ReportBugDialog', () => {
     await renderDialog();
 
     expect(markersAtCapture).toBe(1);
-    // Past the shot the ring is not in a screenshot, it is on the user's screen.
     expect(document.querySelector('.ok-pointer-marker')).toBeNull();
   });
 
@@ -1123,18 +996,11 @@ describe('ReportBugDialog', () => {
     );
     expect(document.querySelector('.ok-pointer-marker')).toBeNull();
 
-    // Let the abandoned capture land so it can't settle into the next test.
     pending.resolve(SCREENSHOT);
     await waitFrames(1);
   });
 
   test('a capture that lands after the reveal timeout is discarded, not offered', async () => {
-    // The marker is taken off screen when the reveal timer fires, so a capture
-    // still sampling at that moment comes back without the ring in it. Nothing
-    // bad ships only because `settled` latches first and drops the late result.
-    // That guard is the whole safety here, so pin it: a change that let a
-    // post-timeout capture through would offer a screenshot whose pointer
-    // marker is silently missing.
     stopPointerTracking = installPointerPositionTracker();
     movePointerTo(140, 200);
 
@@ -1147,13 +1013,10 @@ describe('ReportBugDialog', () => {
       </TooltipProvider>,
     );
 
-    // The timer wins the race, so the dialog reveals with nothing to offer.
-    // Comfortably past the gate's 1200ms reveal timeout.
     await screen.findByRole('dialog', {}, { timeout: 3000 });
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
     expect(document.querySelector('.ok-pointer-marker')).toBeNull();
 
-    // The late capture must not retroactively become the offered screenshot.
     pending.resolve(SCREENSHOT);
     await waitFrames(3);
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
@@ -1161,12 +1024,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('a frame that lands after the reveal timeout draws no marker to strand on screen', async () => {
-    // The reveal timer and the capture's animation frame run off independent
-    // clocks: a window that stops compositing suspends its frames while its
-    // timers keep firing, so the gate can reveal before the frame it queued
-    // ever runs. A ring drawn past that point is not in a screenshot — it is
-    // welded over the whole app at the top of the z-order with nothing left
-    // to take it down until the dialog closes.
     stopPointerTracking = installPointerPositionTracker();
     movePointerTo(310, 190);
 
@@ -1184,23 +1041,13 @@ describe('ReportBugDialog', () => {
     );
 
     try {
-      // No frame has run, so the reveal timeout is the only thing that can end
-      // the wait. Wait on its observable outcome — the dialog appearing — rather
-      // than on a fixed sleep longer than the 1200ms budget: a sleep only has to
-      // out-race a starved event loop, and losing that race would look like a
-      // regression rather than the flake it is.
       await vi.waitFor(() => expect(queued.length).toBeGreaterThan(0), { timeout: 5000 });
       await screen.findByRole('dialog', {}, { timeout: 5000 });
       expect(log.screenshotCalls).toBe(0);
     } finally {
-      // Frames resume. Restored in `finally` because everything above can
-      // throw, and leaving rAF stubbed would strand every later test in this
-      // file — all of which schedule their capture on it.
       rafSpy.mockRestore();
     }
 
-    // Whatever the gate queued before it settled must find the wait already
-    // over and do nothing.
     await act(async () => {
       for (let i = 0; i < 4 && queued.length > 0; i += 1) {
         for (const cb of queued.splice(0)) cb(performance.now());
@@ -1209,8 +1056,6 @@ describe('ReportBugDialog', () => {
     });
 
     expect(document.querySelector('.ok-pointer-marker')).toBeNull();
-    // And no capture was paid for either: main would encode a full PNG whose
-    // result `settled` drops on arrival.
     expect(log.screenshotCalls).toBe(0);
   });
 
@@ -1226,11 +1071,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('a launcher-borne capture draws no marker — the row it would mark is gone', async () => {
-    // The launcher-borne shot is deliberately taken AFTER the surface the user
-    // clicked has unmounted, so the last recorded pointer position is a row
-    // that no longer exists. Drawing there rings whatever slid underneath and
-    // claims a hover nobody is making — the same thing the tracker refuses to
-    // do once the pointer leaves the viewport.
     stopPointerTracking = installPointerPositionTracker();
     movePointerTo(500, 300);
 
@@ -1262,8 +1102,6 @@ describe('ReportBugDialog', () => {
   });
 
   test('the capture waits for the launcher (⌘K palette) to clear before revealing', async () => {
-    // Stand in for the command palette still animating out as the dialog opens
-    // (the reported leak: the palette was opened only to reach Report a bug).
     const launcher = document.createElement('div');
     launcher.setAttribute('cmdk-root', '');
     document.body.appendChild(launcher);
@@ -1282,13 +1120,10 @@ describe('ReportBugDialog', () => {
       </TooltipProvider>,
     );
 
-    // Hold the launcher on screen well past the frame a launcher-free trigger
-    // would have shot on: nothing is captured and the dialog stays hidden.
     await waitFrames(6);
     expect(log.screenshotCalls).toBe(0);
     expect(screen.queryByRole('dialog')).toBeNull();
 
-    // Launcher unmounts → capture fires and the dialog reveals with the preview.
     launcher.remove();
     await screen.findByRole('dialog');
     expect(log.screenshotCalls).toBe(1);
@@ -1302,8 +1137,6 @@ describe('ReportBugDialog', () => {
     });
     await renderDialog();
 
-    // The gate's capture `.catch(() => settle(null))` must degrade gracefully:
-    // the dialog opens (no stranded user), just without a screenshot to offer.
     expect(screen.getByRole('dialog')).not.toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
     expect(log.screenshotCalls).toBe(1);
@@ -1313,12 +1146,8 @@ describe('ReportBugDialog', () => {
     const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     await renderDialog({ crashInvite: BOOT_INVITE });
 
-    // The crash invite opens itself the moment main reports a crash, so the
-    // gate must not hold it closed for a capture (that would delay an already
-    // unprompted dialog) nor offer a screenshot — the crash dump is its artifact.
     expect(log.screenshotCalls).toBe(0);
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
-    // Still the crash-invite compose (its banner renders).
     expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
   });
 });

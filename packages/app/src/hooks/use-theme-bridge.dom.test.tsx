@@ -55,11 +55,6 @@ function makeRejectingBridge(rejectionError: Error): StubBridge {
   };
 }
 
-// Probe component for hook testing. Renders a real DOM node so React's
-// commit phase has something to attach against — null-returning probes
-// have shown commit-scheduler divergence on Bun's Linux test runner that
-// suppressed the hook's useEffect from firing observably. The probe div
-// also gives `cleanup()` an unambiguous unmount target.
 function HookProbe({
   bridge,
   themeValue,
@@ -203,9 +198,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
       <HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="light" />,
     );
 
-    // Unmount IMMEDIATELY (before effect fires) — the cancelled flag in
-    // the cleanup must suppress the still-pending .finally's
-    // signalThemeApplied call.
     unmount();
     await act(async () => {
       await Promise.resolve();
@@ -237,7 +229,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
 
     rerender(<HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="system" />);
 
-    // Idempotency: same-value rerender does NOT re-fire setThemeSource.
     await act(async () => {
       await Promise.resolve();
     });
@@ -247,14 +238,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
   });
 
   test('rerender with a changed themeValue re-fires setThemeSource and releases gate', async () => {
-    // Tests the deps array + cancellation flag transition that the
-    // idempotency test alone cannot reach. The hook's useEffect deps are
-    // `[bridge, themeValue]`; when `themeValue` changes from `'system'` to
-    // `'dark'`, the previous effect's cleanup sets its `cancelled = true`
-    // (suppressing the stale .finally signal) AND the new effect fires
-    // setThemeSource('dark') + signalThemeApplied. Without this test, a
-    // dropped dep or a broken cancellation flag would compile and pass
-    // every other test in this file.
     const stubBridge = makeStubBridge();
     const { rerender } = render(
       <HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="system" />,
@@ -282,9 +265,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
   });
 
   test('reports chrome as hex even when the token is authored in a syntax Electron cannot parse', async () => {
-    // The default theme authors `--sidebar` as `oklch(...)`. Electron's
-    // setBackgroundColor / titleBarOverlay accept hex, rgb, hsl or a name —
-    // forwarding the authored text loses the default theme's chrome entirely.
     document.documentElement.style.setProperty('--sidebar', 'oklch(0.985 0 0)');
     document.documentElement.style.setProperty('--sidebar-foreground', 'oklch(0.145 0 0)');
     const stubBridge = makeStubBridge();
@@ -303,8 +283,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
         { timeout: ASYNC_EFFECT_TIMEOUT_MS },
       );
       const chrome = stubBridge.signalThemeAppliedCalls[0]?.chrome;
-      // Either the environment resolved the color (then it must be hex) or it
-      // could not (then chrome is omitted) — never raw `oklch(...)`.
       if (chrome) {
         expect(chrome.bg).toMatch(/^#[0-9a-f]{6}$/);
         expect(chrome.symbol).toMatch(/^#[0-9a-f]{6}$/);
@@ -316,11 +294,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
   });
 
   test('a same-mode palette switch re-reports chrome even though themeValue is unchanged', async () => {
-    // Switching between two dark palettes (Dracula -> Monokai) leaves
-    // `themeValue` at 'dark', so only the `colorThemeKey` signal changes. The
-    // hook must still re-fire `signalThemeApplied` so main repaints the
-    // OS-drawn titlebar for the new palette. Without `colorThemeKey` in the
-    // effect deps, the effect never re-runs and the chrome stays stale.
     const stubBridge = makeStubBridge();
     const { rerender } = render(
       <HookProbe
@@ -354,18 +327,10 @@ describe('useThemeBridge (Tier-3 mount)', () => {
   });
 
   test('rejection path: signalThemeApplied still fires via .finally so the show-gate releases', async () => {
-    // The gate-release contract: when the
-    // IPC roundtrip rejects (channel teardown race, bootstrap ordering
-    // regression), `.finally(...)` MUST still fire signalThemeApplied or
-    // the cold-launch gate stalls blank for the full 5 s safety timeout.
-    // The structured warn in `.catch(...)` keeps the failure observable.
     const rejectionError = new Error('ipc-teardown: setThemeSource bridge unreachable');
     const stubBridge = makeRejectingBridge(rejectionError);
     render(<HookProbe bridge={stubBridge as unknown as OkDesktopBridge} themeValue="system" />);
 
-    // Gate-release contract: signal fires even on the rejection path.
-    // waitFor polls the whole rejection → .catch → .finally chain until
-    // signalThemeApplied lands.
     await waitFor(
       () => {
         expect(stubBridge.signalThemeAppliedCalls.length).toBe(1);
@@ -377,7 +342,6 @@ describe('useThemeBridge (Tier-3 mount)', () => {
     expect(stubBridge.signalThemeAppliedCalls[0]).toEqual({
       reducedTransparency: false,
     });
-    // Observable-failure contract: structured warn emitted from .catch.
     const sawStructuredWarn = consoleWarnSpy.mock.calls.some((call: unknown[]) => {
       const message = call[0];
       if (typeof message !== 'string') return false;

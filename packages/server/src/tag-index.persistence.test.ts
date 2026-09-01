@@ -1,10 +1,3 @@
-/**
- * Persistence + reconcile coverage for the tag-index snapshot
- * (`.ok/local/cache/tags.json`): cold boot, warm boot on an unchanged tree,
- * warm boot across offline edits/adds/deletes/renames, the mtime+size
- * short-circuit, corrupt-snapshot fallback, and the branch-switch-shaped
- * wholesale content swap.
- */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -31,8 +24,6 @@ function tempRig(): Rig {
   };
 }
 
-/** Write a file and pin a deterministic mtime so cross-write mtime deltas
- * never depend on filesystem timestamp granularity. */
 function writeDoc(contentDir: string, relPath: string, body: string, mtimeSec: number): void {
   const filePath = join(contentDir, relPath);
   mkdirSync(dirname(filePath), { recursive: true });
@@ -76,7 +67,6 @@ describe('TagIndex persistence', () => {
 
       const second = newIndex(rig);
       expect(await second.loadFromDisk()).toBe(true);
-      // Hierarchy expansion is re-derived from the persisted literals.
       expect(second.getDocsForTag('proj')).toEqual(['alpha']);
       expect(second.getDocsForTag('proj/team')).toEqual(['alpha']);
       expect(second.getDocsForTag('extra')).toEqual(['alpha']);
@@ -97,7 +87,6 @@ describe('TagIndex persistence', () => {
       await first.init();
       await first.saveToDisk();
 
-      // Offline: edit one doc's tags, delete one doc, add one doc.
       writeDoc(rig.contentDir, 'edited.md', 'Now #new-tag.\n', 2_000);
       rmSync(join(rig.contentDir, 'gone.md'));
       writeDoc(rig.contentDir, 'fresh.md', 'Brand #minty.\n', 2_000);
@@ -123,7 +112,6 @@ describe('TagIndex persistence', () => {
       await first.init();
       await first.saveToDisk();
 
-      // Offline rename = old path gone + new path present.
       rmSync(join(rig.contentDir, 'before.md'));
       writeDoc(rig.contentDir, 'after.md', 'Tagged #stable.\n', 2_000);
 
@@ -145,10 +133,6 @@ describe('TagIndex persistence', () => {
       await first.init();
       await first.saveToDisk();
 
-      // Rewrite with DIFFERENT tags but identical byte length, then pin the
-      // mtime back — the witness pair matches, so reconcile must skip the
-      // file and keep the snapshot's tags. This pins the short-circuit
-      // actually short-circuiting (a full re-parse would surface #after-y).
       writeFileSync(join(rig.contentDir, 'alpha.md'), 'Tag #after-yy.\n');
       utimesSync(join(rig.contentDir, 'alpha.md'), 1_000, 1_000);
 
@@ -159,7 +143,6 @@ describe('TagIndex persistence', () => {
       expect(second.getDocsForTag('before-x')).toEqual(['alpha']);
       expect(second.getDocsForTag('after-yy')).toEqual([]);
 
-      // A size change alone (same mtime) must break the short-circuit.
       writeFileSync(join(rig.contentDir, 'alpha.md'), 'Tag #after-y-longer.\n');
       utimesSync(join(rig.contentDir, 'alpha.md'), 1_000, 1_000);
       const diff2 = await second.reconcileWithDisk();
@@ -236,8 +219,6 @@ describe('TagIndex persistence', () => {
       await idx.init();
       await idx.saveToDisk();
 
-      // Simulate `git checkout feature`: shared file rewritten (new mtime),
-      // a main-only file removed, a feature-only file added.
       writeDoc(rig.contentDir, 'shared.md', 'On feature: #feature-only.\n', 2_000);
       rmSync(join(rig.contentDir, 'main-doc.md'));
       writeDoc(rig.contentDir, 'feature-doc.md', 'Tag #on-feature.\n', 2_000);
@@ -259,8 +240,6 @@ describe('TagIndex persistence', () => {
       writeDoc(rig.contentDir, 'real.md', 'Tag #kept.\n', 1_000);
       const idx = newIndex(rig);
       await idx.init();
-      // Live update for a doc that has no file (e.g. CRDT-only doc later
-      // deleted on disk before persistence) — reconcile prunes it.
       idx.updateDocumentFromMarkdown('phantom', 'Tag #ghost.\n');
       expect(idx.getDocsForTag('ghost')).toEqual(['phantom']);
       const diff = await idx.reconcileWithDisk();
@@ -279,8 +258,6 @@ describe('TagIndex persistence', () => {
       const idx = newIndex(rig);
       await idx.init();
       await idx.close();
-      // A save issued after close must not recreate anything under .ok/ —
-      // callers rm -rf the state dir right after destroy.
       await idx.saveToDisk();
       expect(existsSync(rig.snapshotPath)).toBe(false);
       await expect(idx.reconcileWithDisk()).resolves.toEqual({
@@ -303,8 +280,6 @@ describe('TagIndex persistence', () => {
       await idx.init();
       await idx.saveToDisk();
       expect(existsSync(rig.snapshotPath)).toBe(false);
-      // Reconcile still works purely in-memory (branch-switch callers don't
-      // need persistence wired to get the incremental pass).
       writeDoc(rig.contentDir, 'alpha.md', 'Tag #updated-now.\n', 2_000);
       const diff = await idx.reconcileWithDisk();
       expect(diff).toEqual({ added: 0, updated: 1, deleted: 0 });

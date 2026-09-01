@@ -6,15 +6,6 @@ import {
   getPublisherSkills,
 } from './skills-leaderboard.ts';
 
-// Build a minimal raw Flight payload from (source, skillId, installs) triples, in
-// the field order the real skills.sh payload uses.
-//
-// Each card is a brace-delimited OBJECT, because that is what RSC Flight
-// actually serializes a card as. This helper used to emit bare `"key":value`
-// runs directly inside the array — not valid JSON, and a shape Flight cannot
-// produce — which only parsed because the old scanner matched loose key/value
-// pairs anywhere in the stream. The sibling fixture in
-// `core/src/skills-catalog/leaderboard.test.ts` has always used objects.
 const flight = (rows: Array<[string, string, number]>): string =>
   `0:[${rows
     .map(
@@ -23,8 +14,6 @@ const flight = (rows: Array<[string, string, number]>): string =>
     )
     .join(',')}]`;
 
-// A fake `fetch` returning a fixture body — stubs the one boundary (HTTP) we
-// don't own, so the fetch→parse→map→cache pipeline runs deterministically.
 const fixtureFetch = (body: string, status = 200): typeof fetch =>
   (async () => new Response(body, { status })) as unknown as typeof fetch;
 
@@ -59,7 +48,7 @@ describe('getPopularSkills', () => {
       return new Response(flight([['a/b', 'x', 1]]), { status: 200 });
     }) as unknown as typeof fetch;
     await getPopularSkills(24, { fetchImpl: counting, now: 1000 });
-    await getPopularSkills(24, { fetchImpl: counting, now: 1000 + 60_000 }); // < TTL
+    await getPopularSkills(24, { fetchImpl: counting, now: 1000 + 60_000 });
     expect(calls).toBe(1);
   });
 
@@ -73,7 +62,6 @@ describe('getPopularSkills', () => {
   });
 });
 
-// One publisher-page listing row, in the markup shape the real page emits.
 const listing = (source: string, skillId: string, installs: number): string =>
   `<a class="group grid" href="/${source}/${skillId}">` +
   `<h3 class="font-semibold">${skillId}</h3>` +
@@ -106,9 +94,8 @@ describe('getPublisherSkills', () => {
       return new Response(listing('a/b', 'x', 1), { status: 200 });
     }) as unknown as typeof fetch;
     await getPublisherSkills('a/b', { fetchImpl: counting, now: 1000 });
-    await getPublisherSkills('a/b', { fetchImpl: counting, now: 1000 + 60_000 }); // < TTL
+    await getPublisherSkills('a/b', { fetchImpl: counting, now: 1000 + 60_000 });
     expect(calls).toBe(1);
-    // A DIFFERENT publisher is a different cache entry, not a hit on the first.
     await getPublisherSkills('c/d', { fetchImpl: counting, now: 1000 + 60_000 });
     expect(calls).toBe(2);
   });

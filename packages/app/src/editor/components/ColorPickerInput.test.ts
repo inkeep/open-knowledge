@@ -19,17 +19,14 @@ describe('nativePickerValue', () => {
   });
 
   test('returns safe fallback (#000000) for non-hex strings', () => {
-    // The browser's <input type="color"> only honors 7-char `#RRGGBB`.
-    // Free-string values like CSS color names / rgb() / var() / empty
-    // strings can't seed the picker; black is the inert fallback.
     expect(nativePickerValue('')).toBe('#000000');
     expect(nativePickerValue('red')).toBe('#000000');
     expect(nativePickerValue('rgb(240,80,50)')).toBe('#000000');
     expect(nativePickerValue('hsl(0, 100%, 50%)')).toBe('#000000');
     expect(nativePickerValue('var(--accent)')).toBe('#000000');
-    expect(nativePickerValue('#F05')).toBe('#ff0055'); // 3-char path
-    expect(nativePickerValue('#F0503')).toBe('#000000'); // 5-char not valid
-    expect(nativePickerValue('#F050322')).toBe('#000000'); // 8-char not valid
+    expect(nativePickerValue('#F05')).toBe('#ff0055');
+    expect(nativePickerValue('#F0503')).toBe('#000000');
+    expect(nativePickerValue('#F050322')).toBe('#000000');
   });
 
   test('rejects non-`#`-prefixed hex (no support for bare-hex)', () => {

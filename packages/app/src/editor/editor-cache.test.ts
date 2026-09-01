@@ -1,26 +1,3 @@
-/**
- * V2 editor cache — unit tests. Covers:
- *   - mount-park-mount preserves doc content, selection, CRDT sync
- *   - multi-cycle reparent works
- *   - evict cleans up
- *   - CACHE_ENABLED=false bypasses cache
- *
- * Convention: Bun test env has no DOM globals. We use fake shapes that
- * satisfy the narrow subset of HTMLElement the cache touches
- * (parentElement / appendChild / removeChild / scrollTop). DOM reparent
- * fidelity under REAL TipTap/CM6 is validated separately; the Playwright
- * suite exercises higher-level cache scenarios (warm-switch, etc.) but
- * does not currently pin the reparent mechanism directly.
- *
- * Y.Doc is used FOR REAL — yjs has zero DOM coupling, so we can assert
- * CRDT state is preserved through cache cycles without mocking.
- *
- * Kill switch (CACHE_ENABLED) is exported as a const; tests verify the
- * cached path with the current value (true) and the uncached path by
- * tagging entries with __uncached directly (simulates the kill-switch
- * code path without module reload).
- */
-
 import { Compartment } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
@@ -70,10 +47,6 @@ import {
   acquireScrollRestoreSuppression,
 } from './scroll-restore-coordination';
 
-// ---------------------------------------------------------------------------
-// Minimal HTMLElement fake — satisfies the subset the cache uses.
-// ---------------------------------------------------------------------------
-
 interface FakeNode {
   parentElement: FakeNode | null;
   scrollTop: number;
@@ -90,9 +63,7 @@ function makeNode(): FakeNode {
     scrollTop: 0,
     children: [],
     style: {},
-    setAttribute(_key, _value) {
-      // no-op — tracked attributes are not asserted
-    },
+    setAttribute(_key, _value) {},
     appendChild(child) {
       if (child.parentElement) child.parentElement.removeChild(child);
       node.children.push(child);
@@ -108,10 +79,6 @@ function makeNode(): FakeNode {
   };
   return node;
 }
-
-// ---------------------------------------------------------------------------
-// Fake TipTap Editor / CM EditorView that satisfies the cache contract
-// ---------------------------------------------------------------------------
 
 interface FakeTiptapEditorSpies {
   destroyCalls: number;
@@ -134,12 +101,6 @@ function makeFakeTiptapEditor(dom: FakeNode): {
         spies.focusCalls++;
       },
     },
-    // Production `Editor.mount(target)` is what mount-promise.ts calls after
-    // its yield-point. Some editor-cache tests don't exercise this path,
-    // but park/evict is wired to mount-promise; the integration tests
-    // below need a fake that responds to mount() by attaching DOM into the
-    // target so the V2 reparent + scrollTop assertions still hold. Additive
-    // for older tests since they never invoke mount().
     mount(target: FakeNode) {
       spies.mountCalls++;
       target.appendChild(dom);
@@ -172,10 +133,6 @@ function makeFakeCmView(dom: FakeNode): { view: EditorView; spies: FakeCmViewSpi
   return { view, spies };
 }
 
-// ---------------------------------------------------------------------------
-// Fake HocuspocusProvider — narrow surface (destroy + document ref)
-// ---------------------------------------------------------------------------
-
 interface FakeProviderSpies {
   destroyCalls: number;
   connectCalls: number;
@@ -200,10 +157,6 @@ function makeFakeProvider(ydoc: Y.Doc): { provider: HocuspocusProvider; spies: F
   return { provider, spies };
 }
 
-// ---------------------------------------------------------------------------
-// Test harness
-// ---------------------------------------------------------------------------
-
 interface TiptapHarness {
   docName: string;
   ydoc: Y.Doc;
@@ -216,7 +169,6 @@ interface TiptapHarness {
   spies: FakeTiptapEditorSpies;
   providerSpies: FakeProviderSpies;
   factoryCallCount: number;
-  /** Factory to pass into mountTiptapEditor. */
   factory: (container: FakeNode) => {
     editor: Editor;
     ydoc: Y.Doc;
@@ -324,13 +276,8 @@ function makeCmHarness(docName: string): CmHarness {
   return harness;
 }
 
-// ---------------------------------------------------------------------------
-// Test suites
-// ---------------------------------------------------------------------------
-
 describe('CACHE_ENABLED constant', () => {
   test('is true by default (V2 ships enabled)', () => {
-    // Module exports CACHE_ENABLED; default shipping value is true.
     expect(CACHE_ENABLED).toBe(true);
   });
 });
@@ -386,11 +333,8 @@ describe('TipTap cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
 
-    // Factory NOT called a second time — cache hit.
     expect(h.factoryCallCount).toBe(1);
-    // Same entry returned.
     expect(second).toBe(first);
-    // DOM reparented to new container.
     expect(h.editorDom.parentElement).toBe(newContainer);
     expect(h.container.children).not.toContain(h.editorDom);
   });
@@ -402,7 +346,6 @@ describe('TipTap cache — lifecycle', () => {
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Simulate scrolling the editor scrollDOM
     h.editorDom.scrollTop = 1234;
     parkTiptapEditor(entry);
     expect(entry.scrollTop).toBe(1234);
@@ -413,14 +356,10 @@ describe('TipTap cache — lifecycle', () => {
       container: newContainer as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Container's scrollTop should be restored.
     expect(newContainer.scrollTop).toBe(1234);
   });
 
   test('mount: cache-hit stands down on scroll restore while a landing holds the scroller', () => {
-    // A warm mount and a mode-switch landing fire at the same moment; the
-    // landing is the single scroll writer for its window, so the parked
-    // position must not be written over it.
     const h = makeTiptapHarness('doc-a');
     const entry = mountTiptapEditor({
       docName: h.docName,
@@ -439,8 +378,6 @@ describe('TipTap cache — lifecycle', () => {
     });
     expect(suppressed.scrollTop).toBe(0);
 
-    // Suppression is per-document and lifts on release: the next warm mount
-    // restores again.
     parkTiptapEditor(entry);
     suppression.release();
     const released = makeNode();
@@ -453,12 +390,6 @@ describe('TipTap cache — lifecycle', () => {
   });
 
   test('mount: cache-hit still restores scroll while a NAVIGATION holds the scroller', () => {
-    // A navigation's hold is not a landing's, and this reader gets one chance.
-    // A landing is still placing a position and will write one, so standing down
-    // for it preserves a deliberate position. A navigation has already written
-    // its position, and the parked scrollTop IS that result — so standing down
-    // here would not defer the restore, it would drop it, and the reader would
-    // arrive at the top of the document rather than where they navigated to.
     const h = makeTiptapHarness('doc-a');
     const entry = mountTiptapEditor({
       docName: h.docName,
@@ -488,9 +419,6 @@ describe('TipTap cache — lifecycle', () => {
     });
     const focusCountAfterFirstMount = h.spies.focusCalls;
 
-    // Case A: editor did NOT own focus at park (fake harness has no DOM focus
-    // tracking, so hadFocus is false by default). Cache-hit should NOT
-    // hijack focus.
     parkTiptapEditor(entry);
     expect(entry.hadFocus).toBe(false);
     const newContainerA = makeNode();
@@ -501,12 +429,8 @@ describe('TipTap cache — lifecycle', () => {
     });
     expect(h.spies.focusCalls).toBe(focusCountAfterFirstMount);
 
-    // Case B: editor DID own focus at park (simulate by flipping hadFocus
-    // on the entry). Cache-hit should restore focus.
     entry.hadFocus = true;
     parkTiptapEditor(entry);
-    // parkTiptapEditor overwrites hadFocus from current DOM — simulate the
-    // "editor had focus" case by setting AFTER park.
     entry.hadFocus = true;
     const newContainerB = makeNode();
     const beforeB = h.spies.focusCalls;
@@ -529,12 +453,9 @@ describe('TipTap cache — lifecycle', () => {
 
     parkTiptapEditor(entry);
 
-    // DOM detached from original container.
     expect(h.editorDom.parentElement).not.toBe(h.container);
     expect(h.container.children).not.toContain(h.editorDom);
-    // Editor NOT destroyed (cache preservation).
     expect(h.spies.destroyCalls).toBe(0);
-    // Still in cache.
     expect(peekTiptap(h.docName)).toBe(entry);
     expect(entry.activeMountKey).toBeNull();
   });
@@ -558,7 +479,6 @@ describe('TipTap cache — lifecycle', () => {
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Spy on ydoc.destroy
     const ydocDestroySpy = vi.fn(h.ydoc.destroy.bind(h.ydoc));
     h.ydoc.destroy = ydocDestroySpy;
 
@@ -571,7 +491,6 @@ describe('TipTap cache — lifecycle', () => {
     expect(peekTiptap(h.docName)).toBeUndefined();
     expect(__getCacheSize('tiptap')).toBe(0);
 
-    // Idempotent on repeat.
     expect(evictTiptapEditor(h.docName)).toBe(false);
     expect(h.spies.destroyCalls).toBe(1);
   });
@@ -593,16 +512,13 @@ describe('TipTap cache — mount-park-mount round-trip', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
 
-    // Seed content into Y.Doc state
     h.ytext.insert(0, 'hello from round-trip');
     const ytextBefore = entry.ytext.toString();
     const fragBefore = h.fragment.toString();
     expect(ytextBefore).toBe('hello from round-trip');
 
-    // Park the editor
     parkTiptapEditor(entry);
 
-    // Mount again — same entry, same Y.Doc state
     const newContainer = makeNode();
     const re = mountTiptapEditor({
       docName: h.docName,
@@ -611,13 +527,8 @@ describe('TipTap cache — mount-park-mount round-trip', () => {
     });
     expect(re).toBe(entry);
     expect(re.ytext.toString()).toBe(ytextBefore);
-    // Y.XmlFragment identity & state preserved on the harness's original ref
-    // (the cache entry doesn't hold an XmlFragment pointer; consumers reach it
-    // via re.ydoc.getXmlFragment('default') which returns the same Y.Item by
-    // name as long as ydoc.destroy() was never called).
     expect(h.fragment.toString()).toBe(fragBefore);
 
-    // CRDT sync via Y.Doc transact after reparent still works
     re.ydoc.transact(() => {
       re.ytext.insert(re.ytext.length, ' — post-reparent');
     });
@@ -635,7 +546,6 @@ describe('TipTap cache — mount-park-mount round-trip', () => {
 
     for (let i = 0; i < 5; i++) {
       parkTiptapEditor(entry);
-      // After park, DOM is NOT in ANY user-supplied container
       expect(entry.activeMountKey).toBeNull();
 
       const ctr = makeNode();
@@ -647,13 +557,10 @@ describe('TipTap cache — mount-park-mount round-trip', () => {
       expect(re).toBe(entry);
       expect(re.activeMountKey).toBe(h.docName);
       expect(re.ytext.toString()).toBe('cycle-test');
-      // DOM ended up in the new container
       expect(h.editorDom.parentElement).toBe(ctr);
     }
 
-    // Factory was called exactly once — all subsequent mounts are cache hits.
     expect(h.factoryCallCount).toBe(1);
-    // Editor was never destroyed during the cycle loop.
     expect(h.spies.destroyCalls).toBe(0);
   });
 
@@ -673,14 +580,12 @@ describe('TipTap cache — mount-park-mount round-trip', () => {
     a.ytext.insert(0, 'a-content');
     b.ytext.insert(0, 'b-content');
 
-    // Park both
     const peekA = peekTiptap(a.docName);
     const peekB = peekTiptap(b.docName);
     if (!peekA || !peekB) throw new Error('cache entries missing');
     parkTiptapEditor(peekA);
     parkTiptapEditor(peekB);
 
-    // Remount b
     const ctrB = makeNode();
     const reB = mountTiptapEditor({
       docName: b.docName,
@@ -710,10 +615,8 @@ describe('TipTap cache — LRU eviction at MAX_CACHE capacity', () => {
     }
     expect(__getCacheSize('tiptap')).toBe(MAX_CACHE);
 
-    // Track destroy calls on doc-0 (oldest).
     expect(harnesses[0].spies.destroyCalls).toBe(0);
 
-    // Mount 11th doc — should evict doc-0
     const extra = makeTiptapHarness('doc-extra');
     mountTiptapEditor({
       docName: extra.docName,
@@ -737,10 +640,8 @@ describe('TipTap cache — LRU eviction at MAX_CACHE capacity', () => {
         factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
       });
     }
-    // LRU: [doc-0, doc-1, doc-2] — doc-0 oldest.
     expect(__getCacheOrder('tiptap')).toEqual(['doc-0', 'doc-1', 'doc-2']);
 
-    // Re-mount doc-0 (cache hit) — should move to end.
     const harnessA = harnesses[0];
     mountTiptapEditor({
       docName: harnessA.docName,
@@ -758,8 +659,6 @@ describe('TipTap cache — __uncached / kill-switch path', () => {
   afterEach(() => __resetCacheForTests());
 
   test('__uncached entry: park() destroys the editor (pre-V2 behavior)', () => {
-    // Simulate kill-switch path without toggling the module constant:
-    // construct an entry and manually mark it __uncached.
     const h = makeTiptapHarness('doc-a');
     h.container.appendChild(h.editorDom);
     const entry: TiptapCacheEntry = {
@@ -775,13 +674,11 @@ describe('TipTap cache — __uncached / kill-switch path', () => {
 
     expect(h.spies.destroyCalls).toBe(0);
     parkTiptapEditor(entry);
-    // Kill-switch parks destroy the editor (pre-V2 destroy-on-unmount).
     expect(h.spies.destroyCalls).toBe(1);
     expect(entry.activeMountKey).toBeNull();
   });
 
   test('__uncached entry: NOT stored in cache (verified by peekTiptap)', () => {
-    // When a consumer handles kill-switch locally, the cache map stays empty.
     expect(__getCacheSize('tiptap')).toBe(0);
     const h = makeTiptapHarness('doc-a');
     const entry: TiptapCacheEntry = {
@@ -794,38 +691,18 @@ describe('TipTap cache — __uncached / kill-switch path', () => {
       activeMountKey: h.docName,
       __uncached: true,
     };
-    // Module-level cache was not touched by this synthetic entry
     expect(peekTiptap(h.docName)).toBeUndefined();
-    // park still sane
     parkTiptapEditor(entry);
     expect(h.spies.destroyCalls).toBe(1);
   });
 });
 
 describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
-  // Yjs's UndoManager constructor registers `doc.on('destroy', () => this.destroy())`
-  // with no stable reference, so `UndoManager.destroy()` cannot off it. The Set
-  // entry retains the UndoManager forever. Independently,
-  // @tiptap/extension-collaboration's plugin-view destroy assigns
-  // `undoManager.restore = closure(viewRet, view, editor, binding, ...)` —
-  // capturing the entire EditorView + ProsemirrorBinding + Editor + PM document
-  // tree. Together that's ~30 MB pinned per mount/destroy cycle on multi-MB
-  // docs. The cache MUST null `undoManager.restore` after `editor.destroy()` to
-  // break the closure chain.
-  //
-  // Verification strategy: the production cache reads the per-editor
-  // UndoManager via `yUndoPluginKey.getState(editor.state).undoManager`. We
-  // stub `yUndoPluginKey.getState` to return a sentinel UndoManager-shaped
-  // object whose `restore` field starts as a callable closure and assert it is
-  // `undefined` after the cache's destroy path runs.
-
   let originalGetState: typeof yUndoPluginKey.getState;
 
   beforeEach(() => {
     __resetCacheForTests();
     originalGetState = yUndoPluginKey.getState;
-    // The stub honors the production call shape but returns our sentinel for
-    // fake states tagged with __testUndoManager.
     yUndoPluginKey.getState = ((state: unknown) => {
       const tagged = state as { __testUndoManager?: unknown } | null | undefined;
       if (tagged?.__testUndoManager) {
@@ -897,10 +774,6 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
   });
 
   test('cleanup is resilient when editor.destroy() throws', () => {
-    // TipTap's throwing-proxy can throw mid-destroy; the cache already
-    // try/catches that. The capture-before-destroy ordering means we still
-    // hold the undoManager reference after destroy throws and can clear
-    // restore on the affected manager.
     const h = makeTiptapHarness('doc-a');
     const undoManager = attachStubUndoManager(h.editor);
     (h.editor as unknown as { destroy: () => void }).destroy = () => {
@@ -925,10 +798,6 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
   });
 
   test('evictTiptapEditor capture-before-destroy ordering: state inaccessible AFTER destroy still clears restore', () => {
-    // Symmetric to the parkTiptapEditor ordering test — the evict path has
-    // the same inline-duplicated capture-before-destroy pattern. A localized
-    // refactor that moves readEditorUndoManager after editor.destroy() on
-    // the evict path would not be caught by the park-only ordering test.
     const h = makeTiptapHarness('doc-a');
     const undoManager = attachStubUndoManager(h.editor);
     mountTiptapEditor({
@@ -956,10 +825,6 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
   });
 
   test('evictTiptapEditor cleanup is resilient when editor.destroy() throws', () => {
-    // The evict path has its own inline cleanup (duplicated, not extracted) +
-    // emits ok/cache/evict-failed telemetry on editor.destroy() throws. This
-    // symmetric test guards against a refactor that moves restore-cleanup
-    // inside the destroy try-block on this path.
     const h = makeTiptapHarness('doc-a');
     const undoManager = attachStubUndoManager(h.editor);
     mountTiptapEditor({
@@ -982,15 +847,6 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
   });
 
   test('capture-before-destroy ordering: state inaccessible AFTER destroy still clears restore', () => {
-    // Models real TipTap post-destroy semantics: editor.state is accessible
-    // before destroy, but becomes a throwing proxy after. The cleanup must
-    // capture the undoManager BEFORE calling destroy. This test fails if
-    // anyone reorders the production code to call readEditorUndoManager
-    // after editor.destroy() — at which point the throwing-proxy state
-    // would cause readEditorUndoManager to return null and the leak would
-    // return silently. Existing throw-tests don't catch this because they
-    // model "state always throws" or "destroy throws"; this test models the
-    // production transition state-OK → destroy-OK → state-throws.
     const h = makeTiptapHarness('doc-a');
     const undoManager = attachStubUndoManager(h.editor);
     (h.editor as unknown as { destroy: () => void }).destroy = () => {
@@ -1017,16 +873,10 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
     parkTiptapEditor(entry);
 
     expect(h.spies.destroyCalls).toBe(1);
-    // Capture must have happened pre-destroy — otherwise the throwing state
-    // proxy would have made readEditorUndoManager return null and restore
-    // would still be the original closure.
     expect(undoManager.restore).toBeUndefined();
   });
 
   test('no crash when editor.state throws (TipTap throwing-proxy mid-teardown)', () => {
-    // editor.state is a throwing proxy in known TipTap mid-teardown windows.
-    // Pre-destroy capture must defensive-noop in that case rather than
-    // escaping.
     const h = makeTiptapHarness('doc-a');
     Object.defineProperty(h.editor, 'state', {
       get() {
@@ -1051,13 +901,7 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
   });
 
   test('no-op when undoManager cannot be located (e.g. editor without y-undo plugin)', () => {
-    // TipTap editors without the y-undo plugin loaded (e.g. non-collaborative
-    // configurations) have no undoManager to clean up; the cache must skip
-    // the cleanup silently. (CM6 editors don't take this path at all —
-    // parkCmEditor/evictCmEditor never call readEditorUndoManager.)
     const h = makeTiptapHarness('doc-a');
-    // No state attached → stubbed yUndoPluginKey.getState falls through to the
-    // real getState, which returns null for non-PM-state inputs.
     const entry: TiptapCacheEntry = {
       editor: h.editor,
       ydoc: h.ydoc,
@@ -1073,10 +917,6 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
     expect(h.spies.destroyCalls).toBe(1);
   });
 });
-
-// ---------------------------------------------------------------------------
-// CM6 cache — symmetric tests
-// ---------------------------------------------------------------------------
 
 describe('CM6 cache — lifecycle', () => {
   beforeEach(() => {
@@ -1103,13 +943,6 @@ describe('CM6 cache — lifecycle', () => {
     expect(entry.activeMountKey).toBe(h.docName);
   });
 
-  // Regression: config staleness on backgrounded docs after a setting toggle
-  // (theme dark/light, word-wrap). These Compartments must live on the cache
-  // entry (with the view), not on the consuming React component — otherwise a
-  // remounted SourceEditor reconfigures a compartment absent from the reused
-  // view and the toggle is a silent no-op. The cache-hit returning the SAME
-  // entry is what makes `entry.*Compartment` reachable for reconfigure on
-  // reattach.
   test('mount: stores the factory compartments on the entry and preserves them across cache-hit', () => {
     const h = makeCmHarness('cm-doc-a');
     const first = mountCmEditor({
@@ -1126,16 +959,12 @@ describe('CM6 cache — lifecycle', () => {
       container: makeNode() as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Same compartment instances survive the reattach — no second construction.
     expect(second.themeCompartment).toBe(h.themeCompartment);
     expect(second.wordWrapCompartment).toBe(h.wordWrapCompartment);
     expect(second.placeholderCompartment).toBe(h.placeholderCompartment);
     expect(h.factoryCallCount).toBe(1);
   });
 
-  // The actual bug scenario: a doc backgrounded (parked), then reopened. The
-  // remount must return the SAME entry so its compartments stay reachable for
-  // the theme/word-wrap reconfigure on reattach. park() must not clear them.
   test('park then remount: compartments survive the park→remount round-trip', () => {
     const h = makeCmHarness('cm-doc-a');
     const first = mountCmEditor({
@@ -1203,10 +1032,6 @@ describe('CM6 cache — lifecycle', () => {
     parkCmEditor(entry);
     const focusBefore = h.spies.focusCalls;
 
-    // Harness has no real DOM, so hadFocus captured during park is false:
-    // cache-hit does NOT call focus when the editor didn't own focus at
-    // park time — keyboard / deep-link users keep their focus. Scroll is still
-    // restored — that's independent of focus.
     const ctr = makeNode();
     mountCmEditor({
       docName: h.docName,
@@ -1216,10 +1041,6 @@ describe('CM6 cache — lifecycle', () => {
     expect(ctr.scrollTop).toBe(42);
     expect(h.spies.focusCalls).toBe(focusBefore);
 
-    // Simulate "editor had focus at park" by flipping the cache entry's
-    // hadFocus after the park (the park path would have set it true if
-    // the real DOM reported the editor as activeElement). Next cache-hit
-    // now DOES restore focus.
     entry.hadFocus = true;
     const ctr2 = makeNode();
     const before2 = h.spies.focusCalls;
@@ -1232,9 +1053,6 @@ describe('CM6 cache — lifecycle', () => {
   });
 
   test('mount after park: stands down on scroll restore while a landing holds the scroller', () => {
-    // Source-mode twin of the TipTap case: a source landing owns the scroller
-    // for its settle window, so the warm mount must not write the parked
-    // position over it.
     const h = makeCmHarness('cm-doc-a');
     const entry = mountCmEditor({
       docName: h.docName,
@@ -1265,10 +1083,6 @@ describe('CM6 cache — lifecycle', () => {
   });
 
   test('mount: cache-hit still restores scroll while a NAVIGATION holds the scroller', () => {
-    // Source-mode twin of the TipTap case: a navigation has already written its
-    // position, and the parked scrollTop is that result. This write is a
-    // one-shot into a target at zero, so standing down for it drops the position
-    // rather than deferring it.
     const h = makeCmHarness('cm-doc-a');
     const entry = mountCmEditor({
       docName: h.docName,
@@ -1307,11 +1121,6 @@ describe('CM6 cache — lifecycle', () => {
   });
 
   test('evict: drops the source-view registry entry', () => {
-    // Eviction is the only view-destroy path outside a React cleanup, so nothing
-    // else would notice if this call were removed or reordered after destroy().
-    // A destroyed view left reachable answers geometry questions with undefined
-    // results, which freezes the outline's active heading rather than failing
-    // loudly. Asserts the observable outcome rather than spying on the call.
     const h = makeCmHarness('cm-doc-a');
     const entry = mountCmEditor({
       docName: h.docName,
@@ -1398,34 +1207,17 @@ describe('CM6 cache — lifecycle', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// STOP-rule enforcement — the cache never calls editor.mount / editor.unmount.
-// ---------------------------------------------------------------------------
-
 describe('STOP rule: editor-cache never calls editor.mount() / editor.unmount()', () => {
   test('source contains no reference to editor.mount( or editor.unmount(', async () => {
-    // Grep-based invariant test. `editor.mount()` / `editor.unmount()` are
-    // incompatible with the production extension stack (the @tiptap/
-    // extension-drag-handle plugin closures hit TipTap's throwing proxy
-    // during the re-create path). If a future edit re-introduces them,
-    // this test fails immediately.
     const sourceText = await Bun.file(`${import.meta.dir}/editor-cache.ts`).text();
-    // Allow references in comments/documentation (common to explain WHY not to),
-    // but forbid actual code patterns: `.mount(` / `.unmount(` on an editor-like
-    // receiver. We detect the function-call shape only.
     const code = sourceText
       .split('\n')
       .filter((line) => !line.trimStart().startsWith('*') && !line.trimStart().startsWith('//'))
       .join('\n');
-    // Look for `editor.mount(` or `editor.unmount(` as call sites in live code.
     expect(/editor\.mount\s*\(/.test(code)).toBe(false);
     expect(/editor\.unmount\s*\(/.test(code)).toBe(false);
   });
 });
-
-// ---------------------------------------------------------------------------
-// StrictMode / React remount safety
-// ---------------------------------------------------------------------------
 
 describe('Module-level cache survives simulated remounts', () => {
   beforeEach(() => __resetCacheForTests());
@@ -1438,7 +1230,6 @@ describe('Module-level cache survives simulated remounts', () => {
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // StrictMode would fire effect cleanup, then mount again. Simulate:
     parkTiptapEditor(first);
     const ctr = makeNode();
     const second = mountTiptapEditor({
@@ -1446,18 +1237,11 @@ describe('Module-level cache survives simulated remounts', () => {
       container: ctr as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Same underlying entry.
     expect(second).toBe(first);
-    // Single cache entry, not two.
     expect(__getCacheSize('tiptap')).toBe(1);
-    // Factory called exactly once.
     expect(h.factoryCallCount).toBe(1);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Size-aware cache policy
-// ---------------------------------------------------------------------------
 
 describe('size-gate constants', () => {
   test('VIEW_COUNT_CACHE_THRESHOLD = 50', () => {
@@ -1485,32 +1269,13 @@ describe('shouldCacheEditor — pure gate', () => {
     expect(shouldCacheEditor({ viewCount: 0, bytes: 8_000_001 })).toBe(false);
   });
   test('both gates active: refuse on any violation', () => {
-    // Both gates simultaneously violated: viewCount=100 (>=50) AND
-    // bytes=9_000_000 (>8_000_000). Confirms the gate-AND logic correctly
-    // refuses when both branches reject.
     expect(shouldCacheEditor({ viewCount: 100, bytes: 9_000_000 })).toBe(false);
   });
   test('viewCount alone fails (bytes pass): refuse', () => {
-    // viewCount=100 fails (>=50); bytes=1_000_000 passes (<8_000_000).
-    // Confirms viewCount-alone violation refuses regardless of bytes
-    // branch passing.
     expect(shouldCacheEditor({ viewCount: 100, bytes: 1_000_000 })).toBe(false);
   });
-  // Explicit-inactive guard regression. `viewCount:
-  // 0` is the "not-measured" sentinel passed by production call sites that
-  // have not yet wired a pre-mount view-count heuristic. It MUST NOT be
-  // treated as "zero views is below threshold, therefore pass" — that's
-  // trivially true but it muddies the gate's semantics. The admission comes
-  // from the bytes branch alone; the viewCount branch short-circuits on the
-  // zero sentinel so the threshold reads as "inactive until measured."
   test('viewCount=0 sentinel does not activate the viewCount branch', () => {
-    // A doc with an unmeasured viewCount but small bytes admits via bytes
-    // branch alone. If viewCount=0 were incorrectly compared to the
-    // threshold, the test would still pass (0 < 50). The intent check is
-    // documented in the comment above — we just verify the happy path.
     expect(shouldCacheEditor({ viewCount: 0, bytes: 100 })).toBe(true);
-    // A doc with an unmeasured viewCount but oversized bytes refuses via
-    // bytes branch alone — NOT because viewCount=0 was below threshold.
     expect(shouldCacheEditor({ viewCount: 0, bytes: 9_000_000 })).toBe(false);
   });
 });
@@ -1589,10 +1354,6 @@ describe('mountCmEditor — size gate mirror of TipTap', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Activity-mount list + provider connect/disconnect
-// ---------------------------------------------------------------------------
-
 describe('setActivityMountList — connect/disconnect transitions', () => {
   beforeEach(() => __resetCacheForTests());
   afterEach(() => __resetCacheForTests());
@@ -1636,7 +1397,6 @@ describe('setActivityMountList — connect/disconnect transitions', () => {
     setActivityMountList(['doc-a']);
     expect(h.providerSpies.connectCalls).toBe(1);
 
-    // Same list again — idempotent.
     setActivityMountList(['doc-a']);
     expect(h.providerSpies.connectCalls).toBe(1);
     expect(h.providerSpies.disconnectCalls).toBe(0);
@@ -1659,7 +1419,6 @@ describe('setActivityMountList — connect/disconnect transitions', () => {
     expect(a.providerSpies.connectCalls).toBe(1);
     expect(b.providerSpies.connectCalls).toBe(0);
 
-    // Swap: a out, b in.
     setActivityMountList(['doc-b']);
     expect(a.providerSpies.disconnectCalls).toBe(1);
     expect(b.providerSpies.connectCalls).toBe(1);
@@ -1667,13 +1426,10 @@ describe('setActivityMountList — connect/disconnect transitions', () => {
 
   test('unknown docName in list: no crash, no connect (provider not yet in cache)', () => {
     setActivityMountList(['doc-a']);
-    // No entry for doc-a; should not throw.
     expect(__getActivityMountList()).toEqual(['doc-a']);
   });
 
   test('CM-only cache entry: provider transitions still fire (same docName)', () => {
-    // Provider is shared between TipTap+CM for a given doc. Verify CM-only
-    // is sufficient to resolve the provider ref.
     const h = makeCmHarness('cm-only-doc');
     mountCmEditor({
       docName: h.docName,
@@ -1685,35 +1441,22 @@ describe('setActivityMountList — connect/disconnect transitions', () => {
   });
 
   test('pool-resident-but-not-V2-cached doc: demote still disconnects via ProviderPool fallback', () => {
-    // Regression test for the ACTIVITY_MOUNT_LIMIT=1 silent disconnect-skip
-    // bug. When
-    // a doc is pool-open (HocuspocusProvider connected) but the V2 editor
-    // cache rejected it (defer-mount + cache-miss, e.g. a doc above
-    // BYTES_CACHE_THRESHOLD or VIEW_COUNT_CACHE_THRESHOLD),
-    // findProvider must fall back to pool.entries — otherwise the demote
-    // path silently skips the disconnect and the provider keeps draining
-    // peer bytes into the local Y.Doc forever.
     const ydoc = new Y.Doc();
     const { provider, spies } = makeFakeProvider(ydoc);
     const fakePool = {
       entries: new Map<string, { provider: HocuspocusProvider }>([
         ['orphan-doc', { provider }],
       ]) as ReadonlyMap<string, { provider: HocuspocusProvider }>,
-      onEvict: (_cb: (docName: string) => void) => () => {
-        // no-op: test doesn't exercise pool eviction
-      },
+      onEvict: (_cb: (docName: string) => void) => () => {},
     };
     const unsubscribe = subscribePoolEviction(fakePool);
     try {
-      // Doc is NOT in V2 cache — only in pool.entries.
       expect(peekTiptap('orphan-doc')).toBeUndefined();
       expect(__peekCm('orphan-doc')).toBeUndefined();
 
-      // Promote — provider connect (idempotent on already-connected pool provider).
       setActivityMountList(['orphan-doc']);
       expect(spies.connectCalls).toBe(1);
 
-      // Demote — must disconnect via pool fallback. This is the bug guard.
       setActivityMountList([]);
       expect(spies.disconnectCalls).toBe(1);
     } finally {
@@ -1722,9 +1465,6 @@ describe('setActivityMountList — connect/disconnect transitions', () => {
   });
 
   test('subscribePoolEviction unsubscribe clears pool reference: subsequent demote no-ops without pool', () => {
-    // After unsubscribe, the cache must NOT retain a stale pool reference.
-    // Otherwise a later test or subsequent component lifecycle could see
-    // disconnects for providers that have already been torn down.
     const ydoc = new Y.Doc();
     const { provider, spies } = makeFakeProvider(ydoc);
     const fakePool = {
@@ -1740,23 +1480,11 @@ describe('setActivityMountList — connect/disconnect transitions', () => {
     unsubscribe();
 
     setActivityMountList([]);
-    // After unsubscribe the pool ref is gone; nothing to find, nothing to disconnect.
     expect(spies.disconnectCalls).toBe(0);
   });
 });
 
-// ---------------------------------------------------------------------------
 // parkingNode per-entry exclusivity (precedent #44).
-//
-// `@tiptap/react`'s PureEditorContent.componentDidMount vacuums
-// `element.append(...editor.view.dom.parentNode.childNodes)` — a parking
-// parent shared across cache entries would drag every parked view.dom into
-// the newly-mounting editor's wrapper. Each cache entry must own a separate
-// `parkingNode` created lazily on first park via `tryCreateParkingNode`.
-//
-// `installDocumentStub()` is required because `tryCreateParkingNode` returns
-// null when `typeof document === 'undefined'` (the default Bun environment).
-// ---------------------------------------------------------------------------
 
 describe('parkingNode — per-entry exclusivity', () => {
   beforeEach(() => {
@@ -1831,9 +1559,6 @@ describe('parkingNode — per-entry exclusivity', () => {
   });
 
   test('TipTap: re-park after a mount cycle preserves parkingNode identity (lazy idempotency)', () => {
-    // Pins the `if (!entry.parkingNode)` lazy-init guard. A regression that
-    // re-creates the parking node on every park (e.g. unconditional assignment)
-    // would break identity and re-introduce per-cycle GC churn.
     const h = makeTiptapHarness('doc-park-cycle-tiptap');
     mountTiptapEditor({
       docName: h.docName,
@@ -1891,10 +1616,6 @@ describe('subscribePoolEviction — onEvict propagation', () => {
   afterEach(() => __resetCacheForTests());
 
   test('pool eviction destroys both TipTap and CM cache entries for the same doc', () => {
-    // Capture the eviction callback the cache registers with the pool, then
-    // fire it directly. Verifies pool→cache propagation: when the pool
-    // evicts a provider, both editor cache kinds for that docName must be
-    // torn down so editors cannot outlive the Y.Doc they're bound to.
     let captured: ((docName: string) => void) | null = null;
     const fakePool = {
       entries: new Map<string, { provider: HocuspocusProvider }>(),
@@ -1935,10 +1656,6 @@ describe('subscribePoolEviction — onEvict propagation', () => {
   });
 
   test('eviction for unknown docName is a safe no-op (race-tolerant)', () => {
-    // Pool can race ahead of the V2 cache: a provider can be evicted from
-    // the pool before any editor was ever mounted for that doc, or after
-    // the cache already evicted on its own. Either way, the propagation
-    // callback must tolerate misses without throwing.
     let captured: ((docName: string) => void) | null = null;
     const fakePool = {
       entries: new Map<string, { provider: HocuspocusProvider }>(),
@@ -1966,7 +1683,6 @@ describe('LRU eviction respects activity-mount list (never evicts active doc)', 
   afterEach(() => __resetCacheForTests());
 
   test('when cache is full, evicts oldest NON-active entry', () => {
-    // Mount MAX_CACHE entries, mark the oldest (doc-0) as Activity-mounted.
     const harnesses: TiptapHarness[] = [];
     for (let i = 0; i < MAX_CACHE; i++) {
       const h = makeTiptapHarness(`doc-${i}`);
@@ -1977,10 +1693,8 @@ describe('LRU eviction respects activity-mount list (never evicts active doc)', 
         factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
       });
     }
-    // Pin doc-0 in Activity mount list.
     setActivityMountList(['doc-0']);
 
-    // Mount 11th — the oldest NON-active is doc-1.
     const extra = makeTiptapHarness('doc-extra');
     mountTiptapEditor({
       docName: extra.docName,
@@ -1988,8 +1702,8 @@ describe('LRU eviction respects activity-mount list (never evicts active doc)', 
       factory: extra.factory as unknown as (el: HTMLElement) => ReturnType<typeof extra.factory>,
     });
 
-    expect(peekTiptap('doc-0')).toBeDefined(); // Activity-mounted — spared
-    expect(peekTiptap('doc-1')).toBeUndefined(); // Oldest non-active — evicted
+    expect(peekTiptap('doc-0')).toBeDefined();
+    expect(peekTiptap('doc-1')).toBeUndefined();
     expect(harnesses[0].spies.destroyCalls).toBe(0);
     expect(harnesses[1].spies.destroyCalls).toBe(1);
   });
@@ -2005,7 +1719,6 @@ describe('LRU eviction respects activity-mount list (never evicts active doc)', 
         factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
       });
     }
-    // Pathological: all 10 docs active (beyond ACTIVITY_MOUNT_LIMIT).
     setActivityMountList(harnesses.map((x) => x.docName));
 
     const extra = makeTiptapHarness('doc-extra');
@@ -2014,21 +1727,16 @@ describe('LRU eviction respects activity-mount list (never evicts active doc)', 
       container: extra.container as unknown as HTMLElement,
       factory: extra.factory as unknown as (el: HTMLElement) => ReturnType<typeof extra.factory>,
     });
-    // Degenerate fallback kicks in — something gets evicted even though all active.
     expect(__getCacheSize('tiptap')).toBe(MAX_CACHE);
   });
 });
 
 describe('telemetry marks', () => {
-  // Telemetry is side-effect only — the collector's in-test observability
-  // is via performance.getEntriesByName. We spot-check a few key paths.
   beforeEach(() => {
     __resetCacheForTests();
     try {
       performance.clearMeasures();
-    } catch {
-      // some envs
-    }
+    } catch {}
   });
   afterEach(() => __resetCacheForTests());
 
@@ -2039,7 +1747,6 @@ describe('telemetry marks', () => {
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Cache hit.
     mountTiptapEditor({
       docName: h.docName,
       container: makeNode() as unknown as HTMLElement,
@@ -2080,15 +1787,11 @@ describe('telemetry marks', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     setActivityMountList(['doc-a']);
-    // connect() returns a Promise in the test harness — the `ok/cache/connect`
-    // mark fires inside .then so success + failure are mutually exclusive.
-    // Flush microtasks before asserting.
     await Promise.resolve();
     const connects = performance.getEntriesByName('ok/cache/connect');
     expect(connects.length).toBeGreaterThanOrEqual(1);
 
     setActivityMountList([]);
-    // disconnect() is synchronous — mark fires inside the try (no Promise).
     const disconnects = performance.getEntriesByName('ok/cache/disconnect');
     expect(disconnects.length).toBeGreaterThanOrEqual(1);
   });
@@ -2117,17 +1820,13 @@ describe('telemetry marks', () => {
         provider: rejectingProvider,
       }),
     });
-    // Clear prior marks from other tests.
     performance.clearMarks('ok/cache/connect');
     performance.clearMarks('ok/cache/connect-failed');
     setActivityMountList(['doc-reject']);
-    // Flush microtasks so the rejection propagates.
     await Promise.resolve();
     await Promise.resolve();
     const connects = performance.getEntriesByName('ok/cache/connect');
     const failed = performance.getEntriesByName('ok/cache/connect-failed');
-    // The key invariant: reject emits connect-failed WITHOUT emitting
-    // connect first. Pre-fix, both marks fired for the same docName.
     expect(failed.length).toBeGreaterThanOrEqual(1);
     expect(connects.length).toBe(0);
   });
@@ -2152,12 +1851,9 @@ describe('telemetry marks', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
       sizeStats: { viewCount: 10, bytes: 5_000 },
     });
-    // The first mount emits the miss stats. Clear and mount again (hit).
     try {
       performance.clearMeasures('ok/cold/editor-mount-stats');
-    } catch {
-      // some envs
-    }
+    } catch {}
     mountTiptapEditor({
       docName: h.docName,
       container: makeNode() as unknown as HTMLElement,
@@ -2169,11 +1865,6 @@ describe('telemetry marks', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// ok/cache/reparent-{start,end} span marks
-// for cache-hit reparent latency curve.
-// ---------------------------------------------------------------------------
-
 describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () => {
   beforeEach(() => {
     __resetCacheForTests();
@@ -2182,15 +1873,12 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
       performance.clearMarks('ok/cache/reparent-end');
       performance.clearMeasures('ok/cache/reparent-start');
       performance.clearMeasures('ok/cache/reparent-end');
-    } catch {
-      // some envs lack one or the other
-    }
+    } catch {}
   });
   afterEach(() => __resetCacheForTests());
 
   test('TipTap cache-hit emits both ok/cache/reparent-start and ok/cache/reparent-end', () => {
     const h = makeTiptapHarness('doc-a');
-    // First mount = cache miss; clear marks before the cache-hit re-mount.
     mountTiptapEditor({
       docName: h.docName,
       container: h.container as unknown as HTMLElement,
@@ -2199,10 +1887,7 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
     try {
       performance.clearMeasures('ok/cache/reparent-start');
       performance.clearMeasures('ok/cache/reparent-end');
-    } catch {
-      // ignore
-    }
-    // Second mount = cache hit — should emit both marks.
+    } catch {}
     mountTiptapEditor({
       docName: h.docName,
       container: makeNode() as unknown as HTMLElement,
@@ -2212,7 +1897,6 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
     const ends = performance.getEntriesByName('ok/cache/reparent-end');
     expect(starts.length).toBeGreaterThanOrEqual(1);
     expect(ends.length).toBeGreaterThanOrEqual(1);
-    // End must come at-or-after start (non-negative span between them).
     const firstStart = starts[0]?.startTime ?? 0;
     const firstEnd = ends[0]?.startTime ?? 0;
     expect(firstEnd).toBeGreaterThanOrEqual(firstStart);
@@ -2225,14 +1909,12 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
       container: h.container as unknown as HTMLElement,
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
-    // Cache miss path (cold mount) should never emit reparent marks.
     expect(performance.getEntriesByName('ok/cache/reparent-start').length).toBe(0);
     expect(performance.getEntriesByName('ok/cache/reparent-end').length).toBe(0);
   });
 
   test('TipTap kill-switch / __uncached path does NOT emit reparent marks', () => {
     const h = makeTiptapHarness('big-doc');
-    // Size gate refuses → __uncached fast-path; reparent marks must NOT fire.
     mountTiptapEditor({
       docName: h.docName,
       container: h.container as unknown as HTMLElement,
@@ -2253,9 +1935,7 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
     try {
       performance.clearMeasures('ok/cache/reparent-start');
       performance.clearMeasures('ok/cache/reparent-end');
-    } catch {
-      // ignore
-    }
+    } catch {}
     mountCmEditor({
       docName: h.docName,
       container: makeNode() as unknown as HTMLElement,
@@ -2279,9 +1959,6 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
   });
 
   test('reparent marks fire BEFORE ok/cache/hit (semantic ordering)', () => {
-    // The reparent span brackets the actual reparent + scroll/focus restore;
-    // ok/cache/hit fires after the span closes. End must precede or equal
-    // the cache/hit emission.
     const h = makeTiptapHarness('doc-order');
     mountTiptapEditor({
       docName: h.docName,
@@ -2292,9 +1969,7 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
       performance.clearMeasures('ok/cache/reparent-start');
       performance.clearMeasures('ok/cache/reparent-end');
       performance.clearMeasures('ok/cache/hit');
-    } catch {
-      // ignore
-    }
+    } catch {}
     mountTiptapEditor({
       docName: h.docName,
       container: makeNode() as unknown as HTMLElement,
@@ -2313,7 +1988,6 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
   });
 
   test('existing ok/cache/hit emission is preserved (regression guard for AC 5)', () => {
-    // existing mark('ok/cache/hit', ...) is preserved.
     const h = makeTiptapHarness('doc-preserve');
     mountTiptapEditor({
       docName: h.docName,
@@ -2322,9 +1996,7 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
     });
     try {
       performance.clearMeasures('ok/cache/hit');
-    } catch {
-      // ignore
-    }
+    } catch {}
     mountTiptapEditor({
       docName: h.docName,
       container: makeNode() as unknown as HTMLElement,
@@ -2333,15 +2005,6 @@ describe('US-001 (cap-calibration-probes): cache-hit reparent span marks', () =>
     expect(performance.getEntriesByName('ok/cache/hit').length).toBeGreaterThanOrEqual(1);
   });
 });
-
-// ---------------------------------------------------------------------------
-// mount-promise cancellation wired into park / evict spines.
-// Park / evict are the V2 cache's tear-down primitives; both must invalidate
-// any in-flight mount-promise BEFORE running their existing destroy/detach
-// logic so the AbortController fires before DOM teardown — preventing the
-// mount-promise body from completing post-park/evict and creating a phantom
-// V2 cache entry behind our back.
-// ---------------------------------------------------------------------------
 
 let __us004DocumentStubInstalled = false;
 function installDocumentStub(): void {
@@ -2373,14 +2036,6 @@ describe('US-004: D20 mount-promise cancellation wired into park', () => {
   });
 
   test('park-after-mount: PRESERVES the mount-promise cache so the next mount returns the same Promise reference (no Suspense flash)', async () => {
-    // The mount-promise cache lifetime tracks the V2-cache-entry lifetime,
-    // not the React-component lifetime. Park preserves the V2 entry (editor
-    // stays alive), so the corresponding mount-promise must also stay so
-    // that the next mount of this docName returns the SAME promise reference.
-    // React's `use()` on a stable `.status='fulfilled'` thenable short-
-    // circuits with no Suspense cycle; on a fresh promise it pays a Suspense
-    // fallback flash, which would surface to the user as a "cold load"
-    // between Activity-pool tabs even though the editor is cached.
     const h = makeTiptapHarness('doc-park-preserves');
     const construct = () => ({
       editor: h.editor,
@@ -2396,8 +2051,6 @@ describe('US-004: D20 mount-promise cancellation wired into park', () => {
     });
     const entry = await firstPromise;
 
-    // Both caches hold the entry. mount-promise's resolved cache entry points
-    // at the V2 entry by reference.
     expect(__mountPromiseCacheSize()).toBe(1);
     expect(__mountPromiseSettled(h.docName)).toBe(true);
     expect(__getCacheSize('tiptap')).toBe(1);
@@ -2405,18 +2058,11 @@ describe('US-004: D20 mount-promise cancellation wired into park', () => {
 
     parkTiptapEditor(entry);
 
-    // Mount-promise cache PRESERVED across park — the next mount returns the
-    // same Promise reference (already-resolved, .status='fulfilled' observed
-    // by use() previously), short-circuiting Suspense.
     expect(__mountPromiseCacheSize()).toBe(1);
     expect(__mountPromiseSettled(h.docName)).toBe(true);
-    // V2 entry preserved (cached path; not destroyed).
     expect(peekTiptap(h.docName)).toBeDefined();
     expect(h.spies.destroyCalls).toBe(0);
 
-    // Re-mount: same Promise reference returned. This is the load-bearing
-    // assertion — if invalidate ran on park, this would be a fresh promise
-    // and the user would see a Suspense flash on every tab switch.
     const secondPromise = mountTiptapEditorPromise({
       docName: h.docName,
       mountId: 'test-id',
@@ -2426,10 +2072,6 @@ describe('US-004: D20 mount-promise cancellation wired into park', () => {
   });
 
   test('park-on-already-parked entry: no-op for both V2 cache and mount-promise (preservation contract)', async () => {
-    // After the first park, activeMountKey is null. The mount-promise cache
-    // STAYS populated (corrected from the original buggy contract where park
-    // invalidated). A second park must remain a safe no-op for both caches —
-    // V2 entry stays cached, mount-promise stays settled, no double-destroy.
     const h = makeTiptapHarness('doc-park-twice');
     const construct = () => ({
       editor: h.editor,
@@ -2448,19 +2090,12 @@ describe('US-004: D20 mount-promise cancellation wired into park', () => {
     expect(entry.activeMountKey).toBeNull();
     expect(h.spies.destroyCalls).toBe(0);
 
-    // Second park — entry already settled.
     parkTiptapEditor(entry);
     expect(__mountPromiseCacheSize()).toBe(1);
     expect(h.spies.destroyCalls).toBe(0);
   });
 
   test('__uncached park: invalidates mount-promise BEFORE the kill-switch destroy fires (silent — no rejection)', async () => {
-    // Synthesize an __uncached entry the same way `__uncached / kill-switch
-    // path` tests do. Then prime the mount-promise cache for the same
-    // docName so we can observe that invalidation fires even on the
-    // kill-switch path. Under silent-invalidate semantics, the
-    // primer's pending promise is left orphaned (no rejection) — only the
-    // cache state is torn down.
     const h = makeTiptapHarness('doc-uncached-park');
     h.container.appendChild(h.editorDom);
     const entry: TiptapCacheEntry = {
@@ -2488,15 +2123,11 @@ describe('US-004: D20 mount-promise cancellation wired into park', () => {
     });
     expect(__mountPromiseCacheSize()).toBe(1);
 
-    // Park the __uncached entry — invalidate (silent) tears down the
-    // mount-promise cache entry, THEN kill-switch destroy runs.
     expect(h.spies.destroyCalls).toBe(0);
     parkTiptapEditor(entry);
     expect(__mountPromiseCacheSize()).toBe(0);
     expect(h.spies.destroyCalls).toBe(1);
 
-    // Drain macrotasks so primer's body resumes from scheduler.yield;
-    // takes the abort short-circuit, no rejection (silent contract).
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(primerRejected).toBe(false);
   });
@@ -2529,7 +2160,6 @@ describe('US-004: D20 mount-promise cancellation wired into evict', () => {
 
     const result = evictTiptapEditor(h.docName);
 
-    // V2 destroyed (existing semantic preserved) AND mount-promise invalidated.
     expect(result).toBe(true);
     expect(__mountPromiseCacheSize()).toBe(0);
     expect(peekTiptap(h.docName)).toBeUndefined();
@@ -2538,14 +2168,6 @@ describe('US-004: D20 mount-promise cancellation wired into evict', () => {
   });
 
   test('evict-during-yield-window: tears down silently, body short-circuits, pre-mount editor destroyed (no rejection)', async () => {
-    // The during-yield case is the architectural reason park/evict must
-    // unconditionally invalidate: V2 has no entry yet (mount() hasn't run),
-    // but mount-promise has an in-flight entry whose body is mid-construct
-    // → yield → mount. Without invalidation, the body would proceed past
-    // the yield, mount the editor, and land a phantom V2 entry behind the
-    // user's "I evicted this doc" intent. Under silent-invalidate,
-    // the consumer promise is left orphaned (no rejection) — cache-driven
-    // eviction is invisible to the consumer.
     const h = makeTiptapHarness('doc-evict-during-yield');
     let constructed = false;
     const construct = () => {
@@ -2558,10 +2180,6 @@ describe('US-004: D20 mount-promise cancellation wired into evict', () => {
       };
     };
 
-    // Stub scheduler.yield so the pre-construct yield resolves immediately
-    // (construct runs) and the post-construct yield stalls — pins the body
-    // in the post-construct yield-window so evict fires with a populated
-    // preMountEditor but no V2 entry yet.
     const origYield = scheduler.yield.bind(scheduler);
     let stallResolve: (() => void) | null = null;
     let yieldCallCount = 0;
@@ -2586,23 +2204,18 @@ describe('US-004: D20 mount-promise cancellation wired into evict', () => {
       expect(__mountPromiseCacheSize()).toBe(1);
       expect(__getCacheSize('tiptap')).toBe(0);
 
-      // Drain microtasks so the body resumes from the pre-construct yield,
-      // runs construct(), and suspends at the post-construct yield.
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       expect(constructed).toBe(true);
 
       const result = evictTiptapEditor(h.docName);
-      expect(result).toBe(false); // V2 had no entry to evict
+      expect(result).toBe(false);
       expect(__mountPromiseCacheSize()).toBe(0);
 
-      // Release the stalled yield so the body resumes and short-circuits at
-      // the post-construct abort check. Silent contract: no rejection.
       if (stallResolve) (stallResolve as () => void)();
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       expect(consumerRejected).toBe(false);
       expect(h.spies.destroyCalls).toBe(1);
       expect(h.spies.mountCalls).toBe(0);
-      // V2 cache is empty — no phantom entry.
       expect(__getCacheSize('tiptap')).toBe(0);
     } finally {
       scheduler.yield = origYield;
@@ -2670,28 +2283,16 @@ describe('rename snapshot store', () => {
     expect(__consumeRenameSnapshot('rename-to-doc')?.selection).toEqual(sel);
   });
 
-  // FIFO eviction boundary — pins the MAX_CACHE bound on the rename snapshot
-  // store. Without this, a broken eviction (e.g., accidental .clear() removal,
-  // or an off-by-one on the >= check) would cause unbounded growth during a
-  // rename storm (folder rename of N children stores N snapshots).
   test('FIFO eviction: oldest snapshot dropped when MAX_CACHE exceeded', () => {
     for (let i = 0; i < MAX_CACHE; i++) {
       storeRenameSnapshot(`doc-${i}`, baseSnap(`<p>${i}</p>`));
     }
-    // Store one over — should evict doc-0 (oldest).
     storeRenameSnapshot('doc-overflow', baseSnap('<p>new</p>'));
     expect(__consumeRenameSnapshot('doc-0')).toBeNull();
     expect(__consumeRenameSnapshot('doc-overflow')?.html).toBe('<p>new</p>');
-    // doc-1 through doc-(MAX_CACHE-1) survive.
     expect(__consumeRenameSnapshot('doc-1')?.html).toBe('<p>1</p>');
   });
 
-  // StrictMode-safety contract for production peek path. The React 19 dev
-  // double-invoke of `useState` lazy initializers calls peekRenameSnapshot
-  // twice; both calls MUST return the same value (otherwise mount 2 sees
-  // null and the warm fallback flashes empty). peek (read without delete)
-  // satisfies this; the consume path does not. See peekRenameSnapshot
-  // JSDoc + EditorActivityPool ActivityEntry useState site.
   test('peekRenameSnapshot is StrictMode-safe: double-invoke returns same value', () => {
     storeRenameSnapshot('notes/foo.md', baseSnap('<p>content</p>'));
     const first = peekRenameSnapshot('notes/foo.md');
@@ -2711,21 +2312,10 @@ describe('captureRenameSnapshots', () => {
     __resetRenameSnapshotStore();
   });
 
-  // Helper: install a fake selection on the harness editor so captureSelection
-  // can read it. Uses `instanceof` via Object.create against the real PM classes
-  // with property descriptors (PM Selection's anchor/head are getters; we
-  // override with defineProperty values rather than assigning to the getter).
   function installFakeSelection(h: ReturnType<typeof makeTiptapHarness>, sel: object): void {
     (h.editor as unknown as { state: { selection: unknown } }).state = { selection: sel };
   }
 
-  // Helper: seed `ytext` so the empty-source guard doesn't fire. Other tests
-  // in this block assert snapshot-capture against an editor where `getHTML`
-  // is overridden but ytext stays empty; the empty-source guard treats
-  // `ytext.length === 0` as canonical "never-edited" and skips the snapshot
-  // to drop Suspense back to `<EditorSkeleton />` instead of a blank
-  // `WarmContentFallback`. Tests of capture mechanics still need an editor
-  // that looks non-empty to ytext.
   function seedSource(h: ReturnType<typeof makeTiptapHarness>): void {
     h.ytext.insert(0, 'x');
   }
@@ -2748,10 +2338,6 @@ describe('captureRenameSnapshots', () => {
   });
 
   test('skips a doc-class-changing rename — the markdown HTML has no consumer there', () => {
-    // `.md` -> `.excalidraw` / `.mmd` / text mounts a different editor whose
-    // fallback must be the skeleton: a warm markdown snapshot would paint the
-    // pre-rename text over the incoming canvas, and nothing on those branches
-    // ever clears the store entry.
     for (const toDocName of ['board.excalidraw', 'diagram.mmd', 'notes.txt']) {
       const h = makeTiptapHarness(`from-${toDocName}`);
       mountTiptapEditor({
@@ -2769,11 +2355,6 @@ describe('captureRenameSnapshots', () => {
   });
 
   test('captures for an extension without a doc-class discriminator — the dispatch mounts the dual editor there', () => {
-    // `isMarkdownDocFile` is the negation of the per-class discriminators,
-    // matching the editor's children dispatch: a name like `future.canvas`
-    // has no discriminator, so the dual editor mounts and consumes the
-    // snapshot. A class gets excluded here only by adding its discriminator
-    // — the same edit point the dispatch itself requires.
     const h = makeTiptapHarness('from-future.canvas');
     mountTiptapEditor({
       docName: h.docName,
@@ -2849,8 +2430,6 @@ describe('captureRenameSnapshots', () => {
   });
 
   test('tolerates missing scroll container — scrollTop falls back to 0', () => {
-    // No `document` in node test runtime; readActiveScrollTop short-circuits
-    // to 0. Same result if document existed but the selector didn't match.
     const h = makeTiptapHarness('from-doc');
     mountTiptapEditor({
       docName: h.docName,
@@ -2869,10 +2448,6 @@ describe('captureRenameSnapshots', () => {
 
   test('captures TextSelection as {type:text, anchor, head}', async () => {
     const { TextSelection } = await import('@tiptap/pm/state');
-    // PM Selection's anchor/head are getters derived from ResolvedPos $anchor/$head.
-    // Override with defineProperty so the captureSelection reader picks the
-    // injected values; instanceof TextSelection holds because the prototype
-    // chain is set via Object.create.
     const fakeSel = Object.create(TextSelection.prototype, {
       anchor: { value: 10, writable: true, enumerable: true, configurable: true },
       head: { value: 20, writable: true, enumerable: true, configurable: true },
@@ -2919,7 +2494,6 @@ describe('captureRenameSnapshots', () => {
   });
 
   test('captures null selection when editor selection is neither Text nor Node', () => {
-    // Default fake editor has no state.selection — captureSelection returns null.
     const h = makeTiptapHarness('from-doc');
     mountTiptapEditor({
       docName: h.docName,
@@ -2935,18 +2509,9 @@ describe('captureRenameSnapshots', () => {
   });
 
   test('skips empty Y.Text editors and emits ok/cache/snapshot-skipped-empty', () => {
-    // Never-edited source: harness ytext stays at length 0 (no `seedSource`
-    // call). Without the guard, the snapshot would be stored under
-    // `to-doc` with the editor's `<p></p>` getHTML output, which surfaces
-    // as a `pointer-events-none` `WarmContentFallback` overlay during the
-    // freshly-mounted destination editor's Suspense window — blocking
-    // user keystrokes. Skip restores the visible `<EditorSkeleton />`
-    // Suspense fallback.
     try {
       performance.clearMeasures();
-    } catch {
-      // some envs
-    }
+    } catch {}
 
     const h = makeTiptapHarness('from-doc');
     mountTiptapEditor({
@@ -2965,11 +2530,6 @@ describe('captureRenameSnapshots', () => {
   });
 
   test('keeps capture when ytext has content even if getHTML reports <p></p>', () => {
-    // Pins ytext (not getHTML output) as the canonical empty-check. If a future
-    // refactor switched the guard to 'getHTML() === "<p></p>"', this test
-    // would fail — ytext.length > 0 means there IS user-intended source content
-    // to preserve in the warm-skeleton snapshot, regardless of what HTML the
-    // serializer happened to produce for it.
     const h = makeTiptapHarness('from-doc');
     mountTiptapEditor({
       docName: h.docName,

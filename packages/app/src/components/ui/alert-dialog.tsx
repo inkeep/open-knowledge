@@ -4,47 +4,6 @@ import { Button } from '@/components/ui/button';
 import { ElectronDragStrip, electronDragBandClearance } from '@/components/ui/electron-drag-strip';
 import { cn } from '@/lib/utils';
 
-/**
- * Confirmation dialog for decisions that must not be dismissed by accident.
- *
- * Radix's `AlertDialog` differs from `Dialog` in three ways that matter here:
- * it renders `role="alertdialog"`, it preventDefaults outside pointer/interact
- * events so a stray click on the overlay cannot dismiss the decision, and it
- * moves initial focus onto `AlertDialogCancel` rather than the first focusable
- * child. Escape still closes, which is the documented alertdialog keyboard
- * contract and reads as Cancel — the accidental-dismissal risk is the pointer,
- * not a deliberate keystroke.
- *
- * Because focus-on-open targets the cancel element, **every `AlertDialogContent`
- * must render an `AlertDialogCancel`.** Without one, Radix suppresses its default
- * auto-focus and focuses nothing, leaving focus stranded on `<body>` — strictly
- * worse than the plain Dialog it replaces.
- *
- * Hand-authored rather than installed via `shadcn add`, and the class strings
- * mirror `dialog.tsx` rather than the registry's:
- *   - The registry component omits `[-webkit-app-region:no-drag]`. Without it,
- *     pointer events over the OS titlebar drag region are swallowed by the
- *     window-drag handler, so a dialog anchored near the top of the Electron
- *     window becomes unclickable. Same reasoning as `dialog.tsx`.
- *   - The registry component has no title-bar drag affordance, so an open
- *     dialog would leave the window immovable. `ElectronDragStrip` and
- *     `electronDragBandClearance` are shared with `dialog.tsx` — behavior with
- *     a DOM-position invariant, not styling, so it lives in one place.
- *   - The registry component omits the `motion-reduce:*` opt-outs, so it
- *     animates through `prefers-reduced-motion`.
- *   - The registry title uses a `cn-font-heading` token that does not exist in
- *     this project's theme, so it would silently fall back to the body font
- *     while every sibling dialog uses `font-heading`.
- *   - The registry has no body slot, and both consumers render a scrollable
- *     list between the header and the footer.
- * Sharing one class string across `dialog.tsx` and this file was considered and
- * rejected: shadcn primitives are vendored copies meant to be edited
- * independently, and `sheet.tsx` already carries its own near-identical copy.
- *
- * `dialog.tsx`'s `ignoreToastInteractOutside` guard has no analogue here on
- * purpose — no outside interaction dismisses an alert dialog, so a toast
- * dismissal above it is already inert.
- */
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;
 }
@@ -82,14 +41,10 @@ function AlertDialogContent({
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
-      {/* Between overlay and content, deliberately — see ElectronDragStrip. */}
+      {}
       <ElectronDragStrip testId="alert-dialog-drag-strip" />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
-        // No close affordance in the corner, by design: an alert dialog offers
-        // exactly the choices in its footer. Layout otherwise matches
-        // DialogContent so a migrated dialog keeps its current proportions —
-        // scrolling lives in AlertDialogBody, the footer stays pinned.
         className={cn(
           'fixed top-1/2 left-1/2 z-50 flex w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-hidden rounded-xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm [-webkit-app-region:no-drag] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none motion-reduce:duration-0',
           electronDragBandClearance(),
@@ -166,11 +121,6 @@ function AlertDialogDescription({
   );
 }
 
-/**
- * The dismissing choice, and the element Radix focuses when the dialog opens.
- * `font-mono uppercase` matches the treatment `DialogClose` bakes in, so a
- * migrated cancel button keeps its current appearance.
- */
 function AlertDialogCancel({
   className,
   variant = 'outline',
@@ -189,16 +139,6 @@ function AlertDialogCancel({
   );
 }
 
-/**
- * The confirming choice, for actions that resolve synchronously.
- *
- * Radix builds both Action and Cancel on `Dialog.Close`, so activating either
- * one closes the dialog immediately. An action that awaits a request and shows
- * an in-flight state in its own label therefore cannot use this — the dialog
- * would unmount out from under the pending work. Those call sites keep a plain
- * `Button` with an `onClick` and let the owner close the dialog once the work
- * settles.
- */
 function AlertDialogAction({
   className,
   variant = 'default',

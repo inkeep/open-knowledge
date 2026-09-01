@@ -67,7 +67,7 @@ describe('state-store (recent projects + LRU)', () => {
   test('addRecentProject moves existing entry to front', () => {
     let s = addRecentProject(emptyState(), '/tmp/a', 'a');
     s = addRecentProject(s, '/tmp/b', 'b');
-    s = addRecentProject(s, '/tmp/a', 'a'); // re-open a
+    s = addRecentProject(s, '/tmp/a', 'a');
     expect(s.recentProjects.map((p) => p.path)).toEqual(['/tmp/a', '/tmp/b']);
     expect(s.lastOpenedProject).toBe('/tmp/a');
   });
@@ -78,9 +78,7 @@ describe('state-store (recent projects + LRU)', () => {
       s = addRecentProject(s, `/tmp/p${i}`, `p${i}`);
     }
     expect(s.recentProjects.length).toBe(20);
-    // Newest first — p24 should be at the front
     expect(s.recentProjects[0]?.path).toBe('/tmp/p24');
-    // Oldest 5 dropped
     expect(s.recentProjects.find((p) => p.path === '/tmp/p0')).toBeUndefined();
   });
 
@@ -89,14 +87,13 @@ describe('state-store (recent projects + LRU)', () => {
     s = addRecentProject(s, '/tmp/b', 'b');
     const next = removeRecentProject(s, '/tmp/a');
     expect(next.recentProjects.map((p) => p.path)).toEqual(['/tmp/b']);
-    // /tmp/b was the most-recent open, so removing /tmp/a leaves /tmp/b intact
     expect(next.lastOpenedProject).toBe('/tmp/b');
   });
 
   test('removeRecentProject clears lastOpenedProject when it matches', () => {
     let s = addRecentProject(emptyState(), '/tmp/a', 'a');
     s = addRecentProject(s, '/tmp/b', 'b');
-    s = addRecentProject(s, '/tmp/a', 'a'); // /tmp/a is now last-opened
+    s = addRecentProject(s, '/tmp/a', 'a');
     const next = removeRecentProject(s, '/tmp/a');
     expect(next.recentProjects.map((p) => p.path)).toEqual(['/tmp/b']);
     expect(next.lastOpenedProject).toBe(null);
@@ -144,10 +141,6 @@ describe('state-store (recent projects + LRU)', () => {
     expect(annotated.find((p) => p.path === '/tmp/missing')?.missing).toBe(true);
   });
 
-  // Entries persisted before the userinfo-aware URL parser can hold a
-  // credentialed remote URL at rest (`https://alice:pw@github.com/…`), and a
-  // project never re-opened would keep it forever — the writer only re-emits
-  // on open. Load-time canonicalization heals them.
   test('parseAppState heals a credentialed gitRemoteUrl and keeps canonical ones verbatim', () => {
     const parsed = parseAppState({
       recentProjects: [
@@ -176,8 +169,6 @@ describe('state-store (recent projects + LRU)', () => {
     const byPath = Object.fromEntries((parsed?.recentProjects ?? []).map((p) => [p.path, p]));
     expect(byPath['/tmp/leaky']?.gitRemoteUrl).toBe('https://github.com/acme/kb.git');
     expect(byPath['/tmp/clean']?.gitRemoteUrl).toBe('https://github.com/acme/other.git');
-    // A value the parser cannot read is dropped, not kept — it was junk-shaped
-    // and could itself be credential-bearing.
     expect(byPath['/tmp/junk']?.gitRemoteUrl).toBeUndefined();
     expect(JSON.stringify(parsed)).not.toContain('s3cretpw');
   });
@@ -256,8 +247,8 @@ describe('state-store (recent projects + LRU)', () => {
     const raw = {
       recentProjects: [
         { path: '/tmp/good', name: 'good', lastOpenedAt: '2026-04-20T00:00:00Z' },
-        { path: 123, name: 'bad', lastOpenedAt: 'now' }, // path not string
-        { name: 'no-path', lastOpenedAt: 'now' }, // missing path
+        { path: 123, name: 'bad', lastOpenedAt: 'now' },
+        { name: 'no-path', lastOpenedAt: 'now' },
         'not-an-object',
       ],
       lastOpenedProject: '/tmp/good',
@@ -358,15 +349,12 @@ describe('state-store (gitRemoteUrl field on RecentProject)', () => {
   });
 
   test('addRecentProject preserves a previously persisted gitRemoteUrl on re-open without a fresh value', () => {
-    // First open: backfill captures the canonical URL.
     let s = addRecentProject(
       emptyState(),
       '/tmp/p1',
       'p1',
       'https://github.com/inkeep/open-knowledge.git',
     );
-    // Re-open without the 4th arg (e.g. a transient `.git/config` read miss
-    // — a network share briefly unmounted, an antivirus lock).
     s = addRecentProject(s, '/tmp/p1', 'p1');
     expect(s.recentProjects[0]?.gitRemoteUrl).toBe('https://github.com/inkeep/open-knowledge.git');
   });
@@ -380,7 +368,6 @@ describe('state-store (gitRemoteUrl field on RecentProject)', () => {
   test('parseAppState loads a recents entry that omits gitRemoteUrl (legacy/upgrade path)', () => {
     const raw = {
       recentProjects: [
-        // Legacy entry: written before the field existed.
         { path: '/tmp/legacy', name: 'legacy', lastOpenedAt: '2026-04-20T00:00:00Z' },
       ],
       lastOpenedProject: '/tmp/legacy',
@@ -442,8 +429,6 @@ describe('state-store (gitRemoteUrl field on RecentProject)', () => {
 
 describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   test('writes tmp first, then renames to canonical — real fs round-trip', () => {
-    // Real tmpdir + real fs. Verifies the full write+rename path ends with
-    // a well-formed state.json whose content matches the input state.
     const userDataDir = mkdtempSync(join(tmpdir(), 'ok-state-atomic-'));
     try {
       const state = addRecentProject(emptyState(), '/tmp/example', 'example');
@@ -459,10 +444,6 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   });
 
   test('fs call order is write-tmp → rename-tmp-to-canonical (atomicity invariant)', () => {
-    // Mocked fs — asserts the sequence is tmp-write BEFORE canonical-rename,
-    // never the other way around. A future refactor that accidentally flips
-    // these (or drops the tmp indirection) would silently regress the
-    // crash-safety property.
     const calls: Array<{ op: string; path: string }> = [];
     const fs: SaveAppStateFs = {
       existsSync: vi.fn(() => true),
@@ -501,7 +482,6 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
       saveAppStateToDir('/fake/userdata', emptyState(), fs, { error: errorLog }),
     ).not.toThrow();
     expect(errorLog).toHaveBeenCalled();
-    // Best-effort cleanup — tmp file unlink attempted.
     expect(unlinkSpy).toHaveBeenCalled();
   });
 
@@ -537,8 +517,6 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
     expect(mkdirSpy).toHaveBeenCalledWith('/fake/userdata', { recursive: true });
   });
 
-  // return boolean so writeState callers can
-  // detect disk-failure and roll back in-memory state.
   test('returns true on successful persist', () => {
     const fs: SaveAppStateFs = {
       existsSync: vi.fn(() => true),
@@ -572,7 +550,6 @@ describe('saveAppStateToDir (atomic write via tmp + rename)', () => {
   test('lastUsedProjectParent: setter immutably updates state', () => {
     const next = setLastUsedProjectParent(emptyState(), '/Users/alice/Notes');
     expect(next.lastUsedProjectParent).toBe('/Users/alice/Notes');
-    // Other fields untouched.
     expect(next.recentProjects).toEqual([]);
     expect(next.schemaVersion).toBe(1);
   });
@@ -621,9 +598,6 @@ describe('state-store (pendingWindowRestore — post-update window restore)', ()
   });
 
   test('parseAppState coerces a LEGACY string[] snapshot to project entries', () => {
-    // Back-compat: a state.json written before the kinded union stored bare
-    // project paths. Each coerces to a `{ kind: 'project' }` entry — no schema
-    // bump needed.
     const parsed = parseAppState({
       recentProjects: [],
       pendingWindowRestore: ['/tmp/a', '/tmp/b'],
@@ -650,8 +624,6 @@ describe('state-store (pendingWindowRestore — post-update window restore)', ()
   });
 
   test('parseAppState preserves an empty snapshot as [] — distinct from null', () => {
-    // [] means "the app quit with nothing open"; the boot path opens the
-    // Navigator rather than falling back to lastOpenedProject.
     const parsed = parseAppState({ recentProjects: [], pendingWindowRestore: [] });
     expect(parsed?.pendingWindowRestore).toEqual([]);
   });
@@ -660,14 +632,14 @@ describe('state-store (pendingWindowRestore — post-update window restore)', ()
     const parsed = parseAppState({
       recentProjects: [],
       pendingWindowRestore: [
-        '/tmp/a', // legacy project string
-        { kind: 'project', projectPath: '/tmp/a' }, // dup of the above → dropped
-        '', // empty → dropped
-        123, // non-string/object → dropped
+        '/tmp/a',
+        { kind: 'project', projectPath: '/tmp/a' },
+        '',
+        123,
         { kind: 'file', filePath: '/notes/x.md' },
-        { kind: 'file' }, // missing filePath → dropped
-        { kind: 'bogus', projectPath: '/tmp/z' }, // unknown kind → dropped
-        { kind: 'file', filePath: '/notes/x.md' }, // dup file → dropped
+        { kind: 'file' },
+        { kind: 'bogus', projectPath: '/tmp/z' },
+        { kind: 'file', filePath: '/notes/x.md' },
         { kind: 'project', projectPath: '/tmp/b' },
         null,
       ],
@@ -700,14 +672,13 @@ describe('state-store (recentFiles — durable loose-file LRU)', () => {
     expect(next.recentFiles.length).toBe(1);
     expect(next.recentFiles[0]?.path).toBe('/notes/todo.md');
     expect(next.recentFiles[0]?.name).toBe('todo.md');
-    // A loose file must never become the single-project restore fallback.
     expect(next.lastOpenedProject).toBe('/tmp/proj');
   });
 
   test('addRecentFile moves an existing entry to the front', () => {
     let s = addRecentFile(emptyState(), '/notes/a.md', 'a.md');
     s = addRecentFile(s, '/notes/b.md', 'b.md');
-    s = addRecentFile(s, '/notes/a.md', 'a.md'); // re-open a
+    s = addRecentFile(s, '/notes/a.md', 'a.md');
     expect(s.recentFiles.map((f) => f.path)).toEqual(['/notes/a.md', '/notes/b.md']);
   });
 
@@ -726,10 +697,10 @@ describe('state-store (recentFiles — durable loose-file LRU)', () => {
       recentProjects: [],
       recentFiles: [
         { path: '/notes/a.md', name: 'a.md', lastOpenedAt: '2026-07-20T00:00:00Z' },
-        { path: '', name: 'empty', lastOpenedAt: '2026-07-20T00:00:00Z' }, // empty path → dropped
-        { path: '/notes/a.md', name: 'dup', lastOpenedAt: '2026-07-21T00:00:00Z' }, // dup → dropped
-        { path: '/notes/b.md', name: 'b.md' }, // missing lastOpenedAt → dropped
-        'nonsense', // non-object → dropped
+        { path: '', name: 'empty', lastOpenedAt: '2026-07-20T00:00:00Z' },
+        { path: '/notes/a.md', name: 'dup', lastOpenedAt: '2026-07-21T00:00:00Z' },
+        { path: '/notes/b.md', name: 'b.md' },
+        'nonsense',
       ],
     });
     expect(parsed?.recentFiles).toEqual([
@@ -752,10 +723,8 @@ describe('state-store (spellCheckEnabled — app-wide spell-check toggle)', () =
     const original = emptyState();
     const disabled = setSpellCheckEnabled(original, false);
     expect(disabled.spellCheckEnabled).toBe(false);
-    // Other fields untouched.
     expect(disabled.recentProjects).toEqual([]);
     expect(disabled.schemaVersion).toBe(1);
-    // Original not mutated by the immutable update.
     expect(original.spellCheckEnabled).toBe(true);
   });
 
@@ -902,8 +871,6 @@ describe('state-store (noteWindowBounds — per-project pop-out frame memory)', 
   });
 
   test('the pop-out slot is independent of the project window frame', () => {
-    // Same key, different fields: a user who parks pop-outs on a second monitor
-    // must not have that overwrite where the project window itself opens.
     let s = setProjectWindowBounds(emptyState(), '/tmp/a', {
       ...FRAME,
       x: 0,
@@ -923,8 +890,6 @@ describe('state-store (noteWindowBounds — per-project pop-out frame memory)', 
   });
 
   test('state written before the field existed parses to an empty map', () => {
-    // The additive contract: an older build's state has no such key, and this
-    // build must read it without a schema bump.
     const legacy = { ...emptyState() } as Record<string, unknown>;
     delete legacy.noteWindowBounds;
 
@@ -947,8 +912,6 @@ describe('state-store (noteWindowBounds — per-project pop-out frame memory)', 
   });
 
   test('removeRecentProject clears the pop-out slot with everything else', () => {
-    // One key deletes all of a project's persisted state; a leaked pop-out
-    // frame would resurrect a forgotten project's window position.
     let s = setNoteWindowBounds(emptyState(), '/tmp/a', FRAME);
     s = setProjectWindowBounds(s, '/tmp/a', FRAME);
     s = removeRecentProject(s, '/tmp/a');
@@ -981,8 +944,6 @@ describe('state-store (doc restore entries — popped-out note windows)', () => 
   };
 
   test('a doc key does not collide with its own project window key', () => {
-    // Both windows restore, so one key cannot stand for both — a collision
-    // would silently drop the pop-out at the dedup step.
     expect(windowRestoreKey(DOC)).not.toBe(
       windowRestoreKey({ kind: 'project', projectPath: '/tmp/a' }),
     );
@@ -993,8 +954,6 @@ describe('state-store (doc restore entries — popped-out note windows)', () => 
   });
 
   test('the survivor path for a pop-out is its project folder, not its key', () => {
-    // The key is a composite identity and would never stat. The right survivor
-    // question is whether the PROJECT still exists.
     expect(restoreSurvivorPath(DOC)).toBe('/tmp/a');
     expect(restoreSurvivorPath({ kind: 'project', projectPath: '/tmp/a' })).toBe('/tmp/a');
     expect(restoreSurvivorPath({ kind: 'file', filePath: '/tmp/loose.md' })).toBe('/tmp/loose.md');
@@ -1008,7 +967,6 @@ describe('state-store (doc restore entries — popped-out note windows)', () => 
   });
 
   test('a doc entry with a corrupt frame keeps the document and drops the frame', () => {
-    // The document is the point of the window; the pixels are a nicety.
     const parsed = parseAppState({
       ...emptyState(),
       pendingWindowRestore: [{ ...DOC, bounds: { x: 'nope' } }],
@@ -1029,8 +987,6 @@ describe('state-store (doc restore entries — popped-out note windows)', () => 
   });
 
   test('an unknown kind is dropped while known kinds survive', () => {
-    // This is the forward-compatibility contract that let the union grow
-    // without a schema bump: an older build treats `doc` exactly this way.
     const parsed = parseAppState({
       ...emptyState(),
       pendingWindowRestore: [

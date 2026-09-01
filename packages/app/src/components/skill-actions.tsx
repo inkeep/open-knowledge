@@ -68,89 +68,36 @@ import {
 } from '@/lib/skills-api';
 import { useWorkspace } from '@/lib/use-workspace';
 
-// Pulls `@pierre/diffs/react` with it. Gated on `forkTarget` as well as made
-// lazy: the dialog was mounted unconditionally and returned null without a
-// target, which kept its chunk eager. Mounting per fork also drops the stale
-// `toName` that used to carry a rename typed for one skill into the next.
 const LazySkillForkDialog = lazy(async () => {
   const mod = await import('@/components/SkillForkDialog');
   return { default: mod.SkillForkDialog };
 });
 
-/**
- * The shared per-skill action surface, reused by every place that acts on a
- * skill (the file-sidebar Skills section and the skill editor toolbar). One
- * owner of the install/uninstall side effects + the delete/history dialogs keeps
- * those surfaces behaviorally identical instead of re-deriving the flow.
- *
- * `useSkillActions` owns the stateful pieces (install-in-flight name, the
- * delete + history dialog targets) and returns the handlers plus a `dialogs`
- * node the caller mounts once. `onEdit` stays per-surface and is passed in by
- * the caller.
- */
-
 export interface SkillActions {
-  /** Name of the skill whose install/uninstall POST is in flight, or null. */
   installingName: string | null;
-  /**
-   * Install + surface the result; the caller may use it to reflect new state.
-   * `targets` sets the exact editors the skill is installed into (the per-editor
-   * menu) — omit to install into the project's configured editors.
-   */
   install: (
     skill: SkillsListEntry,
     targets?: readonly string[],
     opts?: { linkMode?: boolean },
   ) => Promise<Awaited<ReturnType<typeof installSkill>>>;
-  /**
-   * Convert locations of a skill between copy and symlink, one after another,
-   * holding `installingName` for the whole run so every surface shows it working.
-   */
   convertLocations: (
     skill: SkillsListEntry,
     targets: readonly { target: string; mode: 'copy' | 'link' }[],
   ) => Promise<void>;
-  /**
-   * Run one location write (source move, custom placement, un-placement) under
-   * the same in-flight name as install, so every surface reads "Working" for
-   * its duration.
-   *
-   * A write fired outside this reads as settled the instant it leaves — and a
-   * source move is not atomic on disk: for the moment between the real folder
-   * relocating and a symlink taking its place, the OLD source is a plain
-   * directory. A watcher refetch landing in that window paints it as a COPY,
-   * which then vanishes on the next one. The write is done when the list
-   * reflects it, not when the request returns.
-   */
   runLocationWrite: <T>(skill: SkillsListEntry, run: () => Promise<T>) => Promise<T>;
-  /** Duplicate a skill into `<name>-copy` (existing names avoid collisions). */
   duplicate: (skill: SkillsListEntry, existingNames: ReadonlySet<string>) => Promise<void>;
-  /**
-   * Refresh every named skill from its recorded upstream in ONE request, and
-   * report what actually happened per skill. `sourceLabel` names the origin in
-   * the result message — the group row's own label, so the toast reads as the
-   * answer to the row the user clicked.
-   */
   updateAllFromSource: (input: {
     scope: SkillScope;
     names: readonly string[];
     sourceLabel: string;
   }) => Promise<void>;
-  /** Open the (reused) delete-confirm dialog for a skill. */
   requestDelete: (skill: SkillsListEntry) => void;
-  /** Open the rename dialog for a skill; `existingNames` drives its collision check. */
   requestRename: (skill: SkillsListEntry, existingNames: ReadonlySet<string>) => void;
-  /** Open the confirm dialog to move a skill to the other scope (project ↔ global). */
   requestScopeMove: (skill: SkillsListEntry, toScope: SkillScope) => void;
-  /** Open the bundle-FILE rename/move dialog (§8.9). */
   requestFileRename: (skill: SkillsListEntry, filePath: string) => void;
-  /** Open the delete-confirm dialog for ONE bundle file. */
   requestFileDelete: (skill: SkillsListEntry, filePath: string) => void;
-  /** Open the new-bundle-file dialog (optionally seeded with a dir prefix). */
   requestFileCreate: (skill: SkillsListEntry, prefix?: string) => void;
-  /** Open the fork-resolution dialog for a conflicted editor copy. */
   requestForkResolve: (skill: SkillsListEntry, editor: string) => void;
-  /** Mount once per surface — the dialogs these actions drive. */
   dialogs: ReactNode;
 }
 
@@ -175,10 +122,6 @@ export function useSkillActions(): SkillActions {
     opts?: { linkMode?: boolean },
   ) {
     setInstallingName(skill.name);
-    // Mark the write so the tab reconciler does not read the mid-write scan as a
-    // deletion and close the user's tab: `projectInPlaceSkill` rm's each
-    // destination before materializing it, so the skill can momentarily vanish
-    // from the list while this is in flight.
     beginSkillWrite(skill.scope, skill.name);
     const result = await installSkill({
       scope: skill.scope,
@@ -192,45 +135,29 @@ export function useSkillActions(): SkillActions {
       toast.error(t`Couldn't install skill: ${result.error}`);
       return result;
     }
-    // Report the DELTA vs the prior host set, not just the final set — so a
-    // per-editor uncheck reads as an uninstall ("Uninstalled from Cursor")
-    // instead of the confusing "Installed into <remaining>". Install is
-    // set-exact, so the diff is the true effect of this click.
     const label = (ids: readonly string[]) =>
       ids.map((id) => EDITOR_LABELS[id as keyof typeof EDITOR_LABELS] ?? id).join(', ');
     const now = new Set(result.hosts);
     const added = result.hosts.filter((h) => !skill.hosts.includes(h));
     const removed = skill.hosts.filter((h) => !now.has(h));
 
-    // Switch on the machine-readable warning CODE, not the English message
-    // (`warnings[i]` is the display text for `warningCodes[i]`). The server
-    // owns the wording; we own the routing.
     const messageFor = (code: SkillInstallWarningCode): string | undefined => {
       const i = result.warningCodes.indexOf(code);
       return i >= 0 ? result.warnings[i] : undefined;
     };
-    // `no-targets` means the install projected nowhere — surface it INSTEAD of a
-    // success (nothing changed).
     const noTargetsWarning = messageFor('no-targets');
     if (noTargetsWarning) {
       toast.warning(noTargetsWarning);
       return result;
     }
-    // The executable-scripts security caution is only relevant when you ADD the
-    // skill to an editor — never on a pure uninstall (which removes it). Shown as
-    // a second toast alongside the success so the user sees both.
     if (added.length > 0) {
       const scriptsWarning = messageFor('scripts-present');
       if (scriptsWarning) toast.warning(scriptsWarning);
-      // Empty-description nudge: install succeeded — surface the
-      // advisory only when actually adding, never on a no-op/uninstall click.
       const noDescriptionWarning = messageFor('no-description');
       if (noDescriptionWarning) toast.warning(noDescriptionWarning);
     }
 
     if (result.hosts.length === 0) {
-      // Not a draft: the redesign retired that state. A skill with no extra
-      // locations still lives — and still loads — at its source folder.
       toast.success(
         t`Removed "${skill.name}" from every other location — its source folder still loads`,
       );
@@ -246,30 +173,13 @@ export function useSkillActions(): SkillActions {
     return result;
   }
 
-  /**
-   * Convert one or more of a skill's locations between copy and symlink.
-   *
-   * Sequential, and routed through the same in-flight name as install so every
-   * surface showing this skill reads "Working" for the whole run. Firing the
-   * conversions in parallel instead left the pill idle while folders were being
-   * rewritten underneath it, so the list could refetch mid-run and render a
-   * half-converted state as if it were settled.
-   */
   async function convertLocations(
     skill: SkillsListEntry,
     targets: readonly { target: string; mode: 'copy' | 'link' }[],
   ) {
     if (targets.length === 0) return;
     setInstallingName(skill.name);
-    // Same reconciler protection as `install` / `runLocationWrite`: a convert
-    // rm's each destination before materializing it, so the skill can read as
-    // absent from a scan taken mid-write, and anything that treats absence as
-    // deletion would close the user's tab. Convert was the one writer on that
-    // rm-then-materialize path without the guard.
     beginSkillWrite(skill.scope, skill.name);
-    // No try/finally: `convertSkillLocation` reports failures in its result
-    // rather than throwing, so a single exit point clears the flag (and the
-    // React Compiler cannot lower a try without a catch).
     for (const { target, mode } of targets) {
       const result = await convertSkillLocation({
         scope: skill.scope,
@@ -288,12 +198,7 @@ export function useSkillActions(): SkillActions {
 
   async function runLocationWrite<T>(skill: SkillsListEntry, run: () => Promise<T>): Promise<T> {
     setInstallingName(skill.name);
-    // Same reconciler protection as `install`: a placement/convert rewrites dirs
-    // on disk, so the skill can read as absent mid-write.
     beginSkillWrite(skill.scope, skill.name);
-    // Single exit point, no try/finally: these writers report failures in their
-    // result rather than throwing (and the React Compiler cannot lower a try
-    // without a catch). The caller keeps its own error reporting.
     const result = await run();
     endSkillWrite(skill.scope, skill.name);
     setInstallingName(null);
@@ -307,22 +212,9 @@ export function useSkillActions(): SkillActions {
       return;
     }
     toast.success(t`Duplicated to "${result.name}"`);
-    // Open the copy — the point of duplicating is to edit it. The copy lands at
-    // the source's scope; `useOpenSkill` is the robust open (a fresh project skill
-    // would otherwise strand on the read-only asset viewer via the hash path).
     openSkill(skill.scope, result.name);
   }
 
-  /**
-   * Update every skill from one source in a single request.
-   *
-   * Reports the outcome rather than a bare success, because a batch genuinely
-   * has three of them at once: a partial failure is the normal case (one bundle
-   * the upstream can no longer write is not a reason to hide that six others
-   * updated), and "already up to date" is the most common result of all — a
-   * success toast that did not distinguish it would claim work that never
-   * happened.
-   */
   async function updateAllFromSource(input: {
     scope: SkillScope;
     names: readonly string[];
@@ -330,13 +222,6 @@ export function useSkillActions(): SkillActions {
   }) {
     const names = [...input.names];
     if (names.length === 0) return;
-    // Same write-marking as install: an update rewrites bundle dirs, so a scan
-    // landing mid-write must not read the gap as a deletion and close the tab.
-    // No try/finally around the pair: `reimportSkillsBulk` is total — every
-    // failure, network included, comes back as `{ok:false}` — so there is no
-    // throw for a finally to catch, and the markers cannot leak. A leak would be
-    // permanent (the flag suppresses the reconcile close for that skill forever),
-    // so if this ever calls something that CAN throw, the pair needs the guard.
     for (const name of names) beginSkillWrite(input.scope, name);
     setInstallingName(names[0] ?? null);
     const result = await reimportSkillsBulk({ scope: input.scope, names });
@@ -353,14 +238,10 @@ export function useSkillActions(): SkillActions {
     const updated = result.updated;
     const upToDate = result.upToDate;
     if (failures.length > 0) {
-      // Name what broke, with its reason. A bare count ("1 failed") sends the
-      // user hunting through eight rows for the one that did not move.
       const detail = failures
         .map((r) => (r.error ? `${r.requested} (${r.error})` : r.requested))
         .join(', ');
       const failed = failures.length;
-      // Warning, not error: something usually did land, and an error toast over
-      // a mostly-successful batch reads as "nothing happened".
       toast.warning(
         t`${source}: ${updated} updated, ${upToDate} already up to date, ${failed} failed — ${detail}`,
       );
@@ -449,13 +330,6 @@ export function useSkillActions(): SkillActions {
 
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
-/**
- * Reveal one on-disk skill path in the OS file manager. Renders nothing off
- * desktop or when the path is unknown. Shared by every skills menu so the row
- * kinds cannot disagree about when reveal is offered, and labelled through the
- * same per-platform helper the file tree and editor tabs use — desktop ships on
- * Windows and Linux, where "Reveal in Finder" is wrong.
- */
 export function SkillRevealMenuItem({
   absolutePath,
   menuKind = 'dropdown',
@@ -476,10 +350,6 @@ export function SkillRevealMenuItem({
   );
 }
 
-/**
- * File actions shared by bundle-file rows in the Skills sidebar and editor tabs.
- * Paths resolve from the skill directory rather than from its SKILL.md entry.
- */
 export function SkillFileContextMenuItems({
   skill,
   filePath,
@@ -551,18 +421,6 @@ export function SkillFileContextMenuItems({
   );
 }
 
-/**
- * The full per-skill action menu shared by Skills sidebar rows and editor tabs.
- * Callers select the matching Radix primitive family while every mutation still
- * routes through `useSkillActions`, keeping dialogs and confirmation behavior identical.
- */
-/**
- * Menu for a managed BUILT-IN row. Read-only bars EDITS (rename, duplicate,
- * new file, scope move), not inspection or lifecycle: reveal, copy path, the
- * per-agent Install submenu, and Delete stay available exactly like any other
- * skill. Same narrow shape as the ordinary menu — Install is a submenu, so
- * the panel never balloons to the install-body width.
- */
 export function SkillManagedContextMenuItems({
   skill,
   actions,
@@ -570,7 +428,6 @@ export function SkillManagedContextMenuItems({
 }: {
   skill: SkillsListEntry;
   actions: SkillActions;
-  /** Extra rows (e.g. Pin) rendered between Install and the Delete group. */
   beforeDelete?: ReactNode;
 }) {
   const { t } = useLingui();
@@ -708,11 +565,6 @@ function SkillTargetMenuItems({
   const scopeLabels = useSkillScopeLabels();
   const hostToggles = useSkillHostToggles(skill, actions);
   const absolutePath = skill.absolutePath;
-  // A NON-default bundle of a shared name gets an honest reduced menu: the
-  // name-keyed verbs (rename / duplicate / install / scope-move) all resolve
-  // the by-name DEFAULT bundle server-side, so offering them here would act on
-  // a skill the user did not click. Delete is host-scoped (removes exactly
-  // this bundle) and inspection verbs read the entry's own path, so those stay.
   const nonDefaultBundle = skill.hostQualifier !== undefined;
 
   async function copy(text: string) {

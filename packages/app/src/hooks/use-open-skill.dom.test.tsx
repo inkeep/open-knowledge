@@ -1,15 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-/**
- * The shared opener is where every "open a skill" surface converges, so it owns
- * the gitignored-bundle gate. Two rules, and both have bitten:
- *   - a gitignored bundle has no doc to open, so raise the explainer instead of
- *     handing the user an empty tab with no reason;
- *   - EXCEPT a managed built-in, which OK ships read-only and a repo that
- *     ignores it means it — offering to git-track one is an offer the user must
- *     not be given.
- */
 const openTarget = vi.fn();
 const requestSkillTrackPrompt = vi.fn();
 const listSkills = vi.fn();
@@ -40,9 +31,6 @@ afterEach(() => {
 
 describe('useOpenSkill gitignored gate', () => {
   test('a gitignored skill raises the explainer instead of an empty tab', async () => {
-    // The gate re-verifies against a fresh list before stranding (the cached
-    // flag can be stale right after a create/import) — still ignored there
-    // means genuinely ignored, so the explainer is the right outcome.
     skills = [{ ...entry, ignored: true }];
     listSkills.mockResolvedValue({ ok: true, skills: [{ ...entry, ignored: true }] });
     const { result } = renderHook(() => useOpenSkill());
@@ -55,10 +43,6 @@ describe('useOpenSkill gitignored gate', () => {
   });
 
   test('a STALE ignored flag re-verifies and opens instead of stranding', async () => {
-    // A list snapshot that raced a create/import marks the new bundle
-    // ignored:true before the server admits it; the row then read as dead
-    // (silent return + selected row swallowing re-clicks). The gate must trust
-    // the fresh list, not the snapshot.
     skills = [{ ...entry, ignored: true }];
     listSkills.mockResolvedValue({ ok: true, skills: [entry] });
     const { result } = renderHook(() => useOpenSkill());
@@ -74,8 +58,6 @@ describe('useOpenSkill gitignored gate', () => {
   });
 
   test('a managed built-in is never offered the git-track fix', () => {
-    // Read-only and deliberately excluded: it opens through its own read-only
-    // preview surface, and must not be routed into "add a .gitignore rule".
     skills = [{ ...entry, ignored: true, managed: true }];
     const { result } = renderHook(() => useOpenSkill());
     result.current('project', 'hidden');
@@ -99,9 +81,6 @@ describe('useOpenSkill gitignored gate', () => {
 
 describe('useOpenSkill symlinked-bundle routing', () => {
   test('a symlinked skill opens its read-only linked preview, not the source doc', () => {
-    // The canonical doc is a plain file in the plugin source tree. Opening it
-    // from a SKILLS surface dumped the user there with no chrome and no
-    // explanation; the skill-shaped face is the linked preview.
     window.location.hash = '';
     skills = [
       {
@@ -118,13 +97,11 @@ describe('useOpenSkill symlinked-bundle routing', () => {
     expect(openTarget).not.toHaveBeenCalled();
     const hash = decodeURIComponent(window.location.hash);
     expect(hash.startsWith('#/__skill-preview__/linked/')).toBe(true);
-    // Addressed by the bundle DIR the preview endpoint reads.
     expect(hash).toContain('/repo/public/agents/plugins/agents/skills/adding-env-variables');
     expect(hash).not.toContain('SKILL.md');
   });
 
   test('an ordinary in-place skill still opens its live doc', () => {
-    // No canonicalPath — the bundle is a real dir, so the doc IS the skill.
     window.location.hash = '';
     skills = [{ ...entry, absolutePath: '/repo/.claude/skills/hidden/SKILL.md' }];
     const { result } = renderHook(() => useOpenSkill());
@@ -137,9 +114,6 @@ describe('useOpenSkill symlinked-bundle routing', () => {
   });
 
   test('a managed built-in opens its read-only builtin preview, never the live doc', () => {
-    // Built-ins are read-only EVERYWHERE: this shared opener serves skill-ref
-    // chips, the palette, and deep links, and falling through to the live doc
-    // handed out an editable built-in.
     window.location.hash = '';
     skills = [
       {

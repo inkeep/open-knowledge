@@ -23,15 +23,6 @@ import { PROTOCOL_VERSION, RUNTIME_VERSION } from './version-constants';
 
 const LOCK_NAME: LockName = 'server';
 
-/**
- * Pick a PID that is alive on this host AND passes `isValidLockPid` (≥ 2,
- * not our own pid). Uses `process.ppid` when it's > 1; otherwise falls
- * back to scanning a small range above process.pid for a live one.
- *
- * Tests previously used `pid: 1` (init/launchd) as a "known alive" stand-
- * in for a foreign holder. The security validator now rejects pid ≤ 1, so
- * tests that rely on a real collision/live-lock state need a real PID.
- */
 function aliveForeignPid(): number {
   if (process.ppid > 1 && process.ppid !== process.pid) return process.ppid;
   for (let candidate = process.pid + 1; candidate < process.pid + 5000; candidate++) {
@@ -133,10 +124,6 @@ describe('acquireProcessLock', () => {
       lockDir,
       metadata: { port: 0, worktreeRoot: '/seed' },
     });
-    // Use process.ppid — a real PID that passes isValidLockPid (rejects 0/1)
-    // and is alive for the duration of the test. PID 1 (launchd/init) is
-    // explicitly refused by the security validator, so a "known alive" lock
-    // holder must be ≥ 2.
     const livePid = aliveForeignPid();
     const live: ProcessLockMetadata = {
       pid: livePid,
@@ -321,7 +308,6 @@ describe('one-URL contract (url field + lockBaseUrl)', () => {
     const after: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(after.port).toBe(8080);
     expect(after.url).toBe('http://127.0.0.1:8080');
-    // port/url agreement: the origin's port is the port field.
     expect(new URL(after.url as string).port).toBe(String(after.port));
   });
 
@@ -558,7 +544,6 @@ describe('readProcessLock', () => {
       metadata: { port: 1111, worktreeRoot: '/wt' },
     });
     expect(readProcessLock({ lockName: 'server', lockDir })?.port).toBe(1111);
-    // A different lockDir with no lock reads null — the read never leaks across dirs.
     expect(readProcessLock({ lockName: 'server', lockDir: `${lockDir}/other` })).toBeNull();
   });
 });
@@ -612,14 +597,6 @@ describe('releaseProcessLock', () => {
     expect(md.pid).toBe(1);
   });
 
-  // Refcounting protects the Vite dev plugin's per-`configureServer`
-  // createServer lifecycle: pass-1's destroy runs releaseProcessLock at the
-  // moment pass-2's createServer has already idempotently re-acquired the
-  // lock. Without refcounting, pass-1's release unlinks the lock file out
-  // from under pass-2 — silently breaking (cross-process collision).
-  // The pre-fix variant would FAIL the "still exists after single release"
-  // expectation below; the post-fix variant keeps the file until the LAST
-  // release.
   test('double acquire then single release keeps lock file in place', () => {
     acquireProcessLock({
       lockName: LOCK_NAME,
@@ -635,9 +612,6 @@ describe('releaseProcessLock', () => {
 
     releaseProcessLock({ lockName: LOCK_NAME, lockDir });
 
-    // Other active acquire still holds the lock — file must remain so
-    // a foreign-process acquire (`ok start` against the same contentDir)
-    // still throws ProcessLockCollisionError.
     expect(existsSync(lockPath)).toBe(true);
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.pid).toBe(process.pid);
@@ -662,9 +636,6 @@ describe('releaseProcessLock', () => {
   });
 
   test('release without prior acquire is a no-op (untracked release path)', () => {
-    // Process-exit handlers may fire after the close-handler path already
-    // drained the refcount — those untracked releases must remain
-    // ownership-guarded but otherwise no-op.
     expect(existsSync(lockPath)).toBe(false);
     releaseProcessLock({ lockName: LOCK_NAME, lockDir });
     expect(existsSync(lockPath)).toBe(false);
@@ -760,16 +731,12 @@ describe('readProcessLockDetailed', () => {
   });
 
   test('returns incompatible.missing-fields for a live lock missing protocolVersion', () => {
-    // Hand-craft a lock as if a pre-version-constants binary wrote it.
-    // Use a real alive foreign pid so liveness passes — pid 1 is now
-    // refused by the isValidLockPid validator.
     const versionless = {
       pid: aliveForeignPid(),
       hostname: hostname(),
       port: 6000,
       startedAt: new Date().toISOString(),
       worktreeRoot: '/legacy',
-      // No protocolVersion, no runtimeVersion — simulates a v0.x lock.
     };
     mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(versionless), 'utf-8');
@@ -788,7 +755,6 @@ describe('readProcessLockDetailed', () => {
       startedAt: new Date().toISOString(),
       worktreeRoot: '/legacy',
       protocolVersion: 1,
-      // No runtimeVersion.
     };
     mkdirSync(lockDir, { recursive: true });
     writeFileSync(lockPath, JSON.stringify(partial), 'utf-8');
@@ -835,8 +801,6 @@ describe('readProcessLockDetailed', () => {
 
   test('returns stale (without cleanup) on cross-host lock', () => {
     const remote: ProcessLockMetadata = {
-      // Real alive pid (validator rejects pid 1) so the host check is the
-      // only reason this classifies as stale.
       pid: aliveForeignPid(),
       hostname: 'some-other-host',
       port: 7100,
@@ -850,17 +814,11 @@ describe('readProcessLockDetailed', () => {
 
     const result = readProcessLockDetailed({ lockName: LOCK_NAME, lockDir });
     expect(result.status).toBe('stale');
-    // We do NOT unlink cross-host locks (they're owned by another machine).
     expect(existsSync(lockPath)).toBe(true);
   });
 });
 
 describe('lock-pid security validation', () => {
-  // Hostile-lock cases: a `<lockDir>/server.lock` whose `pid` field cannot
-  // refer to a real OpenKnowledge holder must NEVER feed signal-sending
-  // code paths. acquireProcessLock + readProcessLock + readProcessLockDetailed
-  // all classify these as corrupt/incompatible so the desktop's auto-kill
-  // path cannot trust the pid value.
   const HOSTILE_PIDS: ReadonlyArray<{ pid: unknown; label: string }> = [
     { pid: 0, label: 'PID 0 (process group)' },
     { pid: 1, label: 'PID 1 (init/launchd)' },
@@ -889,8 +847,6 @@ describe('lock-pid security validation', () => {
       };
       writeFileSync(lockPath, JSON.stringify(hostile), 'utf-8');
 
-      // Must not throw a collision — hostile pid is treated as corrupt
-      // and the lock gets atomically replaced with our own.
       acquireProcessLock({
         lockName: LOCK_NAME,
         lockDir,
@@ -946,9 +902,6 @@ describe('lock-pid security validation', () => {
     expect(isValidLockPid(0x80000000)).toBe(false);
     expect(isValidLockPid('123')).toBe(false);
     expect(isValidLockPid(null)).toBe(false);
-    // Own pid is structurally valid — the lock-acquire idempotent rewrite
-    // path stores process.pid in our own lock. The "do not signal self"
-    // guard is the responsibility of the desktop kill site, not the parser.
     expect(isValidLockPid(process.pid)).toBe(true);
     expect(isValidLockPid(process.ppid > 1 ? process.ppid : 12345)).toBe(true);
   });
@@ -966,10 +919,6 @@ describe('machine identity + fail-closed liveness (duplicate-server regression)'
   });
 
   test('collides on a live local pid even when hostname AND machineId look foreign (hostname-flap regression)', () => {
-    // A macOS hostname rename (or another OS user account's machine-id file)
-    // makes a same-machine lock look foreign. Pre-fix, acquire classified it
-    // as stale and REPLACED it while its holder was alive and serving —
-    // producing two fully-live servers for one contentDir.
     const livePid = aliveForeignPid();
     mkdirSync(lockDir, { recursive: true });
     const flapped: ProcessLockMetadata = {
@@ -989,7 +938,6 @@ describe('machine identity + fail-closed liveness (duplicate-server regression)'
         metadata: { port: 3000, worktreeRoot: '/me' },
       }),
     ).toThrow(ProcessLockCollisionError);
-    // The live holder's lock survives untouched.
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.pid).toBe(livePid);
   });
@@ -1038,7 +986,6 @@ describe('machine identity + fail-closed liveness (duplicate-server regression)'
       lockDir,
       metadata: { port: 4000, worktreeRoot: '/wt' },
     });
-    // Simulate the hostname changing AFTER the lock was written.
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     md.hostname = `${hostname()}-renamed-since`;
     writeFileSync(lockPath, JSON.stringify(md), 'utf-8');
@@ -1087,13 +1034,11 @@ describe('draining lifecycle (lock held until process exit)', () => {
     acquireProcessLock({ lockName: LOCK_NAME, lockDir, metadata: { port: 1, worktreeRoot: '/a' } });
     acquireProcessLock({ lockName: LOCK_NAME, lockDir, metadata: { port: 2, worktreeRoot: '/b' } });
 
-    // Two active acquires — pass-1's teardown must not mark pass-2's lock.
     markProcessLockDraining({ lockName: LOCK_NAME, lockDir });
     let md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.draining).toBeUndefined();
 
     releaseProcessLock({ lockName: LOCK_NAME, lockDir });
-    // Last active acquire — now the mark applies.
     markProcessLockDraining({ lockName: LOCK_NAME, lockDir });
     md = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.draining).toBe(true);
@@ -1139,7 +1084,6 @@ describe('draining lifecycle (lock held until process exit)', () => {
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.draining).toBeUndefined();
     expect(md.port).toBe(6000);
-    // Balance the re-acquire so later tests see a clean refcount.
     releaseProcessLock({ lockName: LOCK_NAME, lockDir });
   });
 

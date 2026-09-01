@@ -49,7 +49,6 @@ describe('SyncBlockingChanges', () => {
 
   afterEach(() => {
     cleanup();
-    // Back to the browser default: the next test asserts the button's absence.
     delete (window as { okDesktop?: unknown }).okDesktop;
   });
 
@@ -76,9 +75,6 @@ describe('SyncBlockingChanges', () => {
   });
 
   test('there is no Discard button — the destructive verb is withheld', async () => {
-    // Uncommitted content has no reflog behind it, so a confirmation dialog is
-    // not recoverability. The verb ships once a snapshot does; until then the
-    // panel offers Commit and a terminal.
     await renderPanel();
 
     expect(screen.queryByTestId('sync-blocking-discard')).toBeNull();
@@ -86,8 +82,6 @@ describe('SyncBlockingChanges', () => {
   });
 
   test('a refused action says so instead of looking like it worked', async () => {
-    // The server 409s when nothing is blocking any more — a stale panel, or a
-    // second click. Swallowing that would leave the buttons reading as dead.
     failNext = true;
     await renderPanel();
 
@@ -99,8 +93,6 @@ describe('SyncBlockingChanges', () => {
   });
 
   test('the terminal action appears only where a terminal exists', async () => {
-    // The docked PTY is behind the Electron bridge; in a browser the button
-    // would open nothing at all.
     await renderPanel();
     expect(screen.queryByTestId('sync-blocking-terminal')).toBeNull();
     cleanup();

@@ -4,31 +4,17 @@ import { withMicrofrontends } from '@vercel/microfrontends/next/config';
 import { createMDX } from 'fumadocs-mdx/next';
 import type { NextConfig } from 'next';
 
-// Routing home is `/docs` — this app serves no landing page at `/`. In the
-// production deployment the apex `/` is served by a separate app, so `/` never
-// reaches this project there; a standalone deployment should set its default
-// route to `/docs`.
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   reactCompiler: {
-    // Fail the build on any compiler diagnostic
     panicThreshold: 'all_errors',
   },
   turbopack: {
-    // Fix Warning: Next.js inferred your workspace root, but it may not be correct.
     root: fileURLToPath(new URL('..', import.meta.url)),
   },
-  // PostHog ingestion is proxied through this origin (api_host: '/ingest' in
-  // instrumentation-client.ts) so ad-blockers don't drop analytics requests.
-  // skipTrailingSlashRedirect keeps PostHog's trailing-slash routes reachable
-  // through the rewrites below.
   skipTrailingSlashRedirect: true,
   async rewrites() {
     return {
-      // Per-page raw Markdown for agents: `/docs/<slug>.md` (and `.mdx`) maps
-      // to the markdown route handler at `/llms.mdx/<slug>`. Must run in
-      // `beforeFiles` so it wins before the `/docs/[...slug]` page catch-all,
-      // which would otherwise match `…/overview.md` as a slug segment and 404.
       beforeFiles: [
         {
           source: '/docs/:path*.md',
@@ -48,7 +34,6 @@ const nextConfig: NextConfig = {
           source: '/ingest/array/:path*',
           destination: 'https://us-assets.i.posthog.com/array/:path*',
         },
-        // Catch-all must come last — the static/array asset rules above must win.
         {
           source: '/ingest/:path*',
           destination: 'https://us.i.posthog.com/:path*',
@@ -56,15 +41,6 @@ const nextConfig: NextConfig = {
       ],
     };
   },
-  // HSTS with `includeSubDomains; preload` (Vercel's injected default is
-  // max-age only). Chrome blocks a download when ANY hop in its redirect
-  // chain is plain http — so a visit starting at
-  // http://openknowledge.ai/download/beta gets "Insecure download blocked"
-  // for the DMG even though Vercel 308s to https immediately. Preload-list
-  // membership (hstspreload.org) makes browsers rewrite to https before the
-  // first request, removing the http hop entirely; the directives below are
-  // the list's eligibility requirements. Subdomain-wide TLS is safe: DNS is
-  // a wildcard onto Vercel and every host terminates TLS there.
   async headers() {
     return [
       {
@@ -78,11 +54,6 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Redirects for deleted docs pages — the prior `Install` page was folded
-  // into Quickstart when the docs pivoted to a desktop-app-first story.
-  // Trailing-slash variants are listed explicitly: skipTrailingSlashRedirect
-  // (set above for the PostHog proxy) disables Next's automatic slash
-  // normalization, so `/path/` no longer falls through to the `/path` rule.
   async redirects() {
     return [
       {
@@ -145,13 +116,6 @@ const nextConfig: NextConfig = {
         destination: '/docs/remote-control/connecting-agents',
         permanent: true,
       },
-      // The Self-hosting section was renamed to Remote Control (folder + URL),
-      // so every prior /docs/self-hosting/* link forwards to its
-      // /docs/remote-control/* counterpart. Both slash variants are listed
-      // because skipTrailingSlashRedirect (above) disables Next's automatic
-      // `/path/` → `/path` normalization. The bare section root forwards to the
-      // overview page (the section has no index route of its own); the former
-      // `methods/npm` path is covered by the npm→cli redirect above.
       {
         source: '/docs/self-hosting',
         destination: '/docs/remote-control/overview',
@@ -222,12 +186,6 @@ const nextConfig: NextConfig = {
         destination: '/docs/plugins/okf',
         permanent: true,
       },
-      // `/download` has no page of its own, so the bare path 404s; forward it
-      // to the stable channel. permanent:false (307, not 308) keeps it a soft
-      // alias — `/download` can later become a real channel-picker page
-      // without a browser-cached permanent redirect getting in the way. Both
-      // slash variants are listed because skipTrailingSlashRedirect (above)
-      // disables Next's automatic `/path/` → `/path` normalization.
       {
         source: '/download',
         destination: '/download/stable',
@@ -245,11 +203,6 @@ const nextConfig: NextConfig = {
 const withMDX = createMDX();
 const baseConfig = withMDX(nextConfig);
 
-// `withMicrofrontends` requires a microfrontends.json that declares this app. That
-// file names the private marketing app and is a Microfrontends deploy concern of
-// agents-private only, so it is excluded from the public mirror — the standalone
-// OSS docs build has none. Apply the wrapper only when the config is present,
-// leaving the mirror (and any standalone clone) a plain Next.js app.
 const microfrontendsConfig = fileURLToPath(new URL('./microfrontends.json', import.meta.url));
 
 export default existsSync(microfrontendsConfig) ? withMicrofrontends(baseConfig) : baseConfig;

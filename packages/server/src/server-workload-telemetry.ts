@@ -1,33 +1,14 @@
-/**
- * Write-spine workload exposed as bounded OpenTelemetry observable gauges:
- * loaded Y.Doc count, persistence queue depths, bridge drain backlog, live
- * collab connections, and agent-session occupancy vs the hard cap.
- *
- * Pull-based by design: producers (server-factory, persistence, the server
- * observer bridge) register read-only provider closures here at construction
- * and unregister at teardown; the gauge callbacks sample the providers only
- * at metric-export time. That keeps the write spine's hot paths untouched —
- * no counter increments inside observers or store hooks — and keeps the
- * registries safe to populate when OTel is disabled (a Set add/delete; the
- * no-op meter never invokes the callbacks).
- */
 import type { ObservableGauge, ObservableResult } from '@opentelemetry/api';
 import type { PersistenceQueueDepths } from './persistence.ts';
 import { getMeter, onTelemetryShutdown } from './telemetry.ts';
 
-/** Live collab-connection counts by transport kind. */
 export interface ConnectionCounts {
-  /** Deduplicated client WebSocket sockets (one socket can attach many docs). */
   websocket: number;
-  /** In-process DirectConnections (agent sessions + server-held system/config docs). */
   direct: number;
 }
 
-/** Agent-session occupancy against the server's hard cap. */
 export interface AgentSessionCounts {
-  /** Live (docName, agentId) sessions currently retained. */
   active: number;
-  /** The session cap (`MAX_AGENT_SESSIONS` unless overridden). */
   limit: number;
 }
 
@@ -44,10 +25,6 @@ let cachedConnectionsGauge: ObservableGauge | null = null;
 let cachedSessionsActiveGauge: ObservableGauge | null = null;
 let cachedSessionsLimitGauge: ObservableGauge | null = null;
 
-// Cached instruments drop on telemetry shutdown so the next install rebinds
-// against the fresh meter (same lifecycle contract as the server-memory
-// gauge). Provider registries survive — they mirror live server objects
-// whose lifecycle is owned by their register/unregister call sites.
 onTelemetryShutdown(() => {
   cachedLoadedDocsGauge = null;
   cachedQueueDepthGauge = null;
@@ -57,12 +34,6 @@ onTelemetryShutdown(() => {
   cachedSessionsLimitGauge = null;
 });
 
-/**
- * Register a provider for the currently-loaded server-side Y.Doc count
- * (typically `() => hocuspocus.documents.size`, which includes synthetic
- * system/config docs). Returns an unregister function; call it at server
- * teardown so the registry doesn't retain the closure.
- */
 export function registerLoadedDocsProvider(provider: () => number): () => void {
   loadedDocsProviders.add(provider);
   return () => {
@@ -70,7 +41,6 @@ export function registerLoadedDocsProvider(provider: () => number): () => void {
   };
 }
 
-/** Register a persistence queue-depth provider. Returns an unregister function. */
 export function registerPersistenceQueueDepthProvider(
   provider: () => PersistenceQueueDepths,
 ): () => void {
@@ -80,11 +50,6 @@ export function registerPersistenceQueueDepthProvider(
   };
 }
 
-/**
- * Register a per-doc probe reporting whether the doc's bridge observers hold
- * an un-settled dirty flag (an `afterAllTransactions` settlement is owed).
- * Returns an unregister function; the observer cleanup path must call it.
- */
 export function registerBridgeDirtyProbe(probe: () => boolean): () => void {
   bridgeDirtyProbes.add(probe);
   return () => {
@@ -92,11 +57,6 @@ export function registerBridgeDirtyProbe(probe: () => boolean): () => void {
   };
 }
 
-/**
- * Register a provider for live collab-connection counts (WebSocket sockets
- * + DirectConnections). Returns an unregister function; call it at server
- * teardown so the registry doesn't retain the closure.
- */
 export function registerConnectionCountsProvider(provider: () => ConnectionCounts): () => void {
   connectionCountsProviders.add(provider);
   return () => {
@@ -104,13 +64,6 @@ export function registerConnectionCountsProvider(provider: () => ConnectionCount
   };
 }
 
-/**
- * Register a provider for agent-session occupancy (`AgentSessionManager`
- * live-session count + its hard cap). Returns an unregister function; call
- * it at server teardown. A session-cap stall (`getSession` throwing
- * `AgentSessionCapacityError` → 503s at the HTTP boundary) is invisible
- * without this — active pinned at the limit is the diagnostic signature.
- */
 export function registerAgentSessionCountsProvider(provider: () => AgentSessionCounts): () => void {
   agentSessionCountsProviders.add(provider);
   return () => {
@@ -118,12 +71,6 @@ export function registerAgentSessionCountsProvider(provider: () => AgentSessionC
   };
 }
 
-/**
- * Register the workload gauges against the currently-registered global meter.
- * Idempotent — a second call is a no-op so a double boot can't
- * double-register the callbacks. A throwing provider is skipped rather than
- * propagated: instrumentation must never feed back into the write spine.
- */
 export function installServerWorkloadGauges(): void {
   if (
     cachedLoadedDocsGauge &&
@@ -147,9 +94,7 @@ export function installServerWorkloadGauges(): void {
       for (const provider of loadedDocsProviders) {
         try {
           total += provider();
-        } catch {
-          // Skip a torn-down provider; the remaining sum stays meaningful.
-        }
+        } catch {}
       }
       result.observe(total);
     });
@@ -170,9 +115,7 @@ export function installServerWorkloadGauges(): void {
           const depths = provider();
           branchDeferred += depths.branchDeferred;
           quiescenceDeferred += depths.quiescenceDeferred;
-        } catch {
-          // Skip a torn-down provider; the remaining sum stays meaningful.
-        }
+        } catch {}
       }
       result.observe(branchDeferred, { queue: 'branch_deferred' });
       result.observe(quiescenceDeferred, { queue: 'quiescence_deferred' });
@@ -191,9 +134,7 @@ export function installServerWorkloadGauges(): void {
       for (const probe of bridgeDirtyProbes) {
         try {
           if (probe()) dirty++;
-        } catch {
-          // Skip a torn-down probe; the remaining count stays meaningful.
-        }
+        } catch {}
       }
       result.observe(dirty);
     });
@@ -214,9 +155,7 @@ export function installServerWorkloadGauges(): void {
           const counts = provider();
           websocket += counts.websocket;
           direct += counts.direct;
-        } catch {
-          // Skip a torn-down provider; the remaining sum stays meaningful.
-        }
+        } catch {}
       }
       result.observe(websocket, { kind: 'websocket' });
       result.observe(direct, { kind: 'direct' });
@@ -240,9 +179,7 @@ export function installServerWorkloadGauges(): void {
       for (const provider of agentSessionCountsProviders) {
         try {
           active += provider().active;
-        } catch {
-          // Skip a torn-down provider; the remaining sum stays meaningful.
-        }
+        } catch {}
       }
       result.observe(active);
     });
@@ -251,9 +188,7 @@ export function installServerWorkloadGauges(): void {
       for (const provider of agentSessionCountsProviders) {
         try {
           limit += provider().limit;
-        } catch {
-          // Skip a torn-down provider; the remaining sum stays meaningful.
-        }
+        } catch {}
       }
       result.observe(limit);
     });
@@ -262,7 +197,6 @@ export function installServerWorkloadGauges(): void {
   }
 }
 
-/** Drop cached instruments and clear registries. Test-only. */
 export function __resetServerWorkloadTelemetryForTests(): void {
   cachedLoadedDocsGauge = null;
   cachedQueueDepthGauge = null;

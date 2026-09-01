@@ -1,20 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Source-to-WYSIWYG landing replay: pre-mount create retry.
- *
- * The replay effect fires when the WYSIWYG editor becomes the active surface,
- * but its ProseMirror view can still be mid-creation at that moment — a large
- * doc's deferred mount, or an Activity hidden->visible recycle. TipTap's
- * `'create'` mutates the editor in place without changing the effect's deps, so
- * an effect that merely bails when the view is absent never re-runs and silently
- * drops the queued landing. This renders the real component with the view held
- * absent, then fires `'create'`, and observes the effect's only decision point:
- * whether the queued navigation is consumed (a landing started) at all.
- *
- * `getEditorView` is the thin adapter over TipTap's throwing view proxy; stubbing
- * it models the pre-mount window the real adapter reports as `undefined`, rather
- * than mocking the effect under test.
- */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { act, cleanup, render } from '@testing-library/react';
@@ -39,8 +23,6 @@ let editorEntry: {
   provider: HocuspocusProvider;
 } | null = null;
 
-// Controls whether the stubbed `getEditorView` reports the view yet, modeling
-// the deferred-mount window. Flipped true just before `'create'` fires.
 let viewReady = false;
 
 vi.doMock('./DocumentContext', () => ({
@@ -145,13 +127,9 @@ describe('TiptapEditor source-to-WYSIWYG replay create retry', () => {
       anchor: { blockIndex: 1, kind: 'paragraph', content: 'body' },
     });
 
-    // The active surface mounts with its view still deferred: the effect must not
-    // drop the queued landing here.
     await renderVisual();
     expect(peekPendingWysiwygNavigation(DOC_NAME)).not.toBeNull();
 
-    // The view finishes creating. `'create'` does not change the effect's deps,
-    // so only a create-listening effect picks the landing back up.
     await act(async () => {
       viewReady = true;
       editorEntry?.editor.emit('create', { editor: editorEntry.editor });

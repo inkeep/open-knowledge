@@ -8,15 +8,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// `vi.doMock(...)` is module-level and is not reset by `vi.restoreAllMocks()`;
-// it persists for the lifetime of this file. Both `describe` blocks below
-// share the mocked `useThemeBridge` surface. That's intentional here because
-// every test in this file exercises the `collabUrl: null` cold-start path (the
-// prop is passed as null below) where the real provider early-returns before
-// any Hocuspocus / binding / theme-bridge interaction. If a future Tier-3 test
-// needs to exercise the REAL seam (e.g. asserting that ConfigProvider calls
-// useThemeBridge with `themeValue ?? 'system'`), start a sibling `*.dom.test.tsx`
-// file rather than fighting these module-level mocks.
 vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));

@@ -1,20 +1,3 @@
-/**
- * Standalone terminal-window live-Electron smoke (SPEC §9 seam 4). Drives the
- * real menu → main `createTerminalWindow` → a dedicated `--ok-mode=terminal`
- * BrowserWindow → the renderer's TerminalWindowApp → a per-window utilityProcess
- * hosting node-pty. Asserts the surfaces the mocked dom tests cannot reach: the
- * Terminal → New Terminal Window menu command opens a real window, a live shell
- * spawns at the inherited project cwd, multiple windows coexist, and closing the
- * last tab closes the window (D7). Per-window PTY reap on close is unit-covered
- * (terminal-window.test.ts asserts killForWindow on 'closed'; terminal-manager
- * kills the host); this asserts the observable window-close.
- *
- * Skip gates mirror terminal-dock.e2e.ts: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * a PTY-capable platform, and the electron-vite build must exist. Not part of
- * `pnpm check`; run via `pnpm exec playwright test` or
- * `pnpm run check:full:parallel`.
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -44,7 +27,6 @@ interface Seed {
   projectDir: string;
 }
 
-/** Seed a consented project (so the shell spawns without the JIT consent dialog). */
 function seed(prefix: string): Seed {
   const tmpHome = realpathSync(mkdtempSync(join(tmpdir(), `ok-termwin-${prefix}-home-`)));
   const projectDir = realpathSync(mkdtempSync(join(tmpdir(), `ok-termwin-${prefix}-proj-`)));
@@ -109,23 +91,6 @@ async function findWindowByMode(
   return page;
 }
 
-/**
- * Hold until the renderer's main thread is answering promptly, so a genuinely
- * un-booted app fails HERE with that name rather than as a puzzling downstream
- * timeout.
- *
- * This is a liveness check and nothing more. It is NOT a proxy for main having
- * registered the window's project context: `findWindowByMode` resolves as soon
- * as PRELOAD answers, and preload answers from a document that has not finished
- * loading, so all three probes can clear inside the boot window. Measured on a
- * failing Linux run, the three round-trips cost 70ms total and cleared 240ms
- * after the window first became discoverable. Ordering the two is main's job —
- * `WindowManager.getContextForBrowserWindow` resolves a window from the moment
- * it exists — not this helper's.
- *
- * An idle renderer answers a round-trip in single-digit ms; 100ms is slack
- * rather than a budget.
- */
 async function waitForRendererResponsive(page: Page): Promise<void> {
   await expect(async () => {
     for (let probe = 0; probe < 3; probe += 1) {
@@ -133,10 +98,6 @@ async function waitForRendererResponsive(page: Page): Promise<void> {
       await page.evaluate(() => performance.now());
       expect(Date.now() - startedAt).toBeLessThan(100);
     }
-    // 15s: the measured worst case for a loaded CI runner to reach a settled
-    // renderer is under 5s. Past 15s the app is not slow, it is broken — and
-    // failing HERE names that, instead of surfacing as a puzzling downstream
-    // timeout.
   }).toPass({ timeout: 15_000, intervals: [250] });
 }
 
@@ -157,10 +118,6 @@ async function clickNewTerminalWindow(
       (candidate) => candidate.webContents.id === expectedSourceId,
     );
     if (!source) return false;
-    // Electron's headless test runner cannot establish native macOS focus, while
-    // the production menu command intentionally resolves project context from
-    // BrowserWindow.getFocusedWindow(). Scope that platform seam to this click so
-    // the test still exercises the real menu and project-inheritance path.
     const getFocusedWindow = BrowserWindow.getFocusedWindow;
     Reflect.set(BrowserWindow, 'getFocusedWindow', () => source);
     try {
@@ -194,9 +151,7 @@ test.describe('Standalone terminal window — live Electron', () => {
     for (const target of cleanup.splice(0)) {
       try {
         rmSync(target, { recursive: true, force: true });
-      } catch {
-        // best-effort
-      }
+      } catch {}
     }
   });
 
@@ -207,9 +162,6 @@ test.describe('Standalone terminal window — live Electron', () => {
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
-    // The main-process command inherits project context from the source editor.
-    // Main resolves that from the moment the window exists, so no ordering is
-    // needed here; this only holds until the app is answering.
     const editor = await findWindowByMode(app, 'editor');
     await waitForRendererResponsive(editor);
     const editorWindow = await app.browserWindow(editor);
@@ -221,7 +173,6 @@ test.describe('Standalone terminal window — live Electron', () => {
     const term = await findWindowByMode(app, 'terminal');
     expect(await term.evaluate(() => window.okDesktop?.config.collabUrl)).not.toBe('');
 
-    // A live shell tab spawned in the new window.
     await expect(term.locator('[data-terminal-status]').first()).toHaveAttribute(
       'data-terminal-status',
       'running',
@@ -229,8 +180,6 @@ test.describe('Standalone terminal window — live Electron', () => {
     );
     await expect(term.getByRole('tab')).toHaveCount(1);
 
-    // The shell's cwd is the inherited project root (the registry resolution
-    // reaching a real shell).
     await term.locator('section[aria-label="Terminal"] .xterm').first().click();
     await term.keyboard.type(`${SHELL_COMMANDS.cwd}\r`);
     const tail = basename(s.projectDir);
@@ -247,7 +196,6 @@ test.describe('Standalone terminal window — live Electron', () => {
       )
       .toContain(tail);
 
-    // Closing the last tab closes the window (it does not collapse a panel).
     await term.getByRole('button', { name: /^Close / }).click();
     await expect.poll(() => terminalWindowCount(app), { timeout: 15_000 }).toBe(0);
   });
@@ -265,8 +213,6 @@ test.describe('Standalone terminal window — live Electron', () => {
     await findWindowByMode(app, 'terminal');
     expect(await clickNewTerminalWindow(app)).toBe(true);
 
-    // Both windows coexist — terminal windows are not deduped per project the
-    // way editor windows are (windowsByPath focus-existing).
     await expect.poll(() => terminalWindowCount(app), { timeout: 20_000 }).toBe(2);
   });
 });

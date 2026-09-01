@@ -1,15 +1,3 @@
-/**
- * Settings → This project → Preferences, Terminal block: two desktop-only
- * toggles.
- *  1. The per-project opt-out for the in-app real OS shell (`terminal.enabled`,
- *     project-local — reads/writes via `use-terminal-enabled`).
- *  2. A per-machine (user-scope) toggle to auto-approve OpenKnowledge's OWN tools
- *     for agents launched from the docked terminal (`agents.autoApproveOkTools`).
- *     Default on; only an explicit `false` reads as off. Written through the
- *     user ConfigBinding (`~/.ok/global.yml`), so it spans every project on this
- *     machine — distinct from the per-project shell toggle above. Carries an
- *     inline note when codex is installed but cannot honor the toggle.
- */
 import { humanFormat } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
@@ -27,15 +15,8 @@ export function TerminalSection() {
   const isOn = enabled !== false;
 
   const { userConfig, userBinding, userSynced } = useConfigContext();
-  // Default on: only an explicit `false` reads as off (mirrors the launch-site
-  // `?? true` fallback in TerminalPanel).
   const autoApproveOn = userConfig?.agents?.autoApproveOkTools !== false;
 
-  // Codex can only honor the toggle when OK's server entry already exists in its
-  // config — the launch site withholds the `-c` override otherwise (a `-c` under
-  // an undefined server id breaks codex's config load). Surface that rather than
-  // let the user watch codex prompt anyway with no explanation. Same preflight
-  // the launch runs; the section is desktop-only, so no bridge means no note.
   const [codexNeedsInit, setCodexNeedsInit] = useState(false);
   useEffect(() => {
     const bridge = window.okDesktop;
@@ -48,10 +29,7 @@ export function TerminalSection() {
           setCodexNeedsInit(res.onPath === 'present' && res.okServerConfigured !== true);
         }
       })
-      .catch(() => {
-        // A failed probe is indistinguishable from "not installed" here — stay quiet
-        // rather than warn about a CLI the user may not have.
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -91,9 +69,7 @@ export function TerminalSection() {
       data-field="section:terminal"
       data-testid="settings-terminal"
     >
-      {/* The heading badge covers the shell toggle below it; the auto-approve
-          toggle is user-scope and carries its own badge, because one heading
-          can't honestly speak for two storage locations. */}
+      {}
       <SettingsSectionHeader
         titleId="settings-terminal-title"
         title={t`Terminal`}

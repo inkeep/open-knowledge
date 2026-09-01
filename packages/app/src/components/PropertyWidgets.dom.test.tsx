@@ -1,16 +1,3 @@
-/**
- * DOM-substrate tests for the WYSIWYG grammar gate on the `tags`
- * frontmatter field. Runs under `bun run test:dom` (jsdom + RTL).
- *
- * Covers the observable behaviors migrated off `?raw` source-text
- * guards: never assert raw source text for JSX / classes / imports /
- * hooks / props.
- * Runtime coverage IS possible here because `ListWidget` is a regular
- * exported component with no Y.Doc / collab dependency at the widget
- * boundary — feed it `value` + an `onCommit` spy and the grammar gate
- * becomes a pure-React assertion.
- */
-
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -22,9 +9,6 @@ function renderWidget(opts: {
   onCommit?: (next: string[]) => void;
 }) {
   const onCommit = opts.onCommit ?? vi.fn(() => {});
-  // TooltipProvider wraps the tree because invalid tag chips render
-  // inside a Radix Tooltip — production has a root provider; test
-  // substrate has to opt in.
   const result = render(
     <TooltipProvider>
       <ListWidget keyName={opts.keyName} value={opts.value} onCommit={onCommit} />
@@ -39,10 +23,6 @@ describe('ListWidget — render-side invalid tag flagging', () => {
   });
 
   test('seed of mixed valid + invalid tags yields the right chip count + invalid flags', () => {
-    // Source-mode authoring lets arbitrary YAML through; ListWidget
-    // receives the raw string array and per-chip-flags entries that
-    // fail the grammar gate so authors can spot + fix them without
-    // context-switching.
     const { container } = renderWidget({
       keyName: 'tags',
       value: ['showcase', '2026', 'has spaces', 'proj/team', 'hello!'],
@@ -50,9 +30,6 @@ describe('ListWidget — render-side invalid tag flagging', () => {
     const chips = container.querySelectorAll('[data-testid="list-chip"]');
     expect(chips).toHaveLength(5);
     const invalid = container.querySelectorAll('[data-tag-invalid="true"]');
-    // Two invalid: whitespace `has spaces`, special-char `hello!`. The
-    // digit-leading `2026` is a valid frontmatter tag (a year), so it is
-    // NOT flagged.
     expect(invalid).toHaveLength(2);
     const invalidTexts = Array.from(invalid).map((el) =>
       (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
@@ -63,9 +40,6 @@ describe('ListWidget — render-side invalid tag flagging', () => {
   });
 
   test('a non-tag list field (categories, aliases, …) never flags chips as invalid', () => {
-    // The grammar gate is scoped to `keyName === 'tags'` — other list
-    // fields keep their free-form rendering. Pin so a future refactor
-    // that drops the `isTagsField` guard surfaces here.
     const { container } = renderWidget({
       keyName: 'aliases',
       value: ['has spaces', '2026', 'hello!'],
@@ -74,19 +48,12 @@ describe('ListWidget — render-side invalid tag flagging', () => {
   });
 
   test('invalid chips are wrapped in a Radix Tooltip trigger (content lazy-renders on open)', () => {
-    // Radix Tooltip lazy-mounts content on first open — pre-open the
-    // DOM only carries the trigger. Asserting on `data-slot=
-    // "tooltip-trigger"` proves the wrapping happened; the content
-    // copy is pinned in the parallel input-rejection test
-    // (where the inline `role="alert"` helper is non-lazy).
     const { container } = renderWidget({ keyName: 'tags', value: ['bad!'] });
     const invalidChip = container.querySelector('[data-tag-invalid="true"]');
     expect(invalidChip?.getAttribute('data-slot')).toBe('tooltip-trigger');
   });
 
   test('valid tag chips are NOT wrapped in a Tooltip (tooltip is diagnostic-only)', () => {
-    // The destructive ring + tooltip is reserved for invalid chips.
-    // Valid + non-tag list values get no extra DOM ceremony.
     const { container } = renderWidget({ keyName: 'tags', value: ['showcase'] });
     const chip = container.querySelector('[data-testid="list-chip"]');
     expect(chip?.getAttribute('data-slot')).not.toBe('tooltip-trigger');
@@ -111,11 +78,8 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
     fireEvent.keyDown(input, { key: 'Enter' });
-    // Did NOT commit.
     expect(onCommit).toHaveBeenCalledTimes(0);
-    // Draft retained so the author can correct in place.
     expect(input.value).toBe('bad!');
-    // Rejection state surfaces on the input + the role="alert" helper.
     expect(input.getAttribute('data-tag-invalid')).toBe('true');
     expect(input.getAttribute('aria-invalid')).toBe('true');
     const alert = container.querySelector('[data-testid="list-chip-input-error"]');
@@ -138,8 +102,6 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('addChip accepts a digit-leading tag like a year (2026)', () => {
-    // Digit-leading tags are valid in frontmatter even though the inline
-    // `#tag` surface rejects them — a year is a legitimate tag.
     const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
@@ -152,8 +114,6 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('typing after a rejection clears the rejection state immediately', () => {
-    // Author is correcting — destructive affordances vanish on the next
-    // keystroke so they get fresh feedback on the next commit attempt.
     const { container } = renderWidget({ keyName: 'tags', value: [] });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'bad!' } });
@@ -177,12 +137,6 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('input strips leading `#` before commit (Obsidian-shape paste tolerance)', () => {
-    // The grammar helper strips a single leading `#` for paste tolerance,
-    // so `#showcase` passes the gate — but the committed value must be
-    // canonical bare `showcase`. Without this normalization the chip
-    // would either render as invalid on the next paint (renderer's
-    // `FRONTMATTER_TAG_VALUE_RE` rejects bare `#`) or silently re-
-    // normalize on the next on-disk YAML round-trip.
     const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'tags', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
@@ -195,9 +149,6 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 
   test('a non-tag list field preserves a leading `#` (no tags-specific normalization)', () => {
-    // Generic list fields (`aliases`, `categories`, …) commit values
-    // verbatim — the `#`-strip is scoped to `isTagsField` since
-    // other fields don't share the tag grammar's tolerance.
     const onCommit = vi.fn(() => {});
     const { container } = renderWidget({ keyName: 'aliases', value: [], onCommit });
     const input = container.querySelector('[data-testid="list-chip-input"]') as HTMLInputElement;
@@ -219,11 +170,6 @@ describe('ListWidget — input-side grammar gate (tags field only)', () => {
   });
 });
 
-// ---------------------------------------------------------------------
-// TextWidget — link-mode rendering (URL-shaped values flip to a clickable
-// `<a>` view; empty / non-URL / relative values fall through to the
-// textarea view as plain text).
-// ---------------------------------------------------------------------
 function renderTextWidget(opts: {
   keyName: string;
   value: string;
@@ -255,7 +201,6 @@ describe('TextWidget — link-mode predicate', () => {
     expect(anchor?.getAttribute('target')).toBe('_blank');
     expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
     expect(anchor?.getAttribute('aria-label')).toBe('Open linear in browser');
-    // No textarea in link view.
     expect(container.querySelector('[data-testid="text-widget"]')).toBeNull();
   });
 
@@ -265,10 +210,6 @@ describe('TextWidget — link-mode predicate', () => {
   });
 
   test('empty string renders as text-widget, NOT link-widget (zero-width chip bug guard)', () => {
-    // Pre-fix: `isSafeUrl('')` returned `true`, so empty text properties
-    // rendered as zero-width clickable chips with broken navigation. The
-    // tightened predicate (`trimmed.length > 0 && /^https?:\/\//i`)
-    // closes this regression.
     const { container } = renderTextWidget({ keyName: 'note', value: '' });
     expect(container.querySelector('[data-testid="link-widget"]')).toBeNull();
     expect(container.querySelector('[data-testid="text-widget"]')).not.toBeNull();
@@ -290,11 +231,6 @@ describe('TextWidget — link-mode predicate', () => {
     ['ftp scheme', 'ftp://files.example.com'],
     ['plain text', 'just some notes'],
   ])('non-http(s) value (%s = %s) renders as text-widget', (_label, value) => {
-    // The pre-fix `isSafeUrl` predicate let these through, producing
-    // chips whose click handlers either no-oped (Electron `openExternal`
-    // allowlist rejection on `tel:` / `ftp:`) or opened blank tabs
-    // (web `window.open('')`). Pin the tighter predicate so future
-    // refactors can't widen it back.
     const { container } = renderTextWidget({ keyName: 'note', value });
     expect(container.querySelector('[data-testid="link-widget"]')).toBeNull();
     expect(container.querySelector('[data-testid="text-widget"]')).not.toBeNull();
@@ -306,8 +242,6 @@ describe('TextWidget — link-mode predicate', () => {
     const pencil = container.querySelector('[data-testid="link-widget-edit"]') as HTMLButtonElement;
     expect(pencil).not.toBeNull();
     fireEvent.click(pencil);
-    // After flipping to edit mode the link view is gone and the textarea
-    // is mounted.
     expect(container.querySelector('[data-testid="link-widget"]')).toBeNull();
     expect(container.querySelector('[data-testid="text-widget"]')).not.toBeNull();
   });
@@ -318,18 +252,12 @@ describe('TextWidget — link-mode predicate', () => {
     fireEvent.click(pencil);
     const textarea = container.querySelector('[data-testid="text-widget"]') as HTMLTextAreaElement;
     expect(textarea).not.toBeNull();
-    // Blur (no value change) — onBlur clears the in-edit flag, the next
-    // render evaluates the predicate again and routes back to link view.
     fireEvent.blur(textarea);
     expect(container.querySelector('[data-testid="link-widget"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="text-widget"]')).toBeNull();
   });
 
   test('edit + change + blur commits the new URL value', () => {
-    // Pins the data-flow path that the no-change blur test doesn't
-    // exercise: if the `if (draft !== value) onCommit(draft)` branch were
-    // accidentally reversed, the UI-transition tests would still pass but
-    // edits would be silently discarded.
     const commits: string[] = [];
     const { container } = renderTextWidget({
       keyName: 'site',

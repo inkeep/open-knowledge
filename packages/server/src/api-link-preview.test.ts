@@ -11,17 +11,8 @@ import { PinoLogger } from './logger.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
 
 const PREVIEW_URL = '/api/link-preview';
-// 8-byte PNG signature (+ padding) — enough for the metadata layer's magic-byte
-// sniff to recognize the favicon bytes as a real image.
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
 
-/**
- * Stand-in for the SSRF-guarded chokepoint. It does NOT re-implement the guard —
- * it is the network boundary the route calls, so the route → parse → cache →
- * envelope wiring can be exercised without egress. The favicon fetch is
- * identified by its image content-type predicate. `calls` records every fetch so
- * a test can prove "no fetch on rejection" and "one fetch across two hovers".
- */
 function makeFakeFetch(config: {
   html?: string;
   reason?: GuardRejectReason;
@@ -51,12 +42,6 @@ interface Harness {
   close: () => Promise<void>;
 }
 
-/**
- * `getLinkPreviewsEnabled` defaults to `() => true` so the pre-existing gate /
- * outcome tests exercise the enabled path; pass `null` to OMIT the option
- * entirely (the fail-closed case), or a custom getter for the enforcement
- * tests.
- */
 async function startHarness(
   contentDir: string,
   linkPreviewFetch?: GuardedFetch,
@@ -106,8 +91,6 @@ function postPreview(baseURL: string, options: PostOptions = {}): Promise<Respon
   });
 }
 
-/** Per-describe scaffolding: a tmp content dir plus a single harness the test
- *  opens via `open()` and `afterEach` tears down. */
 function useHarness(): {
   open: (
     linkPreviewFetch?: GuardedFetch,
@@ -259,10 +242,6 @@ describe('POST /api/link-preview preview outcomes', () => {
   });
 
   test('a guard rejection crosses the wire with the single coarse reason', async () => {
-    // The guard produced the granular 'private-ip' (kept in logs + cache), but
-    // the response must not distinguish it from any other rejection — a
-    // loopback caller could otherwise enumerate internal names by pairing
-    // chosen hostnames with reasons.
     const fake = makeFakeFetch({ reason: 'private-ip' });
     const harness = await rig.open(fake.impl);
 
@@ -301,7 +280,6 @@ describe('POST /api/link-preview preview outcomes', () => {
     const firstBody = await first.json();
     const secondBody = await second.json();
     expect(secondBody).toEqual(firstBody);
-    // The page URL was fetched exactly once; the second hover was served warm.
     expect(fake.calls.filter((u) => u === url)).toHaveLength(1);
   });
 });
@@ -348,8 +326,6 @@ describe('POST /api/link-preview server-side linkPreviews.enabled enforcement', 
   test('the disabled short-circuit never poisons the cache: enabling serves a fresh preview', async () => {
     const fake = makeFakeFetch({ html: '<title>Fresh</title>' });
     let enabled = false;
-    // Fresh-read contract: the getter is consulted per request, so flipping the
-    // flag mid-harness models a runtime Settings toggle without a restart.
     const harness = await rig.open(fake.impl, () => enabled);
     const url = 'https://example.com/toggled';
 
@@ -369,8 +345,6 @@ describe('POST /api/link-preview server-side linkPreviews.enabled enforcement', 
 });
 
 describe('POST /api/link-preview real SSRF chokepoint', () => {
-  // No injected fetch: these exercise the production guardedFetch end-to-end
-  // through the route, proving the real chokepoint is wired in.
   const rig = useHarness();
 
   test('rejects a private-IP target with a structured failure', async () => {
@@ -399,10 +373,6 @@ describe('POST /api/link-preview real SSRF chokepoint', () => {
 describe('POST /api/link-preview outcome instrumentation', () => {
   const rig = useHarness();
 
-  // Spy at the prototype: api-extension.ts holds a module-level
-  // `getLogger('api')` binding, and sibling test files' configure()/reset()
-  // calls clear the factory's instance cache, so an instance-level spy taken
-  // here could wrap a DIFFERENT logger than the one the route actually uses.
   let debugSpy: Mock<PinoLogger['debug']>;
 
   beforeEach(() => {
@@ -413,7 +383,6 @@ describe('POST /api/link-preview outcome instrumentation', () => {
     debugSpy.mockRestore();
   });
 
-  /** The `outcome` categories logged by the route, in emission order. */
   function loggedOutcomes(): unknown[] {
     return debugSpy.mock.calls
       .filter(([, message]) => message === '[link-preview] request outcome')
@@ -453,8 +422,6 @@ describe('POST /api/link-preview outcome instrumentation', () => {
     });
 
     expect(loggedOutcomes()).toEqual(['fallback']);
-    // Hygiene invariant: the outcome record carries the category and nothing
-    // else. The URL / hostname / resolved IP must never reach these lines.
     const outcomeCalls = debugSpy.mock.calls.filter(
       ([, message]) => message === '[link-preview] request outcome',
     );

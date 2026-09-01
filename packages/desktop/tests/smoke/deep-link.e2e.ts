@@ -1,32 +1,3 @@
-/**
- * Deep-link smoke test — proves that an `openknowledge://` URL arriving
- * after the desktop app is already running (warm-start) routes through the
- * main-process handler → `ok:deep-link` IPC event → renderer hash navigation.
- *
- * **Scope: warm-start only.**
- * `_electron.launch({ args: [url] })` on macOS delivers the URL via
- * `process.argv`, NOT via the `open-url` Apple Event. This means
- * `_electron.launch` args can exercise the `second-instance` argv parsing
- * path but cannot exercise the cold-start Apple Event path. For the
- * Apple-Event path, `execSync('open openknowledge://...')` is the canonical
- * driver because it dispatches through macOS Launch Services just like a
- * real user click. That's what this test uses.
- *
- * True cold-start Apple-Event simulation (launching a not-yet-running app
- * via `open(1)` and asserting the queue-then-flush path delivers the URL) is
- * covered separately, in the packaged tier — see `cold-single-file-launch.e2e.ts`.
- *
- * Skip conditions:
- *   - Not on macOS (`process.platform !== 'darwin'`) — the `open` command
- *     is macOS-specific, and the URL-scheme handler is darwin-only in v0.
- *   - Main-process build output missing (`out/main/index.js` absent) — the
- *     app must be built via `pnpm run build:desktop` before this test runs.
- *     CI runs without a pre-build skip gracefully rather than misreporting.
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — gate so `pnpm exec playwright test` on the
- *     entire repo without explicit opt-in doesn't attempt to launch Electron
- *     (which crashes headless CI that lacks a display server).
- */
-
 import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -37,19 +8,9 @@ import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
-// Environment gate: opt-in only. Default-off keeps the test harmless on CI.
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DARWIN = process.platform === 'darwin';
 
-// Compute a per-test Electron userData dir under tmpHome. The Chromium
-// `--user-data-dir=<path>` switch is the only mechanism that reliably
-// isolates `app.getPath('userData')` in dev mode — Electron's default
-// resolution reads `NSBundle.mainBundle`'s CFBundleName (which is
-// "Electron" when launched via `Electron.app/Contents/MacOS/Electron`,
-// regardless of `productName`). Without isolation, every smoke run shares
-// the real user's `~/Library/Application Support/Electron/state.json`,
-// which accumulates `lastOpenedProject` pointing at deleted tmpdirs and
-// produces non-deterministic boot windows.
 function userDataDirFor(tmpHome: string): string {
   return join(tmpHome, 'electron-userdata');
 }
@@ -59,28 +20,9 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
   test.skip(!DARWIN, 'Deep-link URL scheme is macOS-only in v0 (D51 NOT NOW).');
   test.skip(!TARGET.exists, TARGET.missingReason);
 
-  // Cold-start Apple-Event delivery is covered by
-  // `cold-single-file-launch.e2e.ts`, which runs in the packaged tier.
-  //
-  // That coverage was long deferred on the belief that it needed a signed +
-  // notarized DMG so Launch Services would bind `openknowledge://` to this
-  // bundle rather than the generic Electron shell. Naming the bundle directly
-  // (`open -a <bundle> <target>`) sidesteps scheme resolution entirely, and a
-  // document open involves no scheme at all — so an ad-hoc-signed local build
-  // delivers real `open-file` and `open-url` Apple Events. Signing gates
-  // Gatekeeper, not Apple-Event delivery.
-
   test('open(1) shell-out post-launch routes extension-less docName to renderer hash', async ({
     captureStderrFor,
   }) => {
-    // Regression: smoke must mirror the real MCP producer contract.
-    // `preview-url.ts` normalizes docNames via `normalizeDocName` /
-    // `docNameFromPath` → extension is stripped before encodeURIComponent.
-    // Hardcoding `doc=target.md` here would exercise a path the producer
-    // never emits, so a regression that strips / doesn't strip correctly
-    // on the producer side would go uncaught. We seed `target.md` on disk
-    // (the on-disk form) but fire the deep-link with `doc=target` (the
-    // wire form) and assert the renderer hash matches the wire form.
     const tmpHome = mkdtempSync(join(tmpdir(), 'ok-m4-deep-link-home-'));
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-m4-deep-link-'));
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -99,23 +41,12 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
     );
     captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
 
-    // Wait for the first window to appear — the Navigator spawns at boot in
-    // v0 (no prior `lastOpenedProject`). Any window is sufficient for the
-    // deep-link test since `open-url` → focus/spawn handles routing.
     const firstWindow = await app.firstWindow({ timeout: 15_000 });
     expect(firstWindow).toBeDefined();
 
-    // Fire the deep-link via `open(1)` — dispatches through macOS Launch
-    // Services → Apple Event → the app's `open-url` listener.  `-g` keeps
-    // focus off to reduce flake under CI display servers.
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=target`;
     execSync(`open -g "${deepLink}"`, { stdio: 'pipe' });
 
-    // Wait up to 5s for SOME window in the app to have a hash ending in
-    // `target` (exact renderer-side form). The install-deep-link-listener
-    // writes `#/<encodeURIComponent(doc)>` — no extension, matching the
-    // producer. Cross-worker Playwright poll all windows because the main
-    // process may have spawned a new window for the project.
     await expect(async () => {
       for (const page of app.windows()) {
         const hash = await page.evaluate(() => window.location.hash).catch(() => '');
@@ -128,11 +59,6 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
   test('open(1) shell-out with nested docName round-trips encoded slash', async ({
     captureStderrFor,
   }) => {
-    // Regression for the nested docNames
-    // like `notes/meeting` are the common MCP producer shape. Guards
-    // against any regression that would re-narrow the `doc` validator or
-    // break encodeURIComponent round-tripping through the renderer's
-    // hash-route listener.
     const tmpHome = mkdtempSync(join(tmpdir(), 'ok-m4-deep-link-nested-home-'));
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-m4-deep-link-nested-'));
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -158,15 +84,9 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
     const firstWindow = await app.firstWindow({ timeout: 15_000 });
     expect(firstWindow).toBeDefined();
 
-    // Nested docName — `/` encoded as `%2F` on the wire. Matches what
-    // `preview-url.ts` emits via `encodeURIComponent(docName)`.
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=notes%2Fmeeting`;
     execSync(`open -g "${deepLink}"`, { stdio: 'pipe' });
 
-    // Renderer encodes via `encodeURIComponent(doc)` before setting hash,
-    // so `notes/meeting` → `#/notes%2Fmeeting`. Alternative form `#/notes/meeting`
-    // is also acceptable if the install-deep-link-listener ever switches to
-    // per-segment encoding; assert either shape to avoid brittle coupling.
     await expect(async () => {
       for (const page of app.windows()) {
         const hash = await page.evaluate(() => window.location.hash).catch(() => '');

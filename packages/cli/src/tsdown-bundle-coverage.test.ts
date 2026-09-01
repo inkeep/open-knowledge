@@ -3,20 +3,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
-/**
- * Regression guard: every runtime JS dep in packages/cli/package.json must
- * appear in tsdown.config.ts `alwaysBundle` (unless it's listed in
- * `neverBundle` for being a native addon).
- *
- * The desktop install ships no `node_modules/` next to dist/cli.mjs, so a
- * bare `import 'X'` in the bundled CLI fails to resolve from the packaged
- * .app's app.asar.unpacked/ — Node's module resolver from a file in
- * app.asar.unpacked/ walks the real filesystem only and can't cross into
- * the sibling app.asar/ for transitive resolution. Forgetting to add a new
- * cli dep to `alwaysBundle` surfaces as ERR_MODULE_NOT_FOUND at runtime in
- * the packaged DMG (caught late, after every other gate has passed).
- */
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliRoot = resolve(__dirname, '..');
 const cliPkgJsonPath = resolve(cliRoot, 'package.json');
@@ -29,17 +15,11 @@ const declaredDeps = Object.keys(cliPkg.dependencies ?? {}).sort();
 
 const configSource = readFileSync(tsdownConfigPath, 'utf8');
 
-// The config declares its bundling policy as two named shared consts (the
-// standalone and library builds compose them), so the coverage anchors are
-// the const declarations rather than per-build `alwaysBundle:` literals.
 function extractBlock(name: 'alwaysBundlePureJsDeps' | 'nativeAddonNeverBundle'): string {
   const match = configSource.match(new RegExp(`const ${name}\\s*=\\s*\\[([\\s\\S]*?)\\n\\];`));
   return match?.[1] ?? '';
 }
 
-// Strip `//`-prefixed comment lines so a commented-out entry doesn't
-// silently pass as covered (a bare `/^pino...` substring would otherwise
-// match even inside `// /^pino(\/|$)/,`).
 function stripLineComments(block: string): string {
   return block
     .split('\n')
@@ -60,10 +40,6 @@ describe('tsdown alwaysBundle covers every cli runtime dep', () => {
   for (const dep of declaredDeps) {
     test(`alwaysBundle covers '${dep}'`, () => {
       if (neverBundleNames.includes(dep)) return;
-      // The alwaysBundle entries are JS regex literals like
-      // `/^@octokit\/request(\/|$)/` — note that `/` is escaped as `\/` in the
-      // source text. Match `^` + dep name (allowing optional `\` before each
-      // `/`) + `(` to anchor at a real entry without false positives.
       const escaped = dep.replace(/[\\^$*+?.()|[\]{}-]/g, '\\$&').replace(/\//g, '\\\\?/');
       const pattern = new RegExp(`\\^${escaped}\\(`);
       expect(
@@ -77,14 +53,6 @@ describe('tsdown alwaysBundle covers every cli runtime dep', () => {
   }
 });
 
-/**
- * yjs is the one dep whose bundling deliberately DIFFERS between the two
- * builds: inlined in the standalone bin (no node_modules beside dist/cli.mjs),
- * external in the library entry (so the desktop's main/utility processes share
- * one yjs module record with `@inkeep/open-knowledge-server` — yjs keeps a
- * module-level singleton and duplicate copies break `instanceof` across them,
- * yjs/yjs#438, surfacing as "Yjs was already imported" at packaged startup).
- */
 describe('yjs split-bundling policy', () => {
   test('yjs is a declared runtime dependency (library consumers resolve the external import)', () => {
     expect(declaredDeps).toContain('yjs');
@@ -95,9 +63,6 @@ describe('yjs split-bundling policy', () => {
   });
 
   test('library build externalizes yjs (its neverBundle lists it)', () => {
-    // The library config spreads the shared native-addon list and appends
-    // 'yjs' — anchor on that exact composition so a refactor that silently
-    // drops the externalization fails here.
     expect(configSource).toMatch(/neverBundle:\s*\[\.\.\.nativeAddonNeverBundle,\s*'yjs'\]/);
   });
 
@@ -106,11 +71,6 @@ describe('yjs split-bundling policy', () => {
   });
 });
 
-/**
- * The loop above only covers the cli's OWN `package.json` dependencies. The
- * same ERR_MODULE_NOT_FOUND class also bites TRANSITIVE runtime deps that
- * enter the bundle through the inlined `@inkeep/open-knowledge-server` source.
- */
 describe('tsdown alwaysBundle covers the file-type transitive closure', () => {
   const fileTypeClosure = [
     '@borewit/text-codec',
@@ -138,19 +98,6 @@ describe('tsdown alwaysBundle covers the file-type transitive closure', () => {
   }
 });
 
-/**
- * Server/core-inlined transitive deps that are NOT cli `package.json` deps but
- * enter the bundle through the inlined `@inkeep/open-knowledge-server` / `-core`
- * source. The declared-deps loop above cannot see them, so a
- * reconcile-against-`package.json` pass could silently drop their `alwaysBundle`
- * entry and crash a packaged DMG with ERR_MODULE_NOT_FOUND. Provenance:
- *   - `sirv`        — server `boot.ts` react-shell mount (dropped from
- *     cli/package.json with the `--only ui` proxy; the others were always
- *     transitive)
- *   - `just-bash`   — server `bash/index.ts`
- *   - `shell-quote` — server `bash/parse-command.ts`
- *   - `picomatch`   — core `markdown/lint/applies-to.ts`
- */
 describe('tsdown alwaysBundle covers server/core-inlined transitive deps', () => {
   const serverInlinedClosure = ['sirv', 'just-bash', 'shell-quote', 'picomatch'];
 

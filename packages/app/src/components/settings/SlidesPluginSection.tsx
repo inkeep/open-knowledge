@@ -1,18 +1,3 @@
-/**
- * The Slidev "plugin" panel — a peer of the lint plugins in the Plugins menu
- * (Settings → Plugins → Slidev), not a lint plugin: it owns no `contentRules`
- * slice and adds nothing to the Problems panel. Its enablement lives in a
- * user-scope config leaf (`slides.enabled`), the same posture as Themes.
- *
- * Beyond explaining the plugin, the panel answers the one question the rest of
- * the feature cannot: **did OpenKnowledge actually find Slidev?** Everywhere
- * else, an unresolved Slidev is silent by design — the toolbar action is simply
- * absent, which is indistinguishable from the plugin being broken. This panel
- * is the single place that state is visible, so it re-probes on mount and on
- * window focus: install Slidev in a terminal, click back into OpenKnowledge,
- * and the status flips without a restart.
- */
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, TerminalIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -27,42 +12,23 @@ import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isSettingsHashOpen } from '@/lib/use-settings-route';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
-/** The command shown, copied, AND run — read from the terminal-command registry
- *  rather than restated here. The panel displaying one command while the button
- *  runs another is the drift this single source exists to prevent, and it would
- *  be invisible until someone copied the text and got a different result. The
- *  registry is also where the "why both packages" rationale lives. */
 const INSTALL_COMMAND = terminalCommandFor('install-slidev') ?? '';
 
 const SLIDEV_INSTALL_DOCS = 'https://sli.dev/guide/install';
 
-/** OpenKnowledge's own page for the plugin — how to enable it, the frontmatter
- *  flag, and what Slidev authoring looks like from here. Distinct from
- *  `SLIDEV_INSTALL_DOCS`, which is upstream Slidev's install matrix. */
 const SLIDEV_DOCS = 'https://openknowledge.ai/docs/plugins/slidev';
 
 type Availability =
   | { kind: 'checking' }
   | { kind: 'available'; source: 'global' | 'project-local' }
   | { kind: 'missing' }
-  /** The probe itself failed — a broken bridge / rejected invoke — as opposed to
-   *  a probe that succeeded and found no Slidev (`missing`). Slidev may well be
-   *  present, so offering the install command would be the wrong remediation. */
   | { kind: 'check-failed' }
-  /** Not the desktop app (or no bridge): the feature cannot run here at all, so
-   *  "not installed" would be the wrong thing to say. */
   | { kind: 'unsupported' };
 
 function useSlidevStatus(): Availability {
   const [availability, setAvailability] = useState<Availability>({ kind: 'checking' });
 
-  // `probe` lives inside the effect so it shares the `active` flag and keeps
-  // one identity for registering and removing the focus listener. A body-level
-  // callback cannot guarantee that under the React Compiler.
   useEffect(() => {
-    // Guards a late `status()` resolution from writing state into an unmounted
-    // panel after Settings closes quickly. The sibling probe in
-    // SlidesToolbarControls carries the same flag.
     let active = true;
     const probe = () => {
       const slides = window.okDesktop?.slides;
@@ -78,20 +44,12 @@ function useSlidevStatus(): Availability {
             result.available ? { kind: 'available', source: result.source } : { kind: 'missing' },
           );
         })
-        // Trust boundary: an IPC round-trip to a separate process. A rejected
-        // invoke means the probe could not run, so report neutral `check-failed`
-        // instead of `missing`. Otherwise a broken bridge could tell the user
-        // to install software that is already present. Logging keeps those
-        // failures distinguishable in diagnostics.
         .catch((err: unknown) => {
           console.warn('[slides] settings availability probe failed:', err);
           if (active) setAvailability({ kind: 'check-failed' });
         });
     };
     probe();
-    // Re-probe when the user returns to the window. The common first-run path
-    // is: see "not installed" → install in a terminal → switch back. That focus
-    // event refreshes the panel before they look at it.
     window.addEventListener('focus', probe);
     return () => {
       active = false;
@@ -102,16 +60,6 @@ function useSlidevStatus(): Availability {
   return availability;
 }
 
-/**
- * Whether this host can actually open a terminal tab and run something in it.
- *
- * `config.ptyAvailable` is false where the packaged app cannot spawn a PTY.
- * Without this gate, "Run in terminal"
- * would close Settings, fire the request, and produce no session at all: the
- * dock never creates a PTY, so the click reads as the app swallowing it. Same
- * rule EditorPane states for every terminal affordance — a control that cannot
- * launch must not render. The copy-command path stays on every platform.
- */
 function canRunInTerminal(): boolean {
   const bridge = window.okDesktop;
   return bridge?.terminal != null && bridge.config?.ptyAvailable === true;
@@ -160,8 +108,7 @@ function StatusRow({ availability }: { availability: Availability }) {
 
   return (
     <div className="space-y-3" data-testid="slides-status-missing">
-      {/* Amber + a dark-mode pair, matching the AI-tools rows — the settings
-          panes carry status in the text colour, not in an icon. */}
+      {}
       <p className="text-sm text-amber-600 dark:text-amber-400">
         <Trans>
           Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this
@@ -189,9 +136,6 @@ function StatusRow({ availability }: { availability: Availability }) {
             variant="outline"
             data-testid="slides-run-install"
             onClick={() => {
-              // Close Settings first. The hash-routed dialog closes through one
-              // `history.back()`; leaving it open would hide the terminal behind
-              // a modal while the install runs.
               if (typeof window !== 'undefined' && isSettingsHashOpen(window.location.hash)) {
                 window.history.back();
               }
@@ -208,8 +152,6 @@ function StatusRow({ availability }: { availability: Availability }) {
           rel="noopener noreferrer"
           onClick={(e) => dispatchExternalLinkClick(e, SLIDEV_INSTALL_DOCS)}
           onAuxClick={(e) => dispatchExternalLinkClick(e, SLIDEV_INSTALL_DOCS)}
-          // Name the destination for link lists where a bare “Other ways to
-          // install” lacks context.
           aria-label={t`Other ways to install Slidev`}
           className="inline-flex items-center gap-0.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           data-testid="slides-install-docs-link"
@@ -233,8 +175,6 @@ export function SlidesPluginSection() {
     >
       <SettingsSectionHeader
         titleId="settings-plugin-slides-title"
-        // Product name, not a translatable label; the markdownlint panel passes
-        // its name raw too.
         title="Slidev"
         scope="user"
         beta
@@ -247,9 +187,7 @@ export function SlidesPluginSection() {
           Slidev CLI, which OpenKnowledge does not bundle.
         </Trans>
       </SettingsSectionHeader>
-      {/* The status resolves asynchronously (mount probe + focus re-probe), so a
-          polite live region announces the flip from "Checking" to found /
-          missing / check-failed, matching the sibling settings sections. */}
+      {}
       <div aria-live="polite">
         <StatusRow availability={availability} />
       </div>

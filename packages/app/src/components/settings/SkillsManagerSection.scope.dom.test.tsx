@@ -1,12 +1,3 @@
-/**
- * The scope-to-block wiring, pinned.
- *
- * `SkillsManagerSection` is the only place mapping scope to which block renders,
- * and the section suites mount `BuiltInSkillsSection` / `ProjectSkillSection`
- * directly — so inverting the ternary left every test green. These mount the
- * real page, with a bridge, at both scopes.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -19,14 +10,12 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ i18n: { locale: 'en' }, t: renderLinguiTemplate }),
 }));
 
-// The intro dialog is not what these assert on; keep it out of the way.
 vi.doMock('@/lib/skills-studio-intro-store', () => ({
   SKILLS_STUDIO_INTRO_KEY: 'ok-skills-studio-intro-seen-v1',
   hasSeenSkillsStudioIntro: () => true,
   markSkillsStudioIntroSeen: () => {},
 }));
 
-// The folders block does its own fetching; it is not under test here.
 vi.doMock('@/hooks/use-skill-targets', () => ({
   useSkillTargets: () => ({
     state: { status: 'ready', data: { folders: [] } },

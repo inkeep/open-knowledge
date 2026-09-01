@@ -1,23 +1,3 @@
-/**
- * Cross-placement integration for the unified "Ask AI" composer's SHARED draft.
- *
- * The user symptom this guards: a brief typed in the bottom docked composer must
- * carry into the create-screen hero composer (and back), surviving the composer
- * unmounting as the user navigates doc → empty → doc. Both placements read/write
- * the same `composer-draft-store`, so the draft lives in the store, not in either
- * component's local state.
- *
- * The shared unit is the editor's ProseMirror document JSON, NOT a flattened
- * string — so an atomic `@`-mention chip survives across placements as a real
- * `composerMention` node, instead of round-tripping through lossy literal `@path`
- * text. The rich `@`-mention input is replaced with a doc-faithful double that
- * honors the real contract additions (`initialDoc` seed + `onContentChange`
- * mirror, both doc JSON) and renders `composerMention` nodes as `.composer-mention`
- * chip spans, so these tests exercise the store wiring + chip survival through the
- * real components rather than the editor internals (covered in
- * `ComposerMentionInput.dom.test.tsx`).
- */
-
 import type { CreateScenario, InstallState } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -67,8 +47,6 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
       {children}
     </button>
   ),
-  // The composer's `+` context menu renders a checkbox row (attach / detach the
-  // comment queue); without it every test here dies on a missing mock export.
   DropdownMenuCheckboxItem: ({ children, disabled, checked, ...props }: MenuChild) => (
     <button
       type="button"
@@ -117,16 +95,6 @@ vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
 
 vi.doMock('sonner', () => ({ toast: { error: () => {}, success: () => {} } }));
 
-// ---------------------------------------------------------------------------
-// Doc-faithful input double. It honors the SHARED-DRAFT contract additions:
-// seeds from `initialDoc` (document JSON) and mirrors edits up via
-// `onContentChange` (also document JSON). It models the doc the way the real
-// editor does — a paragraph of inline `text` / `composerMention` nodes — and
-// renders any mention node as a `.composer-mention` chip span, so a test can
-// assert a chip survived across placements. The editor internals are covered
-// elsewhere; this exercises the store wiring + chip preservation.
-// ---------------------------------------------------------------------------
-
 type Handle = {
   focus: () => void;
   blur: () => void;
@@ -135,7 +103,6 @@ type Handle = {
   getContent: () => { instruction: string; mentions: string[] };
 };
 
-/** Flatten a composer doc to its plain instruction (chips inline as `@path`). */
 function docToInstruction(doc: JSONContent | undefined): string {
   if (!doc?.content) return '';
   return doc.content
@@ -150,7 +117,6 @@ function docToInstruction(doc: JSONContent | undefined): string {
     .trim();
 }
 
-/** Build a plain-text paragraph doc (no chips) from a typed string. */
 function textToDoc(value: string): JSONContent {
   return {
     type: 'doc',
@@ -174,8 +140,6 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
     onSubmit: () => void;
     initialDoc?: JSONContent;
   }) => {
-    // The live doc the field models. Seeded from the shared draft; chips in it
-    // render as real chip spans below.
     const [doc, setDoc] = useState<JSONContent>(() => initialDoc ?? textToDoc(''));
     const localRef = useRef<HTMLTextAreaElement>(null);
 
@@ -221,8 +185,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
             }
           }}
         />
-        {/* Render seeded/inserted mention nodes as real chip spans — the atomic
-            unit the assertions look for. */}
+        {}
         {mentionNodes.map((node, i) => (
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: stable list of seeded chips in a test double
@@ -233,8 +196,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
             @{String(node.attrs?.label ?? node.attrs?.path ?? '')}
           </span>
         ))}
-        {/* Test affordance: insert an `@`-mention chip the way the typeahead
-            would — appends a `composerMention` node and mirrors the doc up. */}
+        {}
         <button
           type="button"
           data-testid={`insert-mention-${ariaLabel}`}
@@ -269,13 +231,8 @@ const { registerAgent } = await import('@/lib/acp/registered-agents');
 beforeEach(() => {
   try {
     window.localStorage.clear();
-  } catch {
-    /* guarded */
-  }
+  } catch {}
   __resetComposerDraftForTests();
-  // Seed one enabled in-app agent — production hydrates this on boot; without it
-  // the create composer collapses to the "Turn on an agent" nudge (no input),
-  // which these draft tests aren't exercising.
   registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude' }, { makeDefault: true });
 });
 
@@ -299,10 +256,8 @@ describe('shared draft across composer placements', () => {
     const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />);
     fireEvent.change(bottomInput(), { target: { value: 'condense my AGENTS.md' } });
 
-    // Navigate away from the doc → the bottom composer unmounts.
     docked.unmount();
 
-    // The create/empty hero mounts (a new tab landed on the empty state).
     render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
     await waitFor(() => expect(heroInput().value).toBe('condense my AGENTS.md'));
   });
@@ -320,16 +275,12 @@ describe('shared draft across composer placements', () => {
   test('an @-mention chip inserted in the bottom composer survives as a chip node in the create composer', async () => {
     const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />);
     fireEvent.change(bottomInput(), { target: { value: 'see ' } });
-    // Insert a mention the way the typeahead would — it becomes an atomic node.
     fireEvent.click(screen.getByTestId('insert-mention-Ask AI'));
 
     docked.unmount();
 
     render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
 
-    // The seeded hero field restores a real `.composer-mention` chip element —
-    // NOT a literal `@ideas/foo.md` text run — proving the doc (not a flattened
-    // string) crossed the placement boundary.
     await waitFor(() => {
       const chip = document.querySelector(
         '.composer-mention[data-composer-mention="ideas/foo.md"]',
@@ -357,11 +308,11 @@ describe('shared draft across composer placements', () => {
   test('the draft survives a doc → empty → doc round trip (remount restores it)', async () => {
     const first = render(<BottomComposer docName="notes" surface="wysiwyg" />);
     fireEvent.change(bottomInput(), { target: { value: 'summarize my week' } });
-    first.unmount(); // → folder/empty
+    first.unmount();
 
     const empty = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
     await waitFor(() => expect(heroInput().value).toBe('summarize my week'));
-    empty.unmount(); // → back to a doc
+    empty.unmount();
 
     render(<BottomComposer docName="other" surface="wysiwyg" />);
     await waitFor(() => expect(bottomInput().value).toBe('summarize my week'));
@@ -372,8 +323,6 @@ describe('shared draft across composer placements', () => {
     fireEvent.change(bottomInput(), { target: { value: 'draft a spec' } });
     docked.unmount();
 
-    // Simulate reload: drop the in-memory store snapshot. The next mount reads
-    // the persisted draft doc back from localStorage.
     __resetComposerDraftForTests();
 
     render(<BottomComposer docName="notes" surface="wysiwyg" />);

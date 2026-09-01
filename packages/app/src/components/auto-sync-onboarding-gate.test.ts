@@ -4,9 +4,6 @@ import {
   resolveAutoSyncOnboarding,
 } from './auto-sync-onboarding-gate.ts';
 
-// Baseline = every condition aligned so the modal SHOWS the full-sync variant
-// (probe allowed). Each test flips one input and asserts the gate's response,
-// keeping every condition on its own independently verifiable row.
 const SHOWING: AutoSyncOnboardingGateInputs = {
   autoSyncOnboardingDismissed: false,
   hasRemote: true,
@@ -37,8 +34,6 @@ describe('resolveAutoSyncOnboarding', () => {
   });
 
   test('hidden until the committed project binding has synced (flash-free)', () => {
-    // Without the projectSynced guard, a project shipping a committed default
-    // would briefly read the schema default (null) and flash the modal open.
     expect(resolveAutoSyncOnboarding({ ...SHOWING, projectSynced: false })).toBeNull();
     expect(resolveAutoSyncOnboarding({ ...SHOWING, projectSynced: undefined })).toBeNull();
   });

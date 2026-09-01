@@ -1,14 +1,3 @@
-/**
- * DOM tests for InternalDocPreviewCard (the W2 doc card). Asserts the
- * present-field rendering and, above all, the progressive-omission contract:
- * a field the reader has not resolved (excerpt/tags/backlinks still loading or
- * failed) is omitted, an empty-body excerpt ('') shows the "No excerpt"
- * affordance, and the always-local title/folder render regardless.
- *
- * Lingui macros resolve to the English-passthrough shim under `test:dom`
- * (`tests/lingui-macro-preload.ts`), so assertions read source-locale text.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { InternalDocPreviewCard } from './InternalDocPreviewCard';
@@ -59,8 +48,6 @@ describe('InternalDocPreviewCard — resolved doc fields', () => {
 
 describe('InternalDocPreviewCard — progressive omission', () => {
   test('omits excerpt, tags, and backlink count while their reads are unresolved', () => {
-    // The reader leaves excerpt/tags/backlinkCount undefined until the local
-    // reads land (or on failure); only title/folder/mtime are local-synchronous.
     const preview: InternalDocPreview = {
       docName: 'guides/install',
       title: 'Install guide',
@@ -73,7 +60,6 @@ describe('InternalDocPreviewCard — progressive omission', () => {
     expect(slot(container, 'tags')).toBeNull();
     expect(slot(container, 'excerpt')).toBeNull();
     expect(slot(container, 'empty')).toBeNull();
-    // The edited time still renders from the local mtime; the backlink chip does not.
     expect(slot(container, 'meta')?.textContent ?? '').not.toContain('backlink');
   });
 

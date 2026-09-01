@@ -1,9 +1,3 @@
-/**
- * Buffered async-iterable stream — the queue mechanics shared by both HTTP
- * transports. Tests cover producer-before-consumer (buffer), consumer-before-
- * producer (waiter), terminal-event-aborts-signal, external-cancel-aborts-
- * signal, and idempotent cancel.
- */
 import { describe, expect, test } from 'vitest';
 import { createBufferedAsyncStream } from './buffered-async-stream';
 
@@ -46,7 +40,6 @@ describe('createBufferedAsyncStream', () => {
     const iter = stream.events[Symbol.asyncIterator]();
     const pending = iter.next();
 
-    // Push happens AFTER the consumer has parked as a waiter.
     setTimeout(() => {
       pushFn?.({ type: 'progress', n: 1 });
       pushFn?.({ type: 'complete', result: 'ok' });
@@ -67,8 +60,8 @@ describe('createBufferedAsyncStream', () => {
     });
     pushFn?.({ type: 'progress', n: 1 });
     pushFn?.({ type: 'complete', result: 'ok' });
-    pushFn?.({ type: 'progress', n: 99 }); // late — should be dropped
-    pushFn?.({ type: 'complete', result: 'duplicate' }); // late — should be dropped
+    pushFn?.({ type: 'progress', n: 99 });
+    pushFn?.({ type: 'complete', result: 'duplicate' });
 
     const events = await collectAll(stream.events);
     expect(events).toEqual([
@@ -81,7 +74,7 @@ describe('createBufferedAsyncStream', () => {
     const stream = createBufferedAsyncStream<TestEvent>((push) => {
       push({ type: 'progress', n: 1 });
       push({ type: 'error', message: 'boom' });
-      push({ type: 'progress', n: 2 }); // dropped
+      push({ type: 'progress', n: 2 });
     });
     const events = await collectAll(stream.events);
     expect(events).toEqual([
@@ -124,7 +117,6 @@ describe('createBufferedAsyncStream', () => {
       });
       push({ type: 'complete', result: 'ok' });
     });
-    // Already aborted by the terminal push.
     expect(abortCount).toBe(1);
     stream.cancel();
     stream.cancel();
@@ -132,9 +124,7 @@ describe('createBufferedAsyncStream', () => {
   });
 
   test('cancel() before any consumer iteration still drains', async () => {
-    const stream = createBufferedAsyncStream<TestEvent>(() => {
-      // Producer never pushes anything.
-    });
+    const stream = createBufferedAsyncStream<TestEvent>(() => {});
     stream.cancel();
     const events = await collectAll(stream.events);
     expect(events).toEqual([]);
@@ -146,7 +136,6 @@ describe('createBufferedAsyncStream', () => {
       pushFn = push;
     });
     const iter = stream.events[Symbol.asyncIterator]();
-    // Park two waiters before any push.
     const p1 = iter.next();
     const p2 = iter.next();
     pushFn?.({ type: 'progress', n: 1 });
@@ -156,15 +145,11 @@ describe('createBufferedAsyncStream', () => {
     const r2 = await p2;
     expect(r1.value).toEqual({ type: 'progress', n: 1 });
     expect(r2.value).toEqual({ type: 'complete', result: 'ok' });
-    // Subsequent next() reports done.
     const r3 = await iter.next();
     expect(r3.done).toBe(true);
   });
 
   test('producer signal can be wired to fetch — abort ends a pending read', async () => {
-    // Simulates the HTTP transport's pattern: producer awaits a fake
-    // long-running operation, signal abort throws AbortError, producer
-    // returns silently.
     let producerExitedCleanly = false;
     let pushFn: ((e: TestEvent) => void) | null = null;
 
@@ -190,7 +175,6 @@ describe('createBufferedAsyncStream', () => {
     pushFn?.({ type: 'complete', result: 'ok' });
     const events = await collectAll(stream.events);
     expect(events).toEqual([{ type: 'complete', result: 'ok' }]);
-    // Yield to event loop so the producer's abort handler fires.
     await new Promise((r) => setTimeout(r, 10));
     expect(producerExitedCleanly).toBe(true);
   });

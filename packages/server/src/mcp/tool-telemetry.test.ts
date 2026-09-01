@@ -1,15 +1,3 @@
-/**
- * Tests for the MCP tool-dispatch telemetry wrapper.
- *
- * The wrapper sits at the registration spine (createLoggedServer) so every
- * tool gets a `mcp.tool.<name>` span, a duration histogram point, and error
- * counting — including the HTTP MCP endpoint, which registers without a
- * logger and would otherwise be the one uninstrumented telemetry-live path.
- *
- * Production wiring uses the OTLP exporter via `initTelemetry`; these
- * assertions use InMemory exporters purely as a unit-test capture surface,
- * mirroring the sync-handshake-span-extension.test.ts pattern.
- */
 import { context, metrics, SpanStatusCode, trace } from '@opentelemetry/api';
 import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks';
 import {
@@ -40,7 +28,6 @@ let metricReader: PeriodicExportingMetricReader;
 let meterProvider: MeterProvider;
 
 beforeEach(async () => {
-  // Drop instrument caches bound to any previous test's provider.
   await shutdownTelemetry();
   spanExporter = new InMemorySpanExporter();
   tracerProvider = new BasicTracerProvider({
@@ -126,7 +113,6 @@ describe('wrapToolHandlerForTelemetry', () => {
       content: [{ type: 'text', text: 'no such doc' }],
     }));
     const result = (await wrapped({ docName: 'missing' })) as { isError: boolean };
-    // The error result still flows back to the MCP client unchanged.
     expect(result.isError).toBe(true);
 
     const spans = spansByName('mcp.tool.edit');
@@ -148,7 +134,6 @@ describe('wrapToolHandlerForTelemetry', () => {
     expect(spans[0]?.status.code).toBe(SpanStatusCode.ERROR);
     const errorPoints = await collectPoints(ERRORS_METRIC);
     expect(errorPoints[0]?.attributes).toMatchObject({ tool: 'move', kind: 'exception' });
-    // Duration still records on the throw path.
     const durationPoints = await collectPoints(DURATION_METRIC);
     expect(durationPoints[0]?.attributes.tool).toBe('move');
   });
@@ -164,8 +149,6 @@ describe('wrapToolHandlerForTelemetry', () => {
 
 describe('createLoggedServer telemetry wrapping', () => {
   test('wraps registerTool handlers even when no logger is supplied', async () => {
-    // The HTTP MCP endpoint registers without a logger — the previous
-    // logger-gated early return would have left it uninstrumented.
     let capturedHandler: ((...args: unknown[]) => unknown) | undefined;
     const fakeServer = {
       tool: () => 'legacy-registered',

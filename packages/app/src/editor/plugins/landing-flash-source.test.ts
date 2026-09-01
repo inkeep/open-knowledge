@@ -6,12 +6,6 @@ import { FLASH_DURATION_MS } from './flash-shared';
 import { OK_LANDING_FLASH_CLASS } from './landing-flash-shared';
 import { flashSourceLanding, landingFlashField, landingFlashSource } from './landing-flash-source';
 
-/**
- * A minimal EditorView surface backed by a real EditorState, so the real field
- * reducer runs on every dispatch. The flash trigger only reaches `state` and
- * `dispatch`, and the removal timer keys off the view object (a valid WeakMap
- * key), so this exercises the production path without a live DOM view.
- */
 function drivenView(doc: string, selection?: { anchor: number; head?: number }) {
   let state = EditorState.create({
     doc,
@@ -109,9 +103,6 @@ describe('landing flash — source', () => {
   });
 
   test('paints the shared landing-flash class onto the landed range in the DOM', () => {
-    // Decoration ranges alone do not prove the highlight is visible: the class
-    // is the contract with the stylesheet, so it is asserted on a real mounted
-    // view rather than on the field's state.
     const view = new EditorView({
       state: EditorState.create({ doc: 'alpha\nbeta\ngamma', extensions: [landingFlashSource()] }),
       parent: document.body,

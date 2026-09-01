@@ -1,14 +1,3 @@
-/**
- * Typed `[text](url)` input rule — conversion + href policy, exclusion
- * contexts, and the one-undo-restores-the-literal contract against a real
- * y-undo binding.
- *
- * Input rules fire only from `handleTextInput`, so these rigs type through
- * `view.someProp('handleTextInput', …)` with the same unhandled-fallback
- * insertion the real DOM input path performs — a bare `insertText` dispatch
- * never triggers a rule.
- */
-
 import type { Editor } from '@tiptap/core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
@@ -37,11 +26,6 @@ function makeEditor(opts: { content?: string } = {}): Editor {
   return mountLightEditor({ content: opts.content, extensions: [InlineLinkInputRule] });
 }
 
-/**
- * Type text the way the DOM input path does: each character goes through
- * `handleTextInput` (where input rules run) and falls back to a plain
- * insertion when no rule claims it.
- */
 function typeText(editor: Editor, text: string): void {
   for (const char of text) {
     const { from, to } = editor.state.selection;
@@ -54,10 +38,6 @@ function typeText(editor: Editor, text: string): void {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Conversion
-// ---------------------------------------------------------------------------
 
 describe('inline-link input rule — conversion', () => {
   test('typing [text](url) converts to linked display text on the closing paren', async () => {
@@ -89,10 +69,6 @@ describe('inline-link input rule — conversion', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Href policy
-// ---------------------------------------------------------------------------
-
 describe('inline-link input rule — href policy', () => {
   test('an empty URL [text]() stays literal', async () => {
     const editor = makeEditor();
@@ -120,15 +96,10 @@ describe('inline-link input rule — href policy', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Exclusion contexts
-// ---------------------------------------------------------------------------
-
 describe('inline-link input rule — exclusions', () => {
   test('does not fire inside a code block', async () => {
     const editor = makeEditor({ content: '<pre><code>x</code></pre>' });
     try {
-      // Caret at the end of the code block content.
       editor.commands.setTextSelection(editor.state.doc.content.size - 1);
       typeText(editor, '[a](https://b.com)');
       await flushMicrotasksAndTimers();
@@ -152,10 +123,6 @@ describe('inline-link input rule — exclusions', () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// Undo isolation (real y-undo binding)
-// ---------------------------------------------------------------------------
 
 describe('inline-link input rule — one undo restores the literal', () => {
   test('a single undo brings back [text](url) with the text intact', async () => {
@@ -188,8 +155,6 @@ describe('inline-link input rule — one undo restores the literal', () => {
       await flushMicrotasksAndTimers();
       expect(editor.state.doc.textContent).toBe('docs');
 
-      // Keystrokes after the collapse land within captureTimeout of it; the
-      // closing stopCapturing must keep them OUT of the collapse's undo item.
       typeText(editor, ' more');
       await flushMicrotasksAndTimers();
       expect(editor.state.doc.textContent).toBe('docs more');
@@ -198,7 +163,6 @@ describe('inline-link input rule — one undo restores the literal', () => {
       undoManager?.undo();
       await flushMicrotasksAndTimers();
 
-      // Only the trailing typing is removed; the converted link survives.
       expect(editor.state.doc.textContent).toBe('docs');
       expect(linkHrefs(editor)).toEqual(['https://example.com']);
     } finally {

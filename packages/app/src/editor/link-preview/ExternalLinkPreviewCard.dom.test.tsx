@@ -1,14 +1,3 @@
-/**
- * DOM tests for ExternalLinkPreviewCard (the Option B external card). Asserts
- * present-field rendering, the progressive-omission contract (absent title /
- * description / favicon are dropped, domain-only is valid), and — as a security
- * pin — that a favicon URI which is not a `data:image/…` value is never rendered
- * (a remote/script URI must not slip into an `<img src>`).
- *
- * Lingui macros resolve to the English-passthrough shim under `test:dom`; this
- * card has no chrome strings, so assertions read the server-provided data.
- */
-
 import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -65,7 +54,6 @@ describe('ExternalLinkPreviewCard — favicon safety', () => {
     const { container } = render(<ExternalLinkPreviewCard metadata={hostile} />);
     expect(slot(container, 'favicon')).toBeNull();
     expect(container.querySelector('img')).toBeNull();
-    // The card still renders its text fields.
     expect(slot(container, 'domain')?.textContent).toBe('example.com');
   });
 });

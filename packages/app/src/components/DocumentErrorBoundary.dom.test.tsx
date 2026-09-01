@@ -14,8 +14,6 @@ import * as syncPromiseModule from '@/editor/sync-promise';
 import { SyncTimeoutError } from '@/editor/sync-promise';
 import { DocumentErrorBoundary, errorCopy } from './DocumentErrorBoundary';
 
-// Radix Dialog (focus trap) reaches for DOM globals the jsdom preload does not
-// expose on globalThis. Same hoist as CloneDialog.dom.test.tsx.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -46,7 +44,6 @@ function MaybeThrow({ label }: { label: string }) {
 
 function ThrowSyncTimeout({ docName }: { docName: string }) {
   if (shouldThrow) {
-    // Only a reach failure offers the restart affordance.
     throw new SyncTimeoutError(docName, 10_000);
   }
   return <span data-testid="payload">{docName}</span>;
@@ -211,11 +208,6 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     shouldThrow = true;
     const onRecycle = vi.fn((_docName: string) => {});
     const onNavigateBack = vi.fn((_previousDocName: string) => {});
-    // Spy on the named export — ES module live binding lets DocumentErrorBoundary's
-    // captured `invalidateSyncPromise` reference see the spy's mockImplementation.
-    // This pins the load-bearing "back-nav clears the cached rejected sync
-    // promise so re-visiting the errored doc later gets a fresh attempt"
-    // contract at DocumentErrorBoundary.tsx.
     const invalidateSpy = vi
       .spyOn(syncPromiseModule, 'invalidateSyncPromise')
       .mockImplementation(() => {});
@@ -237,7 +229,6 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     expect(onNavigateBack).toHaveBeenCalledTimes(1);
     expect(onNavigateBack.mock.calls[0]?.[0]).toBe('beta.md');
     expect(onRecycle).not.toHaveBeenCalled();
-    // Cache-invalidation contract.
     expect(invalidateSpy).toHaveBeenCalledTimes(1);
     expect(invalidateSpy.mock.calls[0]?.[0]).toBe('alpha.md');
 
@@ -262,8 +253,6 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /report this error/i }));
 
-    // ReportBugDialog is lazy-loaded. Its dynamic import can exceed Testing
-    // Library's one-second default under full-suite CI load.
     expect(await screen.findByRole('dialog', undefined, { timeout: 5000 })).not.toBeNull();
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
     const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
@@ -280,7 +269,6 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     expect(note).toContain('Error: MaybeThrow boom: alpha');
     expect(note).toContain('Component stack:');
     expect(note).toContain('at MaybeThrow');
-    // Frame directories are trimmed, so the note cannot carry a home path.
     expect(note).not.toContain('/Users/');
   });
 
@@ -342,7 +330,6 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     await userEvent.click(restart);
     expect((restart as HTMLButtonElement).disabled).toBe(true);
 
-    // A second press while the first is outstanding must not spawn twice.
     await userEvent.click(restart);
     expect(restartServer).toHaveBeenCalledTimes(1);
 

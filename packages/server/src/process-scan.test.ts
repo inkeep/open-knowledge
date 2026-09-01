@@ -1,11 +1,6 @@
 import type { SpawnSyncReturns } from 'node:child_process';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// The SUT imports spawnSync/existsSync/readdirSync/lstatSync as named bindings
-// and calls them directly. Vitest cannot redefine a live ESM namespace binding
-// the way bun's spyOn did, so the modules are mocked and the SUT is imported
-// after. Each mock defaults to the real implementation (matching the prior
-// call-through spyOn); individual tests override per case.
 const spawnSyncMock = vi.fn();
 const existsSyncMock = vi.fn();
 const readdirSyncMock = vi.fn();
@@ -30,7 +25,6 @@ beforeAll(async () => {
   ({ discoverLockDirs, findOkProcessPids, pidCwd } = await import('./process-scan.ts'));
 });
 
-// Helpers to build a minimal SpawnSyncReturns-shaped object
 function makeSpawnResult(overrides: Partial<SpawnSyncReturns<string>>): SpawnSyncReturns<string> {
   return {
     pid: 0,
@@ -67,7 +61,6 @@ describe('findOkProcessPids', () => {
 
     const pids = await findOkProcessPids();
     expect(pids).toEqual([12345]);
-    // Confirms pgrep was called (not ps)
     const [cmd, args] = spawnSyncSpy.mock.calls[0] as [string, string[]];
     expect(cmd).toBe('pgrep');
     expect(args.join(' ')).toContain('open-knowledge');
@@ -113,10 +106,6 @@ describe('findOkProcessPids', () => {
   });
 
   it('still finds a pre-rename "Open Knowledge" packaged Helper (backward-compat regex)', async () => {
-    // A user mid-migration may have an OLD build running. The `Open ?Knowledge`
-    // matcher must keep finding its spaced bundle name so `ok ps`/`ok stop` work
-    // across the rename. With no lock-dir marker, only the bundle-name pattern
-    // can match — so this exercises the backward-compat `?` quantifier directly.
     spawnSyncSpy.mockReturnValue(
       makeSpawnResult({
         stdout:
@@ -133,9 +122,7 @@ describe('findOkProcessPids', () => {
     const enoent = Object.assign(new Error('pgrep not found'), { code: 'ENOENT' });
 
     spawnSyncSpy
-      // First call: pgrep — fails with ENOENT
       .mockReturnValueOnce(makeSpawnResult({ error: enoent as NodeJS.ErrnoException }))
-      // Second call: ps — succeeds
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout:
@@ -159,7 +146,6 @@ describe('findOkProcessPids', () => {
 
     const pids = await findOkProcessPids();
     expect(pids).toEqual([]);
-    // Only one spawn call — no ps fallback
     expect(spawnSyncSpy.mock.calls.length).toBe(1);
   });
 
@@ -196,10 +182,8 @@ describe('findOkProcessPids', () => {
       );
 
     const pids = await findOkProcessPids();
-    // 222 matches "ok start", 333 matches bun + packages/app
     expect(pids).toContain(222);
     expect(pids).toContain(333);
-    // 111 is a ruby script — no ok patterns
     expect(pids).not.toContain(111);
   });
 });
@@ -280,30 +264,25 @@ describe('discoverLockDirs', () => {
 
   it('returns deduped lock dirs when multiple discovery routes find the same path', async () => {
     spawnSyncSpy
-      // pgrep finds PID 111 — command comes from pgrep output, no separate processCommand call
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout: '111 /usr/local/bin/bun /path/packages/cli/dist/cli.mjs start\n',
           status: 0,
         }),
       )
-      // pidCwd for PID 111
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout: 'p111\nfcwd\nn/Users/mike/notes\n',
           status: 0,
         }),
       )
-      // lsof -iTCP port scan also returns PID 111 (same process, different route)
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout: 'COMMAND  PID USER   FD   TYPE\nbun      111 mike  ...\n',
           status: 0,
         }),
       );
-    // Note: PID 111 is in okEntries so lsof port scan skips it (already known)
 
-    // .ok/local/ dir and server lock exist for /Users/mike/notes
     existsSyncSpy.mockImplementation(
       (p: unknown) =>
         p === '/Users/mike/notes/.ok/local' || p === '/Users/mike/notes/.ok/local/server.lock',
@@ -311,20 +290,17 @@ describe('discoverLockDirs', () => {
 
     const dirs = await discoverLockDirs();
     expect(dirs).toHaveLength(1);
-    // The result may be the realpath-resolved form of the path
     expect(dirs[0]).toContain('.ok/local');
 
     const calls = spawnSyncSpy.mock.calls as [string, string[]][];
     expect(calls[0]?.[0]).toBe('pgrep');
-    expect(calls[1]?.[0]).toBe('lsof'); // pidCwd
-    expect(calls[2]?.[0]).toBe('lsof'); // port scan
+    expect(calls[1]?.[0]).toBe('lsof');
+    expect(calls[2]?.[0]).toBe('lsof');
   });
 
   it('returns empty array when no ok processes and no lock dirs exist', async () => {
-    // pgrep returns nothing
     spawnSyncSpy
       .mockReturnValueOnce(makeSpawnResult({ stdout: '', status: 1 }))
-      // port scan also returns nothing
       .mockReturnValueOnce(makeSpawnResult({ stdout: 'COMMAND PID USER\n', status: 0 }));
 
     existsSyncSpy.mockReturnValue(false);
@@ -336,7 +312,6 @@ describe('discoverLockDirs', () => {
   it('discovers Electron utility lock dirs from the explicit argv marker', async () => {
     const lockDir = '/Users/mike/notes with spaces/.ok/local';
     const encoded = Buffer.from(lockDir, 'utf8').toString('base64url');
-    // Command string comes from pgrep output — no separate processCommand spawn needed.
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
@@ -344,14 +319,12 @@ describe('discoverLockDirs', () => {
           status: 0,
         }),
       )
-      // pidCwd for PID 77 (Electron utility cwd is inside the app bundle, not the project)
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout: 'p77\nfcwd\nn/Applications/OpenKnowledge.app/Contents/Resources\n',
           status: 0,
         }),
       )
-      // lsof -iTCP port scan
       .mockReturnValueOnce(makeSpawnResult({ stdout: 'COMMAND PID USER\n', status: 0 }));
 
     existsSyncSpy.mockImplementation((p: unknown) => p === lockDir);
@@ -361,8 +334,8 @@ describe('discoverLockDirs', () => {
 
     const calls = spawnSyncSpy.mock.calls as [string, string[]][];
     expect(calls[0]?.[0]).toBe('pgrep');
-    expect(calls[1]?.[0]).toBe('lsof'); // pidCwd
-    expect(calls[2]?.[0]).toBe('lsof'); // port scan
+    expect(calls[1]?.[0]).toBe('lsof');
+    expect(calls[2]?.[0]).toBe('lsof');
   });
 
   it('discovers desktop project locks from renderer --ok-project-path argv', async () => {
@@ -426,7 +399,6 @@ describe('discoverLockDirs', () => {
   });
 
   it('ignores Electron marker with empty payload', async () => {
-    // --ok-lock-dir-b64= with nothing after the = should not add any candidate
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
@@ -447,7 +419,6 @@ describe('discoverLockDirs', () => {
   });
 
   it('ignores Electron marker with a relative-path payload', async () => {
-    // base64url of a relative path — isAbsolute guard must reject it
     const encoded = Buffer.from('relative/path/.ok/local', 'utf8').toString('base64url');
     spawnSyncSpy
       .mockReturnValueOnce(
@@ -551,21 +522,17 @@ describe('discoverLockDirs', () => {
     const enoent = Object.assign(new Error('lsof not found'), { code: 'ENOENT' });
 
     spawnSyncSpy
-      // pgrep finds PID 55 — command included in output
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout: '55 /usr/local/bin/ok start\n',
           status: 0,
         }),
       )
-      // pidCwd for PID 55 — lsof unavailable
       .mockReturnValueOnce(makeSpawnResult({ error: enoent as NodeJS.ErrnoException }))
-      // port scan lsof — also unavailable
       .mockReturnValueOnce(makeSpawnResult({ error: enoent as NodeJS.ErrnoException }));
 
     existsSyncSpy.mockReturnValue(false);
 
-    // Should not throw, should return empty
     const dirs = await discoverLockDirs();
     expect(dirs).toHaveLength(0);
   });

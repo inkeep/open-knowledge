@@ -7,9 +7,6 @@ function write(terminal: Terminal, data: string): Promise<void> {
   return new Promise((resolve) => terminal.write(data, resolve));
 }
 
-// Each deep path pins one independently patched runtime file. Variable
-// specifiers also prevent a static-analysis pass from rewriting either import
-// through the package's single entrypoint.
 const runtimes: Array<{
   entry: string;
   loadTerminal: () => Promise<TerminalConstructor>;
@@ -38,8 +35,6 @@ describe.each(runtimes)('xterm alternate buffer — $entry', ({ loadTerminal }) 
     const terminal = new TerminalConstructor({ cols: 80, rows: 24 });
 
     try {
-      // Resize before entering the alternate screen so its buffer is still empty,
-      // then write past the original 24-row capacity to make stale capacity visible.
       terminal.resize(80, 14);
       const scrollingOutput = Array.from({ length: 30 }, (_, index) => `line ${index}\r\n`).join(
         '',

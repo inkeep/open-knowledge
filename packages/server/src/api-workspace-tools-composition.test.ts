@@ -6,22 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed workspace-tools group (`search`,
- * `link-preview`, `skill-targets`, `saved-themes`/`saved-theme`,
- * `generated-index/settings`) over a REAL socket through the composed
- * `bootServer` stack: verb gating (405 + `Allow` in declaration order — via
- * `methodRouter` for the four multi-verb paths, via `withValidation`'s
- * method check for single-verb `link-preview` and `saved-themes`), both
- * `/api/search` verbs served, and the shared admission posture. The wire
- * cannot distinguish the mutating gate from the read gate (both apply the
- * same loopback + workspace-Host checks), so the mutating DECLARATION is
- * pinned at the table tier in `http/workspace-tools-routes.test.ts`; the
- * rebound-Host pins here hold that the admission outcome is unchanged
- * across the lift, GET arms included.
- */
-
-/** Every path in the group, with the verbs the legacy record dispatched. */
 const METHOD_SURFACE: ReadonlyArray<{ path: string; unsupported: string; allow: string }> = [
   { path: '/api/search', unsupported: 'DELETE', allow: 'GET, POST' },
   { path: '/api/link-preview', unsupported: 'GET', allow: 'POST' },
@@ -31,7 +15,6 @@ const METHOD_SURFACE: ReadonlyArray<{ path: string; unsupported: string; allow: 
   { path: '/api/generated-index/settings', unsupported: 'DELETE', allow: 'GET, POST' },
 ];
 
-/** Legacy `MUTATING_ROUTES` members (declaration pinned in the table suite). */
 const MUTATING_ROUTES = ['/api/skill-targets', '/api/saved-theme', '/api/generated-index/settings'];
 
 let tmpRoot: string;
@@ -100,12 +83,6 @@ describe('workspace-tools group over the composed listener — served natively',
   });
 
   test('link-preview serves the coarse blocked envelope through the lift (no egress attempted)', async () => {
-    // A literal loopback target lets the pin run without real network egress;
-    // the wire cannot tell a pre-I/O guard refusal from a failed connect
-    // (both collapse to the ONE coarse category by design), so the SSRF
-    // guard itself is pinned at the unit tier in
-    // `link-preview/guarded-fetch.test.ts` — this pin holds the collapsed
-    // wire shape across the lift.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/link-preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:5173' },

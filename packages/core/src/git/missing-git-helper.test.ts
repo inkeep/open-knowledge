@@ -2,8 +2,6 @@ import { describe, expect, test } from 'vitest';
 import { detectMissingGitHelper } from './missing-git-helper.ts';
 
 describe('detectMissingGitHelper', () => {
-  // The incident stderr, verbatim: packaged desktop spawned git with launchd's
-  // minimal PATH, git-lfs (Homebrew-installed) unresolvable at checkout.
   test('extracts git-lfs from the lfs filter-process failure', () => {
     const stderr =
       'git-lfs filter-process: git-lfs: command not found\nfatal: the remote end hung up unexpectedly';
@@ -45,8 +43,6 @@ describe('detectMissingGitHelper', () => {
     expect(detectMissingGitHelper('')).toBeNull();
   });
 
-  // "ref not found"-style prose has no colon directly before the phrase, so
-  // the shell-127 pattern must not fire on it.
   test('does not misread prose containing "not found" without a command colon', () => {
     expect(detectMissingGitHelper('fatal: remote ref not found')).toBeNull();
   });

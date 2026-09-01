@@ -11,10 +11,6 @@ import {
   partitionAttachments,
 } from './write-back-gate.mjs';
 
-// Attachment shapes taken off live tickets rather than invented: PRD-7539 (a
-// fix PR plus a GitHub issue origin), PRD-7394 (nothing but an uploaded
-// diagnostic bundle), PRD-7399 (seven commit URLs and no PR at all), and
-// PRD-7490 (a fix PR, a Discord thread, and a Slack archive link).
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
 const GH_PULL = 'https://github.com/inkeep/agents-private/pull/2844';
 const GH_COMMIT = 'https://github.com/inkeep/agents-private/commit/da71f0c698ccaac11da915169ca6c7d585d5eb97';
@@ -50,10 +46,6 @@ describe('attachment classification', () => {
   });
 
   test('a Linear upload is evidence on the ticket, not a place anyone is waiting', () => {
-    // Any file dragged onto any ticket lands here: a screenshot, a log, a
-    // diagnostic zip. Reading one as an origin kept every such ticket on the
-    // expensive path and produced a warning about an "only origin" that could
-    // not be replied to, on tickets that never had an origin.
     const c = classifyAttachment(LINEAR_UPLOAD);
     expect(c.kind).toBe('evidence');
     expect(c.channel).toBe('linear-upload');
@@ -137,8 +129,6 @@ describe('version ordering', () => {
 });
 
 describe('fan-in gate', () => {
-  // A map-driven fake keyed by identifier: absent means "no version could be
-  // derived", which the gate must treat as a reason to withhold.
   const versionsFrom = (map) => (node) => map[node.identifier] ?? null;
   const node = (identifier, stateType, labels = ['Bug']) => ({ identifier, stateType, labels });
 
@@ -201,8 +191,6 @@ describe('fan-in gate', () => {
   });
 
   test('an open unlabelled descendant withholds, which gating on the Bug label would have missed', () => {
-    // The live PRD-7394 tree: six children, two of them carrying no labels at
-    // all, and one of those two still open.
     const r = evaluate({
       ticket: node('PRD-7394', 'started', ['Bug', 'ok:intake']),
       descendants: [
@@ -237,8 +225,6 @@ describe('fan-in gate', () => {
     });
     expect(r.decision).toBe('withhold');
     expect(r.blocking).toEqual(['PRD-7403']);
-    // Distinguished from a routine "still open" so the caller can annotate a
-    // broken fix-reference chain differently from ordinary in-progress work.
     expect(r.unresolved).toEqual(['PRD-7403']);
   });
 
@@ -286,9 +272,6 @@ describe('reply composition', () => {
   });
 
   test('a multi-paragraph changeset that fits the bound is quoted in full', () => {
-    // A body that fits the bound is quoted whole, paragraph breaks included: a
-    // changeset that leads with a list stem is meaningless without the list in
-    // the block below it.
     const text = compose({
       changeset: {
         title: 'Message actions',
@@ -300,9 +283,6 @@ describe('reply composition', () => {
   });
 
   test('quote: false omits the changeset prose but keeps the rest of the reply', () => {
-    // The second reply on an origin that already received one has nothing new
-    // to quote: the opening line, coverage, and update instruction already
-    // say everything it needs to.
     const text = compose({ quote: false });
     expect(text).not.toContain('stays literal instead of turning into a highlight');
     expect(text).toContain('v0.36.0');
@@ -310,8 +290,6 @@ describe('reply composition', () => {
   });
 
   test('quote: false still refuses to compose from an empty changeset', () => {
-    // A changeset that does not exist is not a fact this reply can stand on,
-    // whether or not the caller intended to quote it.
     expect(compose({ quote: false, changeset: { title: '', body: '' } })).toBeNull();
   });
 
@@ -328,7 +306,6 @@ describe('reply composition', () => {
     const gh = compose({ originChannel: 'github-issue' });
     const discord = compose({ originChannel: 'discord-thread' });
     expect(gh).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
-    // Bare on Discord it would expand into an embed card; angle brackets suppress that.
     expect(discord).toContain('<https://github.com/inkeep/open-knowledge/releases>');
   });
 
@@ -336,8 +313,6 @@ describe('reply composition', () => {
     for (const originChannel of ['github-issue', 'discord-thread']) {
       const text = compose({ originChannel });
       expect(text).toContain('update to the latest desktop app');
-      // The desktop app is the promoted install path; naming the CLI here would
-      // hand a reporter a second thing to weigh in a reply about one shipped fix.
       expect(text).not.toContain('npm install');
     }
   });
@@ -363,10 +338,6 @@ describe('reply composition', () => {
     expect(text).toContain('...');
   });
 
-  // Mirrors write-back-gate.mjs's MAX_PROSE_CHARS (1200). A single-token body
-  // like 'x'.repeat(5000) above can't tell `>` from `>=` at the boundary, and
-  // can't tell .trimEnd() from .trimStart() (both are no-ops on all-x input) —
-  // these three pin the boundary itself and a realistic multi-word cut.
   test('a body exactly at the bound is quoted whole, not truncated', () => {
     const body = 'x'.repeat(1200);
     const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
@@ -382,16 +353,13 @@ describe('reply composition', () => {
   });
 
   test('a realistic multi-word body is cut mid-word with the trailing space trimmed', () => {
-    const body = `${'word '.repeat(240)}tail`; // 240*5 + 4 = 1204 chars, space right at the cut
+    const body = `${'word '.repeat(240)}tail`;
     const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
     expect(text).toContain('word...');
     expect(text).not.toContain('word ...');
   });
 
   test('no internal ticket detail reaches the composed reply', () => {
-    // An adversarial candidate: every field a reporter must never see is
-    // populated with a recognizable value. The composer's parameter list is
-    // the mechanism, so the assertion is that none of it can be threaded in.
     const candidate = {
       identifier: 'PRD-7539',
       title: 'INTERNAL escalation for Contoso, blocked on unreleased auth rewrite',
@@ -427,11 +395,6 @@ describe('reply composition', () => {
   });
 
   test('the composer redacts extraneous fields rather than trusting the caller to omit them', () => {
-    // A regression pin on the redaction mechanism itself: `composeReply` reads
-    // only the fields it destructures, so passing more can never leak. This
-    // does not (and, being a single destructured object, structurally cannot)
-    // pin which fields those are — that surface is the explicit parameter
-    // list at the function's own definition.
     const text = composeReply({
       changeset: CHANGESET,
       version: '0.36.0',
@@ -471,8 +434,6 @@ describe('origin remit', () => {
 
 describe('repeat-reply detection', () => {
   const ORIGIN = 'https://github.com/inkeep/open-knowledge/issues/1414';
-  // Built from the real `markerSuffixFor`, not a hand-rolled restatement of
-  // it, so this pins the shared contract rather than a second copy of it.
   const marker = (version, originUrl = ORIGIN) =>
     `https://github.com/inkeep/open-knowledge/releases/tag/v${version}${markerSuffixFor(originUrl)}`;
 
@@ -484,14 +445,10 @@ describe('repeat-reply detection', () => {
   });
 
   test('a marker for a DIFFERENT version on this origin means an earlier reply already quoted it', () => {
-    // The beta leg marks the origin with its own version; the stable run
-    // reads that marker for a version that is not the one it is about to post.
     expect(originAlreadyNotified([marker('0.59.0-beta.2')], ORIGIN)).toBe(true);
   });
 
   test('an origin carrying its own query string still gets an unambiguous suffix', () => {
-    // encodeURIComponent escapes both `?` and `&`, so a `?notified=` inside the
-    // origin URL itself cannot be confused with the marker's own suffix.
     const trickyOrigin = 'https://github.com/inkeep/open-knowledge/issues/1?notified=x';
     expect(originAlreadyNotified([marker('0.59.0')], trickyOrigin)).toBe(false);
     expect(originAlreadyNotified([marker('0.59.0', trickyOrigin)], trickyOrigin)).toBe(true);
@@ -499,10 +456,6 @@ describe('repeat-reply detection', () => {
   });
 
   test('the suffix must be at the tail, not merely present', () => {
-    // Pins .endsWith over .includes: a plausible-looking simplification to
-    // .includes would leave this suite green everywhere else, since every
-    // other case here puts the suffix genuinely last or leaves it out
-    // entirely.
     expect(originAlreadyNotified([`${marker('0.59.0')}&ref=slack`], ORIGIN)).toBe(false);
   });
 });
@@ -518,9 +471,6 @@ describe('prerelease ordering', () => {
   });
 
   test('the highest across a fan-in spanning both channels is the stable', () => {
-    // A three-part compare calls a beta equal to its stable, so whichever
-    // arrived first would win and a reporter could be sent to a build that does
-    // not carry every part of what they reported.
     expect(highestVersion(['0.59.0-beta.9', '0.59.0', '0.58.1'])).toBe('0.59.0');
   });
 });
@@ -548,12 +498,8 @@ describe('the two channels say different things', () => {
     expect(text).toContain('v0.59.0-beta.2');
     expect(text).toContain('going out now on the Open Knowledge beta channel');
     expect(text).toContain('follow up here');
-    // "update to the latest" would send them to a build without the fix: a beta
-    // is not on the channel the desktop app follows.
     expect(text).not.toContain('update to the latest');
     expect(text).toContain('download the v0.59.0-beta.2 beta');
-    // The release is still a draft when this posts, so nothing may claim the
-    // build is already sitting on the releases page.
     expect(text).not.toMatch(/available now|download it now/i);
     expect(text).toContain('installers have finished uploading');
   });

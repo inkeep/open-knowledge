@@ -1,27 +1,9 @@
-/**
- * One-time toast telling the user a newly-opened worktree INHERITED the root
- * project's git sync setting (so the inheritance isn't silent).
- *
- * When a worktree is created, `seedWorktreeAutoSync` (desktop main) seeds the
- * worktree's project-local `autoSync.mode` from the root's resolved choice and
- * arms a one-shot `autoSync.inheritedNoticePending: true` flag (plus
- * `autoSync.inheritedFrom: <project>`) — both loose keys on the `autoSync`
- * `looseObject`, so no schema change. On first open, this hook reads the flag,
- * fires ONE non-blocking toast, and CLEARS the flag on the project-local binding
- * so it never re-fires (persisted — truly one-time, survives restart).
- *
- * `<Trans>` (not an interpolated `t\`\``) carries the project name: the React
- * Compiler cannot lower a tagged template with interpolations, and sonner
- * accepts a ReactNode rendered inside the app's I18nProvider.
- */
-
 import { resolveLocalAutoSyncMode, type SyncMode } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useConfigContext } from '@/lib/config-provider';
 
-/** The loose auto-sync notice keys the desktop seed writes (not in the strict schema). */
 interface InheritedAutoSync {
   mode?: SyncMode | null;
   enabled?: boolean | null;
@@ -29,10 +11,6 @@ interface InheritedAutoSync {
   inheritedFrom?: unknown;
 }
 
-// Each branch names the mode exactly as the Settings → Sync control labels it.
-// The toast's whole job is to point at that control, so a name it does not show
-// ("Follow", "on"/"off") leaves the user hunting for a setting that is right
-// there under the name they were not told.
 function inheritedNoticeMessage(mode: SyncMode | null, project: string) {
   if (mode === 'follow') {
     return (
@@ -60,8 +38,6 @@ function inheritedNoticeMessage(mode: SyncMode | null, project: string) {
 
 export function useWorktreeAutoSyncNotice(): void {
   const { projectLocalConfig, projectLocalSynced, projectLocalBinding } = useConfigContext();
-  // Fire at most once per mounted window — the flag-clear write also stops it,
-  // but the ref guards the render-before-clear window.
   const shownRef = useRef(false);
 
   useEffect(() => {
@@ -73,7 +49,6 @@ export function useWorktreeAutoSyncNotice(): void {
     const project = typeof autoSync.inheritedFrom === 'string' ? autoSync.inheritedFrom : '';
     const mode = resolveLocalAutoSyncMode({ mode: autoSync.mode, enabled: autoSync.enabled });
     toast(inheritedNoticeMessage(mode, project));
-    // Clear the one-shot flag so the notice never repeats (persisted).
     projectLocalBinding.patch({ autoSync: { inheritedNoticePending: null } });
   }, [projectLocalSynced, projectLocalConfig, projectLocalBinding]);
 }

@@ -1,9 +1,3 @@
-/**
- * The open-link-popover pub/sub contract: emit reaches a live subscriber,
- * unsubscribe detaches it, and an injected EventTarget scopes the channel
- * (the SSR-safe default target path is exercised by the dom suite).
- */
-
 import { expect, test } from 'vitest';
 import {
   emitOpenLinkEditPopover,

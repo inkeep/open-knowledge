@@ -1,10 +1,3 @@
-/**
- * DOM tests for the schema-driven enum widgets in FrontmatterRow: an enum
- * constraint renders a single-select, an array items.enum constraint renders
- * toggleable value chips, and rows without a constraint keep the free-text
- * widgets. Commits flow through the row's standard onCommit write path.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test } from 'vitest';
 

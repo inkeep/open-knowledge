@@ -2,13 +2,6 @@ import type { SkillLockEntry } from '@inkeep/open-knowledge-core/skills-catalog'
 import { describe, expect, it } from 'vitest';
 import { groupReimportNamesBySource, pickReimportDir, planReimportDiff } from './skill-reimport.ts';
 
-/**
- * The spine's three decisions, tested where they are pure. Everything else in
- * the reimport path writes files, so these are the parts a unit can pin: which
- * upstream dir a skill re-selects, whether it has anything to update, and how a
- * bulk update amortizes its clones.
- */
-
 const noFrontmatter = () => undefined;
 
 describe('pickReimportDir', () => {

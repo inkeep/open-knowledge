@@ -1,20 +1,3 @@
-/**
- * EditorActivityPool — unit tests for the pure `computeActivityMountList` helper
- * + the exported `ACTIVITY_MOUNT_LIMIT` constant.
- *
- * Repo convention (STOP_IF rules out adding @testing-library/react + happy-dom):
- * UI helpers are unit-tested at the pure-function altitude; render/mount
- * behavior — Activity mode flips, source-editor warm remount after first load,
- * StrictMode idempotence — is covered by Playwright E2E. The bundle-split
- * contract itself is pinned in `EditorActivityPool.lazy.test.ts`.
- *
- * What the pure helper guarantees (and what these tests pin):
- *   1. System docs (`__system__`) never appear in the mount list.
- *   2. Active doc is always present if it's anywhere in `entries` — even when
- *      its `lastAccessedAt` would put it outside the top-N.
- *   3. Otherwise: top-N by `lastAccessedAt` descending (MRU first).
- */
-
 import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
@@ -41,18 +24,10 @@ const entry = (docName: string, lastAccessedAt: number): FakeEntry => ({
 
 describe('ACTIVITY_MOUNT_LIMIT', () => {
   test('is 3 — matches SPEC.md §10 DX9', () => {
-    // Investigated lowering to 1 as a warm-switch fix. Reverted because
-    // LIMIT=1 broke `docs-open.e2e.ts` scroll preservation —
-    // `ScrollPreservingContainer` depends on Activity state preservation
-    // (useRef survives hidden mode flips, dies on unmount).
-    // See the constant's docstring.
     expect(ACTIVITY_MOUNT_LIMIT).toBe(3);
   });
 
   test('is strictly less than ProviderPool MAX_POOL=10 (decoupling invariant)', () => {
-    // The whole point is that mounted-editor count can be smaller than
-    // pool size. If someone bumps ACTIVITY_MOUNT_LIMIT past MAX_POOL the
-    // decoupling collapses; this test catches that.
     expect(ACTIVITY_MOUNT_LIMIT).toBeLessThan(10);
   });
 });
@@ -147,7 +122,6 @@ describe('computeActivityMountList — MRU sorting', () => {
     const a = entry('a', 100);
     const b = entry('b', 300);
     const c = entry('c', 200);
-    // Different input orderings — same MRU output.
     expect(computeActivityMountList([a, b, c], null, 3).map((e) => e.docName)).toEqual([
       'b',
       'c',
@@ -193,9 +167,7 @@ describe('computeActivityMountList — limit bounding', () => {
 
 describe('computeActivityMountList — active-doc force-inclusion (invariant #2)', () => {
   test('active doc not in top-N is force-included by displacing LRU', () => {
-    // 'a' is least-recent (oldest), but it's the active doc. It must appear in
-    // the result even though its lastAccessedAt would otherwise put it outside.
-    const a = entry('a', 50); // active but oldest
+    const a = entry('a', 50);
     const b = entry('b', 200);
     const c = entry('c', 300);
     const d = entry('d', 400);
@@ -203,8 +175,6 @@ describe('computeActivityMountList — active-doc force-inclusion (invariant #2)
     const names = result.map((e) => e.docName);
     expect(names).toContain('a');
     expect(result).toHaveLength(3);
-    // The two MRU non-active entries (d, c) should be preserved; the LRU member
-    // of the would-be top-N (b) is displaced by the active doc.
     expect(names).toContain('d');
     expect(names).toContain('c');
     expect(names).not.toContain('b');
@@ -214,7 +184,6 @@ describe('computeActivityMountList — active-doc force-inclusion (invariant #2)
     const a = entry('a', 100);
     const b = entry('b', 200);
     const result = computeActivityMountList([a, b], 'nonexistent', 3);
-    // active is bogus; we don't synthesize an entry for it.
     expect(result.map((e) => e.docName)).toEqual(['b', 'a']);
   });
 
@@ -223,7 +192,6 @@ describe('computeActivityMountList — active-doc force-inclusion (invariant #2)
     const b = entry('b', 200);
     const c = entry('c', 300);
     const d = entry('d', 400);
-    // 'c' is active and naturally in top-3; should be unchanged.
     const result = computeActivityMountList([a, b, c, d], 'c', 3);
     expect(result.map((e) => e.docName)).toEqual(['d', 'c', 'b']);
   });
@@ -258,11 +226,6 @@ describe('computeActivityMountList — visible pane protection', () => {
 
 describe('LARGE_DOC_CHAR_THRESHOLD', () => {
   test('is 500_000 — matches SPEC D12 DIRECTED + evidence/s1-diagnosis.md', () => {
-    // The threshold is a tuning knob, not a contract. Lowering below the
-    // size of medium docs (CLAUDE.md ≈ 150 KB) would unnecessarily delay
-    // first-toggle UX for docs where pre-mount-both is already fast. Raising
-    // above the size of typical "big" docs (PROJECT.md ≥ 3 MB) would
-    // regress the fix. 500 KB is the sweet spot.
     expect(LARGE_DOC_CHAR_THRESHOLD).toBe(500_000);
   });
 
@@ -277,7 +240,6 @@ describe('LARGE_DOC_CHAR_THRESHOLD', () => {
 
 describe('computeEditorMountGate — small doc (below threshold)', () => {
   test('pre-mounts both regardless of mode or visit history (precedent #18(b) default)', () => {
-    // No matter the visited history, a 5.5 KB README should always have both.
     const small = 5583;
     const cases = [
       { isSourceMode: false, visitedSource: false, visitedVisual: true },
@@ -316,16 +278,16 @@ describe('computeEditorMountGate — small doc (below threshold)', () => {
 });
 
 describe('computeEditorMountGate — large doc (above threshold)', () => {
-  const large = 3_250_000; // ≈ PROJECT.md
+  const large = 3_250_000;
 
   test('cold load in Visual mode → only TiptapEditor mounted', () => {
     const gate = computeEditorMountGate({
       ytextLength: large,
       isSourceMode: false,
-      visitedSource: false, // never visited source
-      visitedVisual: true, // initialized to true (active)
+      visitedSource: false,
+      visitedVisual: true,
     });
-    expect(gate.renderSource).toBe(false); // defer SourceEditor
+    expect(gate.renderSource).toBe(false);
     expect(gate.renderVisual).toBe(true);
     expect(gate.isLarge).toBe(true);
   });
@@ -334,11 +296,11 @@ describe('computeEditorMountGate — large doc (above threshold)', () => {
     const gate = computeEditorMountGate({
       ytextLength: large,
       isSourceMode: true,
-      visitedSource: true, // active
-      visitedVisual: false, // never visited visual
+      visitedSource: true,
+      visitedVisual: false,
     });
     expect(gate.renderSource).toBe(true);
-    expect(gate.renderVisual).toBe(false); // defer TiptapEditor
+    expect(gate.renderVisual).toBe(false);
     expect(gate.isLarge).toBe(true);
   });
 
@@ -347,7 +309,7 @@ describe('computeEditorMountGate — large doc (above threshold)', () => {
       ytextLength: large,
       isSourceMode: true,
       visitedSource: true,
-      visitedVisual: true, // visited before
+      visitedVisual: true,
     });
     expect(gate.renderSource).toBe(true);
     expect(gate.renderVisual).toBe(true);
@@ -357,7 +319,7 @@ describe('computeEditorMountGate — large doc (above threshold)', () => {
     const gate = computeEditorMountGate({
       ytextLength: large,
       isSourceMode: false,
-      visitedSource: true, // visited before
+      visitedSource: true,
       visitedVisual: true,
     });
     expect(gate.renderSource).toBe(true);
@@ -365,22 +327,17 @@ describe('computeEditorMountGate — large doc (above threshold)', () => {
   });
 
   test('active mode is always rendered — defer never applies to active', () => {
-    // Pathological input: marked not-visited for active mode. Active must still
-    // be rendered because the OR with isSourceMode guarantees it.
     const gate = computeEditorMountGate({
       ytextLength: large,
       isSourceMode: true,
-      visitedSource: false, // impossible in practice but we assert robustness
+      visitedSource: false,
       visitedVisual: false,
     });
-    expect(gate.renderSource).toBe(true); // active wins
+    expect(gate.renderSource).toBe(true);
     expect(gate.renderVisual).toBe(false);
   });
 
   test('threshold override respected (for test isolation)', () => {
-    // Same 5583-char doc is "small" with default threshold but "large" if
-    // caller overrides to 1000. Useful for tests that don't want to stand
-    // up a 500_001-char string to exercise the defer branch.
     const small = 5583;
     const withDefault = computeEditorMountGate({
       ytextLength: small,
@@ -397,8 +354,8 @@ describe('computeEditorMountGate — large doc (above threshold)', () => {
       threshold: 1000,
     });
     expect(withOverride.isLarge).toBe(true);
-    expect(withOverride.renderSource).toBe(false); // defer source (not active, not visited)
-    expect(withOverride.renderVisual).toBe(true); // active
+    expect(withOverride.renderSource).toBe(false);
+    expect(withOverride.renderVisual).toBe(true);
   });
 });
 
@@ -414,7 +371,6 @@ describe('computeEditorMountGate — invariant: at least one editor rendered', (
   });
 
   test('large doc — at least active is rendered', () => {
-    // All four quadrants of (isSourceMode, visited-history) for large doc.
     for (const isSourceMode of [false, true]) {
       for (const visitedSource of [false, true]) {
         for (const visitedVisual of [false, true]) {
@@ -431,12 +387,6 @@ describe('computeEditorMountGate — invariant: at least one editor rendered', (
   });
 });
 
-// ---------------------------------------------------------------------------
-// shouldEmitFirstToggle pure helper.
-// The component-level mark emission is exercised end-to-end by the
-// cold-load-big-doc scenario; here we pin the decision logic.
-// ---------------------------------------------------------------------------
-
 describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   test('active large doc, both editors rendering, not yet emitted → emit', () => {
     expect(
@@ -451,10 +401,6 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   });
 
   test('hidden entry that materialises both editors on a global flip → do NOT emit', () => {
-    // A hidden large entry whose deferred editor mounts (e.g. because a global
-    // flip set the other visited flag) must not spend the one-shot: it never
-    // paid a first-toggle cost, and consuming the mark here would suppress the
-    // real one when the doc is actually re-activated.
     expect(
       shouldEmitFirstToggle({
         isActive: false,
@@ -503,10 +449,6 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
   });
 
   test('small doc with both editors mounted (default pre-mount-both) → do NOT emit', () => {
-    // Critical invariant: small docs have BOTH editors pre-mounted from
-    // the start (computeEditorMountGate returns isLarge:false). The first-
-    // toggle mark must NEVER fire for small docs because there's no defer-
-    // mount transition to measure.
     expect(
       shouldEmitFirstToggle({
         isActive: true,
@@ -533,14 +475,11 @@ describe('shouldEmitFirstToggle — first-toggle mark gate', () => {
 
 describe('computeEffectiveSourceMode — hidden-entry mode freeze', () => {
   test('the active entry follows the current global mode', () => {
-    // isActive true → global mode wins regardless of the frozen last-active mode.
     expect(computeEffectiveSourceMode(true, true, false)).toBe(true);
     expect(computeEffectiveSourceMode(true, false, true)).toBe(false);
   });
 
   test('a hidden entry stays frozen at its last-active mode, ignoring the global flip', () => {
-    // isActive false → the frozen mode wins, so a global flip the hidden entry
-    // never displays cannot change what it would mount.
     expect(computeEffectiveSourceMode(false, true, false)).toBe(false);
     expect(computeEffectiveSourceMode(false, false, true)).toBe(true);
   });
@@ -565,18 +504,12 @@ describe('computeIsNewDoc — create-mode affordance gate', () => {
   });
 
   test('nothing is new while the page list is still loading', () => {
-    // The empty-then-populated page list must not flash the create affordance on
-    // a doc that simply has not arrived yet.
     expect(computeIsNewDoc({ docName: 'brand-new/idea', pages: new Set(), loading: true })).toBe(
       false,
     );
   });
 
   test('a freshly created template is not flagged as a new doc during the index-lag window', () => {
-    // A template content doc enters `pages` only after the async `files` refetch;
-    // keying purely on membership would flash the create-mode affordance for a
-    // real template. The structural check suppresses it at both depths even with
-    // an empty page set.
     expect(
       computeIsNewDoc({ docName: '.ok/templates/daily', pages: new Set(), loading: false }),
     ).toBe(false);
@@ -596,8 +529,6 @@ describe('computeIsNewDoc — create-mode affordance gate', () => {
   });
 
   test('a managed-artifact doc absent from pages is not new (global skill)', () => {
-    // Managed artifacts never appear in `pages`; the create affordance must not
-    // fire for them either.
     expect(
       computeIsNewDoc({ docName: '__skill__/global/foo', pages: new Set(), loading: false }),
     ).toBe(false);
@@ -606,9 +537,6 @@ describe('computeIsNewDoc — create-mode affordance gate', () => {
 
 describe('computeActivityMountList — system doc filtering (DX7 defense-in-depth)', () => {
   test('__system__ doc filtered out even if present in entries', () => {
-    // ProviderPool.open already rejects system docs at admission, but the helper
-    // still filters defensively so a regression at admission can't leak the
-    // system doc into the mount list.
     const sys = entry(SYSTEM_DOC_NAME, 999);
     const a = entry('a', 100);
     const result = computeActivityMountList([sys, a], 'a', 3);
@@ -619,8 +547,6 @@ describe('computeActivityMountList — system doc filtering (DX7 defense-in-dept
   test('__system__ never force-included even when set as activeDocName', () => {
     const sys = entry(SYSTEM_DOC_NAME, 100);
     const a = entry('a', 50);
-    // Even if some bug in caller code passes __system__ as active, the filter
-    // wins — invariant #1 dominates invariant #2.
     const result = computeActivityMountList([sys, a], SYSTEM_DOC_NAME, 3);
     expect(result.map((e) => e.docName)).not.toContain(SYSTEM_DOC_NAME);
   });

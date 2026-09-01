@@ -88,7 +88,7 @@ function promoteCrossChildren(parent: Parent, source: string): void {
     const openValue = openChild.value;
     let openPos = -1;
     for (let n = 0; n <= openValue.length - 2; n++) {
-      if (openValue.charCodeAt(n) !== 61 || openValue.charCodeAt(n + 1) !== 61) continue; // 61 = '='
+      if (openValue.charCodeAt(n) !== 61 || openValue.charCodeAt(n + 1) !== 61) continue;
       if (n > 0 && openValue.charCodeAt(n - 1) === 61) continue;
       if (isEscapeDerivedRun(escapesOf(openChild), n, 2)) continue;
       let charAfter: string | null;

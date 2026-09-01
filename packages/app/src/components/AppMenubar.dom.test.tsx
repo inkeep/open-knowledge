@@ -1,15 +1,3 @@
-/**
- * DOM tests for AppMenubar's custom Windows/Linux menus.
- *
- * AppMenubar is the custom-drawn Windows/Linux menu bar; it self-gates on
- * `window.okDesktop` and returns null on darwin and in focused note windows.
- * These pin the Help entries that route to in-app dialogs and the View history
- * rows, including their ordering, shortcut hints, and
- * `bridge.menu.dispatch` payloads.
- *
- * Invocation: `pnpm exec vitest run --config vitest.dom.config.ts
- * src/components/AppMenubar.dom.test.tsx` from `packages/app/`.
- */
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -95,9 +83,6 @@ describe('AppMenubar Help menu', () => {
     const dispatch = installBridge('win32');
     await openHelpMenu();
 
-    // Anchored rather than exact: the item renders a MenubarShortcut, whose
-    // text joins the accessible name. Matching the label only keeps this test
-    // about dispatch and stops the chord from breaking it when it changes.
     await userEvent.click(screen.getByRole('menuitem', { name: /^Report a bug…/ }));
 
     expect(dispatch).toHaveBeenCalledWith({ kind: 'menu-action', action: 'report-bug' });
@@ -107,8 +92,6 @@ describe('AppMenubar Help menu', () => {
     installBridge('linux');
     await openHelpMenu();
 
-    // Sentence case + the ellipsis on the two entries that open a form rather
-    // than acting on click. Drift here means the two Help surfaces disagree.
     expect(screen.getByRole('menuitem', { name: /^Report a bug…/ })).not.toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Send feedback…' })).not.toBeNull();
     expect(screen.getByRole('menuitem', { name: 'OpenKnowledge on GitHub' })).not.toBeNull();
@@ -264,12 +247,6 @@ describe('AppMenubar drag-suspension attributes', () => {
   });
 
   test('open menu content matches the globals.css drag-suspension selector', async () => {
-    // `globals.css` suspends the Electron drag band while a floater is open by
-    // matching `[data-slot="menubar-content"][data-state="open"]`. AppMenubar
-    // renders INTO a chrome row that is itself a drag region, so if either
-    // attribute stops being emitted the selector goes inert and the menu
-    // cannot be dismissed by clicking the row it hangs from. jsdom cannot
-    // evaluate `:has()`, but it can pin the attributes it keys off.
     installBridge('win32');
     await openMenu('View');
 

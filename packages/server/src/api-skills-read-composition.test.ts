@@ -12,19 +12,6 @@ import {
 import { createSkillsReadRoutes, type SkillsReadRouteDeps } from './http/skills-read-routes.ts';
 import { checkLocalOpSecurity } from './local-op-security.ts';
 
-/**
- * Characterization: the natively-routed skills + templates read group. Same
- * two-layer proof as `api-config-system-composition.test.ts` — the booted rig
- * pins native registration + read bodies (the shared `/api/*` admission gates
- * are owned by `api-admission-composition.test.ts`), and a handler-level block
- * pins `skill/install-state`'s `checkLocalOpSecurity` pre-body gate, which the
- * pipeline would otherwise answer before the handler runs.
- *
- * `/api/skills` (the skills-list read) deliberately stays in the extension —
- * its shared mutable catalog cache moves with the skills mutation family — so
- * it is NOT part of this group.
- */
-
 function buildSkillsReadRoutes(overrides: Partial<SkillsReadRouteDeps> = {}) {
   return createSkillsReadRoutes({
     contentDir: '/tmp/ok-skills-read-unit',
@@ -58,15 +45,8 @@ async function dispatch(
   };
 }
 
-/**
- * GET routes that serve a 200 read over the booted rig. `skill/install-state`
- * is intentionally absent: it reads the real `homedir()` directly (a seam
- * bypass flagged as a follow-up), so its coverage here is the handler-level
- * gate pin + the POST→405 registration pin, not a $HOME-dependent 200.
- */
 const READ_200 = ['/api/comment-counts?docNames=alpha', '/api/skills/installed', '/api/templates'];
 
-/** Every route in the group — method-gated, so a POST answers 405 when registered. */
 const ALL_ROUTES = [
   '/api/comment-counts',
   '/api/skills/installed',
@@ -118,11 +98,6 @@ describe('skills-read group over the composed listener — served natively', () 
 
 describe('skills-read inline gate — observable only at the handler layer', () => {
   test('skill/install-state short-circuits on checkLocalOpSecurity (foreign Origin → its own invalid-origin)', async () => {
-    // Driven through the REAL `checkLocalOpSecurity` (not a stub): a loopback
-    // peer with a foreign Origin passes the peer check and fails the origin
-    // check, so the pre-body gate emits its OWN title — distinct from the
-    // pipeline's `'Origin not allowed.'`. Only observable here, since the
-    // pipeline's origin gate would answer first over HTTP.
     const out = await dispatch(buildSkillsReadRoutes(), '/api/skill/install-state', {
       remoteAddress: '127.0.0.1',
       origin: 'https://evil.example.com',

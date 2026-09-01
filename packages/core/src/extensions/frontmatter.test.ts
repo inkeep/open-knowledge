@@ -120,11 +120,6 @@ describe('unwrapFrontmatterFences', () => {
 });
 
 describe('fence trailing whitespace — recognition contract', () => {
-  // micromark-extension-frontmatter (the engine behind the repo's own
-  // markdownToHtml path) consumes optional spaces/tabs AFTER both fence
-  // sequences. Recognition must agree, or an in-tolerance source edit
-  // (`---` → `--- `) changes FM partitioning mid-session and the bridge
-  // compose fabricates an FM deletion.
   const recognized: Array<{ label: string; input: string; fm: string }> = [
     {
       label: 'space after the opening fence',
@@ -151,8 +146,6 @@ describe('fence trailing whitespace — recognition contract', () => {
   for (const { label, input, fm } of recognized) {
     test(`stripFrontmatter recognizes ${label} and preserves the raw bytes`, () => {
       const { frontmatter, body } = stripFrontmatter(input);
-      // Raw bytes verbatim (Y.Text-is-truth): the trailing whitespace the
-      // user typed stays inside `.frontmatter`, never normalized away here.
       expect(frontmatter).toBe(fm);
       expect(body).toBe('# Body');
     });
@@ -179,10 +172,6 @@ describe('fence trailing whitespace — recognition contract', () => {
   });
 
   test('closing-fence detection stops at the first ---[ \\t]* line inside the region', () => {
-    // A `--- ` line inside the YAML region is a YAML document separator, never
-    // legitimate FM content — micromark closes the frontmatter block there too,
-    // so recognition stops at the FIRST fence-shaped line, trailing whitespace
-    // included. Pins the boundary choice of the widened close-fence matcher.
     const input = '---\ntitle: X\n--- \nrest: y\n---\n# Body';
     const { frontmatter, body } = stripFrontmatter(input);
     expect(frontmatter).toBe('---\ntitle: X\n--- \n');
@@ -214,11 +203,6 @@ describe('round-trip', () => {
 });
 
 describe('fence termination at the compose seam', () => {
-  // `FRONTMATTER_RE`'s closing `(\r?\n|$)` alternative captures a region that
-  // ends at end-of-string with no trailing newline. Concatenating a body onto
-  // it glues the closing fence to the body's first line and destroys the
-  // block — reachable in production from Observer A's drain after typing on a
-  // frontmatter-only document, and from an agent append.
   test('terminates a newline-less region instead of gluing', () => {
     const fm = '---\ntitle: x\n---';
     const composed = prependFrontmatter(fm, 'hello\n');
@@ -245,10 +229,6 @@ describe('fence termination at the compose seam', () => {
     expect(prependFrontmatter('---\ntitle: x\n---', '')).toBe('---\ntitle: x\n---');
   });
 
-  // The identity every recompose site depends on. Without the `m` flag JS `$`
-  // matches only at end of input, so a region captured without a trailing
-  // newline consumed the whole string and left an empty body — which is why
-  // terminating the fence cannot change any strip-derived recomposition.
   test('strip ∘ prepend stays byte-identity across the edge corpus', () => {
     const corpus: string[] = ['', '---', '---\n', 'plain', '---\nfoo\n', ' ---\na: 1\n---\n'];
     for (const fence of ['---', '--- ', '---\t']) {
@@ -272,7 +252,6 @@ describe('fence termination at the compose seam', () => {
       }
       expect(prependFrontmatter(frontmatter, body), JSON.stringify(input)).toBe(input);
     }
-    // Non-vacuity: the corpus must actually contain the edge the guard covers.
     expect(newlineLessRegions).toBeGreaterThan(0);
   });
 });

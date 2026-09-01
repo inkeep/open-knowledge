@@ -105,10 +105,6 @@ describe('built-in slash command items', () => {
   });
 
   test('legacy file-upload "image" slash item is removed', () => {
-    // The descriptor-driven slash menu (component-items)
-    // is the single insertion path for media — the legacy file-picker upload
-    // item that used to live here is gone. The descriptor-driven "Image" entry
-    // covers the same UX (insert + auto-focus + upload via PropPanel).
     const items = getSlashCommandItems();
     expect(items.some((i) => i.name === 'image')).toBe(false);
     expect(items.some((i) => i.aliases?.includes('img'))).toBe(false);
@@ -126,13 +122,6 @@ describe('Inline Math item composes into the slash-command transaction', () => {
     return item;
   }
 
-  /**
-   * Context double standing in for what `applySlashCommandItem` passes: a
-   * chain that only records (a real one would append steps to the handler's
-   * transaction), the pre-insert selection, and a manually drained
-   * `afterCommit` queue so the split between in-transaction and post-commit
-   * work is observable.
-   */
   function makeContext(caret: number): {
     ctx: SlashCommandContext;
     getInsertedFormula: () => string | undefined;
@@ -186,17 +175,12 @@ describe('Inline Math item composes into the slash-command transaction', () => {
     try {
       inlineMathItem().command(ctx);
 
-      // The atom insert is the item's only contribution to the transaction.
       expect(getInsertedFormula()).toBe('');
-      // Nothing post-insert may run inside the chain: at that point the
-      // insert has not been applied to the editor, so a NodeSelection on the
-      // atom would target a position that does not exist yet.
       expect(rafQueue).toHaveLength(0);
       expect(consumeAutoOpen(caret)).toBe(false);
 
       drainDeferred();
 
-      // Once committed, the auto-open handshake runs against the real editor.
       expect(consumeAutoOpen(caret)).toBe(true);
       expect(rafQueue).toHaveLength(1);
       rafQueue[0]?.(0);
@@ -223,9 +207,6 @@ describe('emoji item', () => {
   test('contributes no chain steps and defers the picker open to afterCommit', () => {
     const deferred: Array<() => void> = [];
     let dispatched = 0;
-    // Node-env double for the document listener target — the dispatch helper
-    // goes through `document.dispatchEvent`, which the jsdom tier covers in
-    // EmojiInsertPopover.dom.test.tsx; here we only pin the deferral contract.
     const ctx = {
       chain: () => {
         throw new Error('emoji item must not touch the chain');

@@ -709,9 +709,6 @@ describe('DerivedDocumentIndex', () => {
   });
 
   test('a startup graph pass with no file inventory keeps extension-less file hrefs as document edges', async () => {
-    // The watcher never seeds (factory stays null), as when it fails outright:
-    // the settlement reconcile has no inventory to consult either, so the
-    // startup pass's document-shaped reading of `assets/NOTICE` persists.
     const rig = createRig(() => null);
     writeDoc(rig, 'src.md', 'See [notice](assets/NOTICE).\n');
     writeDoc(rig, 'assets/NOTICE', 'plain text\n');
@@ -733,13 +730,9 @@ describe('DerivedDocumentIndex', () => {
 
     const startup = rig.index.beginStartup('main');
     await startup.backlinksReady;
-    // The real cold-boot ordering: the graph builds before the watcher seeds,
-    // then the inventory exists by the time startup settles.
     inventory = { documentTargets: ['src'], fileTargets: ['assets/NOTICE'] };
     await rig.index.settleStartupAfterWatcherSeed();
 
-    // The reconcile re-derived the graph against the inventory: the
-    // extension-less href names an existing ordinary file, not a document.
     expect(await rig.index.getBacklinks('assets/NOTICE')).toEqual([]);
   });
 
@@ -749,9 +742,6 @@ describe('DerivedDocumentIndex', () => {
     writeDoc(rig, 'src.md', 'See [notice](assets/NOTICE).\n');
     writeDoc(rig, 'assets/NOTICE', 'plain text\n');
 
-    // Seed the persisted cache in the pre-inventory shape an older build or a
-    // prior cold startup would have written. Its mtime snapshot is current, so
-    // the warm reconcile legitimately has no changed document to re-parse.
     const cached = new BacklinkIndex({
       projectDir: rig.projectDir,
       contentDir: rig.contentDir,
@@ -905,7 +895,6 @@ describe('DerivedDocumentIndex local-target projection', () => {
       ['document', 'target', 'missing'],
       ['file', 'assets/f.pdf', 'missing'],
     ]);
-    // local-targets rides the relation signal set only because an assessment moved.
     expect(rig.signals).toEqual(['backlinks', 'graph', 'local-targets', 'tags']);
   });
 
@@ -921,8 +910,6 @@ describe('DerivedDocumentIndex local-target projection', () => {
       true,
     );
 
-    // A source filter narrows enumeration to just those sources — the path a
-    // folder/doc scope drives.
     const scoped = await rig.index.getLocalTargetAssessmentsForSources(['a']);
     expect(scoped.map((entry) => entry.source)).toEqual(['a']);
   });
@@ -974,7 +961,6 @@ describe('DerivedDocumentIndex local-target projection', () => {
     });
     expect(rig.signals).toEqual(['local-targets']);
 
-    // An unreferenced file create moves nothing and stays silent.
     rig.signals.length = 0;
     await rig.index.recordFileTargetUpsert('assets/unreferenced.pdf');
     expect(rig.signals).toEqual([]);
@@ -1087,7 +1073,6 @@ describe('DerivedDocumentIndex local-target projection', () => {
     );
 
     expect(rig.signals.filter((channel) => channel === 'local-targets')).toHaveLength(1);
-    // One file create heals every dependent in the batch.
     expect(await rig.index.getLocalTargetFileDependents('assets/shared.pdf')).toHaveLength(12);
     expect(await rig.index.recordFileTargetUpsert('assets/shared.pdf')).toBeUndefined();
     for (let i = 0; i < 12; i++) {
@@ -1115,7 +1100,6 @@ describe('DerivedDocumentIndex local-target projection', () => {
     await rig.index.settleStartupAfterWatcherSeed();
     const assessments = await pending;
     expect(settled).toBe(true);
-    // Seeded from disk: `target` does not exist, so the reference is missing, not absent.
     expect(assessments[0]).toMatchObject({ resolvedTarget: 'target', status: 'missing' });
   });
 
@@ -1170,7 +1154,6 @@ describe('DerivedDocumentIndex local-target projection', () => {
       status: 'exact',
     });
 
-    // The new branch no longer has the target on disk.
     unlinkSync(join(rig.contentDir, 'target.md'));
     const transition = await rig.index.beginBranchSwitch('feature');
     await rig.index.settleBranchFromDisk(transition);

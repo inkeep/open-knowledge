@@ -28,15 +28,11 @@ afterEach(() => {
   dirs.length = 0;
 });
 
-/** Write `<dir>/.ok/config.yml` with the given YAML body. */
 function writeRootConfig(dir: string, body: string): void {
   mkdirSync(join(dir, '.ok'), { recursive: true });
   writeFileSync(join(dir, '.ok', 'config.yml'), body);
 }
 
-/** Wire an editor at the root the same way OK's chain does — a project MCP
- *  config whose bytes carry the OK sentinel. `relPath` is the editor's
- *  project-scope config path. */
 function wireEditorAtRoot(dir: string, relPath: string, sentinel = '# ok-mcp-v1'): void {
   const abs = join(dir, relPath);
   mkdirSync(join(abs, '..'), { recursive: true });
@@ -81,14 +77,12 @@ describe('readRootContentDir', () => {
 describe('detectRootWiredEditors', () => {
   test('detects only the editors whose project MCP config carries the OK sentinel', () => {
     const root = tmp();
-    wireEditorAtRoot(root, '.mcp.json'); // claude
-    wireEditorAtRoot(root, join('.cursor', 'mcp.json')); // cursor
-    // codex NOT wired → excluded
+    wireEditorAtRoot(root, '.mcp.json');
+    wireEditorAtRoot(root, join('.cursor', 'mcp.json'));
     const editors = detectRootWiredEditors(root);
     expect(editors).toContain('claude');
     expect(editors).toContain('cursor');
     expect(editors).not.toContain('codex');
-    // Global-only editors have no projectConfigPath and never appear.
     expect(editors).not.toContain('claude-desktop');
     expect(editors).not.toContain('openclaw');
   });
@@ -100,8 +94,6 @@ describe('detectRootWiredEditors', () => {
   });
 
   test('survives a sentinel version bump — detection keys on the version-independent prefix', () => {
-    // A future `# ok-mcp-v2` / `# ok-mcp-win-v9` must still be recognized so the
-    // worktree never silently loses its inherited editor wiring on a bump.
     const rootUnix = tmp();
     wireEditorAtRoot(rootUnix, '.mcp.json', '# ok-mcp-v2');
     expect(detectRootWiredEditors(rootUnix)).toContain('claude');
@@ -136,11 +128,9 @@ describe('seedWorktreeProjectSetup', () => {
     expect(existsSync(join(wt, '.ok', 'config.yml'))).toBe(false);
     seedWorktreeProjectSetup(wt, root);
 
-    // The HARD GATE marker: a real, parseable config.yml at the worktree root.
     const configPath = join(wt, '.ok', 'config.yml');
     expect(existsSync(configPath)).toBe(true);
     expect(() => parseYaml(readFileSync(configPath, 'utf-8'))).not.toThrow();
-    // Full `.ok/` scaffold parity with a fresh setup.
     expect(existsSync(join(wt, '.ok', '.gitignore'))).toBe(true);
     expect(existsSync(join(wt, '.okignore'))).toBe(true);
   });
@@ -158,21 +148,17 @@ describe('seedWorktreeProjectSetup', () => {
     const root = tmp();
     const wt = tmp();
     writeRootConfig(root, 'version: 1\n');
-    wireEditorAtRoot(root, '.mcp.json'); // claude
-    wireEditorAtRoot(root, join('.cursor', 'mcp.json')); // cursor
+    wireEditorAtRoot(root, '.mcp.json');
+    wireEditorAtRoot(root, join('.cursor', 'mcp.json'));
 
     seedWorktreeProjectSetup(wt, root);
 
-    // Claude + Cursor mirrored to the worktree, carrying the OK sentinel.
     const wtMcp = join(wt, '.mcp.json');
     const wtCursor = join(wt, '.cursor', 'mcp.json');
     expect(existsSync(wtMcp)).toBe(true);
     expect(readFileSync(wtMcp, 'utf-8')).toContain('# ok-mcp');
     expect(existsSync(wtCursor)).toBe(true);
-    // OK no longer scaffolds .claude/launch.json (Claude Desktop's Browser
-    // pane opens the preview URL directly).
     expect(existsSync(join(wt, '.claude', 'launch.json'))).toBe(false);
-    // Codex was NOT wired at the root → not written to the worktree.
     expect(existsSync(join(wt, '.codex', 'config.toml'))).toBe(false);
   });
 
@@ -183,7 +169,6 @@ describe('seedWorktreeProjectSetup', () => {
     seedWorktreeProjectSetup(wt, root);
     expect(existsSync(join(wt, '.mcp.json'))).toBe(false);
     expect(existsSync(join(wt, '.cursor', 'mcp.json'))).toBe(false);
-    // But the .ok/config.yml marker is still seeded.
     expect(existsSync(join(wt, '.ok', 'config.yml'))).toBe(true);
   });
 
@@ -191,7 +176,6 @@ describe('seedWorktreeProjectSetup', () => {
     const root = tmp();
     const wt = tmp();
     writeRootConfig(root, 'content:\n  dir: docs\n');
-    // Simulate the worktree branch having already checked out a committed config.
     const committed =
       'version: 7\n# hand-authored, must survive\ncontent:\n  dir: committed-scope\n';
     mkdirSync(join(wt, '.ok'), { recursive: true });
@@ -199,7 +183,6 @@ describe('seedWorktreeProjectSetup', () => {
 
     seedWorktreeProjectSetup(wt, root);
 
-    // Byte-for-byte preserved — writeIfMissing, no clobber.
     expect(readFileSync(join(wt, '.ok', 'config.yml'), 'utf-8')).toBe(committed);
   });
 

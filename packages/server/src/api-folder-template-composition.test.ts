@@ -6,23 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed folder-template group
- * (`folder-config` GET+PUT, `template` GET/PUT/POST/DELETE,
- * `template/import`) over a REAL socket through the composed `bootServer`
- * stack: verb gating, real handler responses, and the shared admission
- * posture. All three paths are legacy `MUTATING_ROUTES` members — that
- * DECLARATION is pinned at the table tier in
- * `http/folder-template-routes.test.ts`; the rebound-Host pins here hold
- * that the admission outcome is unchanged across the lift, GET arms
- * included.
- *
- * Every request below refuses (or reads) BEFORE any CRDT/session write —
- * the deep template write/move/import behavior keeps its coverage in the
- * dedicated integration suites, which now exercise the same native dispatch.
- */
-
-/** Every path in the group, with the verbs the legacy record dispatched. */
 const METHOD_SURFACE: ReadonlyArray<{ path: string; unsupported: string; allow: string }> = [
   { path: '/api/folder-config', unsupported: 'DELETE', allow: 'GET, PUT' },
   { path: '/api/template', unsupported: 'PATCH', allow: 'GET, PUT, POST, DELETE' },
@@ -89,10 +72,6 @@ describe('folder-template group over the composed listener — served natively',
   });
 
   test('PUT /api/template refuses a folder that symlinks out of the content root', async () => {
-    // The reader half of the templates feature drops symlinked entries from
-    // the menu; this pins the WRITER half to the same boundary — the lexical
-    // folder gate alone would let a `tpl-escape -> /outside` directory link
-    // land `.ok/templates/<name>.md` outside the root.
     const outside = await mkdtemp(resolve(tmpRoot, 'tpl-outside-'));
     symlinkSync(outside, resolve(contentDir, 'tpl-escape'), 'dir');
     const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
@@ -111,9 +90,6 @@ describe('folder-template group over the composed listener — served natively',
   });
 
   test('PUT /api/template refuses a real .ok whose templates dir symlinks out', async () => {
-    // Pins the second anchor specifically: the folder AND its `.ok` are real
-    // in-root directories; only `.ok/templates` is the planted link. The
-    // `okDir` assert passes, so only the `okDir/templates` assert refuses.
     const outside = await mkdtemp(resolve(tmpRoot, 'tpl-outside-deep-'));
     mkdirSync(resolve(contentDir, 'tpl-real', '.ok'), { recursive: true });
     symlinkSync(outside, resolve(contentDir, 'tpl-real', '.ok', 'templates'), 'dir');
@@ -144,8 +120,6 @@ describe('folder-template group over the composed listener — served natively',
 
   test('all three paths refuse a rebound Host before the verb check (403, no Allow leak)', async () => {
     for (const path of ALL_ROUTES) {
-      // DELETE/PATCH-class wrong verbs above prove 405 from loopback; here the
-      // mutating gate must answer first even on a wrong-verb request.
       const res = await rawRequest(server.port, path, { headers: { Host: 'evil.example' } });
       expect(res.status, path).toBe(403);
       expect(res.headers.allow, path).toBeUndefined();

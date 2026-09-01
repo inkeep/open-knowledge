@@ -1,8 +1,3 @@
-/**
- * `config-yaml` check tests — exercises the warn-on-uninitialized + pass + fail
- * paths via a fresh tmp project per case.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

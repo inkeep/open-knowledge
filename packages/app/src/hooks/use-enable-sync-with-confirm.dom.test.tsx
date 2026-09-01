@@ -198,7 +198,7 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
     await act(async () => {
       latestConfirmState?.onToggleRequest(true);
     });
-    expect(enabledCalls).toBe(0); // not until the user confirms
+    expect(enabledCalls).toBe(0);
 
     await act(async () => {
       latestConfirmState?.onConfirm();
@@ -219,7 +219,6 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
     });
 
     expect(enabledCalls).toBe(0);
-    // Confirm dialog stays open on failure so the user can retry.
     expect(screen.getByTestId('confirm-open').textContent).toBe('true');
   });
 });
@@ -251,9 +250,6 @@ describe('useSyncEnabledWriter runtime behavior', () => {
     };
     render(<WriterProbe />);
 
-    // Enabling must write mode:'full' (the value resolveLocalAutoSyncMode reads
-    // first), not just enabled:true — otherwise a machine that previously set
-    // mode:'off' would ignore the enable.
     expect(latestWriter?.(true)).toEqual({ ok: true });
     expect(latestWriter?.(false)).toEqual({ ok: true });
     expect(patches).toEqual([
@@ -304,8 +300,6 @@ describe('useSyncModeWriter runtime behavior', () => {
     render(<ModeWriterProbe />);
 
     expect(latestModeWriter?.('follow')).toEqual({ ok: true });
-    // Writes the mode AND clears the legacy `enabled` flag so an older app
-    // can't read a stale toggle and push for a mode the user switched away from.
     expect(patches).toEqual([{ autoSync: { mode: 'follow', enabled: null } }]);
   });
 
@@ -350,9 +344,6 @@ describe('useSyncDefaultWriter runtime behavior', () => {
         return { ok: true };
       },
     };
-    // A project-local binding is also mounted: the scope-collision regression
-    // (targeting projectLocalBinding instead of projectBinding) would land the
-    // write here, silently writing per-machine config instead of committed.
     projectLocalBinding = {
       patch: (patch: unknown) => {
         localPatches.push(patch);
@@ -365,7 +356,6 @@ describe('useSyncDefaultWriter runtime behavior', () => {
     expect(committedPatches).toEqual([{ autoSync: { default: false } }]);
     expect(localPatches).toEqual([]);
 
-    // `null` clears the committed key (RFC 7396 delete) → reset to ask.
     expect(latestDefaultWriter?.(null)).toEqual({ ok: true });
     expect(committedPatches).toEqual([
       { autoSync: { default: false } },
@@ -497,8 +487,6 @@ describe('useSyncModeSelection runtime behavior', () => {
     const writer: ModeWriter = () => ({ ok: false, error: 'branch is protected' });
     render(<ModeSelectionProbe writer={writer} currentMode="off" />);
 
-    // Two clicks in the real UI (select, re-render shows the dialog, then
-    // confirm) — split acts so `onConfirm` reads the committed pendingMode.
     await act(async () => {
       latestModeSelection?.onModeSelect('full');
     });
@@ -525,7 +513,7 @@ describe('useSyncModeSelection runtime behavior', () => {
     await act(async () => {
       latestModeSelection?.onModeSelect('follow');
     });
-    expect(applied).toEqual([]); // not until the user confirms
+    expect(applied).toEqual([]);
 
     await act(async () => {
       latestModeSelection?.onConfirm();

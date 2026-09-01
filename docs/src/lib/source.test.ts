@@ -2,14 +2,6 @@ import { flattenTree } from 'fumadocs-core/page-tree';
 import { describe, expect, test, vi } from 'vitest';
 import type { DocsPageTreeItem } from './sidebar-title.ts';
 
-/**
- * The generated `.source/server` artifact imports every page in `content/` as
- * `*.mdx?collection=docs`. Vite's import analysis cannot resolve those
- * specifiers without the Next/Fumadocs transform, which this package's Vitest
- * config does not register. Faking that one artifact keeps `loader()` and the
- * sidebar transformer real, which is what lets these tests go red if the
- * `pageTree` wiring is ever dropped from `source.ts`.
- */
 vi.doMock('../../.source/server', () => ({
   docs: {
     toFumadocsSource: () => ({
@@ -69,7 +61,6 @@ vi.doMock('../../.source/server', () => ({
 
 const { source } = await import('./source.ts');
 
-/** Page-tree item for every page row in the built tree, keyed by URL. */
 function pageTreeItems(): Map<string, DocsPageTreeItem> {
   return new Map(
     flattenTree(source.pageTree.children).map((item) => [item.url, item as DocsPageTreeItem]),
@@ -91,9 +82,6 @@ describe('docs sidebar labels', () => {
     expect(pageTreeItems().get('/docs/workflows/plain-notes')).not.toHaveProperty('sidebarTitle');
   });
 
-  // The schema admits `sidebarTitle: ''`. It is falsy, so the emptiness test
-  // catches it with or without the trim; this pins the fallback so a guard
-  // refactor cannot start carrying an empty label.
   test('an empty sidebarTitle falls back to the title rather than blanking the row', () => {
     expect(pageTreeItems().get('/docs/workflows/worldbuilding')).toMatchObject({
       name: 'Worldbuilding',
@@ -101,9 +89,6 @@ describe('docs sidebar labels', () => {
     expect(pageTreeItems().get('/docs/workflows/worldbuilding')).not.toHaveProperty('sidebarTitle');
   });
 
-  // A whitespace-only value is truthy, so an untrimmed guard would name the
-  // row with nothing, leaving a link with an empty accessible name. This is
-  // the case the trim exists for.
   test('a whitespace-only sidebarTitle falls back to the title rather than blanking the row', () => {
     expect(pageTreeItems().get('/docs/workflows/plain-notes-spaced')).toMatchObject({
       name: 'Codebase wiki',

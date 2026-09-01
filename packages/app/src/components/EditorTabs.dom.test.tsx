@@ -69,7 +69,6 @@ const sortableOptions: Array<{
   id: string;
   transition?: unknown;
 }> = [];
-// Stands in for dnd-kit's in-flight drag; non-null simulates a reorder drag.
 let activeDrag: { id: string } | null = null;
 
 import * as actualLinguiMacro from '@lingui/react/macro';
@@ -315,9 +314,6 @@ vi.doMock('@/components/skill-actions', () => ({
 }));
 
 vi.doMock('@/editor/DocumentContext', () => ({
-  // EditorTabs imports isBlobRunnerNewTabId to name the runner's tab; this is
-  // a whole-module replacement, so the export must exist here or the link
-  // detonates on load.
   isBlobRunnerNewTabId: () => false,
   useDocumentContext: () => ({
     activeDocName,
@@ -476,10 +472,6 @@ function tabButton(name: string) {
   return button as HTMLButtonElement;
 }
 
-// Radix appends a visually-hidden copy of the content for screen readers, so
-// the element's textContent repeats the label. The first node is what a
-// sighted user actually reads, and comparing it exactly keeps these
-// assertions from passing on a different tab's tooltip.
 function tooltipText(tooltip: HTMLElement): string {
   return tooltip.firstChild?.textContent ?? tooltip.textContent ?? '';
 }
@@ -563,8 +555,6 @@ describe('EditorTabs runtime behavior', () => {
     expect.soft(okignorePatch).toHaveBeenCalledWith('/notes.ts.md\n');
   });
 
-  // The visible label is only the base name, so two same-named files in
-  // different folders are indistinguishable without disclosing the path.
   test('hovering a doc tab discloses its full path, which the label alone does not show', async () => {
     await renderEditorTabs();
 
@@ -605,16 +595,9 @@ describe('EditorTabs runtime behavior', () => {
     await Promise.resolve();
     expect(screen.queryByRole('tooltip')).toBeNull();
     expect(markdownTab.getAttribute('title')).toBeNull();
-    // Load-bearing, not incidental coupling: the tooltip opens on a timer, so
-    // the absence above would also hold in the split second before an
-    // unsuppressed tooltip appeared. Asserting the trigger is gone is what
-    // makes this fail if the suppression is removed.
     expect(markdownTab.getAttribute('data-slot')).not.toBe('tooltip-trigger');
   });
 
-  // Tabs cap at max-w-64 and truncate, so a root-level name long enough to be
-  // clipped still needs the disclosure even though no folder prefix precedes
-  // it. Suppressing the apparent echo would leave that tab unreadable.
   test('a doc at the content root still discloses its name on hover', async () => {
     openTabs = ['readme'];
     visibleTabIds = ['readme'];
@@ -747,9 +730,6 @@ describe('EditorTabs runtime behavior', () => {
   });
 
   test('reuses the sidebar file actions for an editable reference DOC tab', async () => {
-    // A `.md` reference opens as an ordinary doc tab, not a `skill-file` one —
-    // it carried no skill actions at all until its bundle path was resolved
-    // back from the doc name.
     const skill = {
       scope: 'project',
       name: 'ask-matt',
@@ -1412,7 +1392,6 @@ describe('EditorTabs runtime behavior', () => {
   test('offers Open in New Window on document tabs only, and never on the web host', async () => {
     const { folderId, assetId, newId } = defaultTabs();
 
-    // Web host: no desktop bridge, so the pop-out entry point does not exist.
     await renderEditorTabs();
     expect(screen.queryAllByTestId('editor-tab-context-open-in-new-window')).toHaveLength(0);
 
@@ -1424,9 +1403,6 @@ describe('EditorTabs runtime behavior', () => {
     });
     await renderEditorTabs();
 
-    // One per file-backed DOCUMENT tab. A folder and an asset carry their own
-    // id prefixes; a blank "New tab" has no prefix and so parses as a doc, but
-    // is backed by no file — all three are excluded.
     const items = screen.getAllByTestId('editor-tab-context-open-in-new-window');
     const docTabCount = visibleTabIds.filter(
       (id) => id !== folderId && id !== assetId && id !== newId,
@@ -1450,7 +1426,6 @@ describe('EditorTabs runtime behavior', () => {
       screen.getAllByTestId('editor-tab-context-open-in-new-window')[0] as HTMLElement,
     );
 
-    // Keep-both: the origin tab stays open, so nothing on the origin side moves.
     expect(closeTab).not.toHaveBeenCalled();
     expect(closeTabs).not.toHaveBeenCalled();
     expect(moveTabToNewPane).not.toHaveBeenCalled();
@@ -1484,8 +1459,6 @@ describe('EditorTabs runtime behavior', () => {
 
     const unpinButton = screen.getByRole('button', { name: 'Unpin docs/team/readme.txt' });
     expect(unpinButton.getAttribute('title')).toBeNull();
-    // `text-primary!` — the important modifier is part of the token, and the
-    // pinned tint only holds because it outranks the button variant's own color.
     expectVisualClassTokens(unpinButton.className, ['text-primary!']);
     fireEvent.click(unpinButton);
     expect(unpinTab).toHaveBeenCalledWith('docs/team/readme');
@@ -1513,8 +1486,6 @@ describe('EditorTabs runtime behavior', () => {
     });
     expect(conflictedTabButton).toBeTruthy();
     expect(conflictedTabButton.getAttribute('title')).toBeNull();
-    // A conflict is the one case where the tooltip carries state beyond the
-    // path, so pin that it tracks the label rather than just the path.
     fireEvent.pointerEnter(conflictedTabButton, { pointerType: 'mouse' });
     fireEvent.pointerMove(conflictedTabButton, { pointerType: 'mouse' });
     expect(tooltipText(await screen.findByRole('tooltip'))).toBe('docs/team/notes.md (conflict)');
@@ -1559,19 +1530,6 @@ describe('EditorTabs runtime behavior', () => {
   });
 });
 
-/**
- * The tab chords are registered capture-phase on `window`, so they run before
- * anything an overlay could install — an open command palette or dialog cannot
- * stop them from underneath and the listener has to decline for itself.
- *
- * Each suppression case is paired with the same chord fired without an overlay,
- * so a test that goes green because the shortcut stopped working outright is
- * distinguishable from one that goes green because the gate works.
- *
- * Keys the app never claims (⌘C/⌘V/⌘X/⌘A/⌘Z) are pinned as untouched while an
- * overlay is up: the gate must decline these chords, not swallow the whole
- * keyboard, or pasting into the palette's own search field breaks.
- */
 describe('EditorTabs global chords — overlay gate', () => {
   beforeEach(() => {
     resetState();
@@ -1674,8 +1632,6 @@ describe('EditorTabs global chords — overlay gate', () => {
     document.addEventListener('keydown', spy);
 
     try {
-      // Clipboard, select-all, and undo/redo have to reach the overlay's own
-      // input, so nothing may cancel them.
       for (const key of ['c', 'v', 'x', 'a', 'z']) {
         expect(press({ key, ...primaryShortcutModifier() })).toBe(true);
       }
@@ -1683,8 +1639,6 @@ describe('EditorTabs global chords — overlay gate', () => {
       for (const key of ['ArrowDown', 'ArrowUp', 'Enter']) {
         expect(press({ key })).toBe(true);
       }
-      // Escape is cancelled by the dialog itself (that is the dismiss); the
-      // property under test is only that it still reaches every listener.
       press({ key: 'Escape' });
     } finally {
       document.removeEventListener('keydown', spy);

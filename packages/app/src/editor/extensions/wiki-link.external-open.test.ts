@@ -1,19 +1,3 @@
-/**
- * Regression pins for inkeep/open-knowledge#617 — the WYSIWYG `[[wikilink]]`
- * external branch must reach the OS default browser, symmetric with the
- * markdown-link chip (`internal-link.external-open.test.ts`).
- *
- * Contract: activating a `[[https://…]]` chip routes through the desktop bridge
- * (`window.okDesktop.shell.openExternal`) when present, and falls back to
- * `window.open` on web (no bridge). The routing code is real — a mounted Editor
- * with the production `WikiLink` NodeView classifies a real external wiki-link
- * target and runs the real `handlePrimary` external branch, reached the way the
- * InteractionLayer reaches it in production
- * (`getRegistration(nodeId).handlePrimary(...)`). The only doubles are the two
- * external boundaries the decision targets (`okDesktop.shell.openExternal`,
- * `window.open`).
- */
-
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
 import { Editor } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
@@ -64,11 +48,6 @@ afterEach(() => {
   delete testWindow().okDesktop;
 });
 
-/**
- * Mount a real editor with the production `WikiLink` NodeView holding a single
- * external `[[url]]` chip, and return an `activate` that invokes the real chip
- * primary-action closure through the InteractionLayer registration.
- */
 function mountWithExternalWikiLink(url: string): {
   editor: Editor;
   activate: (newTab: boolean) => boolean | undefined;
@@ -82,8 +61,6 @@ function mountWithExternalWikiLink(url: string): {
   });
   liveEditors.add(editor);
 
-  // Force a view update so the NodeView's InteractionLayer registration settles.
-  // Position 1 is inside the paragraph's inline content (before the atom chip).
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)));
 
   const chip = host.querySelector('[data-node-id]');

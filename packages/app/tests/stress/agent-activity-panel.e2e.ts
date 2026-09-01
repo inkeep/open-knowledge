@@ -1,41 +1,3 @@
-/**
- * Agent Activity Panel (DocPanel `'agent'` mode) — end-
- * to-end coverage for the drill-in model introduced when the persistent
- * doc/activity mode toggle was removed. The activity view is now entered
- * exclusively via avatar click and exited via the back-arrow button.
- *
- * Covers:
- *   - click agent avatar → DocPanel flips to `'agent'` mode, activity
- *     body renders (Playwright poll tolerates CI cold-start noise).
- *   - click the same avatar a second time → exits back to `'doc'` mode.
- *   - back arrow: click the activity view's back arrow → exits to
- *     `'doc'` mode. Tooltip copy is verified.
- *   - click a filename in the activity list → main editor navigates;
- *     panel stays in `'agent'` mode.
- *   - click an edit row → opens that version's agent-diff pane; the pane
- *     paints over the editor, so the main editor follows to the agent's doc
- *     while the activity view stays open (supersedes the original AC-P7
- *     "active doc unchanged on undo" — the agent-diff pane now drives nav).
- *
- * Behaviour deliberately NOT tested here, with rationale:
- *   - live CC1 update (700 ms arrival budget) — the Playwright
- *     dev-server fixture runs with `gitEnabled: false` for test isolation.
- *     CC1 `session-activity` only fires from the L2 drain after a
- *     successful `commitWipFromTree`; with gitEnabled=false that callback
- *     is never reached. The live-update pipeline is covered in
- *     `packages/app/tests/integration/c11-activity-panel-undo.test.ts`.
- *   - Esc / X / click-outside close semantics — the DocPanel is a layout
- *     panel, not a modal Sheet. Close is via the back-arrow button.
- *
- * Canonical selectors:
- *   [data-testid="activity-panel"]                   — activity body region
- *   [data-testid="docpanel-exit-agent-mode"]         — back-arrow button
- *   [data-testid="activity-panel-file-row"]          — one file entry
- *   [data-testid="activity-panel-file-row-filename"] — filename link
- *   [data-testid="activity-panel-burst-open"]        — one edit row (opens its diff)
- *   [data-testid="activity-panel-burst-restore"]     — per-edit restore action
- */
-
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
 
 function agentId(label: string): string {
@@ -60,10 +22,6 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     await waitForProvider(page);
 
     const claude = agentId('claude-t1');
-    // Display name is unique per test: presence entries on the shared
-    // per-worker server outlive a test by the presence TTL, so a sibling
-    // test's 'Claude' avatar can coexist with this one — an ambiguous
-    // [aria-label*=...] + .first() then picks the stale avatar.
     await api.writeAsAgent(docA, '# Claude wrote to A', {
       agentId: claude,
       agentName: 'Claude T1',
@@ -75,23 +33,14 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
       clientName: 'claude-code',
     });
 
-    // PresenceBar renders only when at least one participant is present;
-    // the avatar poll below owns the visibility wait (races awareness
-    // propagation from the writeAsAgent calls above).
     const bar = page.locator('[data-slot="presence-bar"]');
 
-    // Match the badge's OWN aria-label ("Open activity panel for <name>"),
-    // which carries the per-test display name — the inner brand SVG is
-    // aria-hidden and only ever names the brand, so a descendant filter
-    // cannot discriminate between same-brand agents.
     const claudeAvatar = bar
       .locator('[data-presence-badge="agent"][aria-label*="Claude T1"]')
       .first();
     await expect(claudeAvatar).toBeVisible({ timeout: 10_000 });
     await claudeAvatar.click();
 
-    // After click, the activity body should be visible and the back-arrow
-    // button should be present (canonical signal that we're in agent mode).
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     await expect(backButton).toBeVisible({ timeout: 5_000 });
 
@@ -107,8 +56,6 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     expect(rowTexts.some((t) => t.includes(docA))).toBe(true);
     expect(rowTexts.some((t) => t.includes(docB))).toBe(true);
 
-    // Scoped avatar carries the `data-presence-scoped="true"` marker so
-    // the ring highlight is verifiable without color assertions.
     await expect(claudeAvatar).toHaveAttribute('data-presence-scoped', 'true');
   });
 
@@ -140,12 +87,10 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     const panel = page.locator('[data-testid="activity-panel"]');
 
-    // First click → agent mode: back-arrow + activity body visible.
     await claudeAvatar.click();
     await expect(backButton).toBeVisible({ timeout: 5_000 });
     await expect(panel).toBeVisible();
 
-    // Second click on the SAME avatar → back to doc mode.
     await claudeAvatar.click();
     await expect(backButton).toBeHidden({ timeout: 5_000 });
     await expect(panel).toBeHidden();
@@ -179,9 +124,6 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
 
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     await expect(backButton).toBeVisible({ timeout: 5_000 });
-    // The label is Lingui-wrapped (`t`), so assert the icon button carries a
-    // non-empty accessible name without coupling to the exact English copy —
-    // the wording is owned by the i18n catalog, not this e2e suite.
     await expect(backButton).toHaveAccessibleName(/\S/);
 
     await backButton.click();
@@ -226,14 +168,12 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     await expect(filenameBtn).toBeVisible({ timeout: 5_000 });
     await filenameBtn.click();
 
-    // Main editor navigates.
     await expect
       .poll(async () => page.url(), {
         timeout: 5_000,
         intervals: [100, 250, 500],
       })
       .toContain(`#/${docTarget}`);
-    // DocPanel stays in agent mode.
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     await expect(backButton).toBeVisible();
     await expect(panel).toBeVisible();
@@ -264,31 +204,23 @@ test.describe('Activity mode (DocPanel) — avatar drill-in, back-arrow exit', (
     const claudeAvatar = page
       .locator('[data-slot="presence-bar"] [data-presence-badge="agent"][aria-label*="Claude T7"]')
       .first();
-    // Own the presence-propagation wait explicitly (mirrors every sibling
-    // test) instead of folding it into click's actionability timeout.
     await expect(claudeAvatar).toBeVisible({ timeout: 10_000 });
     await claudeAvatar.click();
     const panel = page.locator('[data-testid="activity-panel"]');
     await expect(panel).toBeVisible({ timeout: 5_000 });
 
-    // Edits are always expanded now — click the edit row to open its diff.
     const row = panel.locator('[data-testid="activity-panel-file-row"]').first();
     const burst = row.locator('[data-testid="activity-panel-burst-open"]').first();
     await expect(burst).toBeVisible({ timeout: 5_000 });
     await burst.click();
 
-    // Clicking the edit opens the agent-diff pane. The pane paints over the
-    // editor slot, so EditorArea navigates the main editor to the agent's doc
-    // — the URL hash moves off docView onto docAgent.
     await expect
       .poll(async () => page.url(), { timeout: 5_000, intervals: [100, 250, 500] })
       .not.toBe(urlBefore);
     await expect
       .poll(async () => page.url(), { timeout: 5_000, intervals: [100, 250, 500] })
       .toContain(`/#/${docAgent}`);
-    // The staged version's diff is now painting over the editor.
     await expect(page.locator('[data-testid="agent-diff-pane"]')).toBeVisible({ timeout: 5_000 });
-    // DocPanel stays in agent mode across the version-diff open.
     const backButton = page.locator('[data-testid="docpanel-exit-agent-mode"]');
     await expect(backButton).toBeVisible();
   });

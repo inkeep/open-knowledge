@@ -278,7 +278,7 @@ describe('diffMtimes', () => {
     try {
       writeFileSync(resolve(tmp2, 'a.md'), 'v1');
       const before = (await snapshotMtimes(tmp2)).snapshot;
-      await wait(15); // ensure mtime differs
+      await wait(15);
       writeFileSync(resolve(tmp2, 'a.md'), 'v2');
       const after = (await snapshotMtimes(tmp2)).snapshot;
       expect(diffMtimes(before, after).changed).toEqual(['a.md']);

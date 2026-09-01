@@ -1,17 +1,3 @@
-/**
- * The page header's frontmatter binding is promotion-wrapped.
- *
- * `PageHeader` builds its own `bindFrontmatterDoc` binding, separately from
- * `PropertyPanel`'s. The wrapper unit tests prove the wrapper announces when
- * it is called; only this proves `PageHeader` calls it — so a refactor that
- * dropped the wrap would silently stop promoting on a cover reframe with every
- * other test still green.
- *
- * Drives the keyboard path (`role="slider"`, commit-on-keypress) rather than a
- * pointer drag: same `binding.patch` commit, no synthetic pointer-capture
- * choreography.
- */
-
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -42,9 +28,7 @@ afterEach(() => {
   for (const p of providers.splice(0)) {
     try {
       p.destroy();
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 });
 
@@ -60,9 +44,6 @@ describe('PageHeader — preview-tab promotion', () => {
     render(<PageHeader provider={provider} />);
     const slider = await screen.findByRole('slider');
 
-    // Focused directly rather than clicked: a click would run the drag's
-    // `setPointerCapture`, which jsdom does not implement, and the keyboard
-    // path is the same `binding.patch` commit.
     const user = userEvent.setup();
     slider.focus();
     await user.keyboard('{ArrowUp}');
@@ -71,8 +52,6 @@ describe('PageHeader — preview-tab promotion', () => {
   });
 
   test('merely rendering the header announces nothing', async () => {
-    // Binding setup reads and subscribes; a cover you only looked at must not
-    // promote the tab.
     const promoted = vi.fn();
     unsubscribePromotion = subscribePreviewTabPromotion(promoted);
     const provider = makeProvider(

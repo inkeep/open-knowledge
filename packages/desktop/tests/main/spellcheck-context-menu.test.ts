@@ -1,10 +1,3 @@
-/**
- * Unit tests for the editor context-menu attach helper. Drives the registered
- * `context-menu` listener with fake params and asserts the isEditable gate, the
- * freshly-read spell-check flag, and that each assembled menu action routes to
- * the right injected capability — all without mounting a BrowserWindow.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import {
   attachSpellcheckContextMenu,
@@ -43,7 +36,6 @@ function makeWebContents() {
     ),
     replaceMisspelling: vi.fn((_: string) => {}),
     showDefinitionForSelection: vi.fn(() => {}),
-    /** Fire a context-menu event at the registered handler. */
     fire(params: ContextMenuHandlerParams) {
       if (!handler) throw new Error('no context-menu handler registered');
       handler({}, params);
@@ -101,9 +93,6 @@ describe('attachSpellcheckContextMenu — spellCheckEnabled flag', () => {
 
 describe('attachSpellcheckContextMenu — canViewInSource capability', () => {
   test('reads the capability fresh on each right-click', () => {
-    // Same shape as the spell-check flag: the renderer pushes mode and
-    // active-document changes continuously, and the menu must reflect the state
-    // at THIS right-click, not the one the listener was attached under.
     const wc = makeWebContents();
     const values = [true, false];
     const deps = makeDeps(

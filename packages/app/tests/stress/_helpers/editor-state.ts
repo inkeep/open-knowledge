@@ -1,37 +1,5 @@
-/**
- * Editor / selection helpers.
- *
- * Document seeding (`createPage`, `replaceDoc`, `seedDocs`) moved to the
- * worker-scoped `api` fixture in `fixtures.ts` so each worker addresses its
- * own dev server via a closure over `baseURL` — no more ambient
- * `process.env.VITE_PORT` lookup. Consumers access those via
- * `test(async ({ api }) => ...)`.
- *
- * This file retains only page-scoped selection/editor helpers that don't
- * touch the server URL.
- */
-
 import { expect, type Page } from '@playwright/test';
 
-/**
- * Press the platform select-all chord in the focused editor view and yield
- * to the browser so PM / CM6 sync their internal selection state before the
- * caller dispatches the next event. Uses a page-level double-rAF — a
- * deterministic signal that the browser has completed at least two paint
- * frames since the select-all fired.
- *
- * Uses Playwright's `ControlOrMeta` pseudo-modifier (v1.37+), which maps to
- * Meta on macOS and Control elsewhere. This matches `prosemirror-keymap`'s
- * `Mod-a` resolution — without it, CI chromium (Linux) would send Super+a,
- * which doesn't trigger PM's `selectAll` command, so `simulateCopyAndRead`
- * would return an empty MIME map.
- *
- * Replaces the ad-hoc `page.waitForTimeout(50)` frame-yield idiom; the
- * double-rAF wait is bounded (~32ms at 60fps), deterministic, and tolerates
- * the empty-doc case (empty-copy — no selection is expected) without
- * special-casing.
- *
- */
 export async function selectAllAndWaitForSelection(page: Page, selector: string): Promise<void> {
   await page.focus(selector);
   await page.keyboard.press('ControlOrMeta+a');
@@ -109,10 +77,6 @@ export async function selectAllAndWaitForSelection(page: Page, selector: string)
 export async function focusEditor(page: Page, timeoutMs = 5_000): Promise<void> {
   await page.evaluate(() => {
     const editor = window.__activeEditor;
-    // Null editor = test fixture broke before this call (provider pool didn't
-    // register one). Returning silently lets the waitForFunction below surface
-    // it as a 2s TimeoutError with a stack trace pointing at the caller — a
-    // better signal than throwing here would (caller is already mid-evaluate).
     if (!editor) return;
     editor.view.focus();
   });
@@ -121,9 +85,6 @@ export async function focusEditor(page: Page, timeoutMs = 5_000): Promise<void> 
       const editor = window.__activeEditor;
       if (!editor) return false;
       if (!editor.view.hasFocus()) return false;
-      // Re-invoke view.focus() so PM's selectionToDOM re-runs now that
-      // editorOwnsSelection(view) returns true. selectionToDOM syncs the
-      // browser's DOM cursor to match editor.state.selection.
       editor.view.focus();
       return true;
     },
@@ -132,24 +93,6 @@ export async function focusEditor(page: Page, timeoutMs = 5_000): Promise<void> 
   );
 }
 
-/**
- * Select the first occurrence of `text` in the active PM editor and wait
- * until `editor.state.selection` actually covers it.
- *
- * Routed through TipTap's `setTextSelection` command on
- * `window.__activeEditor` rather than synthesized mouse drags or
- * platform-specific word-selection chords — deterministic under CI worker
- * contention. The search walks text nodes and matches within a single one,
- * so `text` must not span a mark/node boundary (fine for word-level
- * selections; extend when a caller needs a cross-node range — the helper
- * throws loudly rather than selecting a partial match).
- *
- * The trailing `waitForFunction` is the "selection took" signal callers
- * need before dispatching selection-dependent events (paste, keyboard
- * chords): `setTextSelection` updates PM state synchronously, but polling
- * the state from the test context is what proves the evaluate round-trip
- * completed and the range maps to the expected characters.
- */
 export async function selectText(page: Page, text: string): Promise<void> {
   await page.evaluate((target) => {
     const editor = window.__activeEditor;
@@ -228,21 +171,7 @@ export async function waitForPmSelectionInNode(
   );
 }
 
-/**
- * Force-render the full doc, then reset scroll to the top. ProseMirror skips
- * layout work for off-screen content; without this prime step, the smooth-
- * scroll fired by an outline click computes its destination against an
- * incomplete layout, then content materializes mid-animation and the target
- * overshoots off-viewport. Scrolling to the end first materializes every
- * paragraph, after which the scroll math is stable. Keyed on
- * `[data-testid="editor-scroll-container"]`.
- */
 export async function primeFullLayout(page: Page): Promise<void> {
-  // Scroll to the bottom and poll until `scrollHeight` stops growing — each
-  // ProseMirror lazy-render pass extends it, and two consecutive equal reads
-  // (separated by the poll interval, i.e. ≥1 layout cycle) means the full doc
-  // has materialized. Condition-based wait per the E2E STOP rule (no
-  // `page.waitForTimeout`).
   let lastHeight = -1;
   await expect
     .poll(
@@ -261,8 +190,6 @@ export async function primeFullLayout(page: Page): Promise<void> {
     )
     .toBe(true);
 
-  // Reset to the top and poll until `scrollTop` is parked at 0 — scroll
-  // anchoring can re-nudge it after the large content materialization above.
   await expect
     .poll(
       () =>

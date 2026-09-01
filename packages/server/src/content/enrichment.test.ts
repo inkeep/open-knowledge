@@ -52,7 +52,6 @@ describe('enrichPath — slim (multi-path) shape', () => {
     expect(meta.title).toBe('Auth');
     expect(meta.description).toBe('OAuth');
     expect(meta.tags).toEqual(['auth', 'oauth']);
-    // Rich fields are null (slim shape)
     expect(meta.backlinkCount).toBe(null);
     expect(meta.history).toBe(null);
     expect(meta.historySource).toBe(null);
@@ -75,11 +74,8 @@ describe('enrichPath — slim (multi-path) shape', () => {
     const project = await bootstrapProject();
     const contentDir = resolve(project, 'content');
     mkdirSync(contentDir, { recursive: true });
-    // No frontmatter at all — the common vault / imported-note shape.
     writeFileSync(resolve(contentDir, 'someday.md'), '# Someday / Open Loops\n\nBody\n');
-    // Frontmatter present but titleless: the heading still wins over the path.
     writeFileSync(resolve(contentDir, 'loops.md'), '---\ntags:\n  - inbox\n---\n\n# Open Loops\n');
-    // An explicit title always outranks the heading.
     writeFileSync(resolve(contentDir, 'auth.md'), '---\ntitle: Auth\n---\n\n# Ignore me\n');
 
     const someday = await enrichPath('content/someday.md', { projectDir: project });
@@ -92,9 +88,6 @@ describe('enrichPath — slim (multi-path) shape', () => {
   });
 
   test('frontmatter under trailing-whitespace fences still enriches title/description/tags', async () => {
-    // `--- ` / `---\t` fence lines are in-tolerance keystrokes away from
-    // canonical fences; enrichment must keep recognizing the FM block
-    // instead of degrading to "no frontmatter".
     const project = await bootstrapProject();
     const contentDir = resolve(project, 'content');
     mkdirSync(contentDir, { recursive: true });
@@ -176,7 +169,6 @@ describe('enrichPath — folder frontmatter does NOT cascade into docs (self-onl
     );
 
     const meta = await enrichPath('specs/foo.md', { projectDir: project });
-    // The doc's own `# foo` heading, never the folder's `title: Specs`.
     expect(meta.title).toBe('foo');
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toEqual([]);
@@ -196,7 +188,6 @@ describe('enrichPath — folder frontmatter does NOT cascade into docs (self-onl
     );
 
     const meta = await enrichPath('specs/foo.md', { projectDir: project });
-    // Exactly the file's own keys — no merge with the folder's frontmatter.
     expect(meta.title).toBe('File');
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toEqual(['file-tag']);
@@ -210,7 +201,6 @@ describe('enrichPath — folder frontmatter does NOT cascade into docs (self-onl
     writeFileSync(resolve(project, '.ok/frontmatter.yml'), 'title: Root Default\ntags:\n  - kb\n');
 
     const meta = await enrichPath('top.md', { projectDir: project });
-    // The doc's own `# top` heading, never the root folder's `title: Root Default`.
     expect(meta.title).toBe('top');
     expect(meta.tags).toEqual([]);
     expect(meta.frontmatter).toEqual({});
@@ -256,7 +246,6 @@ describe('enrichDirectory — self-only folder frontmatter', () => {
     writeFileSync(resolve(project, 'a/b/foo.md'), '# foo\n');
 
     const meta = await enrichDirectory('a/b', { projectDir: project });
-    // b's OWN frontmatter only — no description / tags inherited from a.
     expect(meta.title).toBe('B');
     expect(meta.description).toBeUndefined();
     expect(meta.tags).toBeUndefined();
@@ -338,10 +327,6 @@ describe('schemas_applicable — read-time schema advertisement', () => {
   });
 
   test('the OKF profile advertises by path, scoped per document', async () => {
-    // The OKF plugin contributes built-in schemas with no files on disk, so they
-    // advertise under `okf:` identifiers instead of paths. Enrichment must treat
-    // them as ordinary mappings — this is the only automated proof that the
-    // built-in profile reaches an agent at read time at all.
     const project = await bootstrapProject();
     mkdirSync(resolve(project, 'notes'), { recursive: true });
     writeFileSync(resolve(project, 'notes', 'concept.md'), '---\ntype: Metric\n---\n');
@@ -357,33 +342,23 @@ describe('schemas_applicable — read-time schema advertisement', () => {
         })
       ).schemas_applicable;
 
-    // A concept is governed by the four unscoped families. Advertised by PATH, so an
-    // agent that sees one of these can open it and read the contract.
     expect(await advertise('notes/concept.md')).toEqual([
       '.ok/okf/required.schema.json',
       '.ok/okf/recommended.schema.json',
       '.ok/okf/provenance.schema.json',
       '.ok/okf/computation.schema.json',
     ]);
-    // The two index scopes are disjoint: root gets the version schema, nested
-    // gets the no-frontmatter one, and neither gets both — which is what keeps
-    // them from being jointly unsatisfiable on the root index.
     expect(await advertise('index.md')).toEqual(['.ok/okf/root-index.schema.json']);
     expect(await advertise('notes/index.md')).toEqual(['.ok/okf/reserved-index.schema.json']);
-    // A log carries no frontmatter schema at all, so it advertises nothing.
     expect(await advertise('log.md')).toBeUndefined();
   });
 
   test('a rule switched off stops advertising its schema', async () => {
-    // Advertisement and enforcement read the same toggle map, so a rule the user
-    // turned off must not still be announced as governing the document.
     const project = await bootstrapProject();
     mkdirSync(resolve(project, 'notes'), { recursive: true });
     writeFileSync(resolve(project, 'notes', 'concept.md'), '---\ntype: Metric\n---\n');
     const meta = await enrichPath('notes/concept.md', {
       projectDir: project,
-      // No cast here on purpose: the rule-id keys are typed, so a stale or
-      // misspelled id is a compile error rather than a silently-ignored key.
       frontmatterSchemas: okfAdvertisedSchemaMappings({
         'frontmatter-provenance': false,
         'frontmatter-computation': false,
@@ -396,8 +371,6 @@ describe('schemas_applicable — read-time schema advertisement', () => {
   });
 
   test('a disabled mapping is not advertised', async () => {
-    // A parked mapping still resolves (the schema editor reads it) but must
-    // not reach agents, or a toggled-off schema would read as governing.
     const project = await bootstrapProject();
     mkdirSync(resolve(project, 'docs'), { recursive: true });
     writeFileSync(resolve(project, 'docs', 'guide.md'), '---\ntitle: G\n---\n');
@@ -454,16 +427,7 @@ describe('schemas_applicable — read-time schema advertisement', () => {
   });
 });
 
-/**
- * The comment parser is the boundary between the comment store's wire shape and
- * what an agent reads. The fixtures are `CommentThreadMeta` rows exactly as
- * `GET /api/comments` serves them, so the field names this depends on
- * (`latestComment`, `anchor.exact`, `state`, `queued`) are pinned against the
- * real contract rather than assumed — rename one in `comments/types.ts` and
- * these fail, instead of every read quietly reporting docs as comment-free.
- */
 describe('parseCommentThreads', () => {
-  /** One row as the comment API serves it. */
   const wireThread = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
     threadId: 't1',
     docName: 'notes/rollout',
@@ -489,22 +453,15 @@ describe('parseCommentThreads', () => {
   });
 
   test('keeps orphaned threads, drops resolved ones', () => {
-    // An orphan is the case a reader most needs — the request stands, the quote
-    // can no longer be trusted. A resolved thread is settled work.
     expect(parseCommentThreads([wireThread({ state: 'orphaned' })])[0]?.state).toBe('orphaned');
     expect(parseCommentThreads([wireThread({ state: 'resolved' })])).toEqual([]);
   });
 
   test('carries the queued flag — staged to send, still outstanding', () => {
-    // Sending auto-resolves a thread, so `queued` only ever means "a human
-    // staged this and has not sent it". It must survive the parse, or a reader
-    // loses the fact that a request is already on its way.
     expect(parseCommentThreads([wireThread({ queued: true })])[0]?.queued).toBe(true);
   });
 
   test('skips malformed rows without blanking the rest', () => {
-    // One bad row must not cost a doc its whole comment signal; the failure
-    // mode is an agent editing over a request it was never shown.
     const parsed = parseCommentThreads([
       null,
       'nonsense',
@@ -528,18 +485,12 @@ describe('parseCommentThreads', () => {
 });
 
 describe('the title ladder reads the same on every surface', () => {
-  // `extractPageTitle` (used by /api/pages + search) trims the scalar and treats
-  // a blank one as absent. Enrichment has to agree, or the heading fallback
-  // closes the cross-surface split for missing titles and leaves it open for
-  // blank ones.
-
   test('a blank or whitespace-only `title:` falls through to the H1, not over it', async () => {
     const project = await bootstrapProject();
     const contentDir = resolve(project, 'content');
     mkdirSync(contentDir, { recursive: true });
     writeFileSync(resolve(contentDir, 'empty.md'), '---\ntitle: ""\n---\n\n# Real Title\n');
     writeFileSync(resolve(contentDir, 'spaces.md'), '---\ntitle: "   "\n---\n\n# Also Real\n');
-    // Nothing to fall through TO: blank title, no heading -> path, never ''.
     writeFileSync(resolve(contentDir, 'bare.md'), '---\ntitle: ""\n---\n\nBody only\n');
 
     expect((await enrichPath('content/empty.md', { projectDir: project })).title).toBe(
@@ -561,17 +512,10 @@ describe('the title ladder reads the same on every surface', () => {
   });
 
   test('enrichDirectory mostRecentMd walks the SAME ladder', async () => {
-    // This branch had no title coverage at all, so the heading fallback could be
-    // deleted here without a red test.
     const project = await bootstrapProject();
     const dir = resolve(project, 'notes');
     mkdirSync(dir, { recursive: true });
 
-    // `mostRecent` is chosen by mtime, and consecutive writes can land on the
-    // same timestamp where the filesystem's granularity is coarser than the gap
-    // between them — which is why relying on write order passed on macOS and
-    // failed on CI. Stamp each file explicitly so "most recent" is decided by
-    // the test rather than by clock resolution.
     let tick = 1_700_000_000;
     const writeNewest = (name: string, body: string): void => {
       const p = resolve(dir, name);
@@ -585,17 +529,14 @@ describe('the title ladder reads the same on every surface', () => {
     const headingOnly = await enrichDirectory('notes', { projectDir: project });
     expect(headingOnly.mostRecentMd?.title).toBe('From The Heading');
 
-    // An explicit title outranks the heading.
     writeNewest('b.md', '---\ntitle: Explicit\n---\n\n# Ignored\n');
     const titled = await enrichDirectory('notes', { projectDir: project });
     expect(titled.mostRecentMd?.title).toBe('Explicit');
 
-    // Blank title falls through to the heading here too.
     writeNewest('c.md', '---\ntitle: "  "\n---\n\n# Blank Falls Through\n');
     const blank = await enrichDirectory('notes', { projectDir: project });
     expect(blank.mostRecentMd?.title).toBe('Blank Falls Through');
 
-    // Neither title nor heading: the basename is the last rung.
     writeNewest('d.md', 'just a body\n');
     const bare = await enrichDirectory('notes', { projectDir: project });
     expect(bare.mostRecentMd?.title).toBe('d.md');

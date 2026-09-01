@@ -41,7 +41,6 @@ afterEach(() => {
   __resetServerInstanceStoreForTests();
 });
 
-/** A complete sixteen-slot palette with distinct `#rrggbb` values per slot. */
 function palette(): Record<string, string> {
   return Object.fromEntries(
     BASE16_SLOTS.map((slot, i) => {
@@ -64,12 +63,6 @@ function usableEntry(id: string, name: string, variant: 'dark' | 'light' = 'dark
   };
 }
 
-/**
- * Build a list-response body, validated through the SHARED wire schema so the
- * fixture can't drift from the contract the real server emits — a malformed
- * fixture throws here in setup rather than silently testing a shape the server
- * never sends.
- */
 function listBody(themes: unknown[], truncated = false): unknown {
   return SavedThemesListSuccessSchema.parse({ themes, truncated });
 }

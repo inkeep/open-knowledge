@@ -7,9 +7,6 @@ describe('isSlidesHost', () => {
   });
 
   test('an older desktop build without the slides namespace is not a slides host', () => {
-    // A preload predating the slides handler still has a bridge, but no `slides`;
-    // it must read false so the affordance stays absent rather than surfacing a
-    // button whose IPC call would reject.
     expect(isSlidesHost({ okDesktop: {} })).toBe(false);
   });
 

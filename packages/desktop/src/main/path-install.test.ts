@@ -34,9 +34,6 @@ function home() {
 
 type EnsureOpts = Parameters<typeof ensureCliOnPath>[0];
 
-/** Baseline opts: fresh packaged darwin launch; `~/.ok/bin` NOT yet on the
- *  discovered interactive PATH (the typical fresh machine, so the
- *  `canSkipRc` fast-path stays out of the way unless a test opts in). */
 function baseOpts(h: string, overrides: Partial<EnsureOpts> = {}): EnsureOpts {
   return {
     executablePath: EXE,
@@ -58,15 +55,12 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
   test('fresh launch without a decision: OK-owned steps land, no rc file is touched', async () => {
     const h = home();
     const result = await ensureCliOnPath(baseOpts(h));
-    // Nothing user-visible happened — symlinks + shim live in OK's own
-    // namespace, so no toast-worthy disclosure either.
     expect(result.status).toBe('installed-silent');
     expect(readlinkSync(join(h, '.ok', 'bin', 'ok'))).toBe(WRAPPER);
     expect(readlinkSync(join(h, '.ok', 'bin', 'open-knowledge'))).toBe(WRAPPER);
     expect(readFileSync(join(h, '.ok', 'env.sh'), 'utf8')).toContain(
       'export PATH="$' + '{HOME}/.ok/bin:$' + '{PATH}"',
     );
-    // The sensitive step: no shell startup file is created or edited.
     expect(existsSync(join(h, '.zshrc'))).toBe(false);
     expect(existsSync(join(h, '.bash_profile'))).toBe(false);
     expect(existsSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'))).toBe(false);
@@ -103,14 +97,10 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
 
   test('startup → dialog grant → next startup: the confirm path flips a healthy-but-blockless marker', async () => {
     const h = home();
-    // Boot 1: undecided — marker written, canonical symlinks healthy, no rc.
     await ensureCliOnPath(baseOpts(h));
-    // Dialog confirm: the healthy-marker fast-path must NOT swallow the
-    // grant (the marker is fully healthy with rcFiles: []).
     const granted = await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     expect(granted.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
-    // Boot 2: recorded grant + healthy state → silent fast-path.
     const relaunch = await ensureCliOnPath(baseOpts(h));
     expect(relaunch.status).toBe('healthy-current');
   });
@@ -135,10 +125,6 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
   test('granted consent covers a NEW rc target on the next full install pass', async () => {
     const h = home();
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    // A .bash_profile appears after the grant. The healthy fast-path only
-    // watches recorded rc files (unchanged behavior), so the new target is
-    // wired on the next FULL pass — here an app update repointing the
-    // wrapper — under the already-recorded consent, with no re-ask.
     writeFileSync(join(h, '.bash_profile'), 'export BAR=1\n');
     const fastPath = await ensureCliOnPath(baseOpts(h));
     expect(fastPath.status).toBe('healthy-current');
@@ -155,8 +141,6 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
 
   test('grandfather via healthy fast-path: pre-consent marker + healthy block ⇒ consent stamped, no rc write', async () => {
     const h = home();
-    // Build a silent-era install: granted state, then strip the consent
-    // field to simulate a marker written by a pre-consent build.
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     const markerPath = pathInstallMarkerPath(h);
     const preConsent = readMarkerFile(h);
@@ -166,10 +150,8 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
 
     const events: Array<Record<string, unknown>> = [];
     const result = await ensureCliOnPath(baseOpts(h, { logger: { event: (e) => events.push(e) } }));
-    // No dialog-era nag, no removal, block untouched…
     expect(result.status).toBe('healthy-current');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toBe(zshrcBefore);
-    // …and the decision is now durable + attributed to grandfathering.
     const marker = readMarkerFile(h);
     expect((marker.consent as { status: string }).status).toBe('granted');
     expect(events.find((e) => e.event === 'path-install-consent-granted')).toMatchObject({
@@ -179,15 +161,12 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
 
   test('grandfather via full pass: dotfile-synced block with no marker ⇒ treated as consented', async () => {
     const h = home();
-    // A managed block synced in from another machine's dotfiles — OK has
-    // never run here (no marker, no symlinks).
     writeFileSync(
       join(h, '.zshrc'),
       '# >>> open-knowledge cli >>>\nstale contents\n# <<< open-knowledge cli <<<\n',
     );
     const events: Array<Record<string, unknown>> = [];
     const result = await ensureCliOnPath(baseOpts(h, { logger: { event: (e) => events.push(e) } }));
-    // The block is ours to refresh — the rewrite is disclosed like any rc edit.
     expect(result.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('$HOME/.ok/env.sh');
     expect((readMarkerFile(h).consent as { status: string }).status).toBe('granted');
@@ -206,7 +185,6 @@ describe('ensureCliOnPath — consent gate (rc files are never written without a
     const events: Array<Record<string, unknown>> = [];
     const result = await ensureCliOnPath(baseOpts(h, { logger: { event: (e) => events.push(e) } }));
     expect(events.some((e) => e.event === 'path-install-marker-consent-invalid')).toBe(true);
-    // Healthy block on disk ⇒ grandfather re-derives granted.
     expect(result.status).toBe('healthy-current');
     expect((readMarkerFile(h).consent as { status: string }).status).toBe('granted');
   });
@@ -231,8 +209,6 @@ describe('ensureCliOnPath', () => {
     expect(healthy.status).toBe('healthy-current');
     unlinkSync(join(h, '.ok', 'bin', 'ok'));
     const repaired = await ensureCliOnPath(baseOpts(h));
-    // Repairing only the symlink discloses nothing user-facing →
-    // installed-silent, no toast. The rc gate stays closed (undecided).
     expect(repaired.status).toBe('installed-silent');
     expect(readlinkSync(join(h, '.ok', 'bin', 'ok'))).toBe(WRAPPER);
     expect(existsSync(join(h, '.zshrc'))).toBe(false);
@@ -252,8 +228,6 @@ describe('ensureCliOnPath', () => {
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
     if (first.status === 'installed') expect(first.summary).toContain('~/.zshrc');
 
-    // The user strips the block — the strongest opt-out signal. Consent
-    // stays granted on the marker, but this file is never rewritten.
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     const second = await run();
     expect(second.status).toBe('installed');
@@ -279,8 +253,6 @@ describe('ensureCliOnPath', () => {
       }),
     );
     expect(result.status).toBe('installed');
-    // `bin` is a writable non-system PATH dir without `~/.ok/bin` on PATH —
-    // the strongest temptation for the retired seeding behavior.
     expect(() => lstatSync(join(bin, 'ok'))).toThrow();
     expect(() => lstatSync(join(bin, 'open-knowledge'))).toThrow();
     const zshrc = readFileSync(join(h, '.zshrc'), 'utf8');
@@ -328,9 +300,7 @@ describe('ensureCliOnPath', () => {
       }),
     );
     expect(result.status).toBe('installed');
-    // Removing legacy symlinks IS a user-facing disclosure — summary names it.
     if (result.status === 'installed') expect(result.summary).toContain('leftover ok symlink');
-    // Still ours → removed; re-pointed → left on disk; missing → forgotten.
     expect(() => lstatSync(join(bin, 'ok'))).toThrow();
     expect(readlinkSync(join(bin, 'open-knowledge'))).toBe('/elsewhere/ok.sh');
     const marker = readMarkerFile(h);
@@ -347,14 +317,10 @@ describe('ensureCliOnPath', () => {
       status: 'skipped',
       reason: 'reclaim-disabled',
     });
-    // Windows PATH belongs to the NSIS installer (installer-owned Windows PATH) — the POSIX rc/symlink
-    // machinery never runs there.
     expect(await ensureCliOnPath({ ...base, platform: 'win32' })).toEqual({
       status: 'skipped',
       reason: 'installer-managed',
     });
-    // AppImage mounts are ephemeral — persisting symlinks into the mount
-    // would leave dead paths after quit.
     expect(
       await ensureCliOnPath({
         ...base,
@@ -410,9 +376,6 @@ describe('ensureCliOnPath', () => {
     expect(readlinkSync(join(h, '.ok', 'bin', 'ok'))).toBe(
       '/opt/OpenKnowledge/resources/cli/bin/ok.sh',
     );
-    // Interactive non-login bash on Linux reads ~/.bashrc — the block must
-    // land there (not just .bash_profile, which distros source on login
-    // shells only).
     expect(readFileSync(join(h, '.bashrc'), 'utf8')).toContain('.ok/env.sh');
   });
 
@@ -488,9 +451,6 @@ describe('ensureCliOnPath', () => {
     const newWrapper =
       '/Users/someone/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh';
     const result = await ensureCliOnPath(baseOpts(h, { executablePath: newExe }));
-    // A pure symlink repoint touches nothing the user can see → installed-silent
-    // so the startup toast stays silent instead of firing a sticky no-op on
-    // every upgrade.
     expect(result.status).toBe('installed-silent');
     expect(readlinkSync(join(h, '.ok', 'bin', 'ok'))).toBe(newWrapper);
     expect(readlinkSync(join(h, '.ok', 'bin', 'open-knowledge'))).toBe(newWrapper);
@@ -600,8 +560,6 @@ describe('computePathInstallDescriptor', () => {
     expect(readFileSync(fishConf, 'utf8')).toBe(legacyBlock);
     expect(readMarkerFile(h).rcFiles as string[]).not.toContain(fishConf);
 
-    // Cleanup is deliberately broader than detection: Settings must still
-    // remove the self-identifying legacy file even when no marker owns it.
     expect(removePathShimFromRcFiles({ home: h, env: { SHELL: '/bin/zsh' } }).status).toBe(
       'removed',
     );
@@ -622,10 +580,6 @@ describe('computePathInstallDescriptor', () => {
 
   test('an explicit grant writes the promised block even when ~/.ok/bin is already on the discovered PATH', async () => {
     const h = home();
-    // The probe PATH can be stale-true (inherited from a terminal session
-    // that predates an uninstall) and the consent surface named the exact
-    // file it would edit — so an explicit grant always writes. Only the
-    // undecided startup self-heal uses the on-PATH shortcut.
     await ensureCliOnPath(baseOpts(h));
     await ensureCliOnPath(
       baseOpts(h, {
@@ -645,7 +599,6 @@ describe('computePathInstallDescriptor', () => {
   test('opted-out rc files never re-enter the touch list; all-opted-out hides the row', async () => {
     const h = home();
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
-    // User strips the block → opt-out recorded on the next boot.
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     await ensureCliOnPath(baseOpts(h));
     const descriptor = computePathInstallDescriptor({
@@ -698,15 +651,12 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
 
     const result = removePathShimFromRcFiles({ home: h, env });
     expect(result.status).toBe('removed');
-    // The user's own lines survive; only the managed block is gone.
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).not.toContain('# >>> open-knowledge cli >>>');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('export FOO=1');
-    // The fish conf file held nothing but the block — removed outright.
     expect(existsSync(join(h, '.config', 'fish', 'conf.d', 'open-knowledge.fish'))).toBe(false);
     const marker = readMarkerFile(h);
     expect(marker.rcFiles).toEqual([]);
     expect((marker.consent as { status: string }).status).toBe('declined');
-    // NOT recorded as user opt-outs — a Settings re-install must still work.
     expect(marker.rcOptOuts).toEqual([]);
     expect(isPathShimInstalled({ home: h, env })).toBe(false);
   });
@@ -717,11 +667,9 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     removePathShimFromRcFiles({ home: h, platform: 'darwin', env: { SHELL: '/bin/zsh' } });
 
-    // Undecided startup run: recorded decline wins — rc files stay clean.
     await ensureCliOnPath(baseOpts(h));
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).not.toContain('# >>> open-knowledge cli >>>');
 
-    // Settings re-install: a fresh grant re-appends (no opt-out poisoning).
     const regrant = await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));
     expect(regrant.status).toBe('installed');
     expect(readFileSync(join(h, '.zshrc'), 'utf8')).toContain('# >>> open-knowledge cli >>>');
@@ -731,9 +679,6 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
   });
 
   test('re-grant works even when the probe shell inherits a stale PATH containing ~/.ok/bin', async () => {
-    // The app launched from a terminal whose session predates the uninstall
-    // still exports ~/.ok/bin; the login-shell probe inherits it. The
-    // canSkipRc shortcut must not swallow the explicit grant.
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     const stalePathSpawn = async () => ({
@@ -755,9 +700,6 @@ describe('isPathShimInstalled / removePathShimFromRcFiles — the Settings → A
   });
 
   test('a wedged granted-but-blockless marker heals on the next explicit grant', async () => {
-    // State left behind by the pre-fix lockout: consent recorded granted,
-    // rcFiles empty, no block on disk. The healthy-current fast path is
-    // vacuously true for it; an explicit grant must still write the block.
     const h = home();
     writeFileSync(join(h, '.zshrc'), 'export FOO=1\n');
     await ensureCliOnPath(baseOpts(h, { consentDecision: GRANTED }));

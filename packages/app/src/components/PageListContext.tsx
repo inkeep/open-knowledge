@@ -14,86 +14,27 @@ import { pageListReady } from '@/lib/perf/startup-marks';
 import { createRefreshScheduler } from '@/lib/refresh-scheduler';
 import { deriveKnownFolderPaths } from './navigation-targets';
 
-/**
- * Trailing coalescing window for CC1 `files`-push refetches. A bulk agent
- * write can drive `files` pushes at up to ~10×/sec (one per the server's
- * 100 ms per-channel CC1 debounce window); each would otherwise refire the
- * full `/api/pages` + `/api/documents` walk and rebuild every derived index.
- * The refetch already flows through `createRefreshScheduler` (at most one
- * fetch pair in flight), but the scheduler fires its first request eagerly —
- * so under a storm the scheduler alone still refetches as fast as each fetch
- * pair completes. This window sits in front of it: the first push in a quiet
- * period arms one timer; pushes landing while it is armed are absorbed by the
- * already-scheduled flush (no reset, so a sustained storm refreshes at the
- * window cadence instead of starving until the storm ends). Exported for
- * tests only.
- */
 export const PUSH_REFRESH_COALESCE_MS = 300;
 
 export interface PageMeta {
   size: number;
   modified: string;
-  /**
-   * On-disk extension — `.md` or `.mdx`. Surfaced by `/api/pages` so
-   * the editor header can render `foo.mdx` vs `foo.md` faithfully
-   * instead of hard-coding `.md`. Optional for backward compat.
-   */
   docExt?: string;
-  /**
-   * Raw frontmatter `icon:` value (emoji glyph, URL, or contentDir-
-   * rooted path). Render-time classification via `resolvePageIcon` —
-   * see `components/page-header-utils.ts`. Surfaced for the wiki-link
-   * chip prefix. Undefined when the doc has no `icon:` frontmatter
-   * key (or the value is blank).
-   */
   icon?: string;
 }
 
 interface PageListContextValue {
-  /** Set of known docNames (filename without .md extension). */
   pages: Set<string>;
-  /**
-   * Slug-keyed index mapping `toWikiLinkSlug(docName)` → original docName.
-   * First-wins on slug collision. Used by navigation / resolution paths so
-   * a dropped `.md` file carrying a lowercased-slug target
-   * (e.g. `casecheck123`) resolves against a case-preserved cache entry
-   * (e.g. `CaseCheck123`). Without this, `pages.has(slug)` fails every
-   * time on non-slug-form docNames.
-   */
   pagesBySlug: ReadonlyMap<string, string>;
-  /**
-   * Basename-keyed index mapping `toWikiLinkSlug(basename(docName))` →
-   * original docName. Sibling of `pagesBySlug` that handles bare-name
-   * wiki-links pointing at files in subfolders (`[[analysis]]` →
-   * `andrew-data/project-x/analysis`). Alphabetical-first on basename
-   * collision. Consulted only when exact + slug-of-full-path miss.
-   */
   pagesByBasename: ReadonlyMap<string, string>;
-  /** Display titles returned by `/api/pages`, keyed by docName. */
   pageTitles: ReadonlyMap<string, string>;
-  /** File metadata (size, modified) returned by `/api/pages`, keyed by docName. */
   pageMeta: ReadonlyMap<string, PageMeta>;
-  /** Set of known folder paths derived from the current document list. */
   folderPaths: Set<string>;
-  /** Referenced image/video assets surfaced by `/api/documents`. */
   assetPaths: Set<string>;
-  /**
-   * Set of tracked non-markdown, non-asset files surfaced by `/api/documents`
-   * via the `kind:'file'` row. Paths are contentDir-
-   * relative and include the on-disk extension (e.g. `data/example.csv`,
-   * `packages/app/src/index.ts`). The omnibar + dead-link existence check
-   * both consume this set so a tracked non-markdown file is findable in ⌘K
-   * and its inbound `[[wiki-link]]` / `[text](path)` references no
-   * longer render dead.
-   */
   filePaths: Set<string>;
-  /** True while the page list is being fetched from the server. */
   loading: boolean;
-  /** Error message from the most recent fetch failure, or null on success. */
   error: string | null;
-  /** Re-fetch the page list from the server. Call after creating a new page. */
   refetch: () => void;
-  /** Optimistically mark a page as present before watcher/index propagation settles. */
   addPage: (docName: string) => void;
 }
 
@@ -166,10 +107,6 @@ async function loadDocumentListSummary(): Promise<{
   folderPaths: string[];
   filePaths: string[];
 }> {
-  // Routed through the shared single-flight so EmptyEditorState + the wiki-link
-  // suggestion source don't trigger a parallel `/api/documents` walk on the
-  // same tick (boot + every CC1 `files` push). FileTree keeps its own depth-1
-  // lazy fetch (different URL) — that consolidation is a separate change.
   const { ok, status, body } = await fetchDocumentListShared();
   if (!ok) {
     throw new Error(parseApiError(body) ?? `/api/documents responded with ${status}`);
@@ -186,12 +123,6 @@ async function loadDocumentListSummary(): Promise<{
       return entry.kind === 'folder' && typeof entry.path === 'string' && entry.path.length > 0;
     })
     .map((entry) => entry.path);
-  // `kind:'file'` rows are the tracked non-markdown,
-  // non-referenced-asset files. Pulled into a dedicated set rather than
-  // collapsed into `assetPaths` so the "name-only" search hint can distinguish
-  // hits whose body the server CAN'T search (file) from referenced assets
-  // (asset — still body-less, but already navigationally inferable from
-  // their inbound links) and from markdown pages (whose bodies ARE searched).
   const filePaths = data.documents
     .filter((entry): entry is DocumentListEntry & { kind: 'file'; path: string } => {
       return entry.kind === 'file' && typeof entry.path === 'string' && entry.path.length > 0;
@@ -222,15 +153,6 @@ export function PageListProvider({ children }: { children: ReactNode }) {
 
   function refetch() {
     const requestId = ++latestRequestIdRef.current;
-    // `loading` gates a cold-load skeleton in consumers (e.g. FolderOverview
-    // returns a full-view skeleton while it is true). It is intentionally
-    // NOT re-raised here: refetch fires on every window focus,
-    // visibilitychange, and CC1 `files` push,
-    // so re-raising it would tear the entire consuming view down to a
-    // skeleton and remount it on each of those — a flicker even though the
-    // page list is unchanged. The initial `useState(true)` covers the cold
-    // load; background refetches keep serving the last-good `pages` and
-    // reconcile in place when the fresh response lands.
     return Promise.all([
       loadPages(),
       loadDocumentListSummary().catch((err) => {
@@ -266,11 +188,6 @@ export function PageListProvider({ children }: { children: ReactNode }) {
         setServerFilePaths(new Set(documentList.filePaths));
         setOptimisticPages((prev) => pruneConfirmedOptimisticPages(prev, pageNames));
         setError(null);
-        // Startup waterfall: the page-list-ready checkpoint. Stamped in the
-        // success branch, not `.finally`, so a failed initial fetch can't mark
-        // the list "ready" before it has actually loaded (first-write-wins would
-        // then pin the mark optimistically early). Idempotent, so later
-        // refetches (focus / CC1 `files` push) don't move it.
         pageListReady();
       })
       .catch((err) => {
@@ -296,17 +213,7 @@ export function PageListProvider({ children }: { children: ReactNode }) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run only on mount
   useEffect(() => {
-    // In-flight coalescing via `createRefreshScheduler`: at most one fetch
-    // pair runs at a time, a request arriving mid-run collapses into a single
-    // trailing re-run. Mount and focus/visibility call `request()` directly;
-    // `files` pushes go through the arm-once timer below first (unlike
-    // FileTree, which forwards every push straight to the scheduler). No abort
-    // hook — the requestId latest-wins guard in `refetch` already discards
-    // superseded responses, and `/api/documents` rides a shared single-flight
-    // other consumers depend on.
     const scheduler = createRefreshScheduler(refetch);
-    // Initial mount load fires immediately — only push-triggered refreshes
-    // go through the coalescing timer below.
     scheduler.request();
     let pushFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResume = () => {
@@ -318,7 +225,6 @@ export function PageListProvider({ children }: { children: ReactNode }) {
     window.addEventListener('visibilitychange', handleResume);
     const unsubscribe = subscribeToDocumentsChanged((channels) => {
       if (!channels.includes('files')) return;
-      // Pushes landing while a flush is armed are covered by that flush.
       if (pushFlushTimer !== null) return;
       pushFlushTimer = setTimeout(() => {
         pushFlushTimer = null;
@@ -342,21 +248,8 @@ export function PageListProvider({ children }: { children: ReactNode }) {
   const folderPaths = new Set([...deriveKnownFolderPaths(pages), ...serverFolderPaths]);
   const pagesBySlug = buildPagesBySlugIndex(pages, toWikiLinkSlug);
   const pagesByBasename = buildPagesByBasenameIndex(pages, toWikiLinkSlug);
-  // Derived icon-only projection of `pageMeta` — published to the
-  // page-list-cache side-channel so plain-DOM consumers (wiki-link
-  // chip NodeView) read raw icon values without round-tripping
-  // through React context. Built every render; `setPageListCache`
-  // absorbs no-op writes via map-content equality.
   const pageIcons = buildPageIconsIndex(serverPageMeta);
 
-  // Publish to the page-list-cache side-channel so plain-DOM chip consumers
-  // (internal-link.ts / wiki-link.ts NodeView) can read live resolution
-  // state without React context. `setPageListCache` absorbs no-op calls via
-  // Set-content equality — safe to call every render. `pagesBySlug` is
-  // derived from `pages` via `buildPagesBySlugIndex` (first-wins on slug
-  // collision) so slug-normalized wiki-link resolution is O(1) in the hot
-  // path — dropped `.md` files carry lowercased slugs as targets; the
-  // index bridges that to the case-preserved / non-slug-form cache entries.
   useEffect(() => {
     setPageListCache({
       pages,
@@ -399,18 +292,6 @@ export function usePageList(): PageListContextValue {
   return ctx;
 }
 
-/**
- * Variant of `usePageList` that returns `null` when no `<PageListProvider />`
- * is mounted, instead of throwing. Use this when a consumer can degrade
- * gracefully — e.g. `SrcAutocomplete` falls back to "no suggestions" in
- * `renderToString` tests that don't mount the provider, rather than crashing
- * the host PropPanel render.
- *
- * Don't reach for this in production code unless the missing-provider case
- * is a real, intentional surface (a portal-rendered modal, a server-side
- * static-output path). For interactive surfaces, prefer mounting the
- * provider — null-return masks a missing-provider bug as a "no data" state.
- */
 export function useOptionalPageList(): PageListContextValue | null {
   return use(PageListContext);
 }

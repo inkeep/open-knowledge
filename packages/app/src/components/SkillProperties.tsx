@@ -11,19 +11,6 @@ import { useSkills } from '@/hooks/use-skills';
 import { SKILL_RESERVED_KEYS } from '@/lib/reserved-property-keys';
 import { skillEntryDirs } from '@/lib/skill-scope';
 
-/**
- * Skill identity + properties, rendered as the editor's right-hand panel.
- *
- * The frontmatter editor is the EXACT document `PropertyPanel` (same component,
- * same CRDT binding, same recursive object/nested-frontmatter editor + add /
- * rename / reorder / tags affordances) — skills are not a divergent panel. The
- * only skill-specific row is the identity affordance rendered at the top of the
- * panel: `name` (a rename → git-mv, never a plain patch). It sits inside the
- * Properties disclosure via the panel's `identitySlot`, with `name` reserved out
- * of the panel's rows so it is not double-rendered. A skill's level (scope) is
- * an identity control too, but it lives in the editor toolbar next to the
- * install state, not in this panel.
- */
 export function SkillProperties({
   provider,
   scope,
@@ -34,33 +21,21 @@ export function SkillProperties({
   nameEditable = true,
 }: {
   provider: HocuspocusProvider;
-  /** Which store the skill lives in — drives the on-disk location hint (§4.4). */
   scope: SkillScope;
-  /** Current skill name (identity). In create mode this is the draft name. */
   name: string;
-  /** Commit a rename (edit mode) — fired on the name field's blur/Enter with a
-   *  changed, grammar-valid name. Omitted → the name field is read-only. */
   onRename?: (next: string) => void;
-  /** Inline error under the name field (e.g. collision), supplied by the parent. */
   nameError?: string | null;
-  /** Report name keystrokes (create mode scaffolds once the name is valid). */
   onNameDraftChange?: (next: string) => void;
-  /** False → render the name as read-only text (e.g. while a rename is in flight). */
   nameEditable?: boolean;
 }) {
   const { t } = useLingui();
   const nameId = useId();
-  // The skill's REAL on-disk dir from its list entry (in-place skills live in
-  // editor dirs, not the store). Absent while the list loads / in create mode /
-  // mid-rename to an uncommitted name — those fall back to the derived store
-  // path, which is where a NEW name would land.
   const skillsState = useSkills();
   const entry =
     skillsState.status === 'ready'
       ? skillsState.data.find((sk) => sk.scope === scope && sk.name === name)
       : undefined;
 
-  // Local draft for the name field so typing doesn't fight the committed identity.
   const [nameDraft, setNameDraft] = useState(name);
   useEffect(() => setNameDraft(name), [name]);
   const trimmedName = nameDraft.trim();
@@ -105,10 +80,6 @@ export function SkillProperties({
           )}
         </p>
       ) : trimmedName ? (
-        // Disclose EVERY path the skill occupies (canonical first, then per-host
-        // copies; user symlinks labeled) — the same path-first disclosure as the
-        // sidebar hover. Mid-rename / create mode falls back to the derived
-        // store path a NEW name would land at.
         <p className="px-1 pt-0.5 text-[11px] text-muted-foreground">
           <Trans>Saved to</Trans>{' '}
           {entry && trimmedName === name ? (
@@ -125,9 +96,6 @@ export function SkillProperties({
               </span>
             ))
           ) : entry ? (
-            // Mid-rename: a rename keeps the skill's root — only the leaf
-            // changes. Derive the would-be dir from the entry's REAL path
-            // (never the retired store).
             <code className="font-mono">
               {`${entry.path
                 .replace(/\/SKILL\.mdx?$/i, '')
@@ -136,9 +104,6 @@ export function SkillProperties({
                 .join('/')}/${trimmedName}`}
             </code>
           ) : (
-            // Fresh create, list still catching up: the server picks the
-            // default skills folder — say so honestly instead of guessing a
-            // path (the old fallback claimed the retired `.ok/skills`).
             <Trans>the default skills folder (the exact path appears once saved)</Trans>
           )}
         </p>
@@ -150,19 +115,12 @@ export function SkillProperties({
     </PropertyDisplayRow>
   );
 
-  // The skill's estimated context cost from its list entry, read-only. Absent
-  // when the server hasn't sized this skill (older build, or a store/built-in
-  // row that doesn't ride the sized walk) — then the row is dropped, never shown
-  // as zeroes, so a missing figure can't read as a free skill.
   const tokensRow = entry?.size ? (
     <PropertyDisplayRow icon={<Gauge className="size-3.5" />} label={t`tokens`}>
       <SkillCostValue size={entry.size} />
     </PropertyDisplayRow>
   ) : null;
 
-  // Frontmatter (description, nested objects, tags, add/rename/reorder) is the
-  // exact document property panel — the `name` identity row is rendered at the
-  // top via `identitySlot` and reserved out of the frontmatter rows below.
   return (
     <PropertyPanel
       provider={provider}

@@ -1,25 +1,3 @@
-/**
- * Agreement pin across the three consumers of declared-account resolution:
- * the push-permission probe, the sync engine's git handles, and the clone
- * path's URL resolution. One remote must resolve to one GitHub identity in
- * all three — an edit that threads the account into some consumers but not
- * others lets the probe report `allowed` as one account while the push
- * authenticates as another.
- *
- * Agreement is asserted at the account-resolution layer, via the scripted
- * gh fake's recorded arguments, not by comparing tokens alone: the three
- * consumers share no token cache (the probe calls `detectGh` raw), so a
- * same-token assertion could stay green while a consumer stopped requesting
- * the declared account.
- *
- * The clone leg is `resolveGitHubAccountFromUrl` plus a direct `detectGh`
- * forward: `ok clone` consumes exactly that resolver, but its forwarding
- * code lives in `packages/cli`, which this package cannot import (cli
- * already depends on server). The cli's own suites pin the forwarding; this
- * file pins that the resolution feeding it matches the server-side
- * consumers.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -71,11 +49,6 @@ async function initGitWithOrigin(originUrl: string): Promise<void> {
   await git.addRemote('origin', originUrl);
 }
 
-/**
- * One gh for the whole scenario: any requested account is honored with its
- * own token, while a login-less request returns the active account's token,
- * which `detectGh` leaves unattributed.
- */
 const scriptedGh = (_host?: string, login?: string): ReturnType<DetectGhFn> =>
   login
     ? { available: true, token: `gho_${login}`, resolvedLogin: login }
@@ -111,13 +84,9 @@ async function waitForPushPermissionResolved(engine: SyncEngine, timeoutMs = 200
 }
 
 interface AgreementRun {
-  /** The clone path's resolution of the same URL the origin points at. */
   urlAccount: GitHubAccount;
-  /** What the clone path's forward into gh returned. */
   cloneResult: ReturnType<DetectGhFn>;
-  /** The options the engine handed the probe, resolved account included. */
   probeOpts: CheckPushPermissionOptions[];
-  /** Authorization header of every request the probe sent. */
   probeAuthHeaders: Array<string | null>;
   pushPermission: ReturnType<SyncEngine['getStatus']>['pushPermission'];
   handleEnv: GitHandle['env'];
@@ -125,12 +94,6 @@ interface AgreementRun {
   ghLogins: Array<string | undefined>;
 }
 
-/**
- * Drive all three consumers against one origin URL, one scripted gh, and
- * one credential-config state: the clone path's URL resolution first
- * (mirroring the clone-then-sync lifecycle), then a started engine whose
- * probe runs the real `checkPushPermission` with only the network faked.
- */
 async function runAgreementScenario(opts: {
   originUrl: string;
   credentialUrlMatch: string | null;
@@ -149,8 +112,6 @@ async function runAgreementScenario(opts: {
 
   const probeOpts: CheckPushPermissionOptions[] = [];
   const probeAuthHeaders: Array<string | null> = [];
-  // A 404 exercises the denied path, making the probe's identity
-  // attribution observable alongside each request's Authorization header.
   const fetchNotFound: FetchFn = async (_url, init) => {
     probeAuthHeaders.push(new Headers(init?.headers).get('authorization'));
     return new Response(JSON.stringify({ message: 'Not Found' }), { status: 404 });
@@ -198,8 +159,6 @@ describe('declared-account agreement across probe, push, and clone', () => {
     expect(run.probeOpts).toHaveLength(1);
     expect(run.probeOpts[0]?.account).toMatchObject({ login: 'alice', source: 'remote-url' });
 
-    // Every gh invocation — the clone forward, the engine's handles, the
-    // probe — asked for alice on the origin's host; none resolved on its own.
     expect(run.ghLogins.length).toBeGreaterThanOrEqual(3);
     expect(run.ghLogins.every((l) => l === 'alice')).toBe(true);
     expect(run.ghHosts.every((h) => h === 'github.com')).toBe(true);
@@ -257,8 +216,6 @@ describe('declared-account agreement across probe, push, and clone', () => {
     expect(run.probeOpts[0]?.account).toMatchObject({ source: 'active' });
     expect(run.probeOpts[0]?.account?.login).toBeUndefined();
 
-    // No consumer passes a login: the repo owner is never an account
-    // selector, and gh answers as whichever account is active.
     expect(run.ghLogins.length).toBeGreaterThanOrEqual(3);
     expect(run.ghLogins.every((l) => l === undefined)).toBe(true);
 

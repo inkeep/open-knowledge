@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 
-// Plain test runner has no localStorage — install a minimal stub BEFORE the
-// module under test first touches it.
 const backing = new Map<string, string>();
 if (typeof globalThis.localStorage === 'undefined') {
   (globalThis as { localStorage?: unknown }).localStorage = {
@@ -66,7 +64,6 @@ describe('agent-settings-store', () => {
   test('a corrupt payload reads as empty and does not throw', () => {
     localStorage.setItem(STORAGE_KEY, '{not json');
     expect(getRememberedAgentConfig('registry:x')).toBeUndefined();
-    // …and the store is still writable afterward.
     rememberAgentConfigOption('registry:x', 'model', 'opus');
     expect(getRememberedAgentConfig('registry:x')).toEqual({ model: 'opus' });
   });
@@ -95,8 +92,6 @@ describe('agent-settings-store', () => {
     expect(getRememberedAgentMode(key)).toBe('bypass');
   });
 
-  // The storage key is unversioned across the mode-persistence redesign, so a
-  // payload written by the previous shape is what real users upgrade with.
   test('a mode saved by the previous release is still honoured', () => {
     localStorage.setItem(
       STORAGE_KEY,
@@ -107,14 +102,12 @@ describe('agent-settings-store', () => {
   });
 
   test('a retired field from the previous shape is ignored, not fatal', () => {
-    // `lastModeId` backed the old offer flow; nothing reads it now.
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ 'registry:x': { lastModeId: 'bypass', config: { model: 'opus' } } }),
     );
     expect(getRememberedAgentMode('registry:x')).toBeUndefined();
     expect(getRememberedAgentConfig('registry:x')).toEqual({ model: 'opus' });
-    // …and the entry stays writable afterward.
     rememberAgentMode('registry:x', 'plan');
     expect(getRememberedAgentMode('registry:x')).toBe('plan');
   });

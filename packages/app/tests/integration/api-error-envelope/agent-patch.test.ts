@@ -1,16 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleAgentPatch`.
- *
- * Asserts the canonical RFC 9457 wire shape:
- *   - happy path: status 200, `Content-Type: application/json`, body parses
- *     against `AgentPatchSuccessSchema`, no `ok: true` discriminator.
- *   - body-shape errors: missing find / non-integer offset → invalid-request.
- *   - semantic errors:
- *     - text not found → 404 `urn:ok:error:target-not-found` (post-identity)
- *     - explicit offset stale → 409 `urn:ok:error:stale-target` (post-identity)
- *     - reserved docname → 400 `urn:ok:error:reserved-doc-name` (post-identity)
- */
-
 import { AgentPatchSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -39,7 +26,6 @@ async function postPatch(body: Record<string, unknown>): Promise<Response> {
 describe('agent-patch envelope (RFC 9457)', () => {
   test('happy path emits flat success body with application/json', async () => {
     const docName = `agent-patch-success-${crypto.randomUUID().slice(0, 8)}`;
-    // Seed content the patch will operate on.
     await agentWriteMd(server.port, '# Hello world\n', { docName, position: 'replace' });
 
     const res = await postPatch({ docName, find: 'world', replace: 'there' });
@@ -79,7 +65,6 @@ describe('agent-patch envelope (RFC 9457)', () => {
     const docName = `agent-patch-stale-${crypto.randomUUID().slice(0, 8)}`;
     await agentWriteMd(server.port, '# Hello world\n', { docName, position: 'replace' });
 
-    // Offset that does NOT match — explicit-offset path → stale-target.
     const res = await postPatch({ docName, find: 'world', replace: 'there', offset: 0 });
     expect(res.status).toBe(409);
     const body = await res.json();

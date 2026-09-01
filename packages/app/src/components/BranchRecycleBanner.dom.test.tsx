@@ -73,9 +73,6 @@ test('the transient switch banner dismisses itself after its deadline', async ()
 });
 
 test('with the desktop bridge, Restart server disables in flight and re-enables on failure', async () => {
-  // A resolvable-later promise: the button must read as busy while the restart
-  // is in flight, and only a resolved FAILURE hands the button back (success
-  // tears the window down).
   let resolveRestart: (v: { ok: boolean }) => void = () => {};
   restartMock.mockImplementation(
     () =>

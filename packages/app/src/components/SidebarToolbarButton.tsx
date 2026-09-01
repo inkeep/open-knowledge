@@ -11,8 +11,6 @@ import {
 export interface SidebarToolbarButtonProps extends ComponentProps<typeof Button> {
   icon: FC<ComponentProps<'svg'>>;
   label: string;
-  /** Renders the binding as a keycap beside the label, so the shortcut is
-   *  discoverable from the control it belongs to rather than only the menu. */
   shortcutId?: KeyboardShortcutId;
 }
 
@@ -33,11 +31,6 @@ const ToolbarTooltipContent: FC<Pick<SidebarToolbarButtonProps, 'label' | 'short
   );
 };
 
-/**
- * An icon action that sits inline on a section's root row (the project folder
- * row, the Skills row). Shared so the two sidebar sections present the same
- * control rather than each growing its own.
- */
 export const SidebarToolbarButton: FC<SidebarToolbarButtonProps> = ({
   icon: Icon,
   label,

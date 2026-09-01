@@ -2,7 +2,6 @@ import type { WheelEvent } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { scrollTabStripOnWheel } from './tab-strip-wheel';
 
-/** Minimal stand-in for the React WheelEvent fields the handler reads. */
 function wheelEvent(opts: {
   deltaX: number;
   deltaY: number;

@@ -22,10 +22,6 @@ describe('removeTempDirBestEffort', () => {
     expect(() => removeTempDirBestEffort(dir)).not.toThrow();
   });
 
-  // The contract that keeps a teardown from overturning a passing verdict. A
-  // read-only parent is the POSIX way to make the removal fail: `chmod` on
-  // Windows only toggles a read-only attribute and would not block it, and root
-  // is not subject to the permission check at all.
   test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     'swallows a removal the OS refuses',
     () => {

@@ -1,17 +1,3 @@
-/**
- * Sidebar "Could not reach server" recovery affordance.
- *
- * When the collab server exits under an open window, the sidebar listing is
- * the surface the user is actually looking at — and it offered no way out.
- * These tests drive the real FileTree (testing-library + jsdom) with a
- * network-failing listing and assert the restart action renders, is absent
- * with nothing to restart, is absent for server-answered errors (a live
- * server needs no respawn), and reaches the desktop bridge when pressed.
- *
- * `@pierre/trees/react`'s FileTree is mocked to render the `header` prop so
- * the populated-tree notice row is observable.
- */
-
 import { i18n } from '@lingui/core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -25,7 +11,6 @@ function PassThrough({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
 
-// --- mutable per-test state ---
 let listingFails = false;
 let listingStatus = 200;
 let listingDocuments: unknown[] = [];
@@ -71,8 +56,6 @@ function installBridge() {
     restartServer,
   };
 }
-
-// --- module mocks (mirrors the sibling FileTree dom-test harnesses) ---
 
 class StubItem {
   expanded = false;
@@ -332,9 +315,6 @@ describe('FileTree unreachable-server restart action', () => {
     await screen.findByTestId('fake-pierre-tree');
     expect(screen.queryByRole('button', { name: RESTART_LABEL })).toBeNull();
 
-    // A refresh that cannot reach the server leaves the already-listed rows on
-    // screen, so the recovery affordance has to live in the header notice slot
-    // rather than the empty state.
     listingFails = true;
     window.dispatchEvent(new Event('focus'));
 
@@ -344,8 +324,6 @@ describe('FileTree unreachable-server restart action', () => {
       ),
     );
     const restart = await screen.findByRole('button', { name: RESTART_LABEL });
-    // The notice is an aria-live region; a focusable descendant inside one
-    // diverges from what screen readers announce.
     expect(screen.getByRole('alert').contains(restart)).toBe(false);
   });
 });

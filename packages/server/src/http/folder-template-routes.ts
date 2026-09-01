@@ -1,22 +1,3 @@
-/**
- * The folder-artifact family — `folder-config` (GET+PUT) plus the template
- * CRUD surface `template` (GET/PUT/POST/DELETE) and `template/import` —
- * natively routed as one group. Both families write `<folder>/.ok/*`
- * artifacts through the shared actor-attribution spine
- * (`attributeOkArtifactWrite` / `okArtifactKey` / `scheduleOkArtifactFlush`),
- * which is why they lift together. What the handlers reach for arrives as
- * {@link FolderTemplateRouteDeps}.
- *
- * All three paths are legacy `MUTATING_ROUTES` members (any-verb-mutates ⇒
- * every verb rides the mutating gate, GET arms included) — `mutating` below
- * reproduces that membership exactly.
- *
- * Templates are real CRDT content docs (`<folder>/.ok/templates/<name>`), so
- * the write handlers run the same conflict gate + paired-write + flush
- * machinery as the sibling content-write handlers; those spines stay in the
- * extension and arrive as deps.
- */
-
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
@@ -85,14 +66,12 @@ export interface FolderTemplateRouteDeps {
   isSafeDocName: (docName: string) => boolean;
   resolveAlias: (docName: string) => string;
   resolveContentEntryPath: (contentDir: string, kind: 'file' | 'folder', path: string) => string;
-  /** The extension's shared folder-path validator (also a history-group dep). */
   validateFolderRel: (
     raw: string,
     res: ServerResponse,
     label?: 'path' | 'folder',
     handler?: string,
   ) => { folderRel: string; resolvedContentDir: string } | null;
-  /** Narrowed to the identity fields the template session open consumes. */
   extractAgentIdentity: (body: Record<string, unknown>) => {
     agentId: string;
     agentName: string;
@@ -131,9 +110,7 @@ export interface FolderTemplateRouteDeps {
     destinationPath: string,
   ) => Promise<boolean>;
   renamePathOnDisk: (sourcePath: string, destinationPath: string) => void;
-  /** Shared content-path splitter (module helper in the extension). */
   splitContentPath: (path: string) => { parent: string; basename: string };
-  /** Post-write file-index mutator (absent when the watcher owns the index). */
   mutateFileIndex: ((event: DiskEvent) => void) | undefined;
 }
 
@@ -183,13 +160,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     return true;
   }
 
-  /**
-   * Resolve a template by walking leaf → root from `folderRel`, closest-wins.
-   * Returns the matched file's abs path, the owning folder, and whether it's
-   * `local` (owned by `folderRel` itself) or `inherited` (from an ancestor).
-   * Single source of the resolution walk — shared by `handleTemplateGet` and
-   * the move handler's inherited-vs-absent disambiguation.
-   */
   function findTemplateLeafToRoot(
     resolvedContentDir: string,
     folderRel: string,
@@ -228,12 +198,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     return out;
   }
 
-  /**
-   * The CRDT doc name a template opens/persists under — its content-relative path
-   * (`<folderRel>/.ok/templates/<name>`, ext-less, RAW). Delegates to the core
-   * builder so server handlers, the client open path, and the properties panel
-   * share one identity. `''` folder → `.ok/templates/<name>` (project root).
-   */
   function templateDocNameFor(folderRel: string, name: string): string {
     return templateContentDocName(folderRel, name);
   }
@@ -275,9 +239,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           }
         }
 
-        // Folder frontmatter is SELF-ONLY (no ancestor cascade) and there
-        // are no schema declarations — `frontmatter_local` is the folder's
-        // own open-shape frontmatter, the whole contract.
         successResponse(
           res,
           200,
@@ -305,9 +266,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     FolderConfigPutRequestSchema,
     async (_req, res, body) => {
       try {
-        // No-project single-file mode writes nothing into the user's directory
-        // beyond the one edited doc. Folder config would land a
-        // `<folder>/.ok/frontmatter.yml` sidecar in the user's tree — refuse.
         if (ephemeral) {
           errorResponse(
             res,
@@ -331,9 +289,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const validated = validateFolderRel(body.path, res, 'path', 'folder-config-put');
         if (!validated) return;
 
-        // Write the folder's own frontmatter (open-shape, like a doc's) via the
-        // single-folder merge-patch helper — addressed by the folder's own
-        // path, no glob and no whitelist.
         const allApplied: Array<{ path: string; action: 'written' | 'deleted' | 'noop' }> = [];
         if (body.frontmatter !== undefined) {
           const result = applyFolderFrontmatterPatch({
@@ -356,7 +311,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             return;
           }
           allApplied.push({ path: result.path, action: result.action });
-          // Attribute the frontmatter change (skip a no-op patch).
           if (result.action !== 'noop') {
             attributeOkArtifactWrite(
               actor,
@@ -392,17 +346,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     { handler: 'folder-config' },
   );
 
-  /**
-   * Conflict-aware refusal helper for the template handlers. A template is a
-   * content doc now (`<folder>/.ok/templates/<name>`), so its live Y.Doc carries
-   * a `lifecycle.status` Y.Map — a mutation against one mid-conflict must refuse
-   * exactly like the sibling content-write handlers, whose paired-write path
-   * (`composeAndWriteRawBody`) would otherwise clobber a doc the user is
-   * mid-resolving. Takes the pre-resolved content doc name — same shape as the
-   * sibling `checkSkillDocConflictGate`, so the two gates read as one pattern.
-   * Returns `true` when the gate fired (caller short-circuits); `false` when
-   * the mutation may proceed.
-   */
   function checkTemplateConflictGate(
     templateDocName: string,
     handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
@@ -424,7 +367,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const name = url.searchParams.get('name') ?? '';
         if (!validateTemplateName(name, res, 'template-get')) return;
 
-        // Walk leaf → root for closest match.
         const validated = validateFolderRel(
           url.searchParams.get('folder') ?? '',
           res,
@@ -445,10 +387,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const { abs: foundAbs, folder: foundFolder, scope: foundScope } = found;
 
         const raw = await readFile(foundAbs, 'utf-8');
-        // Normalize single-block (and legacy two-block) templates: wire
-        // `frontmatter` = the template's identity (title/description), wire
-        // `body` = the starter content (doc-frontmatter block + markdown) a
-        // new doc receives. Tokens (`{{date}}`) are preserved verbatim.
         const model = parseTemplateFile(raw);
         const frontmatter = model.identity as Record<string, unknown>;
         const body = model.starterContent;
@@ -488,8 +426,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     TemplatePutRequestSchema,
     async (_req, res, body) => {
       try {
-        // Templates write `<folder>/.ok/templates/*.md` into the content tree —
-        // a user-dir artifact single-file mode must never create.
         if (ephemeral) {
           errorResponse(
             res,
@@ -515,7 +451,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const validated = validateFolderRel(body.folder, res, 'folder', 'template-put');
         if (!validated) return;
 
-        // Conflict-aware refusal. See `checkTemplateConflictGate`.
         if (
           checkTemplateConflictGate(
             templateDocNameFor(validated.folderRel, name),
@@ -525,10 +460,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         )
           return;
 
-        // Compose + validate the `.md` bytes server-side, then route the body
-        // through the template's CRDT doc (precedent #24 / #38) — same shape as
-        // skill-put. Templates are content docs, so the ordinary content
-        // persistence path (not the managed-artifact branch) writes the file.
         const composed = composeTemplateContent({
           name,
           body: typeof body.body === 'string' ? body.body : '',
@@ -579,10 +510,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        // Close the dropped-FSEvent gap at the source (see helper): the flush
-        // may have just created this folder's `.ok/templates/` dir — exactly
-        // the brand-new-subdir race where the watcher's create event can be
-        // lost. Same net as the sibling agent-write handlers.
         registerWrittenDocInFileIndex(templateDocName, composed.content);
 
         attributeOkArtifactWrite(
@@ -627,8 +554,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         );
         if (!validated) return;
 
-        // DELETE has no body (query-param transport); read identity + summary
-        // from the query string into a synthetic body for extractActorIdentity.
         const actor = extractActorIdentityFromQuery(url, getPrincipal);
         if (actor.kind === 'invalid-summary') {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
@@ -637,7 +562,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        // Conflict-aware refusal. See `checkTemplateConflictGate`.
         if (
           checkTemplateConflictGate(
             templateDocNameFor(validated.folderRel, name),
@@ -647,10 +571,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         )
           return;
 
-        // Tear down the live template content doc (if open) BEFORE removing the
-        // file, so its debounced content store can't re-store (resurrect) it on
-        // a later unload. Same spine doc-delete + skill-delete use; no-op when
-        // the doc was never opened.
         await captureAndCloseDocuments(
           [templateDocNameFor(validated.folderRel, name)],
           'deleted-upstream',
@@ -679,8 +599,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           });
           return;
         }
-        // Only attribute when a file was actually removed (no-op delete of an
-        // absent template records nothing).
         if (result.existed) {
           attributeOkArtifactWrite(
             actor,
@@ -688,8 +606,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             `template-delete: ${result.path}`,
           );
           scheduleOkArtifactFlush('template-delete');
-          // Mark the content doc removed so a stale tab redirects instead of
-          // offering to resurrect it (parity with ordinary doc deletion).
           recentlyRemovedDocs?.setDeleted(templateDocNameFor(validated.folderRel, name));
         }
         successResponse(
@@ -733,7 +649,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         const toValidated = validateFolderRel(body.toFolder, res, 'folder', 'template-move');
         if (!toValidated) return;
 
-        // Refuse moving a source whose target doc is in an unresolved conflict.
         if (
           checkTemplateConflictGate(
             templateDocNameFor(fromValidated.folderRel, body.fromName),
@@ -744,10 +659,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        // Tear down the live source template content doc (if open) BEFORE the
-        // git-mv relocates the file — otherwise its debounced content store
-        // would re-store at the now-stale from-path, resurrecting the moved
-        // template.
         await captureAndCloseDocuments(
           [templateDocNameFor(fromValidated.folderRel, body.fromName)],
           'renamed',
@@ -759,9 +670,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           fromName: body.fromName,
           toFolder: toValidated.folderRel,
           toName: body.toName,
-          // git mv (history-preserving) when the path is tracked; plain disk
-          // rename otherwise. `withParentLock` inside renameTrackedPathInGit
-          // serializes against concurrent doc renames (git-index safety).
           relocate: async (fromAbs, toAbs) => {
             const movedWithGit = await renameTrackedPathInGit(projectDir, fromAbs, toAbs);
             if (!movedWithGit) renamePathOnDisk(fromAbs, toAbs);
@@ -771,8 +679,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
 
         if (!result.ok) {
           if (result.error.code === 'TEMPLATE_NOT_FOUND') {
-            // Distinguish "inherited" (resolvable from an ancestor) — teach
-            // localize-then-move — from "truly absent" — 404.
             const found = findTemplateLeafToRoot(
               fromValidated.resolvedContentDir,
               fromValidated.folderRel,
@@ -817,21 +723,10 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        // Mark the source content doc removed (the move relocated its file) so a
-        // stale tab on the old name redirects instead of offering to resurrect
-        // it (parity with ordinary doc deletion).
         recentlyRemovedDocs?.setDeleted(templateDocNameFor(fromValidated.folderRel, body.fromName));
 
-        // Optional atomic move+edit: rewrite the relocated template's content.
-        // The move already succeeded and persisted the original content, so any
-        // failure here is captured and reported AFTER the move is attributed —
-        // the rename must not be lost because the edit step failed.
         let contentEditError: { code: string; message: string } | null = null;
         if (body.body !== undefined || body.frontmatter !== undefined) {
-          // Preserve the existing (just-moved) body when only `frontmatter` is
-          // supplied. If that body can't be read, SKIP the rewrite rather than
-          // risk wiping it — defaulting to '' would re-introduce the body-loss
-          // bug on a read error; the moved file keeps its original content.
           let writeBody: string | null;
           if (typeof body.body === 'string') {
             writeBody = body.body;
@@ -862,25 +757,13 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           }
         }
 
-        // Close the dropped-FSEvent gap for the DESTINATION (parity with
-        // put/import): the relocate may have just created `toFolder`'s
-        // `.ok/templates/` dir — the brand-new-subdir race where the watcher's
-        // create event can be lost. Read the final on-disk bytes (post the
-        // optional edit above) so the index entry matches what landed.
-        // Best-effort like the helper itself: on a read failure the CRDT/disk
-        // copy exists regardless and a rescan re-seeds the index.
         try {
           registerWrittenDocInFileIndex(
             templateDocNameFor(toValidated.folderRel, body.toName),
             readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
           );
-        } catch {
-          // Unreadable destination — leave index membership to the watcher.
-        }
+        } catch {}
 
-        // The move succeeded — attribute + commit + signal regardless of the
-        // optional content edit's outcome, so the rename is never lost when the
-        // edit step fails.
         attributeOkArtifactWrite(
           actor,
           okArtifactKey('template', toValidated.folderRel, body.toName),
@@ -897,8 +780,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
             res,
             isServerError ? 500 : 400,
             isServerError ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            // Include the destination so the agent can retry the content edit
-            // against the moved template without re-deriving where it landed.
             `Template moved to "${result.toPath}", but updating its content failed.`,
             {
               handler: 'template-move',
@@ -1013,7 +894,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           }
         }
 
-        // Read source content
         let sourceContent = '';
         if (existing) {
           sourceContent = existing.getText('source').toString();
@@ -1039,7 +919,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           }
         }
 
-        // Determine target template name
         let name = body.name;
         if (!name) {
           const { basename } = splitContentPath(sourcePath);
@@ -1063,7 +942,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
         )
           return;
 
-        // Parse existing frontmatter of the source file to extract the title/description/tags
         const { frontmatter: sourceFmText, body: sourceBody } = stripFrontmatter(sourceContent);
         const cleanFmText = unwrapFrontmatterFences(sourceFmText);
         let sourceFmObj: Record<string, unknown> = {};
@@ -1071,17 +949,13 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           if (cleanFmText.trim()) {
             sourceFmObj = parseYaml(cleanFmText) as Record<string, unknown>;
           }
-        } catch {
-          // Malformed frontmatter — treat the source as having none.
-        }
+        } catch {}
 
         const templateTitle =
           body.title || (sourceFmObj?.title as string) || extractPageTitle(sourceContent, name);
         const templateDescription = (sourceFmObj?.description as string) || '';
         const templateTags = Array.isArray(sourceFmObj?.tags) ? (sourceFmObj.tags as string[]) : [];
 
-        // For the starter content, we can use the original document frontmatter but remove `template:`
-        // if it somehow got there. Keep other fields. We also drop `title` so it doesn't get baked into every instance.
         const starterFmObj = { ...sourceFmObj };
         delete starterFmObj.template;
         delete starterFmObj.title;
@@ -1148,10 +1022,6 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
           return;
         }
 
-        // Close the dropped-FSEvent gap at the source (see helper): the flush
-        // may have just created the target folder's `.ok/templates/` dir —
-        // exactly the brand-new-subdir race where the watcher's create event
-        // can be lost. Same net as the sibling agent-write handlers.
         registerWrittenDocInFileIndex(templateDocName, composed.content);
 
         attributeOkArtifactWrite(

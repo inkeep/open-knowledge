@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { diffFrontmatter } from './frontmatter-diff.ts';
 
-/** Compose a full snapshot: fenced frontmatter region + body. */
 function doc(yaml: string, body = 'Body text.\n'): string {
   return `---\n${yaml}\n---\n${body}`;
 }
@@ -50,9 +49,6 @@ describe('diffFrontmatter — change kinds', () => {
   });
 });
 
-// The reason this module compares parsed values rather than YAML bytes: the
-// editor's serializer is free to reorder, requote, and restyle, and none of
-// those are a property change.
 describe('diffFrontmatter — reserialization is not a change', () => {
   test('key reorder reports no changes', () => {
     const before = doc('title: Spec\nstatus: draft\nowner: shagun');
@@ -166,9 +162,6 @@ describe('diffFrontmatter — regions that are absent or malformed', () => {
   });
 });
 
-// A duplicate-key document is already ambiguous everywhere else in the property
-// surface; the delta inherits the parse's resolution rather than inventing its
-// own, so it always agrees with the panel.
 describe('diffFrontmatter — duplicate keys', () => {
   test('reports one row per name even when the name appears twice', () => {
     const before = doc('status: draft\nstatus: stale');
@@ -181,8 +174,6 @@ describe('diffFrontmatter — duplicate keys', () => {
   test('compares the value the parse resolved, not the first occurrence', () => {
     const before = doc('status: draft\nstatus: stale');
     const after = doc('status: ready\nstatus: stale');
-    // Both sides resolve `status` to `stale`, so there is nothing to report —
-    // matching what the property panel shows for either document.
     expect(diffFrontmatter(before, after).changes).toEqual([]);
   });
 });

@@ -130,8 +130,6 @@ vi.doMock('sonner', () => ({
   toast: {
     success: (message: string) => toastSuccesses.push(message),
     error: (message: string) => toastErrors.push(message),
-    // Without this the conflict UX path throws inside the mock, making it
-    // structurally untestable rather than merely uncovered.
     warning: (message: string) => toastWarnings.push(message),
   },
 }));
@@ -217,15 +215,12 @@ describe('SeedDialog runtime behavior', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Knowledge Base' }));
     expect(await screen.findByText('Initialize Knowledge Base')).toBeTruthy();
     expect(screen.queryByText('daily/')).toBeNull();
-    // Loading state is now a skeleton grid; assert its status region rather than
-    // visible text.
     expect(screen.getByRole('status', { name: 'Loading preview' })).toBeTruthy();
 
     await act(async () => {
       resolveKnowledgeBasePlan?.({ ok: true, plan: knowledgeBasePlan });
     });
     expect(await screen.findByText('notes/')).toBeTruthy();
-    // Top-level content files (log.md) render as their own cards.
     expect(screen.getByText('log.md')).toBeTruthy();
   });
 
@@ -262,18 +257,11 @@ describe('SeedDialog runtime behavior', () => {
 
     await renderSeedDialog({ initialPackId: 'plain-notes' });
 
-    // The skill card names the skill, with the full name preserved on hover, so
-    // users know what installs.
     const skillName = await screen.findByText('note-taking');
     expect(skillName.getAttribute('title')).toBe('note-taking');
-    // The old free-standing "will be (re)installed" line is gone.
     expect(screen.queryByText(/will be \(re\)installed/)).toBeNull();
   });
 
-  // A name collision leaves nothing to apply, so the dialog lands in
-  // "already set up". Rendering the notice only in the plan phase meant the
-  // user was told there was nothing to add while the pack's skill was silently
-  // absent, with no Initialize button to reach the warning through.
   test('a conflicted pack skill is surfaced in the already-set-up phase', async () => {
     planImpl = async () => ({
       ok: true,

@@ -1,50 +1,10 @@
-/**
- * IDE color-theme plugin registry — the single source of truth for the built-in
- * palettes the Settings → Preferences picker offers. Config accepts the open,
- * shape-constrained id grammar declared below so user-owned saved themes can
- * participate without extending this registry. This lives in `core` (not
- * `app`) so config validation and app resolution share the same contracts.
- *
- * This mirrors the content-rules `LintPlugin<Id, Slice>` registry: each entry is
- * a self-describing descriptor (`ThemePlugin`) the host iterates, and a plugin's
- * behavior (`toTokens`) lives on the descriptor the way `lint()` lives on a
- * `LintPlugin`. Adding a built-in theme = append one descriptor here; the config
- * enum, the picker list, and the generated CSS all follow with no edit elsewhere.
- *
- * Every palette is a `Base16Scheme` (see `base16.ts`) reproduced verbatim from
- * the upstream Tinted Theming scheme of the same name, so a built-in and a
- * user-imported scheme travel the exact same code path. Selecting one layers its
- * tokens via a `data-color-theme` attribute on `<html>` and forces the scheme's
- * own `variant` so Tailwind `dark:` variants stay correct. `default` carries no
- * palette (defers to the light/dark `appearance.theme` mode); `custom` is built
- * at runtime from the user's imported or hand-edited scheme.
- *
- * The CSS that applies the built-in palettes is GENERATED from this registry into
- * `packages/app/src/color-themes.generated.css`; the app's `color-themes.test.ts`
- * regenerates and fails on drift.
- */
-
 import { type Base16Scheme, base16ToTokens } from './base16.ts';
 
-/**
- * A theme plugin descriptor — the theming analog of the content-rules
- * `LintPlugin`. The registry iterates these; consumers read behavior off the
- * descriptor rather than branching per-theme.
- */
 export interface ThemePlugin<Id extends string = string> {
-  /** Palette id used by appearance config and picker tiles. */
   id: Id;
-  /** Display name. A brand proper-noun (Dracula, Nord, …) — intentionally not translated. */
   label: string;
-  /** `dark`/`light` palettes force that mode; `system` follows `appearance.theme`. */
   kind: 'dark' | 'light' | 'system';
-  /** The authored scheme. Absent on `default` (no palette) and `custom` (runtime import). */
   scheme?: Base16Scheme;
-  /**
-   * The plugin's behavior: derive the CSS token map this theme applies. Present
-   * only on built-ins with a static `scheme` (the analog of `LintPlugin.lint`);
-   * `default`/`custom` have none. The generated CSS calls this per descriptor.
-   */
   toTokens?(): Record<string, string>;
 }
 
@@ -114,10 +74,6 @@ const CATPPUCCIN_LATTE: Base16Scheme = {
     base0A: '#df8e1d',
     base0B: '#40a02b',
     base0C: '#179299',
-    // Upstream Catppuccin Latte blue is #1e66f5, which lands at 4.35:1 against
-    // base00. That is below the WCAG 2 AA 4.5:1 floor both as a `--primary` fill
-    // under `--primary-foreground` and as link text on the page background.
-    // Darkened 3.6% to clear the floor. Keep any future palette resync above 4.5:1.
     base0D: '#1d62ec',
     base0E: '#8839ef',
     base0F: '#dd7878',
@@ -190,23 +146,12 @@ const SOLARIZED: Base16Scheme = {
     base0A: '#b58900',
     base0B: '#859900',
     base0C: '#2aa198',
-    // Upstream Solarized blue is #268bd2, which lands at 4.08:1 against base00.
-    // That is below the WCAG 2 AA 4.5:1 floor both as a `--primary` fill under
-    // `--primary-foreground` and as link text on the page background. base00
-    // fills both roles (label on the button, background on the page), and this
-    // is a dark scheme, so base00 is near-black either way: raising base0D's
-    // luminance widens the gap on both surfaces. Lightened 7% to clear the
-    // floor. Keep any future palette resync above 4.5:1.
     base0D: '#2995e1',
     base0E: '#6c71c4',
     base0F: '#d33682',
   },
 };
 
-/**
- * Build a built-in descriptor from a scheme. `kind` comes from the scheme's own
- * `variant` — a light scheme forces light mode, not merely "not dark".
- */
 function builtIn<const Id extends string>(
   id: Id,
   label: string,
@@ -215,16 +160,10 @@ function builtIn<const Id extends string>(
   return { id, label, kind: scheme.variant, scheme, toTokens: () => base16ToTokens(scheme) };
 }
 
-/** Build a `system`-kind descriptor (no static palette): `default` and `custom`. */
 function systemTheme<const Id extends string>(id: Id, label: string): ThemePlugin<Id> {
   return { id, label, kind: 'system' };
 }
 
-/**
- * The built-in theme registry, in display + execution order. `default` first so
- * it anchors the picker grid. Order here drives both the Settings tile order and
- * the generated CSS order.
- */
 export const THEME_PLUGINS = [
   systemTheme('default', 'Default'),
   builtIn('dracula', 'Dracula', DRACULA),
@@ -233,56 +172,20 @@ export const THEME_PLUGINS = [
   builtIn('monokai', 'Monokai', MONOKAI),
   builtIn('gruvbox', 'Gruvbox', GRUVBOX),
   builtIn('solarized', 'Solarized', SOLARIZED),
-  // `custom` carries no static scheme: its palette is built at runtime from the
-  // user's `appearance.customTheme` (an imported or hand-edited base16 scheme).
-  // `kind` is a placeholder — the real mode comes from the scheme's `variant`.
-  // Excluded from the generated CSS (no `toTokens`).
   systemTheme('custom', 'Custom'),
 ] as const;
 
-/** A built-in theme's config id. DERIVED from the registry — the union of every entry's `id`. */
 export type ThemePluginId = (typeof THEME_PLUGINS)[number]['id'];
 
-/**
- * The built-in theme ids as a non-empty tuple derived from the registry.
- * Config metadata uses this list for built-in suggestions while validation
- * remains open to any id admitted by `THEME_ID_PATTERN`.
- */
 export const THEME_PLUGIN_IDS = THEME_PLUGINS.map((t) => t.id) as [
   ThemePluginId,
   ...ThemePluginId[],
 ];
 
-/**
- * The grammar every theme id must satisfy: lowercase letters, digits, and
- * hyphens, 1–32 characters. The config fields that name a palette
- * (`appearance.colorThemeLight` / `colorThemeDark` / the retired `colorTheme`)
- * are shape-constrained to this rather than to a closed set of built-in ids, so
- * a palette the built-in registry has never heard of — a user's saved theme —
- * validates and resolves to `default` at read time instead of failing
- * whole-config validation and discarding every other user preference.
- *
- * The FOUC pre-paint script inlined in `packages/app/index.html` validates ids
- * against this exact shape but can't import it (it runs before any bundle
- * loads), so it hardcodes the pattern. The two MUST stay identical — a palette
- * config accepts but pre-paint rejects would flash unstyled on reload — and a
- * drift test in the app pins the inline copy to this source.
- */
 export const THEME_ID_PATTERN = /^[a-z0-9-]{1,32}$/;
 
-/**
- * Reserved prefix that namespaces a saved theme's palette id. A built-in id must
- * never begin with it (a registry-invariant test enforces this), so a saved
- * theme can never shadow a built-in and resolution order never has to arbitrate
- * between the two.
- *
- * The prefix is itself `[a-z0-9-]`, so `saved-<stem>` stays admissible to
- * `THEME_ID_PATTERN` — the config fields and the FOUC pre-paint script keep
- * validating against the one grammar with no namespace separator to learn.
- */
 export const SAVED_THEME_ID_PREFIX = 'saved-';
 
-/** Why a filename stem (or a proposed save name) could not become a saved-theme id. */
 export type SavedThemeIdError = 'empty' | 'too-long' | 'invalid-chars';
 
 export type SavedThemeIdResult = { ok: true; id: string } | { ok: false; code: SavedThemeIdError };
@@ -305,13 +208,6 @@ function savedThemeNameHash(name: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-/**
- * Turn a human-facing theme name into its safe filename identity while keeping
- * the display name intact. Common punctuation becomes word boundaries, while
- * apostrophes disappear so "John's theme" maps naturally to `johns-theme`.
- * Names that cannot fit the storage grammar receive a stable hash suffix rather
- * than being refused or silently colliding through plain truncation.
- */
 export function deriveSavedThemeName(name: string): SavedThemeNameResult {
   const displayName = name.trim();
   if (displayName.length === 0) return { ok: false, code: 'empty' };
@@ -335,34 +231,13 @@ export function deriveSavedThemeName(name: string): SavedThemeNameResult {
   return { ok: true, name: displayName, stem, id: derived.id };
 }
 
-/**
- * Derive a saved theme's palette id from a filename stem:
- * `SAVED_THEME_ID_PREFIX` + stem, admitted only if the whole id satisfies
- * `THEME_ID_PATTERN`. A stem that overflows the id's length budget, or carries
- * characters outside the grammar, is REFUSED with a distinguishing code — never
- * truncated or rewritten to fit. The caller lists such a file in an error state
- * when scanning a hand-dropped file. User-facing names route through
- * `deriveSavedThemeName` instead.
- */
 export function deriveSavedThemeId(stem: string): SavedThemeIdResult {
   if (stem.length === 0) return { ok: false, code: 'empty' };
   const id = SAVED_THEME_ID_PREFIX + stem;
   if (THEME_ID_PATTERN.test(id)) return { ok: true, id };
-  // The grammar rejected it; name the fixable cause. A well-formed-but-overlong
-  // id passes the character class and fails only the length bound, so a clean
-  // charset match localizes the fault to length; anything else is stray characters.
   return { ok: false, code: /^[a-z0-9-]+$/.test(id) ? 'too-long' : 'invalid-chars' };
 }
 
-/**
- * Recover a saved theme's filename stem from its palette id — the inverse of
- * `deriveSavedThemeId`. Succeeds only for a well-formed saved-theme id: it must
- * satisfy `THEME_ID_PATTERN`, carry the `SAVED_THEME_ID_PREFIX`, and leave a
- * non-empty stem after the prefix. A built-in id (no prefix) or a bare `saved-`
- * (empty stem) yields `{ ok: false }`. Because the stem is `[a-z0-9-]+` by
- * construction, callers may use it as a filename segment without further
- * path-safety escaping.
- */
 export function parseSavedThemeId(id: string): { ok: true; stem: string } | { ok: false } {
   if (!THEME_ID_PATTERN.test(id)) return { ok: false };
   if (!id.startsWith(SAVED_THEME_ID_PREFIX)) return { ok: false };
@@ -373,56 +248,30 @@ export function parseSavedThemeId(id: string): { ok: true; stem: string } | { ok
 
 const THEME_PLUGIN_BY_ID = new Map<string, ThemePlugin>(THEME_PLUGINS.map((t) => [t.id, t]));
 
-/** Resolve a raw config value to a known theme, falling back to `default`. */
 export function resolveThemePlugin(id: string | undefined): ThemePlugin {
   return (id && THEME_PLUGIN_BY_ID.get(id)) || THEME_PLUGINS[0];
 }
 
-/** True for every theme whose palette forces dark mode. */
 export function isDarkTheme(id: string | undefined): boolean {
   return resolveThemePlugin(id).kind === 'dark';
 }
 
-/**
- * The light/dark mode a palette theme forces, or `undefined` for a `system`-kind
- * theme (`default`/`custom`) that defers to `appearance.theme`. This is what lets
- * a light built-in force light mode instead of merely "not dark".
- */
 export function colorThemeMode(id: string | undefined): 'light' | 'dark' | undefined {
   const kind = resolveThemePlugin(id).kind;
   return kind === 'system' ? undefined : kind;
 }
 
-/**
- * The palette to apply in each light/dark mode — one theme id per mode. The id
- * is a shape-constrained string, not the closed built-in set: the config fields
- * it is read from accept a user's saved-theme id too.
- */
 export interface ColorThemeSelection {
   light: string;
   dark: string;
 }
 
-/** The `appearance` fields the selection is resolved from. */
 export interface ColorThemeSelectionInput {
   colorTheme?: string | undefined;
   colorThemeLight?: string | undefined;
   colorThemeDark?: string | undefined;
 }
 
-/**
- * Resolve the light/dark palette pair from config.
- *
- * `colorThemeLight`/`colorThemeDark` are the live fields. A config that predates
- * them carries the single `colorTheme` instead, and seeding BOTH slots from it
- * is what makes the upgrade invisible: the one palette applies in either mode,
- * and — because a palette still forces its own variant — the app renders exactly
- * what it rendered before the pair existed. A half-written pair (one slot only)
- * falls back per-slot rather than discarding the other.
- *
- * Callers resolving saved-theme ids must pass the complete merged registry;
- * the default registry contains built-in themes only.
- */
 export function resolveColorThemeSelection(
   appearance: ColorThemeSelectionInput | undefined,
   themes: readonly ThemePlugin[] = THEME_PLUGINS,
@@ -440,10 +289,6 @@ export function resolveColorThemeSelection(
   };
 }
 
-/**
- * The light/dark mode a mode PREFERENCE resolves to. `system` defers to the OS,
- * which the caller supplies — core has no DOM.
- */
 export function resolveModePreference(
   preference: string | undefined,
   prefersDark: boolean,
@@ -452,13 +297,6 @@ export function resolveModePreference(
   return prefersDark ? 'dark' : 'light';
 }
 
-/**
- * Render one `html[data-color-theme="<id>"]` block. The attribute selector
- * out-specifies the base `:root` / `.dark` blocks, so a single block per theme
- * overrides both regardless of source order. `color-scheme` keeps native
- * scrollbars / form controls correct even before the `.dark` class settles on
- * first paint.
- */
 export function renderThemeBlock(
   selector: string,
   variant: 'dark' | 'light',
@@ -468,10 +306,6 @@ export function renderThemeBlock(
   return `${selector} {\n  color-scheme: ${variant};\n${lines.join('\n')}\n}`;
 }
 
-/**
- * Render the generated stylesheet that applies every built-in palette. The
- * descriptor's own `toTokens` produces the tokens.
- */
 export function generateColorThemesCss(): string {
   const header =
     '/* GENERATED by `pnpm run gen:color-themes` from packages/core/src/theme/theme-plugins.ts — do not edit by hand. */\n';

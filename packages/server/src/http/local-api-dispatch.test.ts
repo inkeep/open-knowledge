@@ -1,14 +1,3 @@
-/**
- * Unit + transport-parity coverage for the in-process MCP dispatch.
- *
- * The parity suite is the load-bearing half: every behavior class a
- * collapsed handler can exhibit (schema-validated success, in-handler
- * problem+json error, thrown error, query-string read, multipart upload)
- * runs through BOTH transports — a real `node:http` listener and
- * `createLocalApiDispatch` — and the (status, body) pair must match
- * byte-for-byte, modulo the per-response `instance` correlation UUID.
- */
-
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { BridgeMergeContentLossError } from '@inkeep/open-knowledge-core';
@@ -78,9 +67,6 @@ const handlers: Record<string, Handler> = {
     ),
     { handler: 'throw', method: 'POST' },
   ),
-  // Throws OUTSIDE any catchErrors boundary — exercises the dispatch's own
-  // last-resort envelope (HTTP side: the listener wrapper below mirrors the
-  // admission pipeline's catch).
   '/api/throw-raw': async () => {
     throw new Error('raw-boom');
   },
@@ -116,8 +102,6 @@ const resolveHandler = (pathname: string): Handler | undefined => handlers[pathn
 
 const local: LocalApiDispatch = createLocalApiDispatch({ resolve: resolveHandler });
 
-// Real listener over the same handlers, with the admission pipeline's
-// last-resort catch semantics (500 envelope on an escaped throw).
 const server = createServer((req, res) => {
   const pathname = (req.url ?? '/').split('?')[0] ?? '/';
   const handler = resolveHandler(pathname);
@@ -150,7 +134,6 @@ afterAll(() => {
   server.close();
 });
 
-/** Strip the per-response `instance` UUID so bodies compare stably. */
 function comparable(bodyText: string): unknown {
   try {
     const parsed = JSON.parse(bodyText) as Record<string, unknown>;
@@ -188,10 +171,6 @@ describe('createLocalApiDispatch', () => {
   });
 
   it('BridgeMergeContentLossError becomes the same 500 envelope, not a rejection', async () => {
-    // The dispatch is the transport's terminal response boundary — like the
-    // admission pipeline it envelopes the escape (cause-logged), and unlike
-    // the pipeline it has no request-logging layer above to re-throw into.
-    // Pin that the caller sees the standard envelope, never the raw error.
     const lossErr = new BridgeMergeContentLossError({
       which: 'merged',
       side: 'local',

@@ -1,9 +1,3 @@
-/**
- * Unit tests for the shared validation store: full-plane replace (project
- * audit), per-doc patch (scoped re-validate), per-source live patch (open
- * doc), zero-count pruning, and subscriber notification semantics.
- */
-
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
   getValidationSnapshot,
@@ -49,7 +43,6 @@ describe('validation store', () => {
     ]);
     patchDocValidationFromAudit('a', [lintError, lintWarning]);
     expect(getValidationSnapshot().get('a')).toEqual({ errorCount: 1, warningCount: 1 });
-    // Other docs untouched.
     expect(getValidationSnapshot().get('b')).toEqual({ errorCount: 1, warningCount: 0 });
 
     patchDocValidationFromAudit('a', []);
@@ -59,7 +52,6 @@ describe('validation store', () => {
   test('patchDocValidationSource updates one source, preserving the other', () => {
     patchDocValidationFromAudit('a', [lintWarning, deadLink]);
     patchDocValidationSource('a', 'lint', { errorCount: 0, warningCount: 3 });
-    // links error preserved; lint replaced.
     expect(getValidationSnapshot().get('a')).toEqual({ errorCount: 1, warningCount: 3 });
 
     patchDocValidationSource('a', 'links', { errorCount: 0, warningCount: 0 });
@@ -73,7 +65,6 @@ describe('validation store', () => {
     });
     patchDocValidationSource('a', 'lint', { errorCount: 0, warningCount: 2 });
     expect(notifications).toBe(1);
-    // Identical counts are a structural no-op — the tree must not re-render.
     patchDocValidationSource('a', 'lint', { errorCount: 0, warningCount: 2 });
     expect(notifications).toBe(1);
     unsubscribe();
@@ -100,9 +91,7 @@ describe('validation store', () => {
       },
     ]);
     const snapshot = getValidationSnapshot();
-    // Keyed by extension-less docName, same as the enumerated plane.
     expect(snapshot.get('guides/setup')).toEqual({ errorCount: 2, warningCount: 4 });
-    // A doc the audit reported with no problems is absent, not present-at-zero.
     expect(snapshot.has('clean.md')).toBe(false);
     expect(snapshot.has('clean')).toBe(false);
   });
@@ -123,8 +112,6 @@ describe('validation store', () => {
   });
 
   test('the counts plane and the enumerated plane agree for the same doc', () => {
-    // The two triggers must never disagree about one doc's totals; both route
-    // their bucketing through the shared core predicate.
     replaceValidationFromAudit([{ file: 'a.md', diagnostics: [lintError, lintWarning, deadLink] }]);
     const fromDiagnostics = getValidationSnapshot().get('a');
 

@@ -41,42 +41,22 @@ import { setupServerObservers } from './server-observers.ts';
 
 const schema = getSchema(sharedExtensions);
 
-/**
- * Clock advance used to cross the server's hardcoded 2s freshness-quiescence
- * window before a default stimulus. 3s leaves a full second of headroom.
- */
 const FRESHNESS_ADVANCE_MS = 3_000;
 
-// Non-paired stimulus origins. Plain strings are neither OBSERVER_SYNC_ORIGIN
-// (self-skip) nor a frozen PairedWriteOrigin (isPairedWriteOrigin is a
-// structural check), so the observer callbacks treat them as external edits
-// and flag the corresponding CRDT dirty.
 const RIG_EXTERNAL_ORIGIN = 'bridge-race-rig/external';
 const RIG_FORCE_ORIGIN = 'bridge-race-rig/force-a-round';
 
 const EMPTY_UPDATE_META = () => ({ mapping: new Map(), isOMark: new Map() });
 
 interface StimulusOpts {
-  /**
-   * Advance the faked `Date` past the freshness-quiescence window before
-   * mutating (default true). Pass false to run the freshness-HOT path, where
-   * an external Y.Text change is still recent and Observer A serializes with
-   * `skipFreshnessDerive` (the producer guard is skipped as knowingly
-   * historical).
-   */
   advanceFreshness?: boolean;
 }
 
 interface DrainTraceEntry {
-  /** Stable label identifying the stimulus that produced this entry. */
   readonly label: string;
-  /** Every drain's dispatch decision during the stimulus, in fire order. */
   readonly dispatches: readonly ObserverDispatchKind[];
-  /** Settled `Y.Text('source')` bytes after the stimulus completed. */
   readonly bytes: string;
-  /** Canonical serialization of the settled XmlFragment (bridge md-side). */
   readonly fragmentMd: string;
-  /** True when `bytes` differs from the previous entry's settled bytes. */
   readonly byteChanged: boolean;
 }
 
@@ -84,84 +64,39 @@ export interface BridgeRaceRig {
   readonly doc: Y.Doc;
   readonly xmlFragment: Y.XmlFragment;
   readonly ytext: Y.Text;
-  /** The MarkdownManager the observers run through (production singleton unless overridden). */
   readonly mdManager: MarkdownManager;
-  /** Ordered per-stimulus trace. */
   readonly trace: readonly DrainTraceEntry[];
-  /** Every dispatch decision across all stimuli, flattened in fire order. */
   dispatchLog(): ObserverDispatchKind[];
-  /** Compact, comparable trace lines for the determinism contract. */
   traceLines(): string[];
-  /** Canonical markdown serialization of the current XmlFragment. */
   serializeFragment(): string;
-  /** Advance the faked Date clock by `ms`. */
   advanceClock(ms: number): void;
-  /** Advance the faked Date clock past the freshness-quiescence window. */
   advancePastFreshness(): void;
-  /** Core recorder: run `mutate`, capture the stimulus's drains + settled state. */
   stimulus(label: string, mutate: () => void, opts?: StimulusOpts): DrainTraceEntry;
-  /** External source-editor write: replace Y.Text with `md` under a non-paired origin. */
   seedSource(md: string, opts?: StimulusOpts): DrainTraceEntry;
-  /** Arbitrary external Y.Text mutation under a non-paired origin. */
   externalYtextEdit(
     label: string,
     mutate: (ytext: Y.Text) => void,
     opts?: StimulusOpts,
   ): DrainTraceEntry;
-  /** WYSIWYG-shaped fragment write (parse `md` → updateYFragment). */
   editFragment(md: string, opts?: StimulusOpts): DrainTraceEntry;
-  /**
-   * WYSIWYG-shaped fragment write with the source-capture attrs stripped from
-   * the parsed PM JSON — models a remote client's PM churn dropping the
-   * unrendered `source*` / `position` capture attrs, the flow the bridge
-   * tolerance classes exist for.
-   */
   churnedFragmentEdit(md: string, opts?: StimulusOpts): DrainTraceEntry;
-  /**
-   * Echo-shaped fragment write: parse `baseMd`, then rewrite the FIRST text leaf
-   * matching `from` to `to`, leaving the component `sourceRaw` capture attrs a
-   * generation behind the advanced children. Under freshness suppression
-   * (`advanceFreshness: false` with a recent external Y.Text write) Observer A
-   * serializes the stale `sourceRaw` and settles, leaving the fragment holding
-   * `to` while Y.Text still holds `from` — the un-propagated-keystroke shape a
-   * later source-editor write would stomp.
-   */
   echoFragmentEdit(baseMd: string, from: string, to: string, opts?: StimulusOpts): DrainTraceEntry;
-  /** Same-transact fragment (`md`) + Y.Text mutation — the dual-CRDT drain shape. */
   dualMutation(
     md: string,
     ytextEdit: (ytext: Y.Text) => void,
     opts?: StimulusOpts,
   ): DrainTraceEntry;
-  /**
-   * Byte-neutral forced Observer-A round: push then delete a paragraph element
-   * in one transact. Flags the fragment dirty (dispatches 'a') and runs every
-   * gate while leaving the serialized bytes unchanged — the settle probe.
-   */
   forceARound(opts?: StimulusOpts): DrainTraceEntry;
-  /** Run `forceARound` `rounds` times; returns the produced entries. */
   settle(rounds: number): DrainTraceEntry[];
-  /**
-   * Run a paired-write primitive under a paired origin (e.g.
-   * `composeAndWriteRawBody` under `AGENT_WRITE_ORIGIN`). Freshness is not
-   * advanced by default — paired vectors control their own timing.
-   */
   pairedWrite(label: string, mutate: () => void, origin: unknown): DrainTraceEntry;
-  /** Detach observers and the settlement handler. */
   cleanup(): void;
 }
 
 export interface CreateRigOpts {
   docName?: string;
-  /**
-   * Overrides merged into the `setupServerObservers` opts — e.g. a
-   * serialize-recording MarkdownManager proxy, or a `shadow` accessor for
-   * checkpoint-writing suites.
-   */
   setupOverrides?: Partial<SetupServerObserversOpts>;
 }
 
-/** Rewrite the first text leaf equal to `from` into `to`, in place. */
 function mutateFirstText(node: JSONContent, from: string, to: string): boolean {
   if (typeof node.text === 'string' && node.text === from) {
     node.text = to;
@@ -173,7 +108,6 @@ function mutateFirstText(node: JSONContent, from: string, to: string): boolean {
   return false;
 }
 
-/** Recursively drop `source*` / `position` capture attrs from a PM JSON tree. */
 function stripCaptureAttrs(node: JSONContent): JSONContent {
   let next = node;
   if (next.attrs && typeof next.attrs === 'object') {
@@ -190,11 +124,6 @@ function stripCaptureAttrs(node: JSONContent): JSONContent {
   return next;
 }
 
-/**
- * Create a bridge-race rig. The consuming test MUST install
- * `vi.useFakeTimers({ toFake: ['Date'] })` before driving default stimuli:
- * `advanceClock` calls `vi.setSystemTime`, which requires fake timers.
- */
 export function createBridgeRaceRig(opts: CreateRigOpts = {}): BridgeRaceRig {
   const doc = new Y.Doc();
   const xmlFragment = doc.getXmlFragment('default');

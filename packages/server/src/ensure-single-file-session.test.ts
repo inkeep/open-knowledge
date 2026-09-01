@@ -7,7 +7,6 @@ import {
 
 afterEach(() => __resetEnsureSingleFileInflightForTests());
 
-/** Deterministic clock: each injected sleep advances `now` by the slept ms. */
 function makeClock() {
   let t = 0;
   return {
@@ -49,7 +48,6 @@ describe('ensureSingleFileSession', () => {
     const spawn = { calls: [] as string[] };
     let checks = 0;
     const deps = makeDeps(async () => {
-      // not serving on the pre-spawn check + first poll, serving on the second poll
       checks += 1;
       return checks >= 3;
     }, spawn);
@@ -65,7 +63,7 @@ describe('ensureSingleFileSession', () => {
       makeDeps(async () => false, spawn),
     );
     expect(ok).toBe(false);
-    expect(spawn.calls).toEqual(['/loose/c.md']); // spawned, but never came up
+    expect(spawn.calls).toEqual(['/loose/c.md']);
   });
 
   test('single-flight: concurrent ensures for one file coalesce to a single spawn', async () => {
@@ -81,7 +79,7 @@ describe('ensureSingleFileSession', () => {
     ]);
     expect(a).toBe(true);
     expect(b).toBe(true);
-    expect(spawn.calls).toEqual(['/loose/d.md']); // exactly one spawn for both callers
+    expect(spawn.calls).toEqual(['/loose/d.md']);
   });
   test('different files spawn independently (not coalesced)', async () => {
     const clock = makeClock();
@@ -90,7 +88,7 @@ describe('ensureSingleFileSession', () => {
     const deps: EnsureSingleFileDeps = {
       spawnSession: (f) => {
         spawn.calls.push(f);
-        served.add(f); // registers immediately so the next poll sees it
+        served.add(f);
       },
       isServing: async (f) => served.has(f),
       realpath: async (p) => p,

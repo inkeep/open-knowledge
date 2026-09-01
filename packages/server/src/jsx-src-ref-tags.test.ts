@@ -15,8 +15,6 @@ describe('readJsxSrcRefTagAt', () => {
   });
 
   test('rejects when the first > at-or-after idx is not a self-close', () => {
-    // The probe must reject on the unmatched distant `>` without letting the
-    // attribute window consume-and-backtrack across the line.
     expect(readJsxSrcRefTagAt('<Mirror src="a" > <Mirror src="b" />', 0)).toBeNull();
     expect(readJsxSrcRefTagAt('<Mirror src="a"', 0)).toBeNull();
   });
@@ -41,11 +39,6 @@ describe('resolveJsxSrcRefTarget', () => {
   });
 
   test('bare-doc-name values are not scheme-filtered — renderer parity', () => {
-    // The renderer hands a <Mirror src> straight to the live-doc provider
-    // without scheme-testing it, so the resolver must not reject a
-    // colon-bearing docName here. Callers that cannot track such a reference
-    // (graph extractor, broken-link advisory) gate on isExternalHref
-    // themselves.
     expect(resolveJsxSrcRefTarget(mirror, 'https://example.com/x', 'notes/index')).toBe(
       'https://example.com/x',
     );
@@ -58,7 +51,6 @@ describe('resolveJsxSrcRefTarget', () => {
     for (const value of ['https://example.com/x', 'mailto:someone@example.com']) {
       expect(resolveJsxSrcRefTarget(excalidraw, value, 'notes/index')).toBeNull();
     }
-    // A plain scheme-free path still resolves under both kinds.
     expect(resolveJsxSrcRefTarget(mirror, 'notes/board.excalidraw', 'notes/index')).toBe(
       'notes/board.excalidraw',
     );
@@ -68,8 +60,6 @@ describe('resolveJsxSrcRefTarget', () => {
   });
 
   test('doc-relative values resolve the way the renderer resolves them', () => {
-    // Pinned to normalizeDocRelativeAssetUrl — the function the app's
-    // render-prop normalization applies before the component sees `src`.
     for (const [value, sourceDocName] of [
       ['board.excalidraw', 'notes/index'],
       ['./board.excalidraw', 'notes/index'],

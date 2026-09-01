@@ -1,15 +1,3 @@
-/**
- * Behavioral tests for TerminalGate — the renderer-side enforcement.
- *
- * The system boundaries are mocked: the consent hook (CRDT-backed config) and
- * the PTY-spawning TerminalPanel. The assertions pin the default-on contract:
- * the shell (TerminalPanel) mounts unless the project explicitly opts out
- * (`terminal.enabled === false`); `null`/default and `true` both mount with no
- * dialog; `false` shows the not-enabled notice; the notice re-enables via the
- * writer; the mount is held until the binding syncs so an opted-out project
- * never flashes the shell.
- */
-
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -48,12 +36,6 @@ let lastPanelProps: Record<string, any> | null = null;
 let panelRenders = 0;
 let panelMounts = 0;
 let panelUnmounts = 0;
-// Named so the Suspense-fallback test below — which calls vi.resetModules() and
-// registers its own deferred ./TerminalPanel stub to get a fresh module graph —
-// can put the file-level stub back afterward. Without that restore the registry
-// mutation leaks and what a later `import('./TerminalGate')` resolves to depends
-// on test order. (The two preload tests reset the registry too, but they replace
-// `@/lib/lazy-with-preload` rather than this module.)
 const mockPanelModule = () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   TerminalPanel: (props: any) => {
@@ -83,10 +65,6 @@ function notice() {
 }
 
 async function resolvePanelPayloadForSyncAssertion() {
-  // The Suspense fallback and the pre-sync branch show the same notice. Resolve
-  // the lazy payload first so a wrongly opened gate cannot hide behind fallback
-  // DOM, and so a suspended pass is not lost when a render count is asserted.
-  // Returns with consentState open and synced; callers must re-seed it.
   consentState = { enabled: true, synced: true };
   const warmup = renderGate();
   await screen.findByTestId('terminal-panel');
@@ -112,9 +90,6 @@ describe('TerminalGate', () => {
   });
   afterEach(() => {
     cleanup();
-    // Restore what the module-registry tests replaced, so nothing here is
-    // order-dependent: the file-level panel stub, and the real lazy-with-preload
-    // that the two preload tests swap for a spy.
     vi.doUnmock('@/lib/lazy-with-preload');
     vi.doMock('./TerminalPanel', mockPanelModule);
     vi.resetModules();
@@ -123,8 +98,6 @@ describe('TerminalGate', () => {
   test('default (enabled === null) mounts the terminal — available with no dialog', async () => {
     consentState = { enabled: null, synced: true };
     renderGate();
-    // TerminalPanel is React.lazy (keeps xterm out of the initial/web bundle),
-    // so it resolves through Suspense on a microtask rather than synchronously.
     expect(await screen.findByTestId('terminal-panel')).toBeTruthy();
     expect(notice()).toBeNull();
   });
@@ -147,17 +120,8 @@ describe('TerminalGate', () => {
     );
     await screen.findByTestId('terminal-panel');
     expect(lastPanelProps?.onClose).toBe(onClose);
-    // onTitleChange forwarding is the single point of failure for the tab-title
-    // feature at the gate layer: TerminalPanel tests wire it directly and Dock
-    // tests stub the gate, so a dropped forward would otherwise pass every test.
     expect(lastPanelProps?.onTitleChange).toBe(onTitleChange);
-    // launch is the sole carrier of the "Open in terminal" one-shot prompt — a
-    // refactor dropping launch={launch} would otherwise pass every gate test.
     expect(lastPanelProps?.launch).toBe(launch);
-    // onPtyId + adoptPtyId are the reuse/reload-survival wires: the gate is the
-    // only place they cross from host to panel, and every Dock/reload test stubs
-    // the gate, so a dropped forward here would silently break reuse and survivor
-    // adoption while passing all of those.
     expect(lastPanelProps?.onPtyId).toBe(onPtyId);
     expect(lastPanelProps?.adoptPtyId).toBe('pty-survivor');
   });
@@ -178,8 +142,6 @@ describe('TerminalGate', () => {
 
   test('does not flash the shell before the binding syncs (cold start)', async () => {
     await resolvePanelPayloadForSyncAssertion();
-    // Pre-sync the leaf reads as the cold-start null; mounting now would spawn a
-    // PTY the main backstop refuses if the project turns out to be opted out.
     consentState = { enabled: null, synced: false };
     renderGate();
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
@@ -198,8 +160,6 @@ describe('TerminalGate', () => {
     view.rerender(<TerminalGate bridge={bridge} />);
 
     expect(await screen.findByTestId('terminal-panel')).toBeTruthy();
-    // The live binding opens the gate in the transition's first pass; the
-    // settled-consent update produces the second render without remounting.
     expect(panelRenders).toBe(rendersBeforeSync + 2);
     expect(panelMounts).toBe(1);
   });
@@ -255,29 +215,12 @@ describe('TerminalGate', () => {
 
   test('announces that the terminal is starting while the binding syncs (PRD-8313)', async () => {
     await resolvePanelPayloadForSyncAssertion();
-    // Holding the mount is right; rendering nothing while we hold it is not. A
-    // featureless pane is indistinguishable from "the keystroke did nothing", so
-    // a user whose cold start runs long re-invokes and stacks up tabs. The pane
-    // must say a shell is coming for as long as it withholds one.
     consentState = { enabled: null, synced: false };
     renderGate();
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
     expect(screen.getByTestId('terminal-starting-notice')).toBeTruthy();
   });
 
-  // Both preload tests spy on `.preload()` rather than counting module-factory
-  // invocations. The opt-out case is a NEGATIVE assertion, so it needs a
-  // synchronous observation point — effects flush inside `render`'s `act`, and
-  // there is no settle window to await — and the spy gives both tests the same
-  // mechanism. It also removes a dependency on vitest resolving a
-  // freshly-registered module on its own schedule, which the earlier counting
-  // version had to poll for and which was observed timing out. The
-  // Suspense-fallback test below crosses that same boundary safely because it
-  // OWNS the resolution: it awaits a promise the test itself releases.
-  //
-  // The spy resolves like the real `preload` (`Promise<{ default }>`) even
-  // though the call site discards it, so adding a `.catch()` there later does
-  // not surface as a TypeError thrown inside a passive effect.
   async function importGateWithPreloadSpy() {
     vi.resetModules();
     const preload = vi.fn(() => Promise.resolve({ default: () => null }));
@@ -290,17 +233,12 @@ describe('TerminalGate', () => {
   }
 
   test('warms the panel chunk while the binding is still syncing (PRD-8313)', async () => {
-    // The preload is the one part of this change that alters TIMING rather than
-    // rendering, so it is the part a later "this looks redundant" cleanup can
-    // silently undo.
     const { FreshGate, preload } = await importGateWithPreloadSpy();
 
     consentState = { enabled: null, synced: false };
     render(<FreshGate bridge={bridge} />);
 
     expect(preload).toHaveBeenCalledTimes(1);
-    // Warming the chunk must not weaken what the gate withholds: no PTY-spawning
-    // panel is mounted while the binding is unsynced.
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
     expect(screen.getByTestId('terminal-starting-notice')).toBeTruthy();
   });
@@ -316,10 +254,6 @@ describe('TerminalGate', () => {
   });
 
   test('the lazy-chunk Suspense fallback shows the same starting notice (PRD-8313)', async () => {
-    // The other pre-mount branch. It is only reachable in a module graph where
-    // `lazy()` has not already resolved TerminalPanel — once loaded it never
-    // suspends again — so this test builds a fresh graph whose panel module
-    // stays pending until we release it.
     vi.resetModules();
     let releasePanel: () => void = () => {};
     const panelGate = new Promise<void>((resolve) => {
@@ -334,8 +268,6 @@ describe('TerminalGate', () => {
     consentState = { enabled: null, synced: true };
     render(<FreshGate bridge={bridge} />);
 
-    // Synced, so the gate is open and the shell is wanted — but the chunk has
-    // not arrived, which is stage 2 of the cold start.
     expect(screen.getByTestId('terminal-starting-notice')).toBeTruthy();
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
 
@@ -349,9 +281,6 @@ describe('TerminalGate', () => {
     const view = render(<TerminalGate bridge={bridge} />);
     act(() => screen.getByRole('button', { name: 'Enable terminal' }).click());
     expect(writerCalls).toEqual([true]);
-    // The writer flips the project-local config; once that grant syncs back, the
-    // gate must leave the opt-out notice and mount the shell (otherwise a
-    // regression that never transitions out of the notice would pass).
     consentState = { enabled: true, synced: true };
     view.rerender(<TerminalGate bridge={bridge} />);
     expect(await screen.findByTestId('terminal-panel')).toBeTruthy();

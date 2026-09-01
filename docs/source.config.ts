@@ -12,27 +12,13 @@ export const docs = defineDocs({
       includeProcessedMarkdown: true,
     },
     schema: frontmatterSchema.extend({
-      // Optional short label for this page's row in the docs sidebar, for
-      // titles that would wrap its single-line rows. The page still shows
-      // `title` elsewhere, so prefer a shortening of it over a different name.
-      // The value is trimmed, and a blank one falls back to `title`. Folder
-      // rows and separators come from meta.json instead.
       sidebarTitle: z.string().optional(),
       keywords: z.string().optional(),
-      // Set `footer: false` on hub/index pages to hide Fumadocs' prev/next
-      // page navigation when the page already curates its own forward links.
       footer: z.boolean().optional(),
     }),
   },
 });
 
-/**
- * Turn ` ```html preview ` fences into a live <HtmlPreview> iframe, matching
- * OpenKnowledge's own editor: the block renders as an interactive sandboxed
- * preview on both surfaces (native in the OK editor, this plugin on the docs
- * site). Raw HTML is base64'd onto the JSX attribute so nothing in the block
- * (quotes, braces, `<`) collides with MDX parsing.
- */
 function remarkHtmlPreview() {
   return (tree: unknown) => {
     const visit = (node: { children?: unknown[] } | null) => {

@@ -1,13 +1,3 @@
-/**
- * Settings → Plugins — the no-code GUI for the markdown linter, organized as
- * lint plugins. Project scope: lint rules are an authoring standard shared with
- * the team via the committed `config.yml` + the project's native
- * `.markdownlint.*` file (the source of truth for rules).
- *
- * Exported sections: `ProjectPluginsManageSection` + `UserPluginsManageSection`
- * (per-plugin on/off, one manage page per scope) and `MarkdownlintPluginSection`
- * (the full-catalog rule browser — see `markdownlint-rule-browser.tsx`).
- */
 import {
   type AppliesToPatternSummary,
   assertNeverOkfRuleGroupId,
@@ -98,7 +88,6 @@ import { PluginBetaBadge } from './PluginBetaBadge';
 import { notifyPluginEnabled } from './plugin-enabled-notice';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
-/** Project-scope content-rules config + a `contentRules`-patch writer. Shared by the sections. */
 function useLinterConfig() {
   const { t } = useLingui();
   const { projectConfig, projectSynced, projectBinding } = useConfigContext();
@@ -121,7 +110,6 @@ function useLinterConfig() {
   return { contentRules, bindingReady, write };
 }
 
-/** A `contentRules` patch toggling one plugin's `enabled` (dynamic key needs the cast). */
 function pluginEnabledPatch(id: LintPluginId, enabled: boolean): ConfigPatch['contentRules'] {
   return { [id]: { enabled } } as ConfigPatch['contentRules'];
 }
@@ -145,12 +133,6 @@ function PluginManageDescription({ id }: { id: LintPluginId }) {
   }
 }
 
-/**
- * Project-scope plugins management page (This project → Plugins). Toggles the
- * project's content-rule plugins on/off; the choice is committed to config.yml
- * and shared via git. Enabled plugins also appear under the Plugins sidebar
- * section with their own panel.
- */
 export function ProjectPluginsManageSection() {
   const { t } = useLingui();
   const { contentRules, bindingReady, write } = useLinterConfig();
@@ -214,18 +196,10 @@ export function ProjectPluginsManageSection() {
   );
 }
 
-/**
- * User-scope plugins management page (User → Plugins). Toggles personal,
- * device-local plugins (Themes) on/off; the choice lives in your user config
- * and is never committed to the project.
- */
 export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigBinding | null }) {
   const { t } = useLingui();
   const { userConfig } = useConfigContext();
-  // The theme plugin is user-scope (personal). Default on.
   const themeEnabled = userConfig?.appearance?.colorThemeEnabled !== false;
-  // Slidev is user-scope too, but ships OFF — the gate is `=== true`, not
-  // Themes' `!== false`.
   const slidesEnabled = userConfig?.slides?.enabled === true;
 
   return (
@@ -273,8 +247,6 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
                 toast.error(t`Failed to save theme setting`);
                 return;
               }
-              // 'theme' is the user-scope plugin's `plugin:theme` sidebar id —
-              // it owns no `contentRules` slice, so it is not in LINT_PLUGIN_META.
               if (next) notifyPluginEnabled({ pluginId: 'theme', label: t`Themes` });
             }}
             aria-label={themeEnabled ? t`Disable Themes` : t`Enable Themes`}
@@ -324,21 +296,17 @@ export function UserPluginsManageSection({ userBinding }: { userBinding: ConfigB
   );
 }
 
-/** Docs page for one plugin — panel headers link it beside their description. */
 function pluginDocUrl(id: LintPluginId): string | undefined {
   return LINT_PLUGIN_META.find((plugin) => plugin.id === id)?.docUrl;
 }
 
-/** Whether one plugin carries the Beta tag — read from the same registry the row does. */
 function pluginIsBeta(id: LintPluginId): boolean {
   return LINT_PLUGIN_META.find((plugin) => plugin.id === id)?.beta === true;
 }
 
-/** markdownlint plugin: the full-catalog rule browser. */
 export function MarkdownlintPluginSection({
   initialRuleQuery,
 }: {
-  /** Seeds the rule browser's search when the settings search jumps to a rule. */
   initialRuleQuery?: { query: string; nonce: number } | null;
 } = {}) {
   return (
@@ -378,11 +346,6 @@ export function MarkdownlintPluginSection({
   );
 }
 
-/**
- * What one OKF rule checks, in a sentence. Ids are untranslated identifiers (like
- * the plugin labels in `LINT_PLUGIN_META`); only the prose is translated — the
- * same split `PluginManageDescription` uses.
- */
 function OkfRuleDescription({ id }: { id: OkfRuleId }) {
   switch (id) {
     case 'no-wiki-links':
@@ -467,7 +430,6 @@ function OkfRuleDescription({ id }: { id: OkfRuleId }) {
   }
 }
 
-/** The heading for one group of OKF rules. */
 function OkfGroupLabel({ id }: { id: OkfRuleGroupId }) {
   switch (id) {
     case 'structure':
@@ -481,12 +443,6 @@ function OkfGroupLabel({ id }: { id: OkfRuleGroupId }) {
   }
 }
 
-/**
- * When a group's rules behave differently from the rest, say so under its heading.
- * Project rules compare files, so they cannot run against a single open document — a
- * reader watching the Problems panel while typing would otherwise read their silence
- * as a pass.
- */
 function OkfGroupNote({ id }: { id: OkfRuleGroupId }) {
   if (id !== 'project') return null;
   return (
@@ -598,20 +554,11 @@ function OkfRecommendedSkillCard({ packId, name }: { packId: string; name: strin
   );
 }
 
-/**
- * OKF plugin panel: the per-rule on/off list. The plugin's own toggle lives on the
- * Plugins manage page — the sidebar only offers this panel once the plugin is on,
- * so nothing here needs a parent-disabled state.
- *
- * A rule is on unless config says `false`, so the absent case reads as enabled and
- * only deviations are written.
- */
 export function OkfPluginSection() {
   const { t } = useLingui();
   const { contentRules, bindingReady, write } = useLinterConfig();
   const rules = contentRules?.okf?.rules;
   const enabledCount = OKF_RULE_IDS.filter((id) => isOkfRuleEnabled(rules, id)).length;
-  // Opt-in, unlike the rules: this one writes a file, so absent reads as off.
   const generateIndex = contentRules?.okf?.generate?.index === true;
   const generatedIndexSettings = useGeneratedIndexSettings();
   const generateIndexEnabled = generatedIndexSettings.status?.enabled ?? generateIndex;
@@ -622,13 +569,9 @@ export function OkfPluginSection() {
 
   function toggleGenerateIndex(next: boolean): void {
     if (next) {
-      // The config write starts generation, so the disclosure must complete before
-      // this controlled switch can move to its on state.
       setConfirmingGenerateIndex(true);
       return;
     }
-    // This key has a schema default, so `false` is the concrete off state. Unlike
-    // rule overrides, disabling never needs the patch walker's delete signal.
     void generatedIndexSettings.setEnabled(false);
   }
 
@@ -638,10 +581,6 @@ export function OkfPluginSection() {
   }
 
   function toggleRule(id: OkfRuleId, next: boolean): void {
-    // Re-enabling must send an explicit `null`, which the patch walker turns into
-    // a `deleteIn`. OMITTING the key does NOT remove it: the walker treats
-    // `undefined` as "leave alone" (deep-partial semantics), so a rule switched
-    // off would stay off forever with no way back on from this pane.
     const rules: Partial<Record<OkfRuleId, boolean | null>> = {};
     rules[id] = next ? null : false;
     if (write({ okf: { rules } })) {
@@ -685,8 +624,7 @@ export function OkfPluginSection() {
             <Label htmlFor="settings-okf-generate-index" className="text-sm font-medium">
               <Trans>Maintain index.md</Trans>
             </Label>
-            {/* States ownership plainly, because this is the one setting here
-                that writes to the user's tree rather than reporting on it. */}
+            {}
             <p className="text-sm text-muted-foreground">
               <Trans>
                 Open Knowledge maintains a navigation file named index.md in every folder that
@@ -929,16 +867,11 @@ function GeneratedIndexSettingsNotice({
   );
 }
 
-/** Normalize a mapping's authored appliesTo (string | string[] | absent) for the pill editor. */
 function appliesToList(appliesTo: FrontmatterSchemaMapping['appliesTo']): string[] {
   if (appliesTo === undefined) return [];
   return Array.isArray(appliesTo) ? appliesTo : [appliesTo];
 }
 
-/**
- * One classified pattern as a human phrase. The fallback names the raw glob
- * so the summary never claims more than the matcher does.
- */
 function AppliesToPhrase({ summary }: { summary: AppliesToPatternSummary }) {
   switch (summary.kind) {
     case 'everything':
@@ -968,7 +901,6 @@ function AppliesToPhrase({ summary }: { summary: AppliesToPatternSummary }) {
   }
 }
 
-/** The live plain-language reading of a mapping's globs, under the pills. */
 function AppliesToSummaryLine({
   file,
   appliesTo,
@@ -978,19 +910,12 @@ function AppliesToSummaryLine({
 }) {
   const { includes, excludes } = summarizeAppliesTo(appliesTo);
   const pageList = useOptionalPageList();
-  // Live count over the project's actual docs — the immediate counterpart to
-  // the server's after-the-fact zero-match warning. An authored set matching
-  // nothing (the `blog`-instead-of-`blog/**` trap) reads "0 of N" the moment
-  // it's typed. A polite status line: zero is de-emphasized rather than
-  // alarmed.
   const counted =
     pageList !== null && pageList.pages.size > 0
       ? countMatchingDocs(appliesTo, pageList.pages)
       : null;
   const zeroMatch =
     counted !== null && counted.matched === 0 && appliesToList(appliesTo).length > 0;
-  // Diagnose each authored pattern independently: a live sibling must not
-  // hide a bare folder name that still matches nothing on its own.
   const zeroMatchPatterns =
     pageList !== null ? findZeroMatchAppliesToPatterns(appliesTo, [...pageList.pages]) : [];
   const zeroMatchBareNameAuthored = zeroMatchPatterns.some((pattern) =>
@@ -1054,7 +979,6 @@ function AppliesToSummaryLine({
   );
 }
 
-/** Absent `enabled` = on — back-compat with configs written before the toggle. */
 function mappingEnabled(mapping: FrontmatterSchemaMapping): boolean {
   return mapping.enabled !== false;
 }
@@ -1079,11 +1003,6 @@ function SchemaFileRow({
   const { t } = useLingui();
   const on = mapping !== undefined && mappingEnabled(mapping);
 
-  // The Edit button is the row's ONLY way into the file. Hash nav is OK's
-  // source of truth: it activates (or re-activates) the file's tab AND closes
-  // the hash-driven Settings dialog. The one-shot intent lands the schema
-  // editor on its Fields view — a Settings open is an editing gesture,
-  // whatever the persisted Source/Fields preference.
   const openSchemaFile = () => {
     requestSchemaFieldsView(file);
     window.location.hash = hashFromAssetPath(file);
@@ -1157,17 +1076,6 @@ function SchemaFileRow({
   );
 }
 
-/**
- * Frontmatter plugin panel: a browser over every schema file in the project
- * (discovered `*.schema.json` + `.ok/schemas/*.json` + anything config.yml
- * maps). The toggle is the only control: on writes an `enabled: true` mapping
- * to `contentRules.frontmatter.schemas`, off keeps the mapping (and its
- * appliesTo) with `enabled: false`, so re-enabling restores the globs. There
- * is deliberately no way to unmap a schema from here — config-file state is an
- * internal detail, and anyone who wants the mapping gone edits config.yml.
- * The Edit button opens the file itself in the editor — field editing lives on
- * the file surface, not here.
- */
 export function FrontmatterPluginSection() {
   const { t } = useLingui();
   const { contentRules, bindingReady, write } = useLinterConfig();
@@ -1180,12 +1088,11 @@ export function FrontmatterPluginSection() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // The config channel carries every plugin's problems; show the frontmatter
-  // ones where the mappings are managed. Per-mapping problems are gated on the
-  // file still being referenced by a LIVE mapping (the server composes from
-  // the on-disk config.yml, which lags a just-committed CRDT edit by the
-  // persistence debounce). The prefix strings are the compose contract in the
-  // server's frontmatter-schemas.ts — keep in sync on either-side change.
+  /*
+   * WARN: these prefix strings are the compose contract in the server's
+   * `lint/frontmatter-schemas.ts`. Drift silently drops problems from this
+   * panel instead of failing.
+   */
   const mappedFiles = new Set(mappings.map((m) => m.file));
   const scopedProblems = (data?.configProblems ?? []).filter((p) => {
     if (p.startsWith('frontmatter schema ')) {
@@ -1207,35 +1114,12 @@ export function FrontmatterPluginSection() {
     }
   }
 
-  // One row per file; the FIRST mapping for a file is the row's binding
-  // (hand-authored duplicates keep validating, untouched).
   const files = [...new Set([...discovered, ...mappings.map((m) => m.file)])].sort((a, b) =>
     a.localeCompare(b),
   );
   const query = search.trim().toLowerCase();
   const visible = files.filter((f) => query === '' || f.toLowerCase().includes(query));
 
-  // Glob problems belong to the glob that caused them, so a pattern whose pill
-  // can carry its finding is dropped from this list — including when the search
-  // box happens to be hiding that row, since the pill is still where the
-  // finding lives.
-  //
-  // Two cases keep the list, and they are decided against the authored config
-  // rather than against what is currently rendered:
-  //
-  //   - A pattern absent from every mapping is stale. The config channel is
-  //     composed from the on-disk config.yml and lags a just-committed CRDT
-  //     edit by the persistence debounce, so a glob the author has already
-  //     deleted still has a live problem for a moment. Suppressed, or removing
-  //     a flagged glob would flash a warning about a pattern that no longer
-  //     exists on its way out.
-  //   - A pattern authored in a mapping that no pill can ever reach is listed.
-  //     A row binds to the FIRST mapping for its file (duplicates are a
-  //     supported hand-authored shape) and only mounts the glob input when that
-  //     mapping is enabled — so a second mapping's globs, or any mapping behind
-  //     a disabled first one, have nowhere to render. The server reports those
-  //     per mapping entry; dropping them would silently unvalidate docs that
-  //     are actively governed.
   const globProblemsByFile = indexGlobProblemsByFile(scopedProblems);
   const problems = scopedProblems.filter((p) => {
     const parsed = parseAppliesToGlobProblem(p);
@@ -1280,8 +1164,6 @@ export function FrontmatterPluginSection() {
       toast.error(result.errorDetail ?? t`Failed to delete ${file}`);
       return;
     }
-    // The file is gone — its mapping (if any) would only produce a broken
-    // reference, so wipe it in the same gesture.
     if (mappings.some((m) => m.file === file)) {
       writeMappings(mappings.filter((m) => m.file !== file));
     }
@@ -1298,7 +1180,6 @@ export function FrontmatterPluginSection() {
       toast.error(result.errorDetail ?? t`Failed to create the schema file`);
       return;
     }
-    // A schema someone just created is a schema they mean to use — map it on.
     writeMappings([...mappings, { file, enabled: true }]);
     setCreateOpen(false);
     setNewSchemaName('');

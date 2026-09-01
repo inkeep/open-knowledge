@@ -1,20 +1,3 @@
-/**
- * The notice a user gets when the catalog for the language they picked does not
- * arrive.
- *
- * Rendered through the real sonner toaster rather than a captured mock, because
- * the claims worth making here are user-visible ones: the notice appears, it
- * says which language failed, it offers a way to retry, and it can be sent
- * away. A call-count assertion would restate the implementation instead.
- *
- * The vitest config aliases the Lingui macros to an English passthrough, so no
- * test in this tier can prove a sentence came out translated. The language
- * NAME is a different matter — it comes from `Intl.DisplayNames`, which is the
- * platform rather than Lingui, so it is genuinely rendered in whichever locale
- * the notice resolves against. That is what makes the "still in the language
- * you were reading" claim checkable here.
- */
-
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -26,7 +9,6 @@ import {
   showLocaleLoadFailureNotice,
 } from './locale-load-failure-notice';
 
-/** How long an ordinary sonner toast lives when it names no duration of its own. */
 const SONNER_DEFAULT_LIFETIME_MS = 4_000;
 
 function renderToaster() {
@@ -39,9 +21,6 @@ afterEach(async () => {
 
 describe('showLocaleLoadFailureNotice', () => {
   test('names the language that failed, in the language still on screen', async () => {
-    // Reading Spanish, asked for Simplified Chinese, and the catalog never
-    // came. Naming it "简体中文" would tell the user in a script they may not
-    // read that a script they may not read is unavailable.
     await dynamicActivate('es');
     renderToaster();
 
@@ -52,9 +31,6 @@ describe('showLocaleLoadFailureNotice', () => {
   });
 
   test('offers an action that carries out the retry', async () => {
-    // What the real action does is reload, which no runner can survive; the
-    // e2e drives that end. What is checkable here is that the button is wired
-    // to it at all.
     const reload = vi.fn();
     renderToaster();
 
@@ -89,9 +65,6 @@ describe('showLocaleLoadFailureNotice', () => {
   });
 
   test('the notice does not take the interface away from the user', async () => {
-    // Non-blocking is the whole point: a failed language switch leaves a
-    // perfectly usable app behind it, so nothing here may trap focus or veil
-    // what is underneath.
     render(
       <>
         <Toaster closeButton />
@@ -107,24 +80,16 @@ describe('showLocaleLoadFailureNotice', () => {
   });
 
   test('outlives an ordinary message, so someone who looked away still finds out', async () => {
-    // Clicking a language and turning back to a UI that never changed, with
-    // nothing on screen saying why, is indistinguishable from the setting
-    // having silently failed to stick.
     renderToaster();
     showLocaleLoadFailureNotice({ locale: 'es', reload: () => {} });
     await screen.findByRole('button', { name: /reload/i });
 
-    // Real time rather than a fake clock: sonner starts the dismissal timer
-    // when the toast mounts, so a fake clock installed afterwards has nothing
-    // left to advance and the wait would pass for the wrong reason.
     await new Promise((resolve) => setTimeout(resolve, SONNER_DEFAULT_LIFETIME_MS + 1_000));
 
     expect(screen.queryByRole('button', { name: /reload/i })).not.toBeNull();
   });
 
   test('dismissing on success clears a notice the user never acted on', async () => {
-    // Otherwise picking a second language that works leaves a red complaint
-    // about the first one sitting over an interface that already switched.
     renderToaster();
 
     showLocaleLoadFailureNotice({ locale: 'es', reload: () => {} });
@@ -151,8 +116,6 @@ describe('showLocaleLoadFailureNotice', () => {
   });
 
   test('the language name resolves at call time, not at module load', async () => {
-    // The active locale is whatever the user is reading when the failure
-    // happens, which is not knowable when this module is first imported.
     renderToaster();
 
     showLocaleLoadFailureNotice({ locale: 'zh-Hans', reload: () => {} });

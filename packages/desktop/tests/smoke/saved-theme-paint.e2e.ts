@@ -1,9 +1,3 @@
-/**
- * Real-Electron coverage for user-global saved palettes. The fixture redirects
- * both the app home and Chromium user data, then reads a computed color from a
- * live CSS probe; checking only the theme attribute would not prove cascade.
- */
-
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

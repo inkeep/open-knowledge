@@ -1,22 +1,9 @@
-/**
- * Activity log ring-buffer.
- *
- * Captures per-transact YTextEvent.delta snapshots into Y.Map('agent-effects')
- * as a bounded 50-entry ring-buffer. Replicates to clients via standard Y.Doc
- * sync — no CC1 broadcast, no REST endpoint, no separate server-side store.
- *
- * Key format: `${sessionId}:${transactIdx}`.
- * Eviction: oldest-by-timestamp within the same paired-write drain as capture.
- * Error handling: structured JSON warn, metrics counter, dev/test throw.
- */
-
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import type * as Y from 'yjs';
 import { incrementEffectDiffCaptureFailures } from './metrics.ts';
 
 const RING_BUFFER_LIMIT = 50;
 
-/** Module-level counter for unique transactIdx values across all docs. */
 let _effectCounter = 0;
 
 /**

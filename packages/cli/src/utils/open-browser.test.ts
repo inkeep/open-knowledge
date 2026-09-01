@@ -1,12 +1,7 @@
 import { describe as _bunDescribe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 
-// Skip-on-CI gate (oven-sh/bun#11892): subprocess or git child spawns; Bun fails to reap children on ubuntu-latest GHA runners (oven-sh/bun#11892).
-// Tests run normally locally; follow-up will narrow the leak surface.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
-// The SUT does a named `import { execFile }`, which is a live ESM binding that
-// cannot be reassigned by spying on the module namespace. Mock the module and
-// dynamic-import the SUT afterwards so its `execFile` resolves to the mock.
 const execFileMock = vi.fn();
 let openBrowser: typeof import('./open-browser.ts')['openBrowser'];
 
@@ -81,11 +76,6 @@ describe('openBrowser', () => {
   });
 });
 
-// URL validation tests run in CI (and locally). These don't spawn real child
-// processes — `execFile` is fully mocked — so the Bun child-reaping issue
-// (oven-sh/bun#11892) that gates the outer describe doesn't apply here. Keep
-// this block at the top level using `_bunDescribe` directly so a regression
-// that weakens the URL allowlist is caught by the automated pipeline.
 _bunDescribe('openBrowser URL validation', () => {
   const originalPlatform = process.platform;
 
@@ -97,11 +87,6 @@ _bunDescribe('openBrowser URL validation', () => {
     Object.defineProperty(process, 'platform', { value: originalPlatform });
   });
 
-  // Each entry would otherwise survive `cmd /c start "" <url>` and reach
-  // ShellExecute on Windows. The shell-metacharacter set (& | < > ^ ( )
-  // plus quote chars) is interpreted by cmd.exe BEFORE the URL is handed
-  // to a browser, so a host or port smuggled in via --host / HOST /
-  // .ok/config.yml could otherwise be parsed as additional commands.
   const malicious = [
     'http://localhost&calc:3000',
     'http://localhost%20&%20calc:3000',

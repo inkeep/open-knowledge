@@ -1,11 +1,3 @@
-/**
- * AlignBlock — DIY renderer for the `HtmlAlignBlock` canonical descriptor
- * (`<div align="…">` GitHub-README wrapper, promoted by
- * `div-align-promoter.ts`). Children are ordinary PM-managed blocks; the
- * wrapper only contributes text alignment, so images/badges (inline
- * content) and headings center the way GitHub renders them.
- */
-
 import { cn } from '@/lib/utils';
 
 const ALIGN_CLASS: Record<string, string> = {

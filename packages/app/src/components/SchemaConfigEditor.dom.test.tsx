@@ -1,16 +1,3 @@
-/**
- * DOM tests for the schema-config editor pane: the Source/Fields toggle, its
- * mapped-file gating (Fields is offered only for schemas a live frontmatter
- * mapping references), and the mount discipline that lets the Source view
- * reflect a Fields edit.
- *
- * The system boundaries are mocked: the effective-config lookup
- * (`useProjectLintConfig`), the read-only source viewer (`TextViewer`), and
- * the per-field editor (`FrontmatterSchemaFieldEditor`). The toggle, its
- * gating logic, and the active-segment mount decision are the real code
- * under test.
- */
-
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -39,7 +26,6 @@ const VIEW_MODE_KEY = 'ok-lint-config-view-mode-v1';
 const MAPPED_SCHEMA = '.ok/schemas/doc.schema.json';
 const OTHER_MAPPED_SCHEMA = '.ok/schemas/blog.schema.json';
 const UNMAPPED_SCHEMA = '.ok/schemas/orphan.schema.json';
-/** Never rendered — only ever used to supersede-then-claim the intent slot. */
 const DRAIN_SENTINEL = '.ok/schemas/__drain__.schema.json';
 
 let mockMappedFiles: string[] = [];
@@ -106,11 +92,6 @@ function sourceSegment(): HTMLButtonElement {
 beforeEach(async () => {
   localStorage.clear();
   mockMappedFiles = [MAPPED_SCHEMA, OTHER_MAPPED_SCHEMA];
-  // The intent slot is module state, so a request a prior test recorded but
-  // never claimed would decide this test's initial view. The slot holds at most
-  // one path, so superseding it with a path nothing renders and then claiming
-  // that drains it without naming the paths tests happen to use. Nothing is
-  // subscribed at this point — afterEach's cleanup() unmounts every editor.
   const { requestSchemaFieldsView, consumeSchemaFieldsView } = await import(
     '@/lib/schema-fields-view-intent'
   );
@@ -149,8 +130,6 @@ describe('SchemaConfigEditor — Settings-open Fields intent', () => {
     requestSchemaFieldsView(MAPPED_SCHEMA);
     const first = renderEditor(MAPPED_SCHEMA);
     expect(screen.getByTestId('mock-field-editor')).toBeDefined();
-    // The intent overrides the initial view only — the persisted preference
-    // (default source) is untouched, so the next plain open is Source again.
     expect(localStorage.getItem(VIEW_MODE_KEY)).toBeNull();
     first.unmount();
     renderEditor(MAPPED_SCHEMA);
@@ -166,9 +145,6 @@ describe('SchemaConfigEditor — Settings-open Fields intent', () => {
     expect(screen.getByTestId('mock-text-viewer')).toBeDefined();
   });
 
-  // Settings is an overlay over the editor area, so Edit on the schema that is
-  // already the active target never remounts this component — the intent has to
-  // reach the live mount or the gesture leaves the user on Source.
   test('an already-mounted editor switches to Fields when the intent arrives', async () => {
     const { requestSchemaFieldsView } = await import('@/lib/schema-fields-view-intent');
     renderEditor(MAPPED_SCHEMA);
@@ -180,7 +156,6 @@ describe('SchemaConfigEditor — Settings-open Fields intent', () => {
 
     expect(screen.getByTestId('mock-field-editor').getAttribute('data-file')).toBe(MAPPED_SCHEMA);
     expect(screen.queryByTestId('mock-text-viewer')).toBeNull();
-    // Live claim is still an override, not a preference change.
     expect(localStorage.getItem(VIEW_MODE_KEY)).toBeNull();
   });
 
@@ -193,7 +168,6 @@ describe('SchemaConfigEditor — Settings-open Fields intent', () => {
     });
     expect(screen.getByTestId('mock-text-viewer')).toBeDefined();
 
-    // The navigation the request preceded still lands on Fields.
     cleanup();
     renderEditor(OTHER_MAPPED_SCHEMA);
     expect(screen.getByTestId('mock-field-editor').getAttribute('data-file')).toBe(
@@ -203,7 +177,6 @@ describe('SchemaConfigEditor — Settings-open Fields intent', () => {
 
   test('a newer request supersedes an unclaimed one so it cannot ambush a later open', async () => {
     const { requestSchemaFieldsView } = await import('@/lib/schema-fields-view-intent');
-    // First request is never claimed — nothing mounts for it.
     requestSchemaFieldsView(MAPPED_SCHEMA);
     requestSchemaFieldsView(OTHER_MAPPED_SCHEMA);
 
@@ -212,10 +185,6 @@ describe('SchemaConfigEditor — Settings-open Fields intent', () => {
     expect(screen.queryByTestId('mock-field-editor')).toBeNull();
   });
 
-  // Unmount must tear down the live subscription. A leaked listener would claim
-  // the next intent on the unmounted editor, draining the slot before the mount
-  // that follows can read it — reviving the "Edit lands on Source" bug on a
-  // second open after navigating away and back.
   test('unmount drops the live listener, so a later mount still claims the intent', async () => {
     const { requestSchemaFieldsView } = await import('@/lib/schema-fields-view-intent');
     renderEditor(MAPPED_SCHEMA).unmount();

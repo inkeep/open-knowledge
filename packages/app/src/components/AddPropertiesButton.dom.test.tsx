@@ -1,11 +1,3 @@
-/**
- * The Add-properties button doubles as the report surface for frontmatter
- * schema violations, which have no body construct to squiggle. These assert
- * the badge's observable contract: it appears only when there are problems,
- * the count reaches assistive tech through the button's accessible name (the
- * badge itself is decorative), and clicking still opens the add-property form.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,7 +12,6 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-/** Badge-relevant props; `onAddProperty` is supplied by the helper. */
 type BadgeProps = { problemCount?: number; problemMessages?: readonly string[] };
 
 async function renderButton(props: BadgeProps = {}) {
@@ -48,8 +39,6 @@ describe('AddPropertiesButton frontmatter badge', () => {
   });
 
   test('carries the count in the accessible name, not only the visual badge', async () => {
-    // The badge is aria-hidden, so the button's own name is the only channel a
-    // screen-reader user has for "this doc is missing a required property".
     await renderButton({ problemCount: 1 });
     expect(screen.getByRole('button').getAttribute('aria-label')).toMatch(
       /1 required property missing/,
@@ -62,7 +51,6 @@ describe('AddPropertiesButton frontmatter badge', () => {
   test('caps the badge label so a large count stays legible', async () => {
     await renderButton({ problemCount: 42 });
     expect(screen.getByTestId('add-properties-problem-badge').textContent).toBe('9+');
-    // The true count still reaches assistive tech uncapped.
     expect(screen.getByRole('button').getAttribute('aria-label')).toMatch(
       /42 required properties missing/,
     );
@@ -75,8 +63,6 @@ describe('AddPropertiesButton frontmatter badge', () => {
   });
 
   test('lists each missing-property message in the tooltip', async () => {
-    // The badge count says how many; the tooltip says which. Dropping the
-    // per-message list would leave only the summary header, so pin the messages.
     const user = userEvent.setup();
     await renderButton({
       problemCount: 2,
@@ -92,8 +78,6 @@ describe('AddPropertiesButton frontmatter badge', () => {
   });
 
   test('tells the user the button acts on the problems it reports', async () => {
-    // A count and a list alone read as a report. Clicking is what stages the
-    // rows, and nothing else on the surface says so.
     const user = userEvent.setup();
     await renderButton({
       problemCount: 1,

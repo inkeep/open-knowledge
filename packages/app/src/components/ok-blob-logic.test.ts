@@ -40,7 +40,6 @@ describe('nextClickLevel', () => {
   });
 });
 
-// Deterministic seeded PRNG (mulberry32) so firework tests don't rely on Math.random
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -93,7 +92,6 @@ describe('generateFireworkParticles', () => {
   });
 
   test('particles spread around the full circle — not clustered in one quadrant', () => {
-    // With 16 evenly-sliced angles, at least 4 distinct quadrants should be hit.
     const particles = generateFireworkParticles(3, { rng: mulberry32(7) });
     const quadrants = new Set<string>();
     for (const p of particles) {

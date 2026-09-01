@@ -113,22 +113,8 @@ const REPLAY_OUTBOX_DB_PREFIX = 'ok-replay-outbox';
 const ENTRY_STORE_NAME = 'entry';
 const ENTRY_KEY = 'buffer';
 
-/**
- * Deadline for one outbox operation (open + transaction). Generous relative to
- * a local IDB round-trip: this bounds a pathological stall, it is not a
- * latency budget.
- */
 const REPLAY_OUTBOX_TIMEOUT_MS = 5_000;
 
-/**
- * Thrown when an outbox operation misses {@link REPLAY_OUTBOX_TIMEOUT_MS}.
- *
- * Exported so the recycle path can tell a STALL from an IDB error — the same
- * `failureKind: 'timeout' | 'rejected'` split `ClientPersistenceClearTimeoutError`
- * drives on the sibling clear. They call for different operator responses: an
- * error is a failed operation, a timeout means the storage layer is wedged and
- * the recovery it was gating is stuck behind it.
- */
 export class ReplayOutboxTimeoutError extends Error {
   constructor(operation: string, docName: string) {
     super(`[replay-outbox] ${operation} timed out after ${REPLAY_OUTBOX_TIMEOUT_MS}ms: ${docName}`);
@@ -154,57 +140,27 @@ function withOutboxTimeout<T>(operation: string, docName: string, work: Promise<
   });
 }
 
-/**
- * Whether this engine can carry a durable replay buffer at all. `databases()`
- * is the gate for every operation, not just the reads — see the module note.
- */
 function isReplayOutboxSupported(): boolean {
   return typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function';
 }
 
-/**
- * Persisted shape of one doc's unsynced-edit buffer. Mirrors the in-memory
- * `bufferedUpdates` value, except `fullState` is always present: the outbox is
- * only written when content-level replay is possible (over-cap docs, whose
- * `fullState` is dropped, stay RAM-only).
- */
 export interface ReplayOutboxEntry {
   readonly delta: Uint8Array;
   readonly fullState: Uint8Array;
 }
 
-/**
- * Addresses ONE outbox record. Object-literal form for the reason
- * `CreateClientPersistenceArgs` in `client-persistence.ts` gives for the
- * sibling IDB name: the fields are indistinguishable to the type system, so
- * positionally a swap compiles cleanly and silently produces the wrong
- * database name — here defeating the cross-project defense.
- */
 export interface ReplayOutboxKey {
   readonly branch: string;
   readonly docName: string;
-  /** See the module header. `null` only on hosts the origin already isolates. */
   readonly namespace: string | null;
 }
 
-/**
- * `<prefix>[:<project digest>]:<branch>:<docName>`. The project segment is
- * ABSENT for a null namespace, which is what keeps the web-host name
- * byte-identical to its pre-scoping form.
- *
- * The project component is what keeps two windows of DIFFERENT projects off
- * one database — see the `namespace` note in the module header. It is applied
- * by `scopedStorageKey` to the PREFIX rather than appended to the whole name,
- * so no web-host record is orphaned by this change.
- */
 function outboxDbName({ branch, docName, namespace }: ReplayOutboxKey): string {
   return `${scopedStorageKey(REPLAY_OUTBOX_DB_PREFIX, namespace)}:${branch}:${docName}`;
 }
 
 function openOutboxDb(dbName: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    // Versionless open so the store-creation upgrade only runs when the DB is
-    // first created — matching y-indexeddb's own attach pattern.
     const req = indexedDB.open(dbName);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -217,47 +173,16 @@ function openOutboxDb(dbName: string): Promise<IDBDatabase> {
   });
 }
 
-/**
- * Whether an outbox DB already exists, WITHOUT creating one. `indexedDB.open`
- * would create+upgrade a missing DB, littering an empty outbox on every normal
- * doc open; gating reads/consumes on this keeps that from happening. Engines
- * without `indexedDB.databases()` (pre-Baseline) report "absent" so durable
- * recovery degrades to RAM-only rather than pollute storage.
- *
- * `databases()` enumerates ALL origin databases and runs on the first `synced`
- * of a doc open (via `readReplayOutboxEntry`), so its cost scales with the
- * origin's total database count, not just outbox DBs. The consumed-but-kept
- * empty outboxes (see the module note) add to that count per recycled
- * `(namespace, branch, docName)`, so it scales with projects opened as well as
- * docs recycled — N worktrees sharing a branch and a doc path leave N orphans
- * where they once left one. Still dwarfed by the per-epoch y-indexeddb stores
- * this call already lists, so retaining them remains a storage-hygiene cost
- * rather than an enumeration-cost regression that would justify racing a
- * `deleteDatabase` against a concurrent reopen — but the project multiplier is
- * the term to re-check if that ever stops holding.
- */
 async function outboxDbExists(dbName: string): Promise<boolean> {
   if (!isReplayOutboxSupported()) return false;
   const dbs = await indexedDB.databases();
   return dbs.some((d) => d.name === dbName);
 }
 
-/**
- * Persist one doc's unsynced-edit buffer. Called during the mismatch recycle,
- * BEFORE `clearData()`, so a crash while the y-indexeddb store is being wiped
- * still leaves the buffer recoverable.
- *
- * Resolves `true` when the record committed and a later reopen can read it
- * back, `false` when this engine cannot carry a durable buffer at all. The
- * caller uses that to decide whether a durable copy backs its RAM buffer.
- */
 export async function writeReplayOutboxEntry(
   key: ReplayOutboxKey,
   entry: ReplayOutboxEntry,
 ): Promise<boolean> {
-  // No `databases()` means no reader will ever find this record: writing it
-  // would strand a full doc-state payload in storage with nothing able to
-  // consume or reclaim it. Report RAM-only instead.
   if (!isReplayOutboxSupported()) return false;
   const { docName } = key;
   const dbName = outboxDbName(key);
@@ -276,13 +201,6 @@ export async function writeReplayOutboxEntry(
           tx.oncomplete = () => resolve();
           tx.onerror = () => reject(tx.error);
           tx.onabort = () => reject(tx.error ?? new Error('replay-outbox write aborted'));
-          // Explicitly commit rather than waiting for the auto-commit that
-          // fires when the event loop next has no pending requests. This write
-          // exists to survive a tab death in the recycle window, and that death
-          // can land before the idle turn arrives, so starting the commit now
-          // shortens the window it has to survive. Handlers are attached first
-          // so none can be missed. Guarded — not every engine implements the
-          // (Baseline) method. Matches the flush path in client-persistence.ts.
           if (typeof tx.commit === 'function') tx.commit();
         });
         return true;
@@ -293,10 +211,6 @@ export async function writeReplayOutboxEntry(
   );
 }
 
-/**
- * Read a doc's persisted buffer, or null when none exists (normal open, or a
- * consumed outbox). Never creates a DB for a doc that has no outbox.
- */
 export async function readReplayOutboxEntry(
   key: ReplayOutboxKey,
 ): Promise<ReplayOutboxEntry | null> {
@@ -318,8 +232,6 @@ export async function readReplayOutboxEntry(
         });
         if (value === undefined || value === null) return null;
         const record = value as { delta?: unknown; fullState?: unknown };
-        // A truncated/foreign record must read as "nothing to replay" rather
-        // than feed garbage bytes into the Y.Doc apply.
         if (!(record.delta instanceof Uint8Array) || !(record.fullState instanceof Uint8Array)) {
           return null;
         }
@@ -331,34 +243,6 @@ export async function readReplayOutboxEntry(
   );
 }
 
-/**
- * Consume a doc's buffer by deleting its record, and report whether THIS
- * caller was the one that removed a live record.
- *
- * That boolean is the cross-tab exactly-once claim. Tabs resolving the SAME
- * namespace share one `(namespace, branch, docName)` record, so a `false`
- * return USUALLY means another such tab consumed it and owns the replay —
- * re-applying on top would not be idempotent (see `replayBufferedContent`'s
- * surface attribution). Not always: this claims the KEY, not the record, so a
- * stale detached consume from an earlier discard can also take it, in which
- * case no tab owns the edit. `discardBufferedUpdate`'s docblock has that race
- * and why it is accepted. Standing down is right either way — this caller
- * cannot tell the cases apart, and applying against a real winner does not
- * duplicate the edit, it REVERTS it: once the winner's content is on the
- * server the surface attribution inverts, so the splice puts this tab's stale
- * pre-recycle bytes back over the recovery.
- *
- * The count and the delete run in ONE `readwrite` transaction and IndexedDB
- * serializes overlapping readwrite transactions across connections, so the
- * pair is an atomic compare-and-claim, not a check-then-act.
- *
- * A window of a DIFFERENT project must never lose this claim: its buffered
- * edit belongs to a different document that merely shares a path and a branch
- * name. That is what the project component guarantees.
- *
- * Idempotent for callers that only want the record gone (consuming an absent
- * record resolves `false` rather than throwing).
- */
 export async function consumeReplayOutboxEntry(key: ReplayOutboxKey): Promise<boolean> {
   if (!isReplayOutboxSupported()) return false;
   const { docName } = key;

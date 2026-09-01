@@ -1,54 +1,17 @@
 #!/usr/bin/env node
-/**
- * Bounded, allowlist-gated retry for the release packaging invocations.
- *
- * electron-builder shells out to signing, notarization, and tool-download
- * steps that it will not retry itself: each `codesign --timestamp` is a single
- * un-retried call, and app-builder's download path aborts on one dropped
- * connection. A dropped response therefore aborts the whole build, leaving no
- * durable artifact and stranding the release as a draft. The only lever
- * available is re-running the whole invocation.
- *
- * CRITICAL: retry is gated on a transient-signature allowlist matched against
- * the captured output. Anything NOT on the allowlist — an expired or invalid
- * cert, a notarization REJECTION, an entitlements error, a developer-agreement
- * 403, or a real build/compile error — fails LOUD on the first attempt and is
- * never masked by a blind retry. A retry that can hide a real failure is worse
- * than no retry at all, because it converts a clear red into a slow flake.
- *
- * Usage:
- *   node retry-transient.mjs --label "electron-builder (linux)" -- pnpm exec electron-builder --linux
- *   node retry-transient.mjs --label "…" --shell -- 'pnpm run build && pnpm exec electron-builder --mac'
- *
- * Exit code is the command's own on success, or 1 when retries are refused or
- * exhausted.
- */
 
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
 
-/**
- * Extended-regex allowlist of transient infra-flake signatures, matched
- * case-insensitively against combined stdout+stderr. Keep this list narrow:
- * every entry must be an out-of-our-control infra flake, never a signature a
- * real cert/notary/entitlements/build error could emit.
- *
- * The signing/notarization entries are macOS-only in practice but stay in the
- * shared list — a signature that cannot match on a platform costs nothing, and
- * per-platform lists would drift.
- */
 export const TRANSIENT_SIGNATURES = [
-  // Apple TSA + notarization round-trips.
   'A timestamp was expected but was not found',
   'The timestamp service is not available',
   'HTTPError\\(statusCode: nil',
   'The request timed out',
   'NSURLErrorDomain Code=-100[13459]',
   'kCFErrorDomainCFNetwork',
-  // Generic transport failures, including the dropped tool/runtime downloads
-  // that abort packaging on every platform.
   'The network connection was lost',
   'Could not connect to the server',
   'ECONNRESET',
@@ -57,7 +20,6 @@ export const TRANSIENT_SIGNATURES = [
   'socket hang up',
   'Client network socket disconnected',
   'unexpected EOF',
-  // Upstream service degradation (GitHub asset hosts, Azure signing endpoint).
   '502 Bad Gateway',
   '503 Service Unavailable',
   '504 Gateway Time-?out',
@@ -68,21 +30,14 @@ export const TRANSIENT_SIGNATURES = [
 
 const TRANSIENT_RE = new RegExp(TRANSIENT_SIGNATURES.join('|'), 'i');
 
-/** True when the captured output carries a known infra-flake signature. */
 export function isTransient(output) {
   return TRANSIENT_RE.test(String(output ?? ''));
 }
 
-/** Matches the previous in-workflow behavior: 30s, then 60s. */
 export function backoffSeconds(attempt) {
   return attempt * 30;
 }
 
-/**
- * Cap on retained output. electron-builder is verbose and the whole point of
- * retaining anything is the classification grep, which only ever needs the
- * failure text near the end.
- */
 const MAX_CAPTURE_BYTES = 2_000_000;
 
 function appendCapped(buffer, chunk) {
@@ -90,11 +45,6 @@ function appendCapped(buffer, chunk) {
   return next.length > MAX_CAPTURE_BYTES ? next.slice(next.length - MAX_CAPTURE_BYTES) : next;
 }
 
-/**
- * Run once, streaming output to this process's stdout/stderr while capturing
- * it for classification. Streaming is not optional: a packaging build that
- * only surfaced its log after exiting would make a hung build undebuggable.
- */
 function runOnce(command, { shell = false, spawnFn = spawn } = {}) {
   return new Promise((resolve) => {
     const child = shell
@@ -123,13 +73,6 @@ function runOnce(command, { shell = false, spawnFn = spawn } = {}) {
   });
 }
 
-/**
- * Outcome shapes, all reported to the caller rather than thrown, so the CLI
- * layer owns process exit and the tests can assert without catching:
- *   { ok: true,  attempts }                       — succeeded
- *   { ok: false, reason: 'non-transient', … }     — refused to retry
- *   { ok: false, reason: 'exhausted', … }         — retried and still failed
- */
 export async function runWithRetry({
   command,
   label = 'command',
@@ -196,10 +139,6 @@ export function parseArgs(argv) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  // `process.exitCode`, never `process.exit()`: the latter discards whatever is
-  // still queued on stdout when stdout is a pipe, which is exactly how Actions
-  // captures step output. This module streams the whole packaging log, so a
-  // truncated tail would drop the failure text a reader needs most.
   try {
     const result = await runWithRetry(parseArgs(process.argv));
     process.exitCode = result.ok ? 0 : 1;

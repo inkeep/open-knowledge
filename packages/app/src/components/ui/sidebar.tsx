@@ -20,33 +20,6 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = '18rem';
 const SIDEBAR_WIDTH_ICON = '3rem';
 const SIDEBAR_ID = 'app-file-sidebar';
-// 14.625rem = 234px at 16px root font. NOTE: left-edge traffic-light
-// clearance is now guaranteed STRUCTURALLY by the non-shrinkable reserve
-// spacer in FileSidebar's SidebarHeader (width = `--ok-titlebar-reserve-left`)
-// — the action cluster can no longer slide under the OS traffic lights
-// regardless of this constant or how many buttons the cluster holds. This
-// value now just sets a comfortable narrow default with SYMMETRIC toolbar
-// spacing in Electron mode: the gap from the
-// macOS green traffic light's right edge to the Search icon's left
-// edge equals the gap from the New Folder icon's right edge to the
-// rail's left edge (always 8px because both are anchored to
-// sidebar_width with matching offsets: rail at -8 from container
-// right, last icon at -16 from container right via SidebarHeader's
-// p-2).
-//
-// The exact green right edge is empirically ~86px (not the textbook
-// 22 + 3×14 + 2×8 = 80 that Big Sur HIG would predict). Reasons it
-// drifts wider than spec: anti-aliasing halos, Electron's hit-region
-// padding around each button, and macOS-version-specific size tweaks
-// (Sonoma slightly larger than Big Sur). With green right ≈ 86 and
-// 4-icon cluster of 124px (4×28 size-7 + 3×4 gap-1), the formula
-// becomes:
-//   - Search_left = sidebar_width − 16 (header p-2) − 124 = W − 140
-//   - For 8px left gap: W = 8 + 86 + 140 = 234px
-// Anchored to fixed-pixel OS chrome geometry — the rem unit only stays
-// correct at 16px root font. The empirical 86px constant is locked to
-// macOS Sonoma+; if min-supported macOS shifts (currently 10.15 minimum)
-// and traffic-light dimensions change again, retune.
 const MIN_SIDEBAR_WIDTH = '14.625rem';
 const MAX_SIDEBAR_WIDTH = '32rem';
 const SIDEBAR_WIDTH_COOKIE_NAME = 'sidebar_width';
@@ -80,10 +53,6 @@ function getInitialSidebarWidth(defaultWidth: string) {
 
   if (!savedWidth) return defaultWidth;
 
-  // `decodeURIComponent` throws URIError on malformed percent-encoding
-  // (e.g. `%`, `%ZZ`, truncated `%E0%A4`). A corrupt or attacker-set cookie
-  // would otherwise crash the editor on first render — this runs in the
-  // SidebarProvider's `useState` initializer, before any error boundary.
   let decodedWidth: string;
   try {
     decodedWidth = decodeURIComponent(savedWidth);
@@ -133,18 +102,6 @@ function SidebarProvider({
   const open = openProp ?? _open;
 
   const setOpen: OpenHandler = (value) => {
-    // Resolve the updater against the live ref, not the render-bound `open`.
-    // This is typed `Dispatch<SetStateAction<boolean>>` and handed to consumers
-    // through context, so the functional form owes them React's own contract:
-    // the updater receives the LATEST value. Resolving against the captured
-    // `open` breaks that for any caller holding a stale closure, including the
-    // ⌥⌘S listener below, which only re-subscribes once the passive effect
-    // phase flushes. The window is far narrower than the doc-panel toggle's
-    // equivalent, because this writes React state directly instead of
-    // round-tripping through the panel library's `onResize` — narrow enough
-    // that a jsdom test cannot observe it at all, so there is no pin here. The
-    // ref is safe to read regardless: its layout effect runs before any passive
-    // effect, so it is never staler than `open`.
     const openState = typeof value === 'function' ? value(openRef.current) : value;
     if (setOpenProp) {
       setOpenProp(openState);
@@ -158,8 +115,6 @@ function SidebarProvider({
     setOpen((prev) => !prev);
   }
 
-  // Live ref so FileTree's layoutEffect-driven callback ref observes the
-  // latest open value even when the closure-captured value is stale.
   const openRef = React.useRef(open);
   React.useLayoutEffect(() => {
     openRef.current = open;
@@ -172,8 +127,6 @@ function SidebarProvider({
     setShowPushPulse(true);
   }
 
-  // Re-resolve on threshold crossing via matchMedia (fires exactly once per
-  // boundary crossing — no debounce needed).
   React.useEffect(() => {
     const mql = window.matchMedia(`(min-width: ${LEFT_COLLAPSE_THRESHOLD}px)`);
     const onChange = () => {
@@ -187,9 +140,6 @@ function SidebarProvider({
     return () => mql.removeEventListener('change', onChange);
   }, [embeddedHost]);
 
-  // Focus safety: when the sidebar collapses, move focus to the trigger
-  // if focus was inside the sidebar. useLayoutEffect so focus moves
-  // before the browser paints the collapsed state.
   React.useLayoutEffect(() => {
     if (open) return;
     const sidebarEl = document.getElementById(SIDEBAR_ID);
@@ -198,24 +148,11 @@ function SidebarProvider({
     trigger?.focus();
   }, [open]);
 
-  // ESC dismisses the sidebar at below-threshold / embedded widths. Run in
-  // CAPTURE phase on window so we observe open-layer DOM state BEFORE Radix's
-  // DismissableLayer (capture phase on document) flips data-state.
   React.useEffect(() => {
     if (partition === 'above' || !open) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       if (isOverlayLayerOpen()) return;
-      // Escape inside a form control belongs to that control — it is where
-      // Escape carries a field-local meaning (revert, clear, cancel the edit),
-      // and the agent composer's cancel-the-turn binding lives on one. Capture
-      // phase means this runs before the field's own handler, so
-      // `defaultPrevented` is always false here and the target is the only
-      // available signal.
-      //
-      // contentEditable is deliberately NOT included. The document editor is
-      // this app's main work surface, it binds no Escape of its own, and
-      // dismissing chrome from it is the intended behavior.
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
         return;
@@ -227,9 +164,6 @@ function SidebarProvider({
     // biome-ignore lint/correctness/useExhaustiveDependencies: setOpen is render-bound; partition + open gate the subscription lifecycle
   }, [partition, open, setOpen]);
 
-  // Web-mode ⌥⌘S toggle — mirrors the Electron accelerator. Gated to
-  // non-Electron hosts (native View menu owns it under Electron).
-  // event.code (not event.key) survives the macOS Option dead-key glyph.
   React.useEffect(() => {
     if (typeof window !== 'undefined' && window.okDesktop != null) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -442,18 +376,6 @@ function SidebarRail({
         'group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full hover:group-data-[collapsible=offcanvas]:bg-sidebar',
         '[[data-side=left][data-collapsible=offcanvas]_&]:-right-2',
         '[[data-side=right][data-collapsible=offcanvas]_&]:-left-2',
-        // variant="inset" gives the sibling SidebarInset `m-2 rounded-xl` —
-        // 8px margin from the wrapper plus a 12px border-radius. The
-        // canvas's STRAIGHT vertical edge (where a 2px line can run
-        // flush against it) starts 20px below the wrapper's top, not
-        // 8px: the first 12px is the rounded-corner curve. Same on the
-        // bottom. Constrain the hover indicator (the `after:` 2px line)
-        // to `inset-y-5` (20px) so it starts/ends exactly where the
-        // canvas's straight edge begins/ends — matching the visual
-        // anchor the click-and-drag state already lands on. `inset-y-2`
-        // (just the margin) leaves the line extending into the rounded-
-        // corner zone where the canvas isn't rectangular, which reads as
-        // an extra line floating above the panel.
         'md:group-data-[variant=inset]:after:inset-y-5',
         className,
       )}
@@ -742,7 +664,6 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<'div'> & {
   showIcon?: boolean;
 }) {
-  // Random width between 50 to 90%.
   const [width] = React.useState(() => {
     return `${Math.floor(Math.random() * 40) + 50}%`;
   });

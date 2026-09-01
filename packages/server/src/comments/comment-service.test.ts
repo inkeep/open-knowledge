@@ -31,12 +31,10 @@ const ORIGINAL = 'The rollout is scheduled for Q3. We expect minimal downtime.';
 let store: CommentThreadStore;
 let index: CommentIndex;
 let bodies: Map<string, string>;
-/** Frontmatter records per doc — what a property thread re-finds against. */
 let frontmatter: Map<string, Record<string, unknown>>;
 let clock: number;
 let ids: number;
 let svc: CommentService;
-/** Document reads, counted so the dispatch path can assert it does not double-read. */
 let docBodyReads: number;
 
 beforeEach(async () => {
@@ -112,7 +110,6 @@ describe('CommentService — create / read / list', () => {
 
     const all = await svc.listThreads();
     expect(all.map((m) => m.docName).sort()).toEqual(['notes/rollout', 'other/doc']);
-    // still scopes correctly when asked for one doc
     expect(await svc.listThreads('other/doc')).toHaveLength(1);
   });
 
@@ -131,7 +128,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   test('anchors by quote when the caller has no body offsets', async () => {
-    // The rich-text editor only has ProseMirror positions, so it sends words.
     const meta = await svc.createThread({
       docName: 'notes/rollout',
       quote: 'minimal downtime',
@@ -143,10 +139,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   test('matches a passage the editor rendered without its markdown syntax', async () => {
-    // A selection spanning a heading and a list item arrives as the editor
-    // renders it — no "##", no "1.", blocks joined by a newline — while the body
-    // still carries all of it. Only syntax and whitespace may differ; the words
-    // must still match exactly.
     bodies.set('notes/steps', '## Steps\n\n1. Heat oven to 425F.\n2. Toss the sweet potato.');
     const meta = await svc.createThread({
       docName: 'notes/steps',
@@ -155,15 +147,11 @@ describe('CommentService — create / read / list', () => {
       body: 'how hot?',
     });
     expect(meta.state).toBe('anchored');
-    // the resolved range covers the real source text, markers and all
     const body = bodies.get('notes/steps') ?? '';
     expect(body.slice(meta.anchor.start, meta.anchor.end)).toBe('Steps\n\n1. Heat oven to 425F.');
   });
 
   test('anchors a passage that starts after a bold run inside a list item', async () => {
-    // The reported 400: the source line is "- **Peanut sauce:** 3 tbsp ...", so
-    // the selected words are not a literal substring of the body — the bold
-    // markers sit inside the passage.
     bodies.set(
       'recipes/stir-fry',
       '## Ingredients\n\n- 2 tbsp neutral oil\n- **Peanut sauce:** 3 tbsp peanut butter, water to loosen\n',
@@ -182,9 +170,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   test('anchors a selection dragged across a language-tagged code block', async () => {
-    // The reported 400: a fence's backticks were already elastic but the info
-    // string after them was not, so every selection crossing into or out of a
-    // tagged code block died on the `ts`.
     bodies.set(
       'specs/language',
       'Add `appearance.language` to `ConfigSchema`:\n\n```ts\nlanguage: z\n  .optional(),\n```\n\nAcceptance: the leaf validates.',
@@ -197,13 +182,10 @@ describe('CommentService — create / read / list', () => {
     });
     expect(meta.state).toBe('anchored');
     const body = bodies.get('specs/language') ?? '';
-    // The stored range covers the real source, fence and all.
     expect(body.slice(meta.anchor.start, meta.anchor.end)).toContain('```ts');
   });
 
   test('anchors a selected table row', async () => {
-    // Picking a row hands over the cell texts with the pipes and padding gone,
-    // so the row is not a literal substring of the source line.
     bodies.set(
       'notes/freezing',
       '| Method | Temperature | Hold time |\n| --- | --- | --- |\n| 1 | -4F or below | >= 168 hours |\n| 2 | -31F or below | >= 15 hours |',
@@ -256,10 +238,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   test('listing threads reads no files at all', async () => {
-    // The app refetches the whole project on every mutation and every push
-    // notification, so a per-thread file read here made one click cost O(every
-    // comment ever made). The index holds the threads; this pins that it is
-    // actually what answers.
     await makeThread('minimal downtime');
     await makeThread('Q3');
     const reads = vi.spyOn(store, 'readMeta');
@@ -273,8 +251,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   test('a mutation is visible to the very next list', async () => {
-    // The other half of the trade: reads never hit disk, so a write that failed
-    // to refresh the index would serve the pre-mutation state indefinitely.
     const { threadId } = await makeThread();
     await svc.editComment(threadId, 'revised ask');
     await svc.resolve(threadId);
@@ -302,9 +278,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   test('prepareDispatch reads the document once, not once per use', async () => {
-    // The re-find and the repeated-quote check both want the same body. Reading
-    // it twice is invisible in behaviour and doubles the cost of a batch, which
-    // runs this sequentially per thread.
     const { threadId } = await makeThread();
     docBodyReads = 0;
     await svc.prepareDispatch(threadId);
@@ -320,9 +293,6 @@ describe('CommentService — create / read / list', () => {
   });
 
   describe('a repeated quote resolves to the occurrence the caller selected', () => {
-    // Two identical sentences under different headings — the case where taking
-    // the first match anchors the comment to a passage nobody picked, and the
-    // create-time context widening then cements it with nothing flagged.
     const REPEATED = [
       '## Rollout',
       'We will ship with minimal downtime.',
@@ -347,8 +317,6 @@ describe('CommentService — create / read / list', () => {
     }
 
     test('the context around the selection picks the second one', async () => {
-      // Rendered text, as the editor would capture it — no `##`, which is
-      // exactly why the scoring has to tolerate a partial match.
       const meta = await commentOnRepeat({ prefix: 'Rollback\nWe will ship with ' });
       expect(meta.anchor.start).toBe(SECOND);
     });
@@ -360,16 +328,11 @@ describe('CommentService — create / read / list', () => {
     });
 
     test('no context still lands on the first occurrence', async () => {
-      // Nothing better to go on — the previous behavior, now the fallback
-      // rather than the rule.
       const meta = await commentOnRepeat({});
       expect(meta.anchor.start).toBe(REPEATED.indexOf('minimal downtime'));
     });
 
     test('the widened context describes the passage that was actually chosen', async () => {
-      // The failure this guards is silent: a wrong pick produces a perfectly
-      // valid, unique anchor, so only the stored context reveals which passage
-      // the thread really points at.
       const meta = await commentOnRepeat({ prefix: 'Rollback\nWe will ship with ' });
       expect(meta.anchor.prefix).toContain('Rollback');
       expect(meta.anchor.prefix).not.toContain('Rollout');
@@ -387,14 +350,10 @@ describe('CommentService — edit / resolve / reopen', () => {
     expect(meta.state).toBe('resolved');
     meta = await svc.reopen(threadId);
     expect(meta.state).toBe('anchored');
-    // The comment survives the round trip; only state moved.
     expect(meta.latestComment).toBe('still right?');
   });
 
   test('reopening re-checks the anchor rather than assuming it is still there', async () => {
-    // `resolved` does not preserve what the anchor state was underneath it, so
-    // reopening has to re-establish it — otherwise a thread closed while
-    // orphaned would reopen claiming to be anchored.
     const { threadId } = await makeThread();
     await svc.resolve(threadId);
     bodies.set('notes/rollout', 'The rollout is scheduled for Q3. All clear now.');
@@ -438,8 +397,6 @@ describe('CommentService — deleteDoc (document deleted)', () => {
   });
 
   test('the threads are gone from disk, not just the index', async () => {
-    // The index is a cache rebuilt from disk at boot, so dropping only the
-    // cached entry would resurrect every deleted thread on the next restart.
     const { threadId } = await makeThread();
     await svc.deleteDoc('notes/rollout');
 
@@ -448,10 +405,6 @@ describe('CommentService — deleteDoc (document deleted)', () => {
   });
 
   test('a deleted doc takes its queued comments out of the batch with it', async () => {
-    // The reason this matters: a thread on a missing document reads as a
-    // HEALTHY anchor — the re-find bails out when the body cannot be read — so
-    // left in the queue it would be dispatched with `anchorLost: false`,
-    // telling an agent to edit a document that no longer exists.
     const start = ORIGINAL.indexOf('minimal downtime');
     await svc.createThread({
       docName: 'notes/rollout',
@@ -470,9 +423,6 @@ describe('CommentService — deleteDoc (document deleted)', () => {
 
 describe('CommentService — refindDoc (document settled)', () => {
   test('deleting a commented passage orphans the thread without anyone asking', async () => {
-    // The gap this closes: state used to refresh only when a comment was queued
-    // or sent, so a deleted passage left the comment looking healthy — highlight
-    // silently gone, card unchanged — until you tried to send it.
     const { threadId } = await makeThread();
     bodies.set('notes/rollout', 'The rollout is scheduled for Q3. All clear now.');
 
@@ -491,8 +441,6 @@ describe('CommentService — refindDoc (document settled)', () => {
   });
 
   test('an unchanged document reports no change and writes nothing', async () => {
-    // This runs on every settle of every document, so the steady state has to
-    // be free. A write here would mean one per thread per keystroke burst.
     await makeThread();
     const writes = vi.spyOn(store, 'update');
 
@@ -501,8 +449,6 @@ describe('CommentService — refindDoc (document settled)', () => {
   });
 
   test('a passage that merely moved is left alone', async () => {
-    // Position is a hint, not authority. Re-capturing it on every settle would
-    // be a write per thread for text that is still exactly where the words say.
     await makeThread();
     bodies.set('notes/rollout', `Heads up: dates may slip. ${ORIGINAL}`);
     const writes = vi.spyOn(store, 'update');
@@ -512,8 +458,6 @@ describe('CommentService — refindDoc (document settled)', () => {
   });
 
   test('a doc with no threads never touches the document', async () => {
-    // Every settle of every document reaches this, including the vast majority
-    // that carry no comments at all.
     await makeThread();
     docBodyReads = 0;
 
@@ -522,17 +466,7 @@ describe('CommentService — refindDoc (document settled)', () => {
   });
 
   test('editing the anchored passage re-captures the quote the panel shows', async () => {
-    // The reported gap: the highlight follows an edited passage live (bracket
-    // recovery), but this pass kept only the anchored/orphaned bit — so the
-    // card's quote named text no longer in the document until some later
-    // dispatch re-found. A rewritten quote is user-visible state: persist it
-    // and say so, so clients refetch.
-    // Mid-document, so both stored brackets are substantial — a quote at the
-    // very end gets a one-character suffix ("."), which is legitimately too
-    // ambiguous for the recovery to accept.
     const { threadId } = await makeThread('scheduled');
-    // Edit INSIDE the passage: the quote is no longer literal, but the stored
-    // context still brackets it.
     bodies.set('notes/rollout', ORIGINAL.replace('scheduled', 'penciled in'));
 
     expect(await svc.refindDoc('notes/rollout')).toBe(true);
@@ -559,8 +493,8 @@ describe('CommentService — refindOnLoad', () => {
     const meta = await svc.refindOnLoad(threadId);
 
     expect(meta.state).toBe('anchored');
-    expect(meta.anchor.start).not.toBe(anchor.start); // hint moved
-    expect(meta.anchor.exact).toBe('minimal downtime'); // and still the same words
+    expect(meta.anchor.start).not.toBe(anchor.start);
+    expect(meta.anchor.exact).toBe('minimal downtime');
   });
 
   test('orphans explicitly when the quoted text is gone', async () => {
@@ -570,7 +504,6 @@ describe('CommentService — refindOnLoad', () => {
     const meta = await svc.refindOnLoad(threadId);
     expect(meta.state).toBe('orphaned');
 
-    // idempotent: a second load while still gone reports the same thing
     expect((await svc.refindOnLoad(threadId)).state).toBe('orphaned');
   });
 
@@ -586,7 +519,7 @@ describe('CommentService — refindOnLoad', () => {
   test('skips resolved threads', async () => {
     const { threadId } = await makeThread();
     await svc.resolve(threadId);
-    bodies.set('notes/rollout', 'gone'); // would orphan if it ran
+    bodies.set('notes/rollout', 'gone');
     const meta = await svc.refindOnLoad(threadId);
     expect(meta.state).toBe('resolved');
   });
@@ -596,7 +529,7 @@ describe('CommentService — re-placement and dispatch queue', () => {
   test('replaceAnchor re-anchors an orphaned thread', async () => {
     const { threadId } = await makeThread();
     bodies.set('notes/rollout', 'Rollout moved to Q4. We expect minimal downtime still.');
-    await svc.refindOnLoad(threadId); // still finds "minimal downtime"; force orphan instead:
+    await svc.refindOnLoad(threadId);
     bodies.set('notes/rollout', 'Totally different text about nothing.');
     let meta = await svc.refindOnLoad(threadId);
     expect(meta.state).toBe('orphaned');
@@ -621,9 +554,8 @@ describe('CommentService — re-placement and dispatch queue', () => {
     bodies.set('notes/rollout', 'nothing to see here');
     const res = await svc.queueForDispatch(threadId);
     expect(res.orphaned).toBe(true);
-    expect(res.meta.queued).toBe(true); // stays IN the queue
-    expect(res.meta.state).toBe('orphaned'); // but blocked
-    // and the same is true when read back, not just in the return value
+    expect(res.meta.queued).toBe(true);
+    expect(res.meta.state).toBe('orphaned');
     const stored = await svc.readThread(threadId);
     expect(stored.queued).toBe(true);
     expect(stored.state).toBe('orphaned');
@@ -646,16 +578,12 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
     expect(res.payload.instruction).toBe('still accurate?');
     expect(res.payload.passage.exact).toBe('minimal downtime');
     expect(res.payload.anchorLost).toBe(false);
-    // queued while it is out for delivery, not yet resolved
     expect(res.meta.queued).toBe(true);
     expect(res.meta.state).toBe('anchored');
   });
 
   test('prepare sends the revised comment, not the text it replaced', async () => {
-    // Dispatch must carry the revision, not the text it replaced — handing an
-    // agent the opening ask would have it act on words the reviewer deliberately
-    // rewrote.
-    const { threadId } = await makeThread(); // opens with "still accurate?"
+    const { threadId } = await makeThread();
     await svc.editComment(threadId, 'actually: cite the SLA');
 
     const instruction = (await svc.prepareDispatch(threadId)).payload.instruction;
@@ -677,8 +605,6 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
 
     expect(meta.state).toBe('resolved');
     expect(meta.queued).toBe(false);
-    // closing clears the queue in the same write, so a crash between the two
-    // cannot leave a resolved thread still sitting in the batch
     expect(await svc.readThread(threadId)).toMatchObject({
       state: 'resolved',
       queued: false,
@@ -690,11 +616,9 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
     bodies.set('notes/rollout', 'nothing to see here');
     const res = await svc.prepareDispatch(threadId);
 
-    // sent by default — the payload carries the quoted words, not a stale offset
     expect(res.payload.anchorLost).toBe(true);
     expect(res.payload.passage.exact).toBe('minimal downtime');
     expect(res.payload.instruction).toBe('still accurate?');
-    // the loss is still recorded on the thread, so re-placement stays offerable
     expect(res.meta.state).toBe('orphaned');
     expect((await svc.readThread(threadId)).state).toBe('orphaned');
   });
@@ -702,10 +626,9 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
   test('a delivery the client could not complete leaves the thread open', async () => {
     const { threadId } = await makeThread();
     await svc.prepareDispatch(threadId);
-    // client failed to launch the agent → releases the queue instead of completing
     const meta = await svc.unqueue(threadId);
 
-    expect(meta.state).toBe('anchored'); // NOT resolved
+    expect(meta.state).toBe('anchored');
     expect(meta.queued).toBe(false);
   });
 
@@ -729,7 +652,6 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
     const missing = results[1];
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.error).toBe('not-found');
-    // the surviving items really were queued
     expect((await store.readMeta(a.threadId))?.queued).toBe(true);
     expect((await store.readMeta(b.threadId))?.queued).toBe(true);
   });
@@ -751,14 +673,14 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
   test('deselected threads stay queued when the batch goes out', async () => {
     const selected = await makeThread('minimal downtime');
     const deselected = await makeThread('Q3');
-    await svc.queueForDispatch(deselected.threadId); // queued, but not in the batch
+    await svc.queueForDispatch(deselected.threadId);
 
     await svc.prepareDispatchBatch([selected.threadId]);
     await svc.completeDispatchBatch([selected.threadId]);
 
     expect((await store.readMeta(selected.threadId))?.state).toBe('resolved');
     const left = await store.readMeta(deselected.threadId);
-    expect(left?.queued).toBe(true); // still waiting for a later batch
+    expect(left?.queued).toBe(true);
     expect(left?.state).toBe('anchored');
   });
 
@@ -771,9 +693,6 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
   });
 
   test('reopening re-queues, so the next send carries it without a second click', async () => {
-    // A send clears `queued` on its way to `resolved`. Reopening is the
-    // correction for a send that did not settle the thing, so the comment comes
-    // back in the batch rather than waiting to be ticked again.
     const { threadId } = await makeThread();
     await svc.prepareDispatch(threadId);
     await svc.completeDispatch(threadId);
@@ -783,9 +702,6 @@ describe('CommentService — dispatch (client-delivered, resolve-on-send)', () =
   });
 
   test('a reopened thread that lost its passage is queued and orphaned', async () => {
-    // Reopen re-finds, and a resolved thread's anchor is not maintained — so the
-    // passage can be gone by now. It still ships: the dispatch tells the agent
-    // the anchor was lost, which is more use than a comment silently held back.
     const { threadId } = await makeThread();
     await svc.prepareDispatch(threadId);
     await svc.completeDispatch(threadId);
@@ -840,8 +756,6 @@ describe('CommentService — property threads', () => {
   test('a property thread stores its key and carries NO anchor', async () => {
     const meta = await makePropertyThread();
     expect(meta.target).toEqual({ kind: 'property', key: 'tags', path: [] });
-    // The absence is the point: a filler anchor would let a re-find path that
-    // forgot to branch go looking for "tags" in the prose and match it.
     expect(meta.anchor).toBeNull();
     expect(meta.state).toBe('anchored');
   });
@@ -858,7 +772,6 @@ describe('CommentService — property threads', () => {
 
   test('editing the body never orphans a property thread', async () => {
     const { threadId } = await makePropertyThread();
-    // The passage a body comment would have pointed at is gone; the key is not.
     bodies.set('notes/rollout', 'Entirely different prose.');
     await svc.refindDoc('notes/rollout');
     expect((await svc.readThread(threadId)).state).toBe('anchored');
@@ -879,8 +792,6 @@ describe('CommentService — property threads', () => {
     const { threadId } = await makePropertyThread();
     frontmatter.delete('notes/rollout');
     await svc.refindDoc('notes/rollout');
-    // A doc that could not be read is not evidence the key is gone — the same
-    // contract the body path applies to an unreadable body.
     expect((await svc.readThread(threadId)).state).toBe('anchored');
   });
 
@@ -890,8 +801,6 @@ describe('CommentService — property threads', () => {
     expect(payload.property).toBe('tags');
     expect(payload.passage).toBeNull();
     expect(payload.anchorLost).toBe(false);
-    // A key is unique in its frontmatter, so the which-occurrence question the
-    // body path answers cannot arise.
     expect(payload.passageRepeats).toBe(false);
   });
 
@@ -905,8 +814,6 @@ describe('CommentService — property threads', () => {
 
   test('re-placement onto a passage is refused', async () => {
     const { threadId } = await makePropertyThread();
-    // Re-placement moves a comment onto fresh prose, which would silently change
-    // what a property comment is about.
     await expect(svc.replaceAnchor(threadId, { quote: 'minimal downtime' })).rejects.toBeInstanceOf(
       PropertyNotFoundError,
     );
@@ -954,8 +861,6 @@ describe('CommentService — property paths and value passages', () => {
   test('a quote inside a value anchors against THAT value, not the body', async () => {
     const meta = await makeThreadAt('summary', [], 'Ships in Q3');
     expect(meta.anchor?.exact).toBe('Ships in Q3');
-    // Offsets index the value: 'Ships in Q3' starts at 0 of the summary, and
-    // nowhere near that in the document body.
     expect(meta.anchor?.start).toBe(0);
   });
 
@@ -965,10 +870,6 @@ describe('CommentService — property paths and value passages', () => {
       summary: 'Update: Ships in Q3. Downtime should be minimal.',
     });
     await svc.refindDoc('notes/rollout');
-    // The settle sweep reports state only. It deliberately does NOT re-capture
-    // the position — same policy the body path documents, and for the same
-    // reason: the offsets are a hint, and refreshing them on every settle would
-    // mean a write per thread per keystroke burst.
     expect((await svc.readThread(threadId)).state).toBe('anchored');
   });
 
@@ -977,8 +878,6 @@ describe('CommentService — property paths and value passages', () => {
     frontmatter.set('notes/rollout', {
       summary: 'Update: Ships in Q3. Downtime should be minimal.',
     });
-    // Where the hint IS refreshed — the path a load or a dispatch takes, so what
-    // reaches an agent is never measured against stale text.
     const meta = await svc.refindOnLoad(threadId);
     expect(meta.anchor?.start).toBe('Update: '.length);
     expect(meta.anchor?.exact).toBe('Ships in Q3');
@@ -993,8 +892,6 @@ describe('CommentService — property paths and value passages', () => {
 
   test('a value that stops being text orphans a passage anchored in it', async () => {
     const { threadId } = await makeThreadAt('summary', [], 'Ships in Q3');
-    // The field became a list. The words cannot be there, and serializing the
-    // list to search it would anchor into punctuation nobody ever saw.
     frontmatter.set('notes/rollout', { summary: ['Ships in Q3'] });
     await svc.refindDoc('notes/rollout');
     expect((await svc.readThread(threadId)).state).toBe('orphaned');

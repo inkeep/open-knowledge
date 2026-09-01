@@ -28,9 +28,6 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('holds a collapsed doc panel at 0% and pins the terminal; editor absorbs (the VM scenario)', () => {
-    // editor | doc(collapsed=0) | terminal after a left-sidebar collapse widened
-    // the container. Only the terminal is pinned (the collapsed doc is left as-is);
-    // the editor must absorb the freed width, not the terminal.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 20, 'doc-panel': 0, 'agents-column': 80 },
       containerPx: 1000,
@@ -43,9 +40,6 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('preserves a non-pinned, non-residual panel in the layout', () => {
-    // A layout can carry a member that is neither pinned nor the
-    // residual — its share must pass through untouched while the residual
-    // absorbs only what the pins leave.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 30, 'doc-panel': 20, 'agent-panel': 15, 'agents-column': 35 },
       containerPx: 1000,
@@ -59,8 +53,6 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('pins a collapse: pinning a panel at 0px holds it shut while the residual absorbs', () => {
-    // The panel-set-change assert pins the doc panel at 0px to preserve a
-    // user's collapse across a terminal mount/unmount layout restore.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 70, 'doc-panel': 30 },
       containerPx: 1000,
@@ -72,10 +64,6 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('preserves peer key order and passes an unpinned peer through', () => {
-    // editor | doc-panel | terminal-column | agents-column, with the terminal
-    // column unpinned. The returned layout must keep the same key order (the
-    // library has no ordering prop — source/DOM order is the contract) and pass
-    // the unpinned terminal's share through unchanged.
     const currentLayout = {
       editor: 40,
       'doc-panel': 20,
@@ -96,11 +84,6 @@ describe('computeStickyRepinLayout', () => {
   });
 
   test('expands one rail column while its hidden neighbour stays shut (editor pays)', () => {
-    // Both rail columns are permanent members of the group, so a hidden one is
-    // a zero-width peer rather than an absent panel. Showing the terminal must
-    // take its width from the editor: the panel API cannot do this, because
-    // `expand()`/`resize()` trade with the ADJACENT separator, and the adjacent
-    // agents column has nothing to give at zero width.
     const next = computeStickyRepinLayout({
       currentLayout: { editor: 70, 'doc-panel': 30, 'terminal-column': 0, 'agents-column': 0 },
       containerPx: 2000,

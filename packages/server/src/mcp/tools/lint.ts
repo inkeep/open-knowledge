@@ -1,23 +1,3 @@
-/**
- * `lint` MCP tool — surface markdown-lint violations to the agent, and
- * optionally auto-fix them.
- *
- * Three shapes:
- *   - `document` given → lint that one doc, returning its diagnostics.
- *   - `document` omitted → audit every in-scope doc (optionally scoped to a
- *     sub-`path`), returning only the files that have violations plus totals.
- *   - `document` + `fix: true` → apply markdownlint's auto-fixes to that doc
- *     through the agent-write spine (attributed, live preview), then report
- *     what remains. The one mutating shape; backed by `POST /api/lint/fix`.
- *
- * The read shapes lint the persisted disk content with the project's effective
- * config (native `.markdownlint.*` rules injected over the project base);
- * `fix: true` lints and rewrites the live CRDT source. Violations carry a
- * `severity` (`error` | `warning`); the text summary leads with the
- * error/warning counts so a text-only consumer can triage without parsing the
- * structured payload.
- */
-
 import { validationCoverageLines } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
@@ -58,11 +38,6 @@ export const DESCRIPTION = [
 export const LINT_WARNINGS_DESCRIPTION =
   'Anything that made this run less than a full answer: unreadable files/dirs (audit), lint-config problems such as a broken frontmatter schema file, and selected lint plugins that threw. A source family named here is still listed in `ran` — it was selected, it just could not finish.';
 
-/**
- * Trailing hint for a single-doc lint, quantified by the fixability the wire
- * payload now carries (`fixes` present ⇒ auto-fixable): tells the agent exactly
- * how many `fix: true` would resolve and what's left for content edits.
- */
 function singleDocFixHint(fixableCount: number, total: number): string {
   if (fixableCount === 0) {
     return 'None are auto-fixable — these need content edits via `edit`/`write`.';
@@ -73,7 +48,6 @@ function singleDocFixHint(fixableCount: number, total: number): string {
   return `${fixableCount} of ${total} are auto-fixable — pass \`fix: true\` to apply in place (attributed, live preview).${remainder}`;
 }
 
-/** Audit-level hint: fix is per-document, so point at the single-doc call. */
 const AUDIT_FIX_HINT =
   'Auto-fix a single file with `lint({ document, fix: true })` (attributed, live preview). Violations that resist auto-fix need content edits.';
 
@@ -125,7 +99,6 @@ export interface LintDeps {
   serverUrl: ServerUrlOrResolver;
   config: ConfigOrResolver;
   resolveCwd: (explicit?: string) => Promise<string>;
-  /** Present so `fix: true` attributes the write to the calling agent (mirrors write/edit). */
   identityRef?: { current: AgentIdentity };
 }
 
@@ -188,10 +161,6 @@ export function register(server: ServerInstance, deps: LintDeps): void {
           .describe('Fix mode only: problems resolved by the auto-fix.'),
         cwd: z.string().describe('Absolute directory the lint ran against.'),
       }),
-      // Not read-only: `fix: true` mutates the document. The write is a
-      // recoverable, shadow-versioned content edit (like `write`/`edit`), so the
-      // tool stays auto-approved; `destructiveHint` is false and re-running
-      // converges (`idempotentHint`).
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -259,18 +228,13 @@ async function fixLintDoc(
   };
 
   const header = data.warning
-    ? // Fix wrote successfully but the post-write re-lint failed — the doc is
-      // fixed; the diagnostics below fall back to the pre-fix set. Do NOT treat
-      // this as a failed fix.
-      `Applied auto-fixes to ${file}, but re-lint failed (${data.warning}); the fix landed — problems below are the pre-fix set, re-run \`lint\` to confirm.`
+    ? `Applied auto-fixes to ${file}, but re-lint failed (${data.warning}); the fix landed — problems below are the pre-fix set, re-run \`lint\` to confirm.`
     : fixedCount > 0
       ? `Fixed ${fixedCount} problem${fixedCount === 1 ? '' : 's'} in ${file}.`
       : responseWarnings.length > 0
         ? `No auto-fixable problems in ${file}, but the lint could not fully complete.`
         : `No auto-fixable problems in ${file}.`;
   const lines = diagnostics.map(formatDiagnosticLine);
-  // The re-lint failure rides both channels during its deprecation window, and
-  // the header already states it verbatim — render it once here.
   const warningBlock = degradationBlock(
     'Lint',
     responseWarnings.filter((warning) => warning !== data.warning),
@@ -314,11 +278,7 @@ async function lintSingleDoc(document: string, url: string, cwd: string) {
     diagnostics.length > 0
       ? `${file.file}: ${countSummary(errorCount, warningCount)}`
       : configWarnings.length > 0
-        ? // A clean set from a run that degraded is not a clean document. The
-          // coverage line below reports SELECTION, so it still lists the family
-          // that failed — the qualifier here is the only thing separating
-          // "checked and clean" from "selected but silently non-functional".
-          `No problems found in ${file.file}, but the lint could not fully complete.`
+        ? `No problems found in ${file.file}, but the lint could not fully complete.`
         : `No problems in ${file.file}.`;
   const lines = diagnostics.map(formatDiagnosticLine);
   const warningBlock = degradationBlock('Lint', configWarnings);
@@ -343,8 +303,6 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
   const warningCount = data.warningCount ?? 0;
   const coverageLines = validationCoverageLines(data.ran);
 
-  // Both channels are agent-context-bound, so both get the cap; the HTTP
-  // endpoint stays the uncapped surface for GUI consumers.
   const shownFiles = files.slice(0, AUDIT_FILE_CAP).map((file) => {
     const diagnostics = file.diagnostics ?? [];
     const shown = diagnostics.slice(0, AUDIT_FILE_DIAGNOSTIC_CAP);

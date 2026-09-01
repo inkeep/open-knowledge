@@ -1,8 +1,3 @@
-/**
- * Compatibility exports for desktop consumers. The renderer-facing host
- * contract is defined in the dedicated core leaf; this path remains stable
- * for existing main and preload imports.
- */
 import type {
   OkCheckTargetExistsResult,
   OkDesktopBridge,

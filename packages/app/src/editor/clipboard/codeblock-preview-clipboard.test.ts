@@ -1,35 +1,3 @@
-/**
- * Clipboard fidelity contract (WYSIWYG app tier): a preview-active `html
- * preview` code block must NOT leak its non-portable render internals into the
- * cross-app `text/html` payload.
- *
- * Domain invariant: when a preview-active code-block NodeView is fully selected
- * and copied, the live-DOM walker tier must emit the clean `<pre><code>` source
- * representation of the block — never the `.ok-codeblock-preview` render
- * (`<iframe srcdoc>` whose srcdoc is the CSP-meta + theme-CSS + bootstrap-JS
- * header from buildPreviewIframeHeader, plus a duplicate of the code, plus the
- * ResizeHandles chrome). This is the same guarantee the walker already enforces
- * for the other non-portable live renders (block Math KaTeX, Mermaid SVG): a
- * destination (Gmail, Notion, Slack, Docs) receives readable source, not
- * several KB of inert `srcdoc` markup and render chrome.
- *
- * Mechanism-agnostic on purpose. The invariant has two candidate enforcement
- * points — source-fallback recognition of a preview-active code block at the
- * walker boundary, OR opt-out enrollment of the preview wrapper so the walker
- * drops it and the clean `<pre>` sibling carries the block. Either satisfies
- * the invariant; the oracle here asserts ONLY on the emitted fragment shape, so
- * it does not pin which mechanism the fix uses.
- *
- * Substrate: drives the REAL production `walkLiveDomToInlineStyledFragment`
- * against a `nodeDOM` that mirrors CodeBlockView's preview-active render. A bare
- * EditorView registers no React nodeViews (it renders the default `<pre><code>`
- * and never the preview iframe), so the NodeView DOM the walker sees in
- * production is supplied explicitly — every transformation under test is
- * production code. jsdom globals are installed in beforeAll and RESTORED in
- * afterAll so sibling no-DOM unit files keep their contract. Same pattern as
- * `clipboard-line-structure.test.ts`.
- */
-
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { JSDOM } from 'jsdom';
@@ -83,30 +51,12 @@ afterAll(() => {
 const schema = getSchema(sharedExtensions);
 const CODE = '<h1>Hi</h1>\n<script>document.title="x"</script>';
 
-/** A real one-codeBlock doc: fence `html preview` with an HTML body. */
 function previewCodeBlockDoc(): PmNode {
   const code = schema.text(CODE);
   const codeBlock = schema.nodes.codeBlock.create({ language: 'html', meta: 'preview' }, code);
   return schema.nodes.doc.create(null, codeBlock);
 }
 
-/**
- * Build a DOM subtree carrying the non-portable content of CodeBlockView's
- * preview-active render: `.ok-codeblock` wrapper → `.ok-codeblock-preview`
- * (iframe[srcdoc] + resize-handle chrome) + hidden `<pre>` + opted-out
- * `.ok-codeblock-chrome`.
- *
- * The load-bearing property is that the preview wrapper itself carries NO
- * clipboard opt-out — that is why the walker must recognise the block and emit
- * source rather than drop it. This reproduces enough of that shape to make the
- * leak assertions meaningful; it is not a byte-faithful mirror of every class
- * name (the resize-handle markup in particular is abbreviated — the walker
- * replaces the whole preview subtree regardless, so the assertions key on the
- * stable `.ok-resize-handle` / `.ok-codeblock-preview` base classes). A fix
- * that enrolls the wrapper in the opt-out instead would change this render;
- * keep the fixture in lock-step with CodeBlockView in that case — the
- * assertions below stay identical either way.
- */
 function buildCodeBlockPreviewDom(): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.className = 'ok-codeblock relative my-3';
@@ -157,7 +107,6 @@ function buildCodeBlockPreviewDom(): HTMLElement {
   return wrapper;
 }
 
-/** Minimal EditorView stand-in — the walker only touches these members. */
 function fakeView(doc: PmNode, nodeDom: HTMLElement) {
   const codeBlock = doc.firstChild;
   if (!codeBlock) throw new Error('expected a codeBlock child');
@@ -170,12 +119,6 @@ function fakeView(doc: PmNode, nodeDom: HTMLElement) {
   } as unknown as Parameters<typeof walkLiveDomToInlineStyledFragment>[1];
 }
 
-/**
- * A view whose live DOM is unmounted for the block — `nodeDOM` returns null,
- * the Activity-hidden case where the walker defers to `paletteFor` instead of
- * cloning the live tree. The palette must emit the same clean source shape the
- * mounted path does, or the block is silently dropped from the payload.
- */
 function unmountedView(doc: PmNode) {
   const codeBlock = doc.firstChild;
   if (!codeBlock) throw new Error('expected a codeBlock child');
@@ -195,7 +138,6 @@ function emitFragmentHtml(): { holder: HTMLElement; html: string } {
     getComputedStyle: () => ({ getPropertyValue: () => '' }),
   };
   const frag = walkLiveDomToInlineStyledFragment(
-    // slice arg is unused by the walker (it reads view.state.selection).
     undefined as unknown as Parameters<typeof walkLiveDomToInlineStyledFragment>[0],
     fakeView(doc, nodeDom),
     env,
@@ -223,24 +165,12 @@ describe('preview-active codeBlock clipboard emission (text/html tier)', () => {
     const { holder } = emitFragmentHtml();
     const pre = holder.querySelector('pre');
     expect(pre).not.toBeNull();
-    // The code body survives as readable source text (either the live
-    // `<pre><code>` clone or a source-fallback `<pre class="mdx-component">`).
     expect(pre?.textContent ?? '').toContain('<h1>Hi</h1>');
-    // Not hidden at destinations: no inline display:none rides on the block
-    // (visual hiding of the live `<pre>` is app-stylesheet-only, keyed on
-    // `data-code-visible`, and `display` is excluded from the walker's
-    // STYLE_ALLOWLIST — so the emitted clone must render).
     expect(pre?.getAttribute('style') ?? '').not.toContain('display');
   });
 });
 
 describe('preview-active codeBlock clipboard emission — Activity-hidden (unmounted) path', () => {
-  // When the block lives inside an `<Activity mode="hidden">` subtree its live
-  // DOM is unmounted, so `view.nodeDOM(pos)` is null and the walker defers to
-  // the static `paletteFor` fallback. The palette must emit the SAME clean
-  // fenced source the mounted path does — otherwise a preview-active code block
-  // is silently dropped from the payload (the block Math / Mermaid palette
-  // entries already guarantee this symmetry for their non-portable renders).
   function emitFromUnmounted(): { holder: HTMLElement; html: string } {
     const doc = previewCodeBlockDoc();
     const env: WalkerEnv = {
@@ -261,8 +191,6 @@ describe('preview-active codeBlock clipboard emission — Activity-hidden (unmou
     const pre = holder.querySelector('pre');
     expect(pre).not.toBeNull();
     expect(pre?.textContent ?? '').toContain('<h1>Hi</h1>');
-    // The authored info-string rides along so a markdown-aware destination
-    // re-parses back to a preview-active code block, not a plain fence.
     expect(pre?.textContent ?? '').toContain('html preview');
   });
 

@@ -21,12 +21,7 @@ function memoryStorage(initial: Record<string, string> = {}): HeightStorage {
   };
 }
 
-// A tall viewport whose 50vh ceiling (500) sits above the ~1/3 default (333) so
-// the default/min cases are exercised without the vh clamp interfering.
 const TALL = 1000;
-// Literal, NOT derived from the fraction constant: pins the ~1/3 contract so a
-// regression to the fraction (e.g. 1/3 → 1/4) is actually caught instead of
-// moving both sides of the assertion in lockstep.
 const TALL_DEFAULT = 333;
 
 describe('readTerminalHeight', () => {
@@ -35,7 +30,6 @@ describe('readTerminalHeight', () => {
   });
 
   test('default below the floor on a short viewport clamps up to MIN (300 → 100 → 120)', () => {
-    // vh/3 = 100 lands under the 120px floor.
     expect(readTerminalHeight(memoryStorage(), 300)).toBe(MIN_TERMINAL_HEIGHT);
   });
 
@@ -55,8 +49,6 @@ describe('readTerminalHeight', () => {
   });
 
   test('ceiling tracks the viewport (50vh), not a fixed pixel cap', () => {
-    // 400 fits under a 1000px viewport (ceiling 500) but exceeds a 600px one
-    // (ceiling 300) — proving the cap is viewport-relative.
     const s = memoryStorage({ [TERMINAL_HEIGHT_KEY]: '400' });
     expect(readTerminalHeight(s, 1000)).toBe(400);
     expect(readTerminalHeight(s, 600)).toBe(300);
@@ -126,12 +118,6 @@ describe('writeTerminalHeight', () => {
   });
 });
 
-/**
- * The 50vh ceiling is viewport-relative, but `readTerminalHeight` applies it only
- * at read time and callers snapshot the result at mount. Moving the window to a
- * shorter display therefore leaves a height that outlives the viewport it was
- * sized for, so the live value needs re-clamping independently of a read.
- */
 describe('clampTerminalHeight', () => {
   test('caps a height carried over from a taller viewport', () => {
     expect(clampTerminalHeight(588, 1000)).toBe(500);
@@ -146,7 +132,6 @@ describe('clampTerminalHeight', () => {
   });
 
   test('keeps the floor reachable on a viewport too short for it', () => {
-    // 50vh of 100px is below MIN; the clamp window must not invert.
     expect(clampTerminalHeight(400, 100)).toBe(MIN_TERMINAL_HEIGHT);
   });
 });

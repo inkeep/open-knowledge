@@ -91,12 +91,7 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
 
     const region = screen.getByRole('region', { name: 'Stay in the loop' });
     expect(region.tagName).toBe('SECTION');
-    // The card root and the landmark must be the same element. Dropping
-    // `asChild` would wrap this section in a div that takes the card slot,
-    // splitting the shell off the landmark and orphaning the flex layout the
-    // content and footer slots rely on.
     expect(region.getAttribute('data-slot')).toBe('card');
-    // The social row is a second, separately labelled landmark inside it.
     expect(screen.getByRole('navigation', { name: 'Follow us on social media' })).toBeTruthy();
   });
 
@@ -127,10 +122,8 @@ describe('SubscribeCard (combined release-notes + subscribe)', () => {
 
     await waitFor(() => expect(submitSubscribe).toHaveBeenCalled());
     expect(store.getSnapshot().subscribed).toBe(true);
-    // Social row collapses on success; the release-notes row stays.
     expect(screen.queryByText('Follow us on')).toBeNull();
     expect(screen.getByText(/Updated to Version/)).toBeTruthy();
-    // Auto-dismiss fires after the linger.
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

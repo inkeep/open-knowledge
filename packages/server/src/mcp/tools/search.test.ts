@@ -1,11 +1,3 @@
-/**
- * Unit tests for the new ranked `search` MCP tool — the HTTP wrapper around
- * `POST /api/search`. End-to-end coverage (real Hocuspocus + corpus) lives in
- * `packages/server/src/mcp-http.test.ts`; this file mocks the fetch boundary
- * to assert request shape, response normalization, and error paths in
- * isolation.
- */
-
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -74,11 +66,6 @@ function mockFetchOk(payload: Record<string, unknown>): void {
   }) as unknown as typeof fetch;
 }
 
-// (precedent #39) error shape: handlers emit RFC 9457 problem+json
-// with HTTP status as the discriminator. The MCP shim's `normalizeResponse`
-// translates the wire shape to `{ ok: false, error: title, type, ... }` so
-// 18 tool consumers stay source-stable. Use this helper for any error-path
-// test that previously mocked the legacy `200 + { ok: false }` envelope.
 function mockFetchProblem(
   status: number,
   payload: { type: string; title: string; detail?: string; instance?: string },
@@ -113,8 +100,6 @@ describe('search MCP tool — registration', () => {
   });
 
   test('description advertises all-files name coverage + the two-tier grep model (PRD-7117 D17)', () => {
-    // Agents must learn that `search` now spans all files (by name/path) and that
-    // exhaustive content lives behind `exec` grep, run in parallel.
     expect(DESCRIPTION).toContain('ALL non-ignored files');
     expect(DESCRIPTION.toLowerCase()).toContain('name/path');
     expect(DESCRIPTION.toLowerCase()).toContain('in parallel');
@@ -150,9 +135,6 @@ describe('search MCP tool — happy path', () => {
           ok: true,
           query: 'agent presence',
           intent: 'full_text',
-          // POST /api/search returns extension-stripped paths from
-          // getFileIndex (see api-extension.ts handleSearch); fixture mirrors
-          // that shape so docName === path holds for page rows.
           results: [
             {
               kind: 'page',
@@ -200,11 +182,7 @@ describe('search MCP tool — happy path', () => {
       intent: 'full_text',
       limit: 5,
       scopes: ['page', 'content'],
-      // The MCP tool opts into semantic by default (the agent retrieval surface);
-      // the server gates on the capability flag + key.
       semantic: true,
-      // Tags the caller surface so semantic searches are counted apart from the
-      // omnibar's. Set internally by the tool, never a caller-facing arg.
       source: 'mcp',
     });
 
@@ -327,9 +305,6 @@ describe('search MCP tool — happy path', () => {
   });
 
   test("kind:'file' rows survive into structured results (PRD-7117 all-files MCP)", async () => {
-    // The MCP tool advertises all-files name/path coverage; the result mapper
-    // must accept rows whose `kind` is `'file'` rather than dropping them as
-    // unknown. Server side already emits these for `defaultScopes('full_text')`.
     mockFetchOk({
       ok: true,
       query: 'data',
@@ -433,7 +408,6 @@ describe('search MCP tool — route-only previewUrl + no ui block (PRD-6735)', (
       ui?: unknown;
       results: Array<{ previewUrl?: string | null }>;
     };
-    // per-row previewUrl is route-only; the top-level `ui` block is gone.
     expect(structured.results[0]?.previewUrl).toBe('/#/specs/agent-presence/SPEC');
     expect(structured.ui).toBeUndefined();
   });
@@ -457,12 +431,6 @@ describe('search MCP tool — error paths', () => {
   });
 
   test('server returns RFC 9457 problem+json → tool reports error', async () => {
-    // RFC-9457 (precedent #39) the search handler emits problem+json
-    // with HTTP 400 + `type: 'urn:ok:error:invalid-request'` for query
-    // validation failures. The MCP shim's `normalizeResponse` translates
-    // `title` → `error` so the tool's existing `if (!result.ok)` branch
-    // continues to fire — but the wire shape is now status-discriminated,
-    // not `{ok: false}` body-discriminated. See `packages/server/src/mcp/tools/shared.ts`.
     mockFetchProblem(400, {
       type: 'urn:ok:error:invalid-request',
       title: 'Query is too long',
@@ -494,7 +462,6 @@ describe('search MCP tool — cold-start warming', () => {
     const result = await tool.handler({ query: 'arch', cwd: '/tmp/proj' });
 
     const text = result.content?.find((c) => c.type === 'text')?.text ?? '';
-    // The agent must be told to retry, not that there are no matches.
     expect(text).toContain('still warming');
     expect(text).not.toContain('No matches');
     const structured = result.structuredContent as { ready?: unknown; resultCount: number };

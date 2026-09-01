@@ -14,27 +14,6 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { MAX_ASAR_HEADER_BYTES, readAsarHeader } from '../../scripts/lib/asar-header.mjs';
 
-/**
- * Two-lane guard for the packaged Windows node-pty payload.
- *
- * Helper lane (always on): unit-tests the PE / walker / asar-header helpers so
- * the assertive lane's oracles are themselves verified on every platform.
- *
- * Assertive lane (OK_WIN_PACKAGE_DIR): points at an electron-builder --win
- * output dir (e.g. dist-desktop/win-unpacked, relative to packages/desktop)
- * and asserts the shipped bytes: both win32 arch prebuilds present (the addon
- * selects prebuilds/win32-<process.arch> at runtime, so each installer must
- * carry both), PE machine words matching each arch dir (the rebuild pass on a
- * cross-arch builder is exactly what would ship wrong-arch binaries), the
- * Microsoft ConPTY pair beside the addons, the conout worker on the real
- * filesystem, and none of the pruned trees — checked in BOTH the unpacked tree
- * and the asar listing, because pruned-but-not-unpacked paths (third_party/,
- * most of build/) would ship invisibly inside the asar.
- *
- * The lane is host-agnostic by design: every assertion is over static file
- * bytes, so a cross-compiled --win output can be checked from any OS.
- */
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
 const packageDirInput = process.env.OK_WIN_PACKAGE_DIR?.trim() ?? '';
@@ -75,7 +54,6 @@ function syntheticPe(machine: number): Buffer {
   return buffer;
 }
 
-/** Every file under root as a sorted, /-separated relative path. */
 function walkFiles(root: string): string[] {
   const found: string[] = [];
   const visit = (dir: string, prefix: string): void => {
@@ -92,7 +70,6 @@ function walkFiles(root: string): string[] {
 
 type AsarDirNode = { files?: Record<string, unknown> };
 
-/** Every entry (files AND directories) in an asar listing as a /-separated path. */
 function asarEntryPaths(header: AsarDirNode): string[] {
   const paths: string[] = [];
   const visit = (node: AsarDirNode, prefix: string): void => {

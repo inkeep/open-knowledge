@@ -1,30 +1,3 @@
-/**
- * Regression tests for inkeep/open-knowledge#617 — the external-link safety net
- * is attached by the WINDOW FACTORY, so every editor window OpenKnowledge
- * creates denies an external `window.open` and delegates it to the OS browser.
- *
- * Before the factory owned this, `attachAssetSafetyNet` was wired per-call-site
- * in `index.ts` at only two window-creation sites, so windows created by any
- * other path — notably the server-restart → recreate window — came up net-less:
- * a WYSIWYG external-link click's `window.open` fell through to Electron's
- * default and a child BrowserWindow rendered the page.
- *
- * Contract pinned here: a window created by the WindowManager factory — via the
- * utility-fork spawn path, the bare attach-to-existing path, the ephemeral
- * single-file path, AND the restart → recreate path — has a
- * `setWindowOpenHandler` registered on its webContents that returns
- * `{ action: 'deny' }` for an external `https:` URL and delegates that URL to
- * `openExternal`.
- *
- * Seam: real `WindowManager` over the established `BrowserWindowLike` /
- * `UtilityProcessLike` structural fakes (no Electron). The window fake's
- * webContents captures the window-open handler so the test invokes it exactly
- * as Electron would on a new-window request. `openExternal` is the one injected
- * boundary (the OS-browser delegate) — asserting the captured handler routes an
- * external URL to it is the real "reaches the OS browser" behavior, not a mock
- * of the factory's own logic.
- */
-
 import { getLocalDir } from '@inkeep/open-knowledge-server';
 import { describe, expect, test, vi } from 'vitest';
 import type { AssetOpenResult } from '../../src/main/asset-allowlist.ts';
@@ -36,11 +9,6 @@ import {
   WindowManager,
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
-
-// ---------------------------------------------------------------------------
-// Structural fakes — mirror packages/desktop/tests/main/window-manager.test.ts,
-// with the addition of a webContents that captures the safety-net handlers.
-// ---------------------------------------------------------------------------
 
 interface MockUtility extends UtilityProcessLike {
   fire: (msg: unknown) => void;
@@ -70,8 +38,6 @@ type WillNavigateHandler = (event: { preventDefault: () => void }, url: string) 
 
 type SafetyNetWindow = BrowserWindowLike & {
   fireClose: () => void;
-  /** The handler the factory installs via `webContents.setWindowOpenHandler`, or
-   *  null when the factory never attached the safety net. */
   windowOpenHandler: WindowOpenHandler | null;
   willNavigateHandler: WillNavigateHandler | null;
 };
@@ -141,9 +107,6 @@ function buildEnv(): TestEnv {
     fireThemeApplied: () => {},
   };
   let pidCounter = 20000;
-  // The two boundary delegates the safety net needs. `openAsset` is 2-arg
-  // (`projectPath`, `relPath`) — matching `WindowManagerDeps.safetyNet.openAsset`
-  // and the `attachSafetyNet` call `net.openAsset(assetRoot, relPath)`.
   const openExternal = vi.fn(async (_url: string): Promise<void> => {});
   const openAsset = vi.fn(
     async (_projectPath: string, _relPath: string): Promise<AssetOpenResult> => ({ ok: true }),
@@ -165,21 +128,11 @@ function buildEnv(): TestEnv {
     setTimeout: () => null,
     killProbe: vi.fn(() => {}),
     showGate,
-    // The ephemeral / detached-spawn deps are wired PER-TEST (createEphemeral
-    // and restart only). Leaving them off the base keeps the spawn test on the
-    // utility-fork path: `createProjectWindow` picks the detached-spawn path the
-    // moment `spawnDetachedServer` is present.
     safetyNet: { openExternal, openAsset },
   };
   return { utilities, windows, openExternal, openAsset, deps };
 }
 
-/**
- * Wire the ephemeral single-file (`ok <file>`) deps onto an env so
- * `createEphemeralWindow` reaches its `attachSafetyNet` call without real
- * Electron/spawn: `spawnDetachedServer` publishes a lock, the port poll reads it
- * back via `readServerLock`.
- */
 function withEphemeralDeps(env: TestEnv): void {
   const ephemeralLocks = new Map<string, ServerLockMetadataLike>();
   let pid = 42000;
@@ -207,26 +160,17 @@ function withEphemeralDeps(env: TestEnv): void {
 
 const EXTERNAL_URL = 'https://example.com/watch';
 
-/**
- * The invariant: `webContents.setWindowOpenHandler` was installed, and the
- * installed handler denies an external new-window request AND delegates it to
- * `openExternal` (the OS browser). Extracted so every factory path asserts it
- * identically.
- */
 async function expectExternalSafetyNet(
   window: SafetyNetWindow,
   openExternal: ReturnType<typeof vi.fn>,
 ): Promise<void> {
-  // The factory installed a window-open handler on the created window.
   expect(window.windowOpenHandler).not.toBeNull();
   const handler = window.windowOpenHandler;
   if (!handler) throw new Error('unreachable — asserted non-null above');
 
   const result = handler({ url: EXTERNAL_URL });
-  // An external new-window request must NOT open a child OpenKnowledge window.
   expect(result).toEqual({ action: 'deny' });
 
-  // openExternal fires async inside the handler; let the microtask settle.
   await Promise.resolve();
   await Promise.resolve();
   expect(openExternal).toHaveBeenCalledWith(EXTERNAL_URL);
@@ -263,8 +207,6 @@ describe('WindowManager factory attaches the external-link safety net', () => {
   });
 
   test('restartAttachedServer: both the initial attach and the recreated window install the net', async () => {
-    // Mirror the production restart path: attach mode → detached spawn (not the
-    // dev utility-fork), since drift/restart only occur in attach mode.
     const env = buildEnv();
     env.deps.selfProtocolVersion = 1;
     env.deps.selfRuntimeVersion = '0.8.2';
@@ -304,16 +246,12 @@ describe('WindowManager factory attaches the external-link safety net', () => {
     const attached = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
     expect(attached.ownsServer).toBe(false);
     expect(env.windows.length).toBe(1);
-    // The initial attach (createProjectWindow → attachToExistingServer, the bare
-    // attach-to-existing factory path) also installs the net.
     const attachedWindow = env.windows[0];
     if (!attachedWindow) throw new Error('no attach window');
     await expectExternalSafetyNet(attachedWindow, env.openExternal);
 
     const outcome = await wm.restartAttachedServer('/tmp/dragon');
     expect(outcome).toEqual({ ok: true });
-    // A fresh window was recreated for the respawned server — it is the one that
-    // must carry the net (the whole point of #617).
     expect(env.windows.length).toBe(2);
     const recreated = env.windows[1];
     if (!recreated) throw new Error('no recreated window');

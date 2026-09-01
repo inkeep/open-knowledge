@@ -1,22 +1,3 @@
-/**
- * Behavioral coverage for the three template lifecycle routes whose
- * content-doc handling previously had only source-ordering pins:
- *
- *   1. DELETE tears down the live content doc and marks the content doc name
- *      removed, so a stale IDB-cached tab is rejected on reconnect instead of
- *      resurrecting the file (parity with ordinary doc deletion).
- *   2. MOVE tears down the FROM content doc and marks the FROM name removed.
- *      The move handler records the source as DELETED (not renamed), so a stale
- *      connection to the old name is refused, not redirected.
- *   3. IMPORT routes the composed bytes THROUGH the content doc's CRDT Y.Text,
- *      not a filesystem-direct write.
- *
- * Everything runs against the real Hocuspocus server, real persistence branch,
- * real removal-redirect auth guard, and real WS clients — no mocks. The removal
- * guard's rejection is observed exactly as production does it: a fresh provider
- * connect fires `authenticationFailed` carrying the typed reason.
- */
-
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -85,7 +66,6 @@ function importTemplate(port: number, body: Record<string, unknown>): Promise<Re
   });
 }
 
-/** Write a source doc and wait until it has flushed to disk (import reads the file). */
 async function writeSource(
   port: number,
   contentDir: string,
@@ -106,11 +86,6 @@ async function writeSource(
   throw new Error(`source ${docName}.md never flushed to disk`);
 }
 
-/**
- * Connect a bare provider expecting the removal-redirect guard to reject it;
- * return the typed rejection. Fails if the connection is admitted (synced)
- * instead. Mirrors the helper in `delete-durability.test.ts`.
- */
 async function expectAuthRejection(
   port: number,
   docName: string,
@@ -155,9 +130,6 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         (await putTemplate(rig.port, '', name, '# Daily\n\nv1.\n', { title: 'Daily' })).status,
       ).toBe(200);
 
-      // Open the content doc (a user viewing the template) and HOLD the
-      // connection — so the only thing that can unload the doc is the DELETE
-      // handler's teardown, not a last-connection-closed unload.
       const client = await createTestClient(rig.port, docName, { skipInvariantWatcher: true });
       try {
         await pollUntil(() => client.ytext.toString().includes('# Daily'), 8000);
@@ -167,15 +139,9 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         expect(del.status).toBe(200);
         expect((await del.json()).existed).toBe(true);
 
-        // Teardown: the handler awaits captureAndCloseDocuments before
-        // responding, so the live doc is unloaded by the time DELETE returns.
         expect(serverDoc(rig, docName)).toBeUndefined();
         expect(existsSync(join(rig.contentDir, '.ok', 'templates', `${name}.md`))).toBe(false);
 
-        // Removal-guard registration: a fresh WS connect to the content doc name
-        // is refused as deleted — the production consequence that stops an
-        // IDB-cached tab from resurrecting the file. This is what proves
-        // setDeleted ran on the CONTENT doc name (not the retired synthetic one).
         expect((await expectAuthRejection(rig.port, docName)).kind).toBe('doc-deleted');
       } finally {
         await client.cleanup();
@@ -209,17 +175,10 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         });
         expect(move.status).toBe(200);
 
-        // FROM-side teardown: the source doc is torn down before the relocate,
-        // so its persistence branch can't re-store at the now-stale path.
         expect(serverDoc(rig, fromDoc)).toBeUndefined();
         expect(existsSync(join(rig.contentDir, '.ok', 'templates', `${fromName}.md`))).toBe(false);
         expect(existsSync(join(rig.contentDir, '.ok', 'templates', `${toName}.md`))).toBe(true);
 
-        // The handler marks the OLD name removed synchronously ("parity with
-        // ordinary doc deletion"); the content watcher's rename-pairing may then
-        // upgrade that entry to a redirect toward the new name. Either way the
-        // old name refuses a fresh connect, so a stale IDB-cached tab cannot
-        // resurrect the moved file — the removal-guard parity the move exists for.
         const rejection = await expectAuthRejection(rig.port, fromDoc);
         expect(['doc-deleted', 'rename-redirect']).toContain(rejection.kind);
       } finally {
@@ -245,11 +204,6 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         `---\ntitle: Source Title\n---\n\n# Heading\n\n${marker}\n`,
       );
 
-      // Open the target content doc BEFORE importing — it does not exist yet, so
-      // it opens empty. This is the CRDT-routing discriminator: a fs-direct
-      // create of a NEW file records only the disk index (the watcher's create
-      // arm never applies to a loaded doc), so it would leave this open doc
-      // empty; only a write routed through the content doc fills the client.
       const client = await createTestClient(rig.port, tplDoc, { skipInvariantWatcher: true });
       try {
         expect(client.ytext.toString()).toBe('');
@@ -261,16 +215,12 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         });
         expect(imp.status).toBe(200);
 
-        // The composed bytes arrive in the SAME Y.Doc the client is bound to —
-        // proof the import wrote through the content doc. The unique body marker
-        // reaching an already-open doc is only possible via the CRDT path.
         await pollUntil(() => client.ytext.toString().includes(marker), 8000);
         const live = client.ytext.toString();
-        expect(live).toContain(marker); // imported body
-        expect(live).toContain('template:'); // composed identity block
-        expect(live).toContain('Source Title'); // title lifted into the template block
+        expect(live).toContain(marker);
+        expect(live).toContain('template:');
+        expect(live).toContain('Source Title');
 
-        // The persisted file equals the doc content (the flush wrote the doc).
         const tplFile = join(rig.contentDir, '.ok', 'templates', `${tplName}.md`);
         expect(existsSync(tplFile)).toBe(true);
         expect(readFileSync(tplFile, 'utf-8')).toBe(live);
@@ -286,14 +236,6 @@ describe('template delete/move/import — content-doc lifecycle', () => {
     async () => {
       const rig = server;
 
-      // All three writes land in a BRAND-NEW `<folder>/.ok/templates/` dir
-      // created by the operation itself. That is the watcher's weak spot: on
-      // Linux the create event for a file written into a just-created subdir
-      // can be dropped outright (the recursive inotify subwatch registers
-      // async). The handlers close it by registering the doc synchronously
-      // before responding — so a SINGLE un-polled /api/pages read right after
-      // the response is the deterministic oracle. A poll loop here would mask
-      // a dropped event by letting the eventual watcher path win instead.
       async function pagesHas(docName: string): Promise<boolean> {
         const res = await fetch(`http://127.0.0.1:${rig.port}/api/pages`);
         expect(res.ok).toBe(true);
@@ -321,9 +263,6 @@ describe('template delete/move/import — content-doc lifecycle', () => {
       expect(imp.status).toBe(200);
       expect(await pagesHas(`${impFolder}/.ok/templates/${impName}`)).toBe(true);
 
-      // MOVE into a folder whose `.ok/templates/` did not previously exist —
-      // the relocate mkdirs the destination dir, so the same race applies on
-      // the same terms as put/import.
       const moveToFolder = `fresh-mov-${randomUUID().slice(0, 8)}`;
       const mov = await moveTemplate(rig.port, {
         fromFolder: putFolder,
@@ -342,12 +281,6 @@ describe('template delete/move/import — content-doc lifecycle', () => {
     async () => {
       const rig = server;
 
-      // `validateFolderRel` is the sole path-escape guard for the template
-      // routes now that `templateAbsPath` (and its path-escape unit test) are
-      // gone — the request schema accepts any `folder` string. All four
-      // handlers share the guard, so all four call sites are pinned (PUT, both
-      // move sides, DELETE, IMPORT) — a future refactor that splits one onto a
-      // different validation helper fails loud.
       const put = await putTemplate(rig.port, '../etc', 'evil', '# x\n', { title: 'x' });
       expect(put.status).toBe(400);
       expect((await put.json()).type).toBe('urn:ok:error:invalid-request');
@@ -374,9 +307,6 @@ describe('template delete/move/import — content-doc lifecycle', () => {
       expect(del.status).toBe(400);
       expect((await del.json()).type).toBe('urn:ok:error:invalid-request');
 
-      // Import validates `targetFolder` only after resolving the source, so the
-      // pin needs a real source doc — otherwise a source-not-found error would
-      // mask a weakened folder guard.
       const escSource = `src-esc-${randomUUID().slice(0, 8)}`;
       await writeSource(rig.port, rig.contentDir, escSource, '# Esc\n\nBody.\n');
       const imp = await importTemplate(rig.port, {

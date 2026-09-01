@@ -5,17 +5,6 @@ import { BuiltInSkillsSection } from './BuiltInSkillsSection';
 import { ProjectSkillSection } from './ProjectSkillSection';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
-/**
- * Settings → Skills Studio, one page per scope: THIS PROJECT carries the
- * project's own skill and its skill folders, USER carries the skills OK ships
- * plus the user-home folders — matching the settings nav's own scope split.
- *
- * Installing is the first thing on the page, folders second, because usability
- * testing found the reverse unusable: a tab named Skills that held only folder
- * symlinks, while the install lived a page away under AI tools & CLI. Authoring and browsing
- * still live in the editor's Skills sidebar; per-skill reach still lives in
- * each skill's install menu.
- */
 export function SkillsManagerSection({ scope }: { scope: SkillScope }) {
   const titleId = `settings-skills-title-${scope}`;
 

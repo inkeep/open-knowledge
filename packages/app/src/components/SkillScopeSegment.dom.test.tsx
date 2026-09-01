@@ -24,8 +24,6 @@ test('the scope switch flips its consequence line with the selection', async () 
   render(<Harness initial="global" />);
   expect(screen.getByTestId('skill-scope-consequence').textContent).toContain('home folder');
 
-  // Flipping the switch flips the consequence — the coupling the old
-  // "Level" radio kept invisible.
   await user.click(screen.getByText('This project'));
   expect(screen.getByTestId('skill-scope-consequence').textContent).toContain('via git');
   await user.click(screen.getByText('This machine'));

@@ -1,26 +1,3 @@
-/**
- * Imperative shadow-DOM injection that draws each skill row's install state as a
- * cluster of agent brand icons (installed / detected) or an "Install" pill
- * (uninstalled), replacing the old install-state TEXT badge. Runs from a
- * `MutationObserver` on Pierre's shadow root — the same pattern as
- * `applyExtensionBadges` (see `file-tree-extension-badge.ts`).
- *
- * Why imperative + cloned nodes, not React: Pierre renders rows inside a
- * STYLE-ISOLATED shadow root — Tailwind/shadcn classes don't cross the boundary,
- * so a React `<TargetIcon>` rendered here would lose its brand color. Instead the
- * caller keeps a hidden light-DOM pool of `<TargetIcon>`s (real brand colors +
- * theme, computed by React) and we CLONE the rendered `<svg>` into each row. The
- * cloned node keeps its inline `--ok-brand-color`; {@link SKILL_INSTALL_CLUSTER_CSS}
- * (injected via Pierre's unsafe-CSS channel) re-applies that var as `color` inside
- * the shadow root. Monochrome brands (OpenCode/Pi) have no var and inherit the
- * row's text color, which is the intended treatment.
- *
- * Mutation-loop avoidance: each row's cluster carries a content KEY; we rebuild
- * only when the key changes, so our own writes don't re-trigger the host observer
- * into an infinite loop. Pierre re-renders overwrite our injections; the observer
- * re-applies them on the next tick.
- */
-
 import { AGENT_CLUSTER_MAX } from '@/components/AgentIconCluster';
 
 const CLUSTER_ATTR = 'data-ok-install-cluster';
@@ -28,23 +5,8 @@ const KEY_ATTR = 'data-ok-cluster-key';
 const PILL_ATTR = 'data-ok-install-pill';
 const PILL_PATH_ATTR = 'data-ok-install-path';
 const POOL_KEY_ATTR = 'data-ok-host-pool-key';
-/** The marks' description, mirrored onto `title` + `aria-label`.
- *
- *  It carries the host paths a skill is installed into ("Installed in
- *  .claude/skills, .cursor/skills"), which is the one thing the icons cannot say
- *  on their own — they are brand glyphs with their own `<title>` stripped a few
- *  lines below, precisely so this cluster can own the bubble. It has to actually
- *  own it: written only to this attribute and `aria-label`, the text rendered
- *  nowhere (no `content: attr()` rule, and `aria-label` is not a tooltip), so
- *  hovering the marks said nothing at all. */
 const HINT_ATTR = 'data-ok-cluster-hint';
 
-/**
- * Styles for the injected cluster + pill, passed through Pierre's `unsafeCSS`
- * (Tailwind can't reach the shadow root). `--ok-brand-color` is set inline on
- * each cloned brand `<svg>` by `TargetIcon`; re-applying it as `color` here is
- * what restores the brand color after the clone crosses the shadow boundary.
- */
 export const SKILL_INSTALL_CLUSTER_CSS = `
   [${CLUSTER_ATTR}] {
     display: inline-flex;
@@ -87,27 +49,18 @@ export const SKILL_INSTALL_CLUSTER_CSS = `
   }
 `;
 
-/** Row install state, resolved per tree path by the caller. `null` → no cluster
- *  (built-in rows keep their native lock icon; non-skill rows get nothing). */
 export type RowInstallDecor =
   | { readonly kind: 'icons'; readonly poolKeys: readonly string[]; readonly title: string }
   | { readonly kind: 'install'; readonly title: string }
   | null;
 
 export interface InstallClusterOptions {
-  /** Resolve a row's tree path to its install decoration. */
   readonly decorFor: (treePath: string) => RowInstallDecor;
-  /** Hidden light-DOM pool of `<TargetIcon>`s to clone brand `<svg>`s from,
-   *  each under `[data-ok-host-pool-key="<id>"]`. */
   readonly iconPool: HTMLElement | null;
-  /** Localized "Install" label for the uninstalled pill. */
   readonly installLabel: string;
-  /** Bumped whenever the pool re-renders (theme change) so stale clones rebuild. */
   readonly version: string;
 }
 
-/** The Install pill a click landed on: its skill tree path + screen rect (to
- *  anchor the install menu), or null when the click wasn't on a pill. */
 export function installPillFromEvent(
   target: EventTarget | null,
 ): { path: string; rect: DOMRect } | null {
@@ -118,11 +71,6 @@ export function installPillFromEvent(
   return { path, rect: pill.getBoundingClientRect() };
 }
 
-/**
- * Inject/refresh install clusters across every row under `root`. Idempotent —
- * a row whose content key is unchanged is skipped. Safe to call from a
- * `MutationObserver` and on first paint.
- */
 export function applyInstallClusters(root: ParentNode, opts: InstallClusterOptions): void {
   for (const row of root.querySelectorAll<HTMLElement>('[data-type="item"][data-item-path]')) {
     const treePath = row.dataset.itemPath;
@@ -158,8 +106,6 @@ function upsertCluster(
   const key = clusterKey(decor, opts.version);
   const existing = row.querySelector<HTMLElement>(`[${CLUSTER_ATTR}]`);
   if (existing?.getAttribute(KEY_ATTR) === key) {
-    // Cheap refresh: the pill's path can change if a row is reused for a
-    // different skill while the key (kind+version) matches — keep it in sync.
     if (decor.kind === 'install') existing.setAttribute(PILL_PATH_ATTR, treePath);
     existing.setAttribute(HINT_ATTR, decor.title);
     existing.setAttribute('title', decor.title);
@@ -173,9 +119,6 @@ function upsertCluster(
   container.setAttribute(KEY_ATTR, key);
   container.setAttribute(HINT_ATTR, decor.title);
   container.setAttribute('title', decor.title);
-  // `aria-label` on a bare span (role=generic) is ignored by assistive tech, so
-  // the row's only install-state disclosure was silently invisible. `role="img"`
-  // makes the label the element's accessible name; the children are aria-hidden.
   container.setAttribute('role', 'img');
   container.setAttribute('aria-label', decor.title);
   container.replaceChildren();
@@ -195,9 +138,6 @@ function upsertCluster(
         ?.querySelector(`[${POOL_KEY_ATTR}="${poolKey}"] svg`)
         ?.cloneNode(true);
       if (svg instanceof SVGElement) {
-        // Strip the brand icon's own `<title>`/aria-label ("Cursor icon"), else it
-        // shows as a per-icon tooltip that shadows the cluster's real "Installed
-        // in …" title on hover. The whole cluster carries that title instead.
         svg.querySelector('title')?.remove();
         svg.removeAttribute('aria-label');
         svg.setAttribute('aria-hidden', 'true');
@@ -220,5 +160,4 @@ function upsertCluster(
   }
 }
 
-/** Pool key for the `[data-ok-host-pool-key]` slot to use for the pool render. */
 export const HOST_POOL_KEY_ATTR: string = POOL_KEY_ATTR;

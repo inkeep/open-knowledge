@@ -1,10 +1,3 @@
-/**
- * Freshness verdicts verified against the real-git S1 fixture — one case
- * per drift cell, no mocks. The fail-open cases are behavioral pins: a probe
- * that can't run returns `undefined` (the share still ships) rather than a
- * wrong verdict or a throw.
- */
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,8 +98,6 @@ describe('computeShareFreshness — folder with no git-trackable content', () =>
     const t = newTriangle();
     t.mkdirWorkingTree('hollow');
     expect(await computeShareFreshness(t.senderDir, t.branch, 'hollow', 'folder')).toBe('empty');
-    // `git add -A` finds nothing to stage, so this pushes the base commit
-    // again: the folder is in exactly the same place afterwards.
     t.git(t.senderDir, ['add', '-A']);
     t.git(t.senderDir, ['push', 'origin', t.branch]);
     expect(await computeShareFreshness(t.senderDir, t.branch, 'hollow', 'folder')).toBe('empty');

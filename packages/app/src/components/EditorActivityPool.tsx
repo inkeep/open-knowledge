@@ -1,39 +1,3 @@
-/**
- * EditorActivityPool — bounded `<Activity>` rendering for the most-recently-active
- * pooled docs. `ACTIVITY_MOUNT_LIMIT = 3` decouples from `MAX_POOL = 10`;
- * `__system__` is filtered out as a defense-in-depth.
- *
- * Why `ACTIVITY_MOUNT_LIMIT < MAX_POOL`: `setupObservers` (provider-pool.ts)
- * wires Y.js bidirectional bridges that fire regardless of Activity mode —
- * they are NOT React effects and do not pause when Activity flips to hidden.
- * Bounding mounted editors at 3 caps the editor-instance memory cost (≈30-90MB
- * for TipTap + CodeMirror) without preventing the pool from holding warm
- * providers (≈5-10MB each) for fast Suspense-gated remount on revisit.
- *
- * `TiptapEditor` stays on the initial path; `SourceEditor` is lazy-loaded the
- * first time a doc actually enters source mode. Large docs additionally defer
- * the non-active editor until that mode is first visited. After the initial
- * visits, the doc keeps both editors mounted behind hidden-mode wrappers so
- * subsequent mode swaps stay CSS-only for that Activity.
- *
- * ERROR + SUSPENSE SCOPING (per-Activity, not global).
- *   Each `<Activity>` wraps its own `<DocumentErrorBoundary>` + `<Suspense>`.
- *   Rationale: `<Activity mode="hidden">` silences suspends in the hidden
- *   subtree (good) but does NOT intercept synchronous throws from
- *   `use(rejectedPromise)` (React 19.2 behavior). A single global boundary
- *   above the pool caused any hidden doc's cached rejection to re-throw
- *   into the visible UI when a healthy doc was active. Scoping per-Activity
- *   confines each error to its own subtree — hidden Activities' errors
- *   render into hidden DOM (`display:none`), and become visible again
- *   naturally when the user navigates back.
- *
- *   `resetKeys={[entry.docName]}` is intentionally stable for each Activity
- *   instance — auto-reset on navigation is not needed when the boundary is
- *   per-Activity (visibility is handled by Activity itself). Error clears
- *   only via (a) imperative "Try again" (recycle), (b) "Back to previous"
- *   (invalidate + nav), or (c) Activity eviction from the MRU mount list.
- */
-
 import {
   isEditableTextDocFile,
   isExcalidrawDocFile,
@@ -97,33 +61,18 @@ import {
 } from './scroll-restore';
 import { Button } from './ui/button';
 
-// The conflict surface only mounts when a doc's `lifecycle.status` is
-// `conflict`, so `@pierre/diffs` — and the whole rendered-diff engine behind it
-// — has no business in the eager editor chunk. Same reasoning and same shape as
-// the version-diff panes in EditorArea: conditionally mounted, so code-split.
-// The boundary pulls ConflictView and ConflictFilePreview with it.
 const LazyDiffViewBoundary = lazy(async () => {
   const mod = await import('./DiffViewBoundary');
   return { default: mod.DiffViewBoundary };
 });
 
-// Lazy-loaded: the skill/template identity panel (+ SkillProperties /
-// TemplateProperties + their rename/move APIs) only mounts for managed-artifact
-// docs, so it stays out of the eager editor bundle (same rationale as the
-// lazy SourceEditor).
 const ManagedArtifactProperties = lazy(async () => ({
   default: (await import('./ManagedArtifactProperties')).ManagedArtifactProperties,
 }));
 
-// Standalone Mermaid doc editor (diagram + editable source). Lazy so the mermaid
-// renderer + `codemirror-lang-mermaid` grammar stay out of the first-load bundle
-// for projects without any `.mmd`/`.mermaid` files.
 const MermaidDocEditor = lazy(async () => ({
   default: (await import('./MermaidDocEditor')).MermaidDocEditor,
 }));
-// Standalone Excalidraw doc editor. Lazy so the ~600kB Excalidraw bundle
-// (plus its `roughjs` renderer) stays out of the first-load bundle for
-// projects without any `.excalidraw` files.
 const ExcalidrawDocEditor = lazy(async () => ({
   default: (await import('./ExcalidrawDocEditor')).ExcalidrawDocEditor,
 }));
@@ -196,27 +145,11 @@ export function computeEditorMountGate(args: EditorMountGateArgs): EditorMountGa
   if (!isLarge) {
     return { renderSource: true, renderVisual: true, isLarge: false };
   }
-  // Large doc: active mode is always rendered (OR-ed with visited history);
-  // non-active only if visited at least once.
   const renderSource = args.isSourceMode || args.visitedSource;
   const renderVisual = !args.isSourceMode || args.visitedVisual;
   return { renderSource, renderVisual, isLarge: true };
 }
 
-/**
- * Pure gate for the `ok/cold/first-toggle` mark emission. The mark is the
- * first-toggle latency anchor — fires EXACTLY ONCE per ActivityEntry, only for
- * the ACTIVE entry, only when the defer-mount path was active (`isLarge`) and
- * the deferred editor has now mounted (both `renderSource` and `renderVisual`
- * are true). For small docs whose default is pre-mount-both, the mark must
- * NEVER fire — there is no defer-mount transition to measure.
- *
- * The `isActive` conjunct is load-bearing: a hidden entry whose deferred editor
- * mounts (e.g. a global flip materialising the other mode's editor in its
- * display:none subtree) must not spend the one-shot, or it both records a
- * phantom cold-mount it never paid AND suppresses the real mark that fires when
- * the doc is actually re-activated and pays the cost.
- */
 interface ShouldEmitFirstToggleArgs {
   isActive: boolean;
   isLarge: boolean;
@@ -232,15 +165,6 @@ export function shouldEmitFirstToggle(args: ShouldEmitFirstToggleArgs): boolean 
   return args.renderSource && args.renderVisual;
 }
 
-/**
- * The mode an Activity entry actually displays. Only the ACTIVE entry follows a
- * global mode flip; a hidden entry stays in the mode it last displayed
- * (`lastActiveIsSourceMode`) until it becomes active again, at which point it
- * adopts the current global mode. Freezing the mode for hidden entries is what
- * stops a global flip from mounting an editor inside a hidden (display:none)
- * subtree — the visited-mode gate and the mount gate both key off this value,
- * so a flip a hidden entry never displays can no longer flip its render flags.
- */
 export function computeEffectiveSourceMode(
   isActive: boolean,
   isSourceMode: boolean,
@@ -249,20 +173,6 @@ export function computeEffectiveSourceMode(
   return isActive ? isSourceMode : lastActiveIsSourceMode;
 }
 
-/**
- * Whether an Activity entry should render the create-mode "new doc" affordance
- * (empty draft that starts a page on first keystroke). A doc counts as new only
- * when it is genuinely absent from every surface a real doc registers under:
- * the page index, managed artifacts, and template content docs — and only
- * for the markdown doc class (`isMarkdownDocFile` rejects Mermaid /
- * Excalidraw / editable-text names).
- *
- * Templates and project skills only enter the page list after the async `files`
- * refetch, so a purely `pages`-membership check would flash the create-mode
- * affordance for a freshly created template during that index-lag window. The
- * structural `parseTemplateContentDocName` / `isManagedArtifactDocName` checks
- * suppress that even before the index catches up.
- */
 export function computeIsNewDoc(args: {
   docName: string;
   pages: ReadonlySet<string>;
@@ -335,51 +245,17 @@ const LazySourceEditor = lazy(async () => {
 
 interface EditorActivityPoolProps {
   activeDocName: string;
-  /**
-   * Every document rendered in a visible editor pane, in pane order. Omitted
-   * callers retain the legacy single-focused-document behavior while the
-   * workspace is being introduced.
-   */
   visibleDocNames?: ReadonlySet<string>;
-  /** Stable pane-owned DOM mounts for Activity hosts, keyed by docName. */
   activityHosts?: ReadonlyMap<string, HTMLElement>;
-  /** Stable hidden mount for MRU warm Activity entries with no visible pane. */
   parkingHost?: HTMLElement | null;
-  /** Pane-local chrome rendered for each visible document Activity. */
   renderToolbar?: (docName: string, provider: PoolEntrySnapshot['provider']) => ReactNode;
   isSourceMode: boolean;
   editorPlaceholder?: string;
-  /**
-   * Forwarded to each per-Activity `DocumentErrorBoundary` so the
-   * "Back to previous document" affordance in a fallback UI knows where
-   * to send the user. Global navigation concern — tracked once at the
-   * `EditorArea` level and threaded down through every Activity.
-   */
   previousDocName?: string;
-  /**
-   * Navigation callback for the "Back to previous document" button. Shared
-   * across every per-Activity boundary; only the visible Activity's button
-   * is ever clickable, so routing is unambiguous.
-   */
   onNavigateBack?: (previousDocName: string) => void;
-  /**
-   * "Try again" recovery for any errored Activity — destroys + recreates
-   * the pool entry for the doc that errored (per-Activity boundary passes
-   * its own `entry.docName` to the callback, not the globally-active one).
-   */
   onRecycle: (docName: string) => void;
 }
 
-/**
- * Pure helper — selects the LRU-bounded subset of pool entries to Activity-mount.
- *
- * Invariants:
- * 1. System docs (`__system__`) are filtered out — defense-in-depth even though
- *    `ProviderPool.open` rejects them at admission.
- * 2. Every existing visible document is present in the result, in pane order.
- * 3. MRU hidden entries fill the remainder up to `limit`; when more than
- *    `limit` documents are visible, all visible documents remain mounted.
- */
 export function computeActivityMountList<T extends { docName: string; lastAccessedAt: number }>(
   entries: ReadonlyArray<T>,
   visibleDocNames: ReadonlySet<string> | string | null,
@@ -387,13 +263,8 @@ export function computeActivityMountList<T extends { docName: string; lastAccess
 ): ReadonlyArray<T> {
   if (limit <= 0) return [];
   const filtered = entries.filter((e) => !isSystemDoc(e.docName));
-  // Stable MRU sort. Caller (`takeSnapshot`) already sorts but we re-sort here so
-  // the helper is correct for any input order — keeps test scenarios independent
-  // of upstream snapshot ordering decisions.
   const sorted = [...filtered].sort((a, b) => b.lastAccessedAt - a.lastAccessedAt);
 
-  // Preserve the old focused-document helper contract for callers that have
-  // not yet adopted pane visibility. Split-aware callers always pass a Set.
   if (typeof visibleDocNames === 'string' || visibleDocNames === null) {
     const top = sorted.slice(0, limit);
     if (visibleDocNames === null || top.some((entry) => entry.docName === visibleDocNames)) {
@@ -496,51 +367,18 @@ function EditorActivityPoolInner({
     ACTIVITY_MOUNT_LIMIT,
   );
 
-  // Track prior mount list by a stringified doc-name key so we emit
-  // `ok/activity/mount-list-change` once per real change (not once per render).
-  // The prior key is stored in a ref (not state) so the effect fires only when
-  // the composition of mounted docs actually shifts. Mount lists are bounded
-  // at ACTIVITY_MOUNT_LIMIT (3), so the string + diff is trivial.
   const priorMountKeyRef = useRef<string>('');
   const mountKey = mountList.map((e) => e.docName).join(',');
-  // Mirror poolEntries into a ref so the layout effect below can read the
-  // latest reference without listing it as a dep. takeSnapshot() in
-  // DocumentContext returns a fresh array on every pool-state notification
-  // (sync transitions, LRU touches), so listing poolEntries in the deps
-  // would re-run the layout effect on the commit phase for every pool
-  // notification — even though the effect's body is a no-op when
-  // mountKey is unchanged. Reading via ref makes mountKey the only signal
-  // that drives the expensive effect; the poolEventId lookup
-  // is gated by `newlyMounted` being non-empty (which is itself gated by
-  // mountKey changing).
-  //
-  // The ref-sync runs in its own useLayoutEffect (one-line write, runs in
-  // commit phase) so the React Compiler doesn't flag a render-phase ref
-  // mutation. The pair — cheap sync + gated expensive logic — keeps the
-  // hot path (per-pool-notification re-render) at one ref write.
   const poolEntriesRef = useRef(poolEntries);
   useLayoutEffect(() => {
     poolEntriesRef.current = poolEntries;
   }, [poolEntries]);
-  // Single-writer push of the activity mount list to the V2 editor cache.
-  // Uses `useLayoutEffect` (not `useEffect`) so the provider
-  // connect/disconnect fires BEFORE children's mount effects. Passive
-  // effects run bottom-up, which means `ActivityEntry`'s
-  // `mountTiptapEditor` would reparent + restore focus before the provider
-  // is reconnected — leaving a window where keystrokes commit locally but
-  // don't sync to peers. Layout effects run parent-first, closing the race.
   useLayoutEffect(() => {
     if (priorMountKeyRef.current === mountKey) return;
     const prior = priorMountKeyRef.current ? priorMountKeyRef.current.split(',') : [];
     const mounted = mountKey ? mountKey.split(',') : [];
     const evicted = prior.filter((d) => !mounted.includes(d));
     const newlyMounted = mounted.filter((d) => !prior.includes(d));
-    // Mint or adopt a mountId for each docName entering the mount list,
-    // and clear the registry entry on demote. Prefer the pool entry's
-    // poolEventId (adoption invariant) so prewarm → mount → cache / sync
-    // / cold marks all share one deterministic ID. Demote first so the
-    // next promote-cycle for the same docName re-derives from a clean
-    // slate (reset per cycle — supports first-toggle repeatability).
     for (const docName of evicted) {
       clearMountId(docName);
     }
@@ -556,10 +394,7 @@ function EditorActivityPoolInner({
       evicted,
     });
     priorMountKeyRef.current = mountKey;
-    // The cache uses this list to drive provider connect/disconnect for
     // cached-but-not-Activity-mounted editors (precedent #27(b)). Bounds
-    // remote-peer CRDT load to the top ACTIVITY_MOUNT_LIMIT editors
-    // regardless of how many docs are pool-resident.
     setActivityMountList(mounted);
   }, [mountKey, activeDocName]);
 
@@ -606,21 +441,6 @@ interface ActivityEntryProps {
   serverRestartRecovery: ServerRestartRecoveryState;
 }
 
-/**
- * The scroller's measurements at the instant a restore mark fires. Every mark in
- * the `ok/scroll-restore` family carries them, because the family is routed into
- * diagnostic bundles and re-deriving them after the fact is precisely what a
- * bundle cannot do.
- *
- * How they are READ differs by outcome — by enough that no summary of it is
- * safe. The `yielded` sites pass `contentBottom: null` unconditionally, so an
- * absent value there means "not measured" rather than "not measurable" and
- * inverts the reading that holds elsewhere; `abandoned` splits again on
- * `anchorMeasurable`. The triage playbook in the bug-triage skill is the single
- * statement of all of it, kept there rather than restated here so the two
- * cannot drift — a short version lived here for several revisions and was
- * wrong about `yielded` for all of them.
- */
 function geometry(el: HTMLElement, contentBottom: number | null) {
   return {
     scrollTop: el.scrollTop,
@@ -630,11 +450,6 @@ function geometry(el: HTMLElement, contentBottom: number | null) {
   };
 }
 
-/**
- * Owns one imperative host for a document Activity. Moving that host between
- * pane mounts reparents DOM without changing the ActivityEntry's React key,
- * preserving its scroll state and exclusive TipTap portal target.
- */
 function ActivityEntryHost({
   docName,
   hostMount,
@@ -657,52 +472,9 @@ function ActivityEntryHost({
     return () => host.remove();
   }, [host, hostMount]);
 
-  // Legacy callers render the tree in place until the split workspace supplies
-  // stable pane and parking mounts. Once supplied, the portal container stays
-  // stable while the effect above moves only its host element.
   return hostMount === null ? children : createPortal(children, host);
 }
 
-/**
- * Per-Activity scroll container that (a) owns its own scroller so scrollTop
- * is DOM-local to this doc's subtree and (b) saves/restores scrollTop across
- * `<Activity>` visibility flips.
- *
- * Why both:
- *   Per-Activity scrollers are necessary but not sufficient. When `<Activity
- *   mode="hidden">` applies `display:none` to the subtree, the browser
- *   removes layout for the hidden element — `scrollTop` reads as 0, and
- *   TipTap's effect cleanup unmounts the ProseMirror DOM so `scrollHeight`
- *   collapses. By the time `isActive` flips to `false` in a layout effect,
- *   `display:none` has already been applied and `ref.current.scrollTop` is
- *   0. To capture the real scroll position, we install a `scroll` listener
- *   that records `scrollTop` on every change, so the last-non-zero value is
- *   preserved in a ref independently of Activity state transitions.
- *
- *   On the restore side, a layout effect runs a bounded per-frame poll
- *   that re-applies `scrollTop = target` whenever the browser has clamped
- *   it below target. The poll is required because the Suspense swap from
- *   warm-fallback to real-editor collapses scrollHeight transiently
- *   (re-clamping scrollTop to 0), and the editor hydrates content
- *   asynchronously after `'create'` — neither a single synchronous write
- *   nor a one-shot ResizeObserver retry survives that race. The poll
- *   ends on the first user-scroll-intent signal (wheel / touchstart /
- *   mousedown / keydown), on an external scrollTop write (outline click,
- *   find-in-doc — anything we didn't write), or a hard wall-clock
- *   backstop. There is deliberately no early "settled" finalizer: a
- *   finalized restore never corrects again, so finalizing ahead of a late
- *   layout shift (contended hydration, panel settle, font swap) is how
- *   transient churn used to freeze into a permanently wrong position.
- *
- *   Anchor measurements are validity-guarded (see scroll-restore.ts): a
- *   mounted-but-hidden anchor (a Suspense fallback window during a slow
- *   reveal) yields NO target for that frame rather than a degenerate
- *   viewport-origin measurement that self-amplifies per applied frame.
- *
- *   The saved position itself lives in scroll-restore-coordination, not in
- *   this module, so a mode-switch landing reads and writes the same map
- *   rather than racing a private one.
- */
 export function ScrollPreservingContainer({
   isActive,
   docName,
@@ -713,100 +485,38 @@ export function ScrollPreservingContainer({
   children,
 }: {
   isActive: boolean;
-  /** The document this scroller belongs to — the key under which its scroll
-   *  body-offset persists across remounts (see scroll-restore-coordination). */
   docName: string;
-  /** The editor mode this scroller currently displays. Captured with each saved
-   *  scroll position and compared on re-activation: a saved position from a
-   *  different mode is floored (proportional) instead of driving this mode's
-   *  geometry against the other mode's offset. */
   mode: EditorModeValue;
-  /**
-   * Seed value for `savedScrollTop` at mount. Used by the warm-skeleton
-   * rename-restore path: when the new ActivityEntry mounts post-rename
-   * with a captured scrollTop, we plumb it here so BOTH the Stage 1
-   * synchronous write AND the Stage 2 bounded rAF re-apply target the
-   * captured value (rather than the fresh-mount default of 0, which would
-   * short-circuit the restore — see the early-return at the target===0
-   * check). Defaults to 0 for non-rename mounts (regular doc opens,
-   * recovery).
-   */
   initialScrollTop?: number;
-  /**
-   * Ref to a zero-height marker at the TOP of the document body (below the
-   * page header + the variable-height Properties section). Scroll is restored
-   * relative to this anchor's position within the scroll content, not a raw
-   * pixel offset — so a height change ABOVE it while this doc is hidden (the
-   * globally-shared Properties panel collapsing on another doc's toggle) does
-   * not shift the restored position. Optional: without a captured anchor the
-   * restore falls back to the raw saved scrollTop (compensation delta 0), so
-   * existing behavior is unchanged whenever nothing above the body moved.
-   */
   bodyAnchorRef?: RefObject<HTMLElement | null>;
-  /**
-   * Whether `EditorToolbar` is actually overlaying this scroller. False leaves
-   * the top inset off: the toolbar returns null for a conflicted document, and
-   * an unconditional reserve would then hold 3.5rem of empty space above a
-   * conflict view that draws its own header.
-   */
   hasToolbar?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  // Lazy initializer ensures the seed is captured at first render only —
-  // subsequent re-renders that re-pass a stale or zero `initialScrollTop`
-  // do NOT overwrite a saved value the user has since scrolled away from.
   const savedScrollTop = useRef<number>(initialScrollTop ?? 0);
-  // Anchor position captured at the same instant as `savedScrollTop`, so the
-  // pair describes one consistent layout. `null` = never captured (fresh mount
-  // / warm rename-restore) → no compensation.
   const savedAnchorPos = useRef<number | null>(null);
 
-  // Mirror `isActive` into a ref so the (once-installed) scroll listener reads
-  // the current value. Only a GENUINE user scroll — doc visible, not mid-restore
-  // — should record position; the restore's own programmatic writes and the
-  // panel-resize churn on reveal fire scroll events too, and recording those was
-  // corrupting the saved position (the `799.5` in the diagnostics).
   const isActiveRef = useRef(isActive);
   const isRestoringRef = useRef(false);
   useEffect(() => {
     isActiveRef.current = isActive;
   }, [isActive]);
 
-  // Mirror the current mode into a ref the restore effect reads on re-activation.
-  // It is a LAYOUT effect declared before the restore effect on purpose: when an
-  // Activity flips hidden->visible React re-runs both effects' setup, layout
-  // effects before passive and in declaration order, so a passive mirror would
-  // update only AFTER the restore had already read a mode frozen at the last
-  // hide. The restore keys on `isActive` (not `mode`), so an in-place flip of the
-  // active doc — owned by the landing controller — never runs it.
   const modeRef = useRef(mode);
   useLayoutEffect(() => {
     modeRef.current = mode;
   }, [mode]);
 
-  // Track scrollTop via a scroll listener so we always have the latest user
-  // position — `display:none` zeros scrollTop before any layout effect could
-  // read it, so we MUST capture via scroll events.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const onScroll = () => {
-      // Ignore non-user scroll: hidden (post-reveal churn / spurious 0s) and
-      // restore-in-progress (our own writes + panel-resize adjustments).
       if (!isActiveRef.current || isRestoringRef.current) return;
       if (el.scrollTop > 0) {
         const anchor = measureAnchor(el, bodyAnchorRef?.current);
-        // A hidden (zero-rect) anchor means layout is mid-transition — any
-        // scroll event on such a frame is churn, not user position. Recording
-        // it would corrupt the save the same way it corrupts the restore.
         if (!shouldRecordScrollPosition(anchor)) return;
         savedScrollTop.current = el.scrollTop;
         savedAnchorPos.current = anchor.kind === 'measured' ? anchor.contentPos : null;
-        // Persist the body-relative offset per doc so it survives a remount and
-        // stays valid across Properties-panel height changes. The mode + fraction
-        // ride along so a later re-activation in a different mode can floor
-        // instead of driving this offset against the other mode's geometry.
         if (anchor.kind === 'measured') {
           rememberDocScrollState(docName, {
             offset: el.scrollTop - anchor.contentPos,
@@ -820,69 +530,13 @@ export function ScrollPreservingContainer({
     return () => el.removeEventListener('scroll', onScroll);
   }, [bodyAnchorRef, docName]);
 
-  // Restore scrollTop when `isActive` flips to true. Two stages:
-  //   1. Synchronous best-effort write — cheap when content is already
-  //      mounted, but NON-TERMINAL: even if it lands, the Suspense swap
-  //      from warm-fallback to real-editor will collapse scrollHeight
-  //      transiently and re-clamp scrollTop to 0.
-  //   2. Bounded per-frame poll that re-applies scrollTop whenever the
-  //      browser has clamped it below target AND the document extends far
-  //      enough to hold it. Survives the warm-fallback → real-editor swap by
-  //      re-applying after content hydrates back to full height.
-  //
-  // rAF-poll, not ResizeObserver: `ResizeObserver(el)` observes the
-  // container's OWN content-box, which is sized by its parent (h-full)
-  // and does not change when scrollHeight grows inside it. Polling reads
-  // scrollHeight directly each frame — the signal we actually need.
-  //
-  // Stop conditions: user scroll intent (wheel / touchstart / mousedown on
-  // the scroller for scrollbar drags / keydown for keyboard scrolling), an
-  // EXTERNAL scroll write (outline-click scrollIntoView, find-in-doc — any
-  // scrollTop move we didn't make; see isExternalScroll), or the
-  // `RESTORE_BACKSTOP_MS` hard backstop. There is deliberately NO
-  // "settled" heuristic and NO short wall-clock finalizer: both finalize
-  // before a late layout shift above the body (contended hydration, panel
-  // settling, font swap), and a finalized restore never corrects again —
-  // that is exactly how transient churn froze into a permanently wrong
-  // position. Tracking until someone else takes over the scroll is the
-  // contract ("the same body content at the same viewport position"). Cost:
-  // a few rect reads per frame (getClientRects + two getBoundingClientRect +
-  // one per TOP-LEVEL editing surface — nested contenteditable atoms are
-  // excluded by ancestry before any rect read),
-  // cheap while layout is clean — reads only force reflow after a write.
-  //
-  // CSS scroll anchoring is suspended while the loop runs: it is the one
-  // other browser-side scrollTop mover, and with it off, any move we
-  // didn't write is a reliable takeover signal.
   useLayoutEffect(() => {
     if (!isActive) return;
     const el = ref.current;
     if (!el) return;
-    // A mode-switch landing owns the scroll for this document during its settle
-    // window; stand down so there is a single writer and the restore does not
-    // overwrite the landing with the pre-landing position.
-    //
-    // For a LANDING only, because this effect gets exactly one chance: it reads
-    // the holder once and its deps carry no signal that fires when a hold
-    // lapses, so returning here is a restore that never runs rather than one
-    // that runs later. Standing down for a landing still leaves a deliberate
-    // position, since the landing writes one. Standing down for an explicit
-    // navigation would not: it has already written its position and is only
-    // defending it, while `display:none` zeroed this scroller on the way out
-    // (the reason the position is captured by the scroll listener above and not
-    // read here) — so the reader would be handed the top of the document.
     if (scrollSuppressionHolder(docName) === 'landing') return;
 
     const saved = getDocScrollState(docName);
-    // Cross-mode re-activation floor. The saved offset was measured against the
-    // OTHER mode's geometry, so the precise anchor-tracking restore below would
-    // actively drive the scroller onto a wrong-geometry target. Instead land
-    // once at the same fraction through the scrollable range and stand down — a
-    // near-miss, never actively wrong. A cross-mode restore that cannot be
-    // applied (the new mode's content does not overflow, so there is no range to
-    // be a fraction of) still emits a diagnostic mark, so the failure is
-    // observable rather than silent (the old height-gated `abandoned` mark was
-    // suppressed in exactly this case).
     if (saved && saved.mode !== modeRef.current) {
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
       const target = Math.round(saved.fraction * maxScroll);
@@ -895,10 +549,6 @@ export function ScrollPreservingContainer({
         fraction: Number(saved.fraction.toFixed(4)),
         target,
         applied: applicable && el.scrollTop === target,
-        // Measured here rather than passed null: this branch lands on a
-        // fraction of the OTHER mode's geometry, which makes it the restore
-        // most likely to come to rest past where the document actually
-        // reaches — the one case where the content extent is the whole answer.
         ...geometry(el, measureContentExtent(el)),
       });
       return;
@@ -906,32 +556,11 @@ export function ScrollPreservingContainer({
 
     const rawTarget = savedScrollTop.current;
 
-    // Restore keeps the BODY offset — how far into the document body we were
-    // scrolled — constant, instead of a raw pixel scrollTop, and recomputes the
-    // target from the CURRENT anchor on every apply so it tracks the Properties
-    // panel settling to its post-toggle height. Prefer the per-doc offset
-    // (`getDocScrollState`) so it survives the editor's remount on
-    // navigate-back; fall back to this instance's captured pair, then the raw
-    // scroll (fresh mount / warm rename-restore) so existing behavior is intact.
     const sharedOffset = saved?.offset;
     const instanceOffset =
       savedAnchorPos.current !== null ? rawTarget - savedAnchorPos.current : null;
     const bodyOffset: number | null = sharedOffset ?? instanceOffset;
-    if (rawTarget === 0 && bodyOffset === null) return; // nothing to restore
-    // One frame's layout evidence: where to land, and how far the document
-    // actually reaches. A null target = no valid evidence this frame (anchor
-    // mounted but hidden, e.g. a Suspense fallback window) — hold: no write.
-    //
-    // The target is bounded by measured content rather than trusted outright.
-    // A saved offset describes the layout it was saved in; a rebuilt content
-    // DOM re-estimates its `content-visibility` chunks and can be a fraction
-    // of that height, leaving the offset past everything real — and
-    // scrollHeight, the only runway evidence available before, counts
-    // absolutely positioned chrome, so it will happily confirm a landing on
-    // nothing. Measuring per frame (not once at setup) is what makes the
-    // bound converge: the extent starts collapsed and grows as chunks
-    // materialize under the viewport, so the target climbs back toward the
-    // saved offset instead of freezing at the first frame's geometry.
+    if (rawTarget === 0 && bodyOffset === null) return;
     const measureFrame = (): { target: number | null; contentBottom: number | null } => {
       const contentBottom = measureContentExtent(el);
       const target = computeRestoreTarget(
@@ -945,27 +574,14 @@ export function ScrollPreservingContainer({
         contentBottom,
       };
     };
-    // Suppress scroll capture while we drive the restore — our own writes and
-    // the panel-resize adjustments would otherwise be recorded as user scroll.
     isRestoringRef.current = true;
-    // Suspend CSS scroll anchoring for the loop's lifetime (restored in
-    // finish). Two agents adjusting scrollTop for the same content shifts
-    // fight each other, and with anchoring off, any scrollTop move we did
-    // not write is a reliable someone-else-took-over signal.
     const priorOverflowAnchor = el.style.overflowAnchor;
     el.style.overflowAnchor = 'none';
 
     const startTs = performance.now();
     let phase2Marked = false;
-    // True once the restore has landed on target at least once (Phase 1 or
-    // Phase 2) — gates the `yielded` mark so a healthy restore followed by
-    // user interaction doesn't read as an incomplete one.
     let hasLandedOnce = false;
 
-    // Stage 1 — synchronous best-effort write. Mark phase1-success when it
-    // lands AND content is sized; do NOT short-circuit: the Suspense
-    // warm-fallback → real-editor swap can still collapse scrollHeight and
-    // re-clamp scrollTop, so Stage 2's poll must remain armed.
     let frame = measureFrame();
     if (frame.target !== null) {
       el.scrollTop = frame.target;
@@ -982,18 +598,14 @@ export function ScrollPreservingContainer({
         });
       }
     }
-    // The scrollTop as we left it — the baseline the external-scroll
-    // detector compares against next frame.
     let prevScrollTop = el.scrollTop;
 
-    // Stage 2 — per-frame tracking until user intent, external scroll, or
-    // backstop.
     let done = false;
     let raf = 0;
     const finish = () => {
       if (done) return;
       done = true;
-      isRestoringRef.current = false; // re-enable user-scroll capture
+      isRestoringRef.current = false;
       el.style.overflowAnchor = priorOverflowAnchor;
       cancelAnimationFrame(raf);
       clearTimeout(safetyTimer);
@@ -1002,16 +614,8 @@ export function ScrollPreservingContainer({
       el.removeEventListener('mousedown', yieldToUser);
       el.removeEventListener('keydown', yieldToUser);
     };
-    // Any user input yields, deliberately including EVERY key: once the user
-    // is interacting, enforcing a restore target against them is worse than
-    // a small residual offset they are already overriding. Caret-driven
-    // scrolls would also be caught next frame by the external-scroll check;
-    // the listeners just yield a frame sooner.
     const yieldToUser = () => {
       if (!hasLandedOnce) {
-        // A restore that never landed and then yielded is otherwise
-        // invisible (no phase1/phase2-success, no abandoned) — surface it so
-        // operators can distinguish "user took over" from "never ran".
         mark('ok/scroll-restore/yielded', {
           docName,
           reason: 'user',
@@ -1023,46 +627,13 @@ export function ScrollPreservingContainer({
     };
     el.addEventListener('wheel', yieldToUser, { passive: true });
     el.addEventListener('touchstart', yieldToUser, { passive: true });
-    // mousedown covers scrollbar drags (they begin with a mousedown on the
-    // scroller and produce neither wheel nor touchstart); keydown covers
-    // keyboard scrolling once focus is inside.
     el.addEventListener('mousedown', yieldToUser);
     el.addEventListener('keydown', yieldToUser);
     const tick = () => {
       if (done) return;
-      // Another writer acquired the scroll for this document mid-restore — a
-      // mode-switch landing for its settle window, or an explicit navigation
-      // for its brief hold. Stop competing either way, so that writer is the
-      // single one. Probed BEFORE the external-scroll check below: its own
-      // writes would otherwise read as a takeover of unknown origin, and the
-      // holder attributes the exit exactly.
-      //
-      // `reason` carries the holder rather than a fixed value. Each of the
-      // sibling reasons names a real actor, and this is the branch that used to
-      // absorb every navigation under the wrong one: an operator reading a
-      // trace for "why did scroll restore stop here" would go to the landing
-      // controller and find no matching mode-switch mark, when the cause was an
-      // outline click.
-      //
-      // The handover gets a mark of its own, UNGATED, because `yielded` cannot
-      // carry it: `yielded` means a restore that never completed, which is why
-      // IT is gated — and a restore that HAS landed and is re-applying its
-      // target frame after frame is exactly the state an explicit navigation
-      // collides with. Reported only through `yielded`, that common case is
-      // silent: the last thing recorded is a phase-success, so a restore cut
-      // short by a named writer reads the same as one that ran undisturbed.
-      // Widening `yielded` instead would make a healthy restore read as an
-      // incomplete one, trading one attribution error for another. Both marks
-      // fire when a restore that never landed is taken over, and they say
-      // different things: one that it did not complete, one who has the
-      // scroller now. No seam here — this reader sees the holder kind the
-      // registry keeps, not the click that produced it.
       const holder = scrollSuppressionHolder(docName);
       if (holder) {
         mark('ok/scroll-restore/superseded', {
-          // Carried for the same reason as every other mark on this track: this
-          // one reaches a diagnostic bundle now, and a line there that names no
-          // document cannot be tied to the restore it describes.
           docName,
           holder,
           elapsedMs: performance.now() - startTs,
@@ -1079,12 +650,6 @@ export function ScrollPreservingContainer({
         finish();
         return;
       }
-      // An UPWARD scrollTop move we didn't write = someone else owns the
-      // scroll now (outline-click scrollIntoView, find-in-doc). Yield
-      // immediately — enforcing a stale target over an intentional scroll is
-      // worse than any restore imprecision. Downward moves are shrink-clamps
-      // to re-apply over (possibly against a transient collapsed height);
-      // downward user takeovers arrive via the intent listeners above.
       if (isExternalScroll(prevScrollTop, el.scrollTop)) {
         if (!hasLandedOnce) {
           mark('ok/scroll-restore/yielded', {
@@ -1097,11 +662,6 @@ export function ScrollPreservingContainer({
         finish();
         return;
       }
-      // Recompute from the current anchor so the target follows the Properties
-      // section as it settles to its post-toggle height (see measureFrame).
-      // A null target is a degenerate frame (anchor hidden): hold — writing
-      // through invalid evidence is how a transient hidden window used to
-      // become a permanently wrong scroll position.
       frame = measureFrame();
       if (
         frame.target !== null &&
@@ -1110,8 +670,6 @@ export function ScrollPreservingContainer({
       ) {
         el.scrollTop = frame.target;
         if (hasLandedAt(el.scrollTop, frame.target) && !phase2Marked) {
-          // At-most-once per restore session: phase2-success fires on the
-          // first re-apply that lands, not every frame thereafter.
           mark('ok/scroll-restore/phase2-success', {
             docName,
             target: frame.target,
@@ -1128,15 +686,6 @@ export function ScrollPreservingContainer({
     raf = requestAnimationFrame(tick);
     const safetyTimer = setTimeout(() => {
       if (done) return;
-      // Fire `abandoned` based on final DOM state, not a historical success
-      // flag. The final target is content-clamped, so a doc that shrank below
-      // the saved offset yields a REACHABLE target at the new content bottom:
-      // landing there counts as restored, not landing is genuine abandonment,
-      // and the runway check only suppresses the mark when no document exists
-      // below the target at all. A null target here means the anchor never
-      // became measurable again — that IS abandonment. User scroll exits via
-      // `yieldToUser → finish` which clears the timer, so a scroll-away
-      // cannot trigger a false `abandoned`.
       const final = measureFrame();
       const finalTarget = final.target;
       if (
@@ -1144,10 +693,6 @@ export function ScrollPreservingContainer({
         (!hasLandedAt(el.scrollTop, finalTarget) &&
           hasRestoreRunway(finalTarget, final.contentBottom, el.scrollHeight))
       ) {
-        // `target` stays numeric across the ok/scroll-restore family (a
-        // mixed number|string field silently NaNs any numeric aggregation);
-        // the unmeasurable-anchor case is carried by `anchorMeasurable`
-        // with `target` omitted.
         mark('ok/scroll-restore/abandoned', {
           docName,
           ...(finalTarget !== null ? { target: finalTarget } : {}),
@@ -1166,40 +711,6 @@ export function ScrollPreservingContainer({
     <div
       ref={ref}
       data-testid="editor-scroll-container"
-      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Seven
-      // load-bearing constants must move together if the toolbar height changes:
-      //   - `pt-14` (here): initial-paint content reserve so doc content doesn't
-      //     start behind the absolute-positioned EditorToolbar overlay. Applied
-      //     only when that overlay is actually mounted (`hasToolbar`) — EditorArea
-      //     returns null from it for a conflicted doc, and the reserve would
-      //     otherwise strand 3.5rem above a view drawing its own header.
-      //   - `scroll-pt-14` (here): scroll-padding-top for native
-      //     Element.scrollIntoView alignment — TiptapEditor outline-click +
-      //     wiki-link anchor navigation, and editor/extensions/footnote-anchor-scroll.ts.
-      //   - TOOLBAR_HEIGHT in editor/extensions/frozen-table-headers.ts: the
-      //     plane frozen table header rows pin to (and the occluder block in
-      //     globals.css must stay at least this tall).
-      //   - editorToolbarOverlapPx in editor/SourceEditor.tsx: CM6 ignores ancestor
-      //     scroll-padding-top, so full-page source mode restates the inset via
-      //     EditorView.scrollMargins. Deliberately scope-limited to source-mode —
-      //     nested CM consumers of `createNestedCMExtensions` (e.g.,
-      //     RawMdxFallbackCMView) are content-sized with no internal scrollport
-      //     and have no programmatic scroll-into-view call sites today; adding
-      //     a `scrollMargins` contribution in the shared factory would mis-align
-      //     nested CM scrolls if they ever become scrollable.
-      //   - editorToolbarOverlapPx in editor/mode-switch-landing.ts: the mode-switch
-      //     capture probes step in from this inset, and the landing hands it to
-      //     the controller as the target's resting offset below the toolbar.
-      //   - editorToolbarOverlapPx in editor/utils/editor-visible-region.ts: the
-      //     top inset of the region selection-anchored floating surfaces clip
-      //     and clamp against, so the toolbar band counts as occluded.
-      //   - the outline-click section of the bug-triage skill's
-      //     references/bundle-forensics.md: a healthy `block: 'start'` landing
-      //     rests AT this inset, so the playbook states it as the value
-      //     `targetTopAfter` is read against. The only entry outside the app,
-      //     and the only one nothing here would fail on — it goes stale silently
-      //     and a triager measures against the wrong number.
-      // The toolbar itself: components/EditorToolbar.tsx.
       className={cn(
         'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',
         isNoteWindow() || !hasToolbar ? 'pt-0 scroll-pt-0' : 'pt-14 scroll-pt-14',
@@ -1304,98 +815,25 @@ function ActivityEntry({
 }: ActivityEntryProps) {
   const recoveryView = getServerRestartRecoveryView(entry.docName, serverRestartRecovery);
 
-  // When the doc's `lifecycle.status === 'conflict'`, swap the editor
-  // children for `<DiffViewBoundary>` inside the same DocumentBoundary
   // (preserving precedent #18(b)'s hybrid render tree — Suspense + error
-  // scoping + sync-promise gate stay on the editor path; the swap is the
-  // children, not the boundaries). The hook re-renders this Activity entry
-  // when the per-doc lifecycle Y.Map changes.
   const lifecycleStatus = useLifecycleStatus(entry.docName);
   const isConflict = lifecycleStatus === 'conflict';
-  // Standalone Mermaid docs (`.mmd`/`.mermaid`) render a dedicated diagram+source
-  // editor instead of the markdown dual-editor (they are Y.Text-only, no bridge).
   const isMermaid = isMermaidDocFile(entry.docName);
-  // Standalone Excalidraw canvas docs (`.excalidraw`) — Y.Text-only doc
-  // whose source is a JSON snapshot of the canvas scene.
   const isExcalidraw = isExcalidrawDocFile(entry.docName);
-  // Editable text docs (`.ts` / `.json` / `.txt` / …) — verbatim Y.Text docs
-  // rendered by a dedicated CodeMirror editor (no markdown dual-editor).
   const isTextDoc = !isMermaid && !isExcalidraw && isEditableTextDocFile(entry.docName);
-  // The doc-class half of this gate is the exact predicate the warm-snapshot
-  // producer uses (`captureRenameSnapshots` in editor-cache.ts), so producer
-  // and consumer classify docs identically. `isConflict` is this consumer's
-  // own added concern — a runtime CRDT signal the producer cannot see.
   const isDualEditor = !isConflict && isMarkdownDocFile(entry.docName);
-  // Per-Activity portal target for <EditorContent>. Stable DOM element
-  // exclusively owned by THIS ActivityEntry — `useState` with a lazy
-  // initializer ensures the same `HTMLDivElement` reference survives across
-  // every render of this entry, including the inner TiptapEditor remount
-  // triggered by the `${docName}-${isNewDoc}` key change.
-  //
-  // Why imperative (createElement) over JSX-rendered (<div ref={...} />):
-  // JSX-rendered elements are owned by React's reconciler, which is free to
-  // re-create DOM nodes under StrictMode synthetic double-invoke or future
-  // reconciler rewrites. The cross-doc DOM bleed fires
-  // when two editors' `view.dom` instances briefly share a parent at the
-  // moment `@tiptap/react`'s `PureEditorContent.componentDidMount.init()`
-  // runs — its `element.append(...editor.view.dom.parentNode.childNodes)`
-  // vacuums every sibling, including foreign editors. An imperatively-held
-  // div bypasses the reconciler for this one DOM node, guaranteeing the
-  // portal target is exclusively this Activity's editor's parent for the
-  // entire ActivityEntry lifetime.
-  //
-  // TiptapEditorChrome appends this target as a DOM child of its wrapper
-  // (`.tiptap-editor h-full` grid container) via useLayoutEffect, then
-  // renders <EditorContent> into the target via React.createPortal — so
-  // editor.view.dom ends up inside an `EditorContent` refDiv inside this
-  // per-Activity target, and `view.dom.parentNode.childNodes` can only
-  // contain THIS editor's own nodes.
   const [portalTarget] = useState<HTMLDivElement>(() => {
     const target = document.createElement('div');
     target.setAttribute('data-ok-editor-portal', entry.docName);
-    // `display: contents` removes the portal target from layout entirely
-    // — its single child (`<EditorContent>`'s refDiv) becomes the effective
-    // grid item of `.tiptap-editor`. The refDiv carries `grid-column:
-    // content` via the explicit `.tiptap-editor-portal-content` class that
-    // `TiptapEditor` passes to `<EditorContent>` (see `TiptapEditor.tsx`).
-    // That class is required because `.tiptap-editor > *` selects DOM
-    // direct children only — with `display: contents` on this target and
-    // on the JSX `portalSlot` above it, the refDiv is a great-grandchild
-    // in the DOM tree (even though it acts as a grid item for layout),
-    // and the descendant selector does not match it. Result: scroll
-    // geometry is identical to the pre-portal inline `<EditorContent>`
-    // mount.
     target.style.display = 'contents';
     return target;
   });
 
-  // Zero-height marker at the top of the document body (rendered just below the
-  // page header + Properties section). ScrollPreservingContainer restores scroll
-  // relative to this anchor so a height change above it — the shared Properties
-  // panel collapsing while this doc is hidden — doesn't shift the restored spot.
   const bodyAnchorRef = useRef<HTMLDivElement>(null);
 
-  // Defer-mount gating for large docs.
-  //
   // Small/medium docs keep pre-mount-both (precedent #18(b) default): mode swap
-  // stays CSS-only, neither editor's effect lifecycle re-runs.
-  //
-  // Large docs skip the non-active editor on cold load — its initial mount
-  // (CodeMirror Lezer parse for SourceEditor, ProseMirror construction for
-  // TiptapEditor) runs on first toggle instead. Subsequent toggles are
-  // instant because both are mounted from then on (refs track visited modes).
-  //
-  // The size reads from Y.Text because it's cheap O(1) post-sync (synchronous
-  // length access on the CRDT). Y.Text is the markdown source representation
-  // so its length reliably signals "this doc will be expensive to render".
   const ytextLength = entry.provider.document.getText('source').length;
 
-  // The mode this entry actually displays. Every visible split pane follows the
-  // global flip; a hidden entry stays frozen at its last-visible mode until it is
-  // shown again. Freezing is what keeps a global flip from mounting an editor
-  // inside a hidden (display:none) subtree — every mode-derived decision below
-  // (visited tracking, mount gate, class swaps) keys off `effectiveIsSourceMode`,
-  // so a flip a hidden entry never displays cannot flip its render flags.
   const [lastVisibleIsSourceMode, setLastVisibleIsSourceMode] = useState(isSourceMode);
   useEffect(() => {
     if (isVisible && lastVisibleIsSourceMode !== isSourceMode) {
@@ -1408,22 +846,6 @@ function ActivityEntry({
     lastVisibleIsSourceMode,
   );
 
-  // Track which modes have been visited. useState (not useRef) because React
-  // Compiler's Babel plugin rejects render-phase ref mutation — even though the
-  // mutation here is idempotent and safe, the compiler can't prove it. State
-  // with a lazy initializer + a post-commit effect is the compiler-approved
-  // shape.
-  //
-  // Correctness note: on the render where `effectiveIsSourceMode` first flips
-  // from `false → true`, we need the newly-visited SourceEditor to render in
-  // THAT render (not wait for an effect + rerender). `computeEditorMountGate`
-  // handles this by OR-ing with the mode directly, so even when the
-  // `visitedSource` state is still false at the flipped render, the gate
-  // returns `renderSource=true`. The effect then flips state, and subsequent
-  // renders stay consistent.
-  //
-  // Activity mode=hidden preserves state across visibility flips (just like
-  // refs would), so alt-tab between docs doesn't reset the visit history.
   const [visitedSource, setVisitedSource] = useState(effectiveIsSourceMode);
   const [visitedVisual, setVisitedVisual] = useState(!effectiveIsSourceMode);
 
@@ -1439,10 +861,6 @@ function ActivityEntry({
     visitedVisual,
   });
 
-  // Emit a mark ONCE per real defer decision for observability — subsequent
-  // renders of the same Activity don't re-emit. A `seen` key captures both
-  // the decision outcome and which modes are rendered; when it changes, that's
-  // a real transition worth a mark.
   const priorGateKeyRef = useRef<string>('');
   const gateKey = `${gate.isLarge}-${gate.renderSource}-${gate.renderVisual}`;
   useEffect(() => {
@@ -1467,51 +885,9 @@ function ActivityEntry({
     effectiveIsSourceMode,
   ]);
 
-  // Rename-induced cold-mount carries forward the PRIOR editor's HTML + scrollTop
-  // + selection so the user lands approximately where they left off. The snapshot
-  // is PEEKed (not consumed-and-deleted) at lazy init time so StrictMode's
-  // dev double-invoke of `useState` initializers returns the same value on both
-  // invocations — a consume-and-delete here would return the snapshot on call 1
-  // and null on call 2 (the committed state), which silently broke the scroll
-  // restore path. The store entry is released by TiptapEditor's
-  // `editor.on('create')` hook (one-shot consume) so future mounts of the
-  // same docName don't see stale data.
-  //
-  // scrollTop is plumbed into ScrollPreservingContainer as `initialScrollTop`
-  // so the container's Stage 1 (synchronous write) + Stage 2 (bounded rAF
-  // re-apply until scrollHeight stabilizes past target) machinery handles
-  // the warm-fallback layout race. A direct write here lost to the Stage-2
-  // poll not engaging on fresh mount (savedScrollTop = 0 short-circuit) —
-  // the browser clamps the synchronous write to 0 when scrollHeight is
-  // still ≈ clientHeight at write-time, and the rename Suspense swap from
-  // warm-fallback to real-editor re-clamps shortly after.
-  //
-  // Selection is NOT threaded as a prop — TiptapEditor reads it directly from
-  // the snapshot store inside its `editor.on('create')` handler, applies it
-  // once, then clears the store entry. Reading from the one-shot store (rather
-  // than a mount-captured prop) means a later composite-key remount does NOT
-  // re-apply a now-stale caret over the user's current position.
   const [warmSnapshot] = useState(() => peekRenameSnapshot(entry.docName));
   const warmHtml = warmSnapshot?.html ?? null;
 
-  // Note: clearing of the rename-snapshot store entry lives in
-  // TiptapEditor's `editor.on('create')` hook (see editor-cache.ts ↔
-  // TiptapEditor.tsx). Clearing here from a useEffect would race the
-  // StrictMode dev double-invoke: mount 1's effect would delete the
-  // store entry before mount 2's `useState` lazy initializer re-peeks
-  // it, causing the warm fallback to flash empty in dev. The 'create'
-  // event fires once per editor instance, after StrictMode has settled,
-  // so it's the safe consumption point.
-
-  // Emit `ok/cold/first-toggle` exactly once per ActivityEntry, when the
-  // deferred editor mounts for the first time on a large doc. For small
-  // docs (pre-mount-both default) and for large docs that never get
-  // toggled, this never fires.
-  //
-  // The effect runs AFTER React's commit phase — by which time the newly-
-  // mounted editor's `ok/cold/ec-init` mark has already fired (PureEditorContent
-  // initializes synchronously during render; cold-mount-instrumentation wraps
-  // the method so the mark fires inside the wrapped finally block).
   const [hasEmittedFirstToggle, setHasEmittedFirstToggle] = useState(false);
   useEffect(() => {
     if (
@@ -1545,11 +921,7 @@ function ActivityEntry({
 
   return (
     <Activity mode={isVisible ? 'visible' : 'hidden'} name={`editor:${entry.docName}`}>
-      {/* Per-Activity scroll container with save/restore across Activity
-          visibility flips. See ScrollPreservingContainer for the full
-          rationale. Hoisting the scroller to EditorArea would make scroll
-          state cross-document and collapse scrollHeight on hidden-mode
-          effect cleanup. */}
+      {}
       <ScrollPreservingContainer
         isActive={isVisible}
         docName={entry.docName}
@@ -1562,32 +934,15 @@ function ActivityEntry({
           <ServerRestartRecoveryPanel view={recoveryView} />
         ) : (
           <>
-            {/* Per-Activity error + suspense scoping — see file-level docstring
-            "ERROR + SUSPENSE SCOPING" for rationale. `activeDocName` passed
-            to the boundary is this Activity's OWN docName (entry.docName),
-            not the globally-active doc. This keeps the error state tied to
-            the Activity instance: a healthy doc becoming active does not
-            reset an errored doc's boundary, and revisiting an errored doc
-            re-reveals the same error UI. */}
+            {}
             <DocumentErrorBoundary
               activeDocName={entry.docName}
               previousDocName={previousDocName}
               onNavigateBack={onNavigateBack}
               onRecycle={onRecycle}
             >
-              {/*
-            Suspense fallback = `EditorSkeleton`. A static mdast→React
-            preview fallback (reading disk bytes, rendered as a
-            fumadocs-style tree) was tried and dropped — the visual jump
-            from preview to the real editor (different typography + spacing)
-            was jarring, so the neutral skeleton won. The
-            perceived-first-paint budget (<500ms P95) still applies — the
-            skeleton meets it trivially.
-          */}
+              {}
               <Suspense
-                // The warm HTML snapshot is markdown-editor output; on a
-                // doc-class branch it would render the pre-rename text over
-                // a surface that is about to become a canvas or CodeMirror.
                 fallback={
                   warmHtml && isDualEditor ? (
                     <WarmContentFallback html={warmHtml} />
@@ -1605,13 +960,6 @@ function ActivityEntry({
                        #18(b) hybrid render tree preserved — we swap children,
                        not boundaries). Y.Doc identity is unchanged across
                        the swap, so Y.Text content + undo history survive. */
-                    /* Its own Suspense, matching the Excalidraw branch below:
-                       the nearest boundary otherwise is the per-Activity one
-                       wrapping DocumentBoundary itself, so the first render of
-                       this lazy element suspends the whole subtree — the
-                       fallback replaces the pane and DocumentBoundary's
-                       syncPromise gate unmounts and remounts when the chunk
-                       lands, on a transition that is already a jarring switch. */
                     <Suspense fallback={<EditorSkeleton />}>
                       <LazyDiffViewBoundary docName={entry.docName} provider={entry.provider} />
                     </Suspense>
@@ -1627,48 +975,14 @@ function ActivityEntry({
                       isSourceMode={effectiveIsSourceMode}
                     />
                   ) : isExcalidraw ? (
-                    /* Standalone Excalidraw canvas doc (`.excalidraw`).
-                       Whole-doc Y.Text('source') snapshot; no dual-editor,
-                       no markdown bridge. Lazy so the canvas bundle stays
-                       out of first-load for projects without one. */
                     <Suspense fallback={<EditorSkeleton />}>
                       <ExcalidrawDocEditor provider={entry.provider} />
                     </Suspense>
                   ) : isTextDoc ? (
-                    /* Editable text doc: single CodeMirror surface bound to this
-                       doc's Y.Text('source') — same doc-class plumbing as the
-                       Mermaid branch above, minus the diagram pane. */
                     <TextDocEditor docName={entry.docName} provider={entry.provider} />
                   ) : (
-                    /* Dual-editor mount with size-gated defer for large docs. Small
-                  docs render both (pre-mount-both default — mode swap stays
-                  CSS-only after first source visit). SourceEditor itself is
-                  lazy-loaded the first time this doc is shown in source mode.
-                  Large docs (>LARGE_DOC_CHAR_THRESHOLD) also defer the non-
-                  active editor until its mode is visited at least once — see
-                  computeEditorMountGate.
-
-                  Stacking: the wrapper is position:relative + h-full. The
-                  non-active child carries `.ok-mode-hidden`, which sets
-                  `position:absolute; inset:0; pointer-events:none` alongside
-                  `visibility:hidden` plus a rendering-update-deferred
-                  `content-visibility:hidden` lock + `contain-intrinsic-size`
-                  (full contract in globals.css §.ok-mode-hidden). That
-                  takes the hidden editor out of normal flow so its 8000px
-                  reserved intrinsic size doesn't size the wrapper or any
-                  shared grid row (earlier grid-based stacking sized rows to
-                  the MAX intrinsic size across children, stretching the
-                  visible editor to 8000px and creating bottom whitespace on
-                  short docs — see globals.css §.ok-mode-hidden). */
                     <div className="flex h-full flex-col">
-                      {/* Property region (WYSIWYG only — source mode surfaces the
-                        raw YAML directly in CodeMirror). Managed-artifact docs
-                        (skills/templates) render their own identity panel in
-                        place of the document PageHeader + PropertyPanel: `name`
-                        (and a skill's `scope`) are identity, not free-form
-                        frontmatter, and they have no cover/icon. Regular docs get
-                        PageHeader (decorative cover+icon, null when unset) +
-                        PropertyPanel (frontmatter table, null when empty). */}
+                      {}
                       {!effectiveIsSourceMode &&
                         (isManagedArtifactDocName(entry.docName) ||
                         parseProjectSkillContentDocName(entry.docName) ||
@@ -1685,13 +999,7 @@ function ActivityEntry({
                             <PropertyPanel provider={entry.provider} />
                           </>
                         ))}
-                      {/* Body-top anchor for scroll-restore compensation (see
-                          ScrollPreservingContainer.bodyAnchorRef). Zero height,
-                          non-interactive — everything above it (page header +
-                          Properties) is the variable region it measures. The
-                          BODY_ANCHOR_ATTR marker lets a landing find this node
-                          from a bare container it did not mount (see
-                          scroll-restore-coordination.writeLandingResult). */}
+                      {}
                       <div
                         ref={bodyAnchorRef}
                         aria-hidden
@@ -1716,24 +1024,10 @@ function ActivityEntry({
                             className={effectiveIsSourceMode ? 'ok-mode-hidden h-full' : 'h-full'}
                           >
                             <TiptapEditor
-                              // The isNewDoc segment forces TipTap remount on the draft → saved
-                              // transition (the flip changes the page list's membership of this
-                              // docName).
-                              // poolEventId ties the mount to pool-entry identity: an in-place
-                              // recycle of a mounted doc (the binding staleness guard's wedge
-                              // recovery) swaps entry.provider under a stable docName, and
-                              // TiptapEditor's construct closure captures `provider` once
-                              // (provider-stability invariant, TiptapEditor.tsx) — without a
-                              // remount the rebuilt editor would bind the destroyed provider
-                              // and silently write into an orphaned Y.Doc.
                               key={`${entry.docName}-${String(isNewDoc)}-${entry.poolEventId}`}
                               provider={entry.provider}
                               placeholder={editorPlaceholder}
                               isSourceMode={effectiveIsSourceMode}
-                              // Per-Activity exclusive portal target — see the
-                              // `portalTarget` useState declaration for
-                              // the bleed-prevention rationale. The target's
-                              // identity is stable across this TiptapEditor's remount.
                               portalTarget={portalTarget}
                             />
                           </div>

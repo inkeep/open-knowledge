@@ -1,13 +1,3 @@
-/**
- * HEAD watcher — detects coordinated git operations (pull, checkout, merge, rebase).
- *
- * Watches .git/HEAD, MERGE_HEAD, ORIG_HEAD, and index.lock for changes.
- * Emits BatchBegin when activity starts and BatchEnd after a quiet window.
- *
- * BatchEnd includes headMoved (whether HEAD SHA changed) and old/new SHAs.
- * A timeout cap prevents indefinite batching (e.g., long rebase).
- */
-
 import {
   discoverGitRepository,
   type GitRepository,
@@ -15,8 +5,6 @@ import {
 import { getLogger } from './logger.ts';
 
 const log = getLogger('head-watcher');
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 type BatchKind = 'within-branch' | 'cross-branch' | 'detached-head';
 
@@ -39,19 +27,13 @@ type OnBatchEnd = (info: BatchEndInfo) => void | Promise<void>;
 
 export interface HeadWatcherHandle {
   unsubscribe: () => Promise<void>;
-  /** Current known branch name (or 'detached-<sha12>'). */
   getLastKnownBranch: () => string | null;
 }
-
-// ─── Constants ───────────────────────────────────────────────────────────────
 
 const QUIET_WINDOW_MS = 100;
 const BATCH_TIMEOUT_MS = 30_000;
 
-/** Files within .git/ that signal coordinated operations. */
 const WATCHED_FILES = new Set(['HEAD', 'MERGE_HEAD', 'ORIG_HEAD', 'index.lock']);
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export interface ProjectHeadState {
   readonly branch: string | null;
@@ -70,7 +52,6 @@ function readRepositoryHeadState(repository: GitRepository): ProjectHeadState {
   return { branch: head.branch, oid };
 }
 
-/** Read the current branch label and resolved HEAD oid without throwing. */
 export function readProjectHeadState(projectRoot: string): ProjectHeadState {
   const inspected = discoverGitRepository(projectRoot);
   return inspected.kind === 'repository'
@@ -78,27 +59,13 @@ export function readProjectHeadState(projectRoot: string): ProjectHeadState {
     : { branch: null, oid: null };
 }
 
-// ─── Backends ────────────────────────────────────────────────────────────────
-
 type HeadEventDispatch = (rawPath: string) => void;
 
-/**
- * Map a raw watcher event path to the watched `.git` filename it represents, or
- * `null` when it isn't one we track. Pure — shared by both backends and
- * unit-testable without real filesystem events.
- */
 export function watchedGitFile(rawPath: string): string | null {
   const fileName = rawPath.split('/').pop() ?? '';
   return WATCHED_FILES.has(fileName) ? fileName : null;
 }
 
-/**
- * Try to start a `@parcel/watcher` subscription on the git dir. Returns the
- * unsubscribe fn, or `null` when `@parcel/watcher` can't load (it's a native
- * addon that packaged builds don't bundle) or its `subscribe()` fails
- * (permission / inotify-limit / EACCES). A `null` return tells the caller to
- * fall back to chokidar rather than give up on HEAD watching entirely.
- */
 async function tryStartParcelHeadWatcher(
   gitDir: string,
   dispatch: HeadEventDispatch,
@@ -131,15 +98,6 @@ async function tryStartParcelHeadWatcher(
   }
 }
 
-/**
- * Chokidar fallback for HEAD watching — mirrors the file-watcher's chokidar
- * fallback so packaged builds (which ship without the `@parcel/watcher` native
- * binary) still detect branch switches. `depth: 0` watches only the top-level
- * `.git` entries, which is exactly where the watched ref files live; git writes
- * them as small atomic renames that chokidar detects reliably. The bulk-event
- * coalescing that makes chokidar lossy for content watching doesn't apply to
- * this handful of ref files.
- */
 async function startChokidarHeadWatcher(
   gitDir: string,
   dispatch: HeadEventDispatch,
@@ -151,30 +109,12 @@ async function startChokidarHeadWatcher(
     followSymlinks: false,
   });
   watcher.on('all', (_event, path) => dispatch(path));
-  // Without an 'error' listener, chokidar (an EventEmitter) rethrows watcher
-  // errors (EACCES, inotify watcher-limit exhaustion) as uncaught — crashing
-  // the server. Log + swallow: a HEAD-watch hiccup must not take the process
-  // down; branch-switch detection simply pauses.
   watcher.on('error', (err) => {
     log.warn({ err }, '[head-watcher] chokidar watcher error');
   });
   return () => watcher.close();
 }
 
-// ─── Watcher ─────────────────────────────────────────────────────────────────
-
-/**
- * Start watching .git/ for coordinated operations.
- *
- * Returns a handle to stop watching. If `.git/` cannot be resolved (e.g. the
- * project is uninitialized and `ensureProjectGit` has not yet run), returns a
- * no-op handle so callers don't have to special-case the missing state.
- *
- * Backend selection: prefer `@parcel/watcher` (FSEvents — efficient) and fall
- * back to chokidar when it can't load, so HEAD watching stays functional in
- * packaged builds that omit the native addon. `opts.forceBackend` pins one
- * backend (test seam; `'parcel'` throws instead of falling back).
- */
 export async function startHeadWatcher(
   projectRoot: string,
   onBatchBegin: OnBatchBegin,
@@ -189,7 +129,6 @@ export async function startHeadWatcher(
 ): Promise<HeadWatcherHandle> {
   const inspected = discoverGitRepository(projectRoot);
   if (inspected.kind !== 'repository') {
-    // No .git/ to watch — skip attachment without erroring
     return { unsubscribe: async () => {}, getLastKnownBranch: () => null };
   }
   const repository = inspected.repository;
@@ -203,7 +142,6 @@ export async function startHeadWatcher(
   let batchEndInFlight: Promise<void> | null = null;
 
   async function emitBatchEnd(timeout: boolean): Promise<void> {
-    // Wait for onBatchBegin to finish before proceeding
     if (beginInFlight) await beginInFlight;
     if (batchEndInFlight) {
       await batchEndInFlight;
@@ -225,7 +163,6 @@ export async function startHeadWatcher(
     const headMoved = oldHead !== newHead;
     const newBranch = head.branch;
 
-    // Classify batch kind
     let batchKind: BatchKind;
     if (newBranch?.startsWith('detached-')) {
       batchKind = 'detached-head';
@@ -251,8 +188,6 @@ export async function startHeadWatcher(
       } catch (e) {
         log.error({ err: e }, 'onBatchEnd callback failed');
       } finally {
-        // Set inBatch = false AFTER the async callback completes
-        // so new file events stay buffered during branch-switch orchestration
         inBatch = false;
         oldHead = newHead;
         lastKnownBranch = newBranch;
@@ -277,18 +212,9 @@ export async function startHeadWatcher(
   let beginInFlight: Promise<void> | null = null;
 
   async function handleGitEvent(trigger: string): Promise<void> {
-    // A second HEAD event belongs to a new batch, but it must not re-enter the
-    // still-running branch-switch callback for the preceding batch.
     if (batchEndInFlight) await batchEndInFlight;
     if (!inBatch) {
       inBatch = true;
-      // Do NOT re-read HEAD here. `oldHead` already holds the last-settled HEAD
-      // (seeded at watcher start, rolled over to `newHead` at each batch end).
-      // A fast `git merge`/`git pull` can advance the branch ref BEFORE the
-      // watcher delivers its first `.git` event, so re-reading now would capture
-      // the post-move SHA and report `headMoved: false` for a genuine move —
-      // silently defeating upstream-import detection + author attribution. Only
-      // seed when we have no baseline yet (first event in an empty repo).
       if (oldHead === null) oldHead = readRepositoryHeadState(repository).oid;
       const beginPromise = (async () => {
         try {
@@ -301,7 +227,6 @@ export async function startHeadWatcher(
       await beginPromise;
       beginInFlight = null;
 
-      // Start timeout cap only after begin completes
       timeoutTimer = setTimeout(() => {
         timeoutTimer = null;
         void emitBatchEnd(true);
@@ -316,8 +241,6 @@ export async function startHeadWatcher(
     if (fileName !== null) void handleGitEvent(fileName);
   };
 
-  // Prefer @parcel/watcher; fall back to chokidar when it can't start so HEAD
-  // watching stays functional in packaged builds that omit the native addon.
   let resolvedUnsub: (() => Promise<void>) | null = null;
   let backend: 'parcel' | 'chokidar' | 'test' = 'chokidar';
   if (opts.subscribeForTest) {
@@ -329,8 +252,6 @@ export async function startHeadWatcher(
   }
   if (!resolvedUnsub) {
     if (opts.forceBackend === 'parcel') {
-      // Caller pinned parcel but it couldn't start — surface a genuine failure
-      // rather than silently using a different backend (test seam).
       throw new Error('@parcel/watcher unavailable for HEAD watching (forced backend)');
     }
     resolvedUnsub = await startChokidarHeadWatcher(gitDir, dispatch);
@@ -338,8 +259,6 @@ export async function startHeadWatcher(
   }
   const unsubscribeFn: () => Promise<void> = resolvedUnsub;
 
-  // Read initial state AFTER the watcher is active to avoid missing events
-  // that occur between the read and the subscription completing.
   const initialHead = readRepositoryHeadState(repository);
   oldHead = initialHead.oid;
   lastKnownBranch = initialHead.branch;

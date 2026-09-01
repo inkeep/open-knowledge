@@ -1,13 +1,6 @@
 import { ArrowDown, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Mirrors MarketingButton's `primary` sizing, colors, and hover/active states
-// (size md) so splash CTAs match the homepage's button chrome. Typography is
-// deliberately adapted to the splash page's mono/uppercase convention. When
-// syncing, sync the chrome (dimensions, colors, hover/active), not the type.
-// Kept as a standalone class string rather than reusing MarketingButton because
-// splash CTAs fire custom-scheme URLs via raw <a> and need refs for focus
-// management — paths MarketingButton's next/link rendering can't take.
 export const splashPrimaryButton = cn(
   'inline-flex items-center gap-2 rounded-full h-12 px-[18px] py-[14px] pr-2.5',
   'bg-azure-blue text-white text-sm sm:text-base font-medium uppercase leading-[115%] tracking-[-0.64px]',

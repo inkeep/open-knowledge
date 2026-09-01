@@ -1,33 +1,8 @@
-/**
- * Shared hdiutil mount/copy/detach primitive for packaged-DMG drivers.
- *
- * `withMountedDmg` attaches a `.dmg` read-only, copies the first `.app` bundle
- * out to a temporary directory, detaches the mount, and only then hands the
- * COPIED bundle to the caller. Launching from the copy rather than the live
- * mount is the whole point: a packaged smoke run holds the app open for
- * minutes, and a mount held for that window is what strands `/Volumes` entries
- * when CI kills the run.
- *
- * SIGINT/SIGTERM are handled explicitly because Node's default on both is a
- * synchronous exit that skips `finally` — which would leave the volume attached
- * until someone runs `hdiutil detach` by hand or reboots the runner. Handlers
- * are registered per invocation and removed in `finally` so a long-lived
- * process that mounts repeatedly does not accumulate listeners.
- *
- * Every external effect is injectable via `deps` so the colocated test covers
- * each branch without invoking real hdiutil.
- */
-
 import { spawn } from 'node:child_process';
 import { cp, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-/**
- * Discriminants for the two ways a mount can fail structurally. Callers map
- * these to an infrastructure verdict rather than a product verdict — a DMG that
- * cannot be mounted says nothing about whether the app works.
- */
 export const MOUNT_ERROR_CODES = {
   attachFailed: 'dmg-attach-failed',
   noAppBundle: 'dmg-no-app-bundle',
@@ -59,13 +34,6 @@ async function defaultListAppsInMount(mountPath) {
   return entries.filter((e) => e.toLowerCase().endsWith('.app'));
 }
 
-/**
- * Mount `dmgPath`, copy its first `.app` out, detach, then invoke `callback`
- * with the path to the copied bundle. The copy and the mountpoint are removed
- * before returning, whether the callback resolved or threw.
- *
- * Returns whatever `callback` returns.
- */
 export async function withMountedDmg(dmgPath, callback, deps = {}) {
   const runCommand = deps.runCommand ?? defaultRunCommand;
   const mkdtempImpl = deps.mkdtemp ?? mkdtemp;
@@ -78,11 +46,6 @@ export async function withMountedDmg(dmgPath, callback, deps = {}) {
   const mountRoot = await mkdtempImpl(join(tmpdir(), 'ok-dmg-mount-'));
   const appCopyRoot = await mkdtempImpl(join(tmpdir(), 'ok-dmg-app-'));
 
-  // `defaultRunCommand` spawns with stdio: 'pipe', so hdiutil's stderr lands in
-  // the Error message rather than the terminal. Swallowing these errors without
-  // logging leaves a stranded /Volumes entry — or an orphaned ~200MB .app copy —
-  // with no breadcrumb, which on a long-lived runner surfaces much later as an
-  // "already mounted" or disk-full failure with no trail back to here.
   const warn = deps.warn ?? ((msg) => process.stderr.write(`[dmg-mount] ${msg}\n`));
   const describe = (err) => err?.message ?? String(err);
 
@@ -93,15 +56,11 @@ export async function withMountedDmg(dmgPath, callback, deps = {}) {
     try {
       await runCommand('hdiutil', ['detach', '-quiet', mountRoot]);
     } catch (err) {
-      // Log, don't throw: throwing here would mask whichever error sent us
-      // into cleanup.
       warn(`hdiutil detach failed for ${mountRoot}: ${describe(err)}`);
     }
   };
 
   const removeScratch = async () => {
-    // `force: true` already absorbs ENOENT; what reaches these handlers is
-    // EPERM / EBUSY / read-only-filesystem, all worth a line.
     await rmImpl(appCopyRoot, { recursive: true, force: true }).catch((err) => {
       warn(`could not remove ${appCopyRoot}: ${describe(err)}`);
     });
@@ -158,15 +117,6 @@ export async function withMountedDmg(dmgPath, callback, deps = {}) {
 
     const appName = apps[0];
     const appCopyPath = join(appCopyRoot, appName);
-    // `verbatimSymlinks` is load-bearing, not a nicety. Node's default resolves
-    // every relative symlink against the SOURCE and writes an absolute path in
-    // its place, and an Electron bundle is built out of relative links
-    // (`Electron Framework -> Versions/Current/Electron Framework`). The next
-    // line detaches the very mount those rewritten links would point into, so
-    // dropping this option yields a copy whose frameworks all dangle: the app
-    // aborts at launch with `dyld: Library not loaded: @rpath/Electron
-    // Framework.framework/Electron Framework`, and every packaged smoke test
-    // fails in milliseconds — which reads as a product verdict, not a copy bug.
     await cpImpl(join(mountRoot, appName), appCopyPath, {
       recursive: true,
       verbatimSymlinks: true,

@@ -5,14 +5,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 
-/**
- * The runtime boundary's contract is that it is a pure grouping view:
- * every member IS the ServerInstance member (identity-preserved), and the
- * late-assigned members stay live through the view rather than being
- * snapshotted at construction. If either property breaks, adopting the
- * runtime in a capability service silently changes behavior.
- */
-
 let tmpRoot: string;
 let booted: BootedServer;
 
@@ -50,10 +42,6 @@ describe('ProjectRuntime view over ServerInstance', () => {
 
   test('late-assigned members read live through the view', () => {
     const { runtime, serverInstance } = booted;
-    // Both are getter-backed: whatever the instance reports now, the view
-    // reports the same object at the same moment — no construction-time
-    // snapshot (syncEngine is assigned after async init; degraded fills
-    // during init).
     expect(runtime.git.syncEngine).toBe(serverInstance.syncEngine);
     expect(runtime.degraded).toBe(serverInstance.degraded);
   });

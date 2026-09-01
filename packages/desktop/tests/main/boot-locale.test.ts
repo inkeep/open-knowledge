@@ -10,12 +10,6 @@ import {
   resolveDesktopLocaleFrom,
 } from '../../src/main/boot-locale.ts';
 
-/**
- * The disk half runs against a real `~/.ok/global.yml` in a throwaway home, not
- * a stubbed reader: reading a user preference off disk is a capability main did
- * not have before this, so the thing worth proving is that the file main writes
- * from Settings is the file main reads at boot.
- */
 let home = '';
 
 function writeUserConfig(body: string): void {
@@ -50,17 +44,10 @@ describe('readStoredLanguagePreference', () => {
     const body = ':::not yaml at all\n  - [\n';
     writeUserConfig(body);
     expect(readStoredLanguagePreference(home)).toBe('system');
-    // Building a menu must not rename the user's config out from under them,
-    // which is what `readConfigSafely` does by default on a corrupt file.
-    // Asserting the bytes rather than a second read: a sidelined file also
-    // reads as `'system'`, so the return value alone cannot tell them apart.
     expect(readFileSync(join(home, '.ok', 'global.yml'), 'utf8')).toBe(body);
     expect(readdirSync(join(home, '.ok'))).toEqual(['global.yml']);
   });
 
-  // Main has no DevTools. Degrading quietly here leaves an English menu bar
-  // over a translated app with nothing anywhere saying why, which is a support
-  // call that ends in someone opening the `.app` bundle by hand.
   test('says so when the config is unreadable', () => {
     const said: string[] = [];
     writeUserConfig(':::not yaml at all\n  - [\n');
@@ -152,9 +139,6 @@ describe('resolveDesktopLocale', () => {
     ).toBe('en');
   });
 
-  // The menu bar sits over the same chrome the renderer does, and that chrome
-  // does not lay out right-to-left yet. An Arabic OS must not be enough on its
-  // own to put someone there.
   test('an OS language whose layout is unfinished is not guessed into', () => {
     expect(
       resolveDesktopLocale({
@@ -212,8 +196,6 @@ describe('resolveDesktopLocaleFrom', () => {
     ).toBe('en');
   });
 
-  // The live-rebuild path re-resolves without re-reading disk, so it needs the
-  // same guard as boot rather than inheriting it by accident.
   test('holds back the unfinished-layout locales on the pushed path too', () => {
     expect(
       resolveDesktopLocaleFrom({
@@ -233,19 +215,10 @@ describe('resolveDesktopLocaleFrom', () => {
 });
 
 describe('resolveDesktopLocaleForPushed', () => {
-  /**
-   * The regression this exists for: the renderer pushes the instant the config
-   * document changes, but that document reaches `~/.ok/global.yml` through
-   * debounced persistence. A menu rebuild that re-read the file at push time
-   * answered with the language the user had just left, so the native menu bar
-   * appeared not to follow the setting until the next reload re-pushed.
-   */
   test('answers with the pushed preference while disk still holds the previous one', () => {
     writeUserConfig('appearance:\n  language: zh-Hans\n');
     const deps = { preferredSystemLanguages: () => ['en-US'], env: {} as NodeJS.ProcessEnv };
 
-    // What the disk-reading path still sees at this instant — the stale value
-    // that used to reach the menu.
     expect(resolveDesktopLocale({ homedir: home, ...deps })).toBe('zh-Hans');
     expect(resolveDesktopLocaleForPushed('es', deps)).toBe('es');
   });
@@ -288,11 +261,6 @@ describe('describeDesktopLanguage', () => {
     });
   });
 
-  /**
-   * `'system'` is the default and the most common stored value, so a bundle
-   * carrying only the preference would say nothing about most reports. The
-   * resolved locale plus the tier that decided is what makes it diagnosable.
-   */
   test('a system preference carries the resolved locale and the list it matched', () => {
     const language = describeDesktopLanguage({
       homedir: home,
@@ -307,12 +275,6 @@ describe('describeDesktopLanguage', () => {
     expect(language.systemLanguages).toEqual(['es-ES', 'en-US']);
   });
 
-  /**
-   * The same debounced-persistence window `resolveDesktopLocaleForPushed`
-   * exists for. A report filed inside it is exactly the report claiming that
-   * changing the language did not take — recording the stale on-disk value
-   * would corroborate a bug that is not there and hide the one that is.
-   */
   test('prefers the pushed preference over the value still on disk', () => {
     writeUserConfig('appearance:\n  language: zh-Hans\n');
 

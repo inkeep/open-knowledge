@@ -6,11 +6,6 @@ import Zoom from 'react-medium-image-zoom';
 import { BareImg } from '../components/Image';
 import { getEditorDocName } from './doc-context.ts';
 
-/**
- * CommonMark label matching collapses internal markdown whitespace
- * (`[\t\n\r ]`, not `\s`) and folds case. The shared core helper keeps the
- * editor aligned with the parser and server.
- */
 export function resolveImageReferenceHref(
   doc: ProseMirrorNode,
   identifier: string,
@@ -19,7 +14,6 @@ export function resolveImageReferenceHref(
   let href: string | undefined;
 
   doc.descendants((candidate) => {
-    // Once resolved, prune the rest of the walk (`false` stops descent).
     if (href !== undefined) return false;
     if (candidate.type.name !== 'linkRefDef') return;
     const label = candidate.attrs.label;
@@ -37,7 +31,6 @@ export function resolveImageReferenceHref(
 }
 
 export interface ImageReferenceLeafProps {
-  /** Absent when no definition resolves the reference; the failure placeholder renders instead. */
   src?: string;
   alt: string;
 }

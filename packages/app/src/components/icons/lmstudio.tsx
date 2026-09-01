@@ -1,15 +1,5 @@
 import type { SVGProps } from 'react';
 
-// LM Studio brand mark: six staggered rounded bars. Flattened to a single
-// `currentColor` silhouette so it tracks the row text color and brightens on
-// hover like the other monochrome marks (OpenCode, Pi, Hermes) — the shipped
-// icon is white bars over a purple gradient, and a gradient does not survive
-// being drawn at 14px inside a sidebar row.
-//
-// Geometry measured from `LM Studio.app/Contents/Resources/icon.icns` (0.4.21)
-// rather than eyeballed: bars are ~2.9 tall on a 4.22 vertical rhythm, five at
-// ~15.2 wide plus a short ~9.9 tail, normalized to a 24x24 viewBox to match
-// Lucide sizing.
 export function LmStudioIcon(props: SVGProps<SVGSVGElement>) {
   const bars = [
     { x: 1.9, y: 0, w: 15.15 },

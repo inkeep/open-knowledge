@@ -53,8 +53,6 @@ describe('resolveRestoredPlacement', () => {
   });
 
   test('frame on an unplugged display → null (cascade fallback)', () => {
-    // Saved while a display sat to the right; now only the primary remains
-    // and the frame starts past its right edge.
     const placement = resolveRestoredPlacement({
       saved: bounds({ x: 2200, y: 60 }),
       workAreas: [PRIMARY],
@@ -64,7 +62,6 @@ describe('resolveRestoredPlacement', () => {
   });
 
   test('sliver overlap below the visibility floor → null', () => {
-    // Only (MIN_VISIBLE_WIDTH_PX - 1) px of the frame clips the display.
     const placement = resolveRestoredPlacement({
       saved: bounds({ x: PRIMARY.x + PRIMARY.width - (MIN_VISIBLE_WIDTH_PX - 1) }),
       workAreas: [PRIMARY],

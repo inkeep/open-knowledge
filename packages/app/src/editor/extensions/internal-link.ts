@@ -59,35 +59,14 @@ import { linkResolutionDecorationPlugin } from './link-resolution-decoration';
 import { createMarkInteractionBridgePlugin, getCurrentMarkInfo } from './mark-interaction-bridge';
 
 export interface InternalLinkOptions {
-  /** Active document name — used by link-resolution decoration to compute resolved/folder/unresolved states. */
   docName: string;
 }
 
-/**
- * Whether a link mark's activation is an asset dispatch, and on which plane.
- *
- * `refused` is asset-shaped but path-escaping: the caller surfaces the
- * suspicious href in the PropPanel instead of dispatching to the OS
- * (`openAssetSafely` in the main process is the defense-in-depth backstop).
- */
 export type LinkMarkAssetActivation =
   | { kind: 'not-asset' }
   | { kind: 'refused' }
   | { kind: 'asset'; url: string; ext: string; literal: boolean; projectRelPath: string };
 
-/**
- * Two paths enter the asset branch:
- *   1. `classifyMarkdownHref` returned `kind: 'asset'`.
- *   2. `sourceForm === 'wikiembed'` + the href shape looks asset-like —
- *      post-roundtrip `![[file.ext]]` emits as content-root-relative paths
- *      (`/file.ext`); `sourceForm` disambiguates those embedded references.
- *
- * `sourceForm` also decides the PLANE, and it outranks the classified target: a
- * `wikiembed` mark carries the resolved file path (or the bare wiki target) as
- * literal bytes, but `/file.png` is asset-shaped to the markdown classifier
- * too, so the classifier tags it as a URI it never was. Decoding a literal
- * target dispatches at a neighbouring file that may not exist.
- */
 export function resolveLinkMarkAssetActivation(params: {
   href: string;
   sourceForm: unknown;
@@ -117,25 +96,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    // Plain-DOM chip — a single <span> with link text inline. We deliberately
-    // omit the `<a href>` child that the React MarkView wrapped its
-    // text in: clicking an `<a>` navigates immediately, which races the
-    // InteractionLayer's pointerdown handler. Cmd/Ctrl+Click semantics live
-    // in the extension's `handlePrimary` hook below — see file-header
-    // comment for the full rationale.
-    //
-    // Accessibility:
-    //   - `tabindex="0"` makes the chip keyboard-reachable.
-    //   - `role="link"` matches the semantic intent.
-    //   - `aria-label` surfaces the destination to assistive tech
-    //     (falls back to "Link" when href is missing).
-    //
-    // The decoration plugins add data-mark-id (mark-identity-decoration)
-    // and data-resolution-state (link-resolution-decoration) at render
-    // time; CSS in globals.css styles the chip based on the latter. The
-    // original href stays in the link mark's attrs (read by PropPanel +
-    // handlePrimary for navigate/edit) — it's just not rendered as a
-    // navigable element.
     const href = typeof HTMLAttributes.href === 'string' ? HTMLAttributes.href : '';
     const ariaLabel = href ? `Link: ${href}` : 'Link';
     return [
@@ -145,7 +105,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
         role: 'link',
         tabindex: '0',
         'aria-label': ariaLabel,
-        // touch-action: manipulation eliminates the iOS 300ms tap delay.
         style: 'touch-action: manipulation;',
       }),
       0,
@@ -153,18 +112,7 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
   },
 
   addProseMirrorPlugins() {
-    // Intentionally does NOT spread `this.parent?.()`: the stock TipTap link
-    // plugins (autolink, linkOnPaste, clickHandler) inherited from LinkFidelity
-    // are dropped here because OK supplies its own, purpose-built replacements —
-    // GfmAutolink for typed linkification, the clipboard dispatcher for paste,
-    // and the InteractionLayer bridge below for chip clicks. Re-adding the
-    // parent plugins would double-handle paste/click and reintroduce the stock
-    // autolinker (which lacks OK's CRDT origin guard).
     const docName = this.options.docName ?? '';
-    // Single source for chip primary-navigation. Referenced by both the
-    // InteractionLayer (bare / Cmd / middle-click + Enter on the chip) and the
-    // PropPanel's clickable destination text (via `onNavigate`) so the two
-    // never drift on resolution / asset-dispatch / safe-scheme behavior.
     const handlePrimary = ({
       editor,
       nodeId,
@@ -178,10 +126,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
       const href = info?.attrs?.href;
       if (typeof href !== 'string' || !href) return false;
 
-      // Asset activation branch. Fires on BOTH bare click AND
-      // Cmd/Ctrl+click — asset hrefs never open the PropPanel. Bare click
-      // navigates to the in-app asset preview (sidebar parity); Cmd+click
-      // forces OS delegation as an escape hatch (see `activateAssetLink`).
       const target = classifyMarkdownHref(href, docName);
       const activation = resolveLinkMarkAssetActivation({
         href,
@@ -194,12 +138,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
         const { url, ext, literal, projectRelPath } = activation;
         const cache = getPageListCache();
         if (cache === null) return false;
-        // BOTH partitions participate in the existence
-        // check. A markdown link to a tracked non-markdown file (kind:'file'
-        // — e.g. `[csv](./data/example.csv)`) must navigate, not bail. The
-        // optimistic-when-both-missing branch keeps very-cold-cache behavior
-        // unchanged so we don't refuse to navigate before the first
-        // /api/documents lands.
         if (cache.assetPaths !== undefined || cache.filePaths !== undefined) {
           if (!isResolvedAssetHref(url, docName, cache.assetPaths, cache.filePaths, { literal })) {
             return false;
@@ -219,15 +157,8 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
 
       switch (target.kind) {
         case 'asset':
-          // Unreachable: an asset-classified target always produces an
-          // `asset` or `refused` activation above, both of which return. The
-          // case stays so the DU exhaustiveness guard below keeps compiling.
           return false;
         case 'doc': {
-          // Missing docs fall through so the popover surfaces "Create page" —
-          // the only useful action when there's no destination to navigate
-          // to. A folder target IS a destination: it opens the folder view at
-          // `#/<folderPath>`, the same hash the Links panel navigates to.
           const cache = getPageListCache();
           const intent = resolveLinkTargetIntent(target.docName, {
             pages: cache?.pages ?? new Set<string>(),
@@ -244,8 +175,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
           return true;
         }
         case 'anchor':
-          // Anchor lives inside the current doc — same-tab on bare click,
-          // new-tab via the hash-href helper on Cmd-click.
           if (newTab) {
             openInternalHashHrefInNewTab({ docName, anchor: target.anchor });
           } else {
@@ -253,16 +182,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
           }
           return true;
         case 'external':
-          // External links route through the desktop bridge
-          // (`openExternalUrl`) so a click reaches the OS default browser
-          // instead of Electron's default new-window (which renders the page
-          // in an in-app child BrowserWindow). Symmetric with the graph view;
-          // on web it falls back to `window.open(url, '_blank', …)`.
-          //
-          // `openExternalUrl` refuses unsafe schemes internally, so this gate
-          // is for CONTROL FLOW, not security: an unsafe href returns false so
-          // the chip's primary handler falls through and the PropPanel surfaces
-          // the URL for the author to edit (rather than silently no-opening).
           if (!isSafeNavigationUrl(target.url)) return false;
           openExternalUrl(target.url);
           return true;
@@ -271,7 +190,6 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
       }
     };
     return [
-      // 1. mark-identity (PluginState IDs) + InteractionLayer wiring + Cmd+Click new-tab
       createMarkInteractionBridgePlugin({
         editor: this.editor,
         markTypes: ['link'],
@@ -285,24 +203,10 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
           }),
         handlePrimary,
       }),
-      // 2. Merged decoration plugin: one PM plugin walking
-      //    markIdentityKey.byId once and emitting one Decoration.inline
-      //    per matching mark with BOTH `data-mark-id` (so InteractionLayer
-      //    event delegation resolves chips → mark IDs) AND any caller-computed
-      //    resolution-state attrs (so chip CSS styles by resolved/folder/
-      //    unresolved/loading/external/anchor). Replaces the prior pair of
-      //    stacked plugins (markIdentityDecorationPlugin +
-      //    linkResolutionDecorationPlugin) — halves the per-link wrapper-span
-      //    count.
       linkResolutionDecorationPlugin({
         markTypes: ['link'],
         computeAttrs: makeLinkResolutionAttrsComputer(docName),
       }),
-      // 4. Right-click context menu for on-disk references. Attaches
-      //    a `contextmenu` DOM listener on `editor.view.dom` and
-      //    routes matched targets
-      //    (wiki-embed chips, asset link marks, images) through the
-      //    showAssetMenu IPC. No-op in web (browser default).
       createAssetContextMenuPlugin({ sourceDocName: docName }),
     ];
   },

@@ -1,21 +1,3 @@
-/**
- * The frontmatter validator is isomorphic: the editor runs it client-side via
- * `useDocDiagnostics` -> `lintDocument`, so the 2019-09 and 2020-12 ajv entry
- * points are bundled into the browser build, not just the server. Both are
- * CommonJS, and the compile path swallows a failure to `null` — so a
- * module-interop break in the client realm would surface as *zero* frontmatter
- * diagnostics in the editor while `ok lint`, the HTTP API, and MCP all keep
- * working. That asymmetry is invisible without a test that constructs the
- * engines outside Node's realm.
- *
- * It mounts a probe that awaits `lintDocument` in an effect and renders the
- * resulting codes — the same shape `useDocDiagnostics` uses — rather than
- * calling the validator inline, so the engines are exercised through a real
- * React render in jsdom. Asserting concrete codes (not merely "it didn't
- * throw") is what makes it discriminating: the swallow-to-null path yields an
- * empty array, exactly what a broken engine produces.
- */
-
 import {
   DEFAULT_LINTER_CONFIG,
   type LinterConfig,
@@ -45,7 +27,6 @@ function configFor(schema: Record<string, unknown>): LinterConfig {
   };
 }
 
-/** Mirrors how `useDocDiagnostics` drives the linter: await it in an effect. */
 function DiagnosticsProbe({ text, schema }: { text: string; schema: Record<string, unknown> }) {
   const [codes, setCodes] = useState<string | null>(null);
   useEffect(() => {
@@ -70,8 +51,6 @@ function DiagnosticsProbe({ text, schema }: { text: string; schema: Record<strin
 async function mountAndReadCodes(text: string, schema: Record<string, unknown>): Promise<string> {
   render(<DiagnosticsProbe text={text} schema={schema} />);
   const node = await screen.findByTestId('codes');
-  // The probe starts at PENDING; wait for the effect's promise to land so an
-  // engine that never resolves fails here instead of reading as "no findings".
   await expect.poll(() => node.textContent).not.toBe(PENDING);
   return node.textContent ?? '';
 }
@@ -84,8 +63,6 @@ describe('frontmatter dialects in the client realm', () => {
 
   test('2020-12 compiles and validates client-side (prefixItems + asserted format)', async () => {
     const doc = ['---', 'reviewedAt: not-a-date', 'pair:', '  - ok', '  - nope', '---'].join('\n');
-    // `format` proves ajv-formats attached to the 2020-12 instance; `type` on
-    // `pair.1` proves prefixItems (a 2020-12-only keyword) actually compiled.
     expect(
       await mountAndReadCodes(doc, {
         $schema: 'https://json-schema.org/draft/2020-12/schema',

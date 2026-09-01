@@ -22,7 +22,7 @@ const CATALOG = JSON.stringify({
       license: 'Apache-2.0',
       distribution: { npx: { package: '@google/gemini-cli@1.0.0', args: ['--acp'] } },
     },
-    { id: 'broken' }, // missing required fields — dropped
+    { id: 'broken' },
   ],
 });
 
@@ -130,7 +130,7 @@ describe('loadCustomAgents', () => {
       join(localDir, 'acp-agents.json'),
       JSON.stringify([
         { id: 'my-agent', name: 'Mine', command: 'node', args: ['agent.js'] },
-        { id: 'bad id!', name: 'Nope', command: 'x' }, // id fails AGENT_ID charset
+        { id: 'bad id!', name: 'Nope', command: 'x' },
         { id: 'no-command', name: 'Nope' },
       ]),
     );
@@ -142,7 +142,6 @@ describe('loadCustomAgents', () => {
 
 describe('registryPlatformKey', () => {
   test('returns a supported key on this host', () => {
-    // The dev/CI fleet is darwin/linux on arm64/x64 — all enumerable.
     expect(registryPlatformKey()).toMatch(/^(darwin|linux|windows)-(aarch64|x86_64)$/);
   });
 });

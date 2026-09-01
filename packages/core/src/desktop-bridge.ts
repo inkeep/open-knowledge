@@ -1,13 +1,3 @@
-/**
- * `window.okDesktop` — the preload-exposed bridge that packages/app consumes
- * to detect Electron-host mode and resolve its collab URL without a /api/config
- * HTTP round-trip.
- *
- * Shape lives in core so both the desktop package (who exposes it via
- * `contextBridge.exposeInMainWorld`) and the app package (who short-circuits
- * `useCollabUrl` on its presence) can import the same type. Zero desktop or
- * app deps — pure interface.
- */
 import type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 import type { EditorId } from './constants/editors.ts';
 import type { OkFolderState } from './constants/folder-state.ts';
@@ -69,12 +59,6 @@ export interface OkTerminalDockState {
   agents?: { order: string[]; activeKey: string | null };
 }
 
-/**
- * A conversation or comments action started in a popped-out note window and
- * handed back to the owning project window. The note renderer composes the
- * same bounded prompt it would use locally; main only resolves/focuses the
- * project window and forwards this typed intent.
- */
 export type OkNoteWindowMainAction =
   | {
       readonly kind: 'active-input';
@@ -130,26 +114,13 @@ export type OkTerminalDockStateWriteResult =
       reason: 'invalid-request' | 'no-window-context' | 'persist-failed' | 'ipc-unavailable';
     };
 
-/** Render mode picked by the main process when creating a BrowserWindow. */
 export type OkDesktopMode = 'editor' | 'navigator' | 'terminal' | 'note';
 
-/**
- * Config values injected at preload-exposure time. A frozen snapshot, not a
- * getter — mid-session project switches fire through `onProjectSwitched`
- * instead. Required fields are present before the first renderer render
- * because the main process awaits the utility's `ready` message before
- * creating the BrowserWindow.
- */
 export interface OkDesktopConfig {
-  /** WebSocket URL for the HocuspocusProvider (ws://localhost:<port>/collab). */
   readonly collabUrl: string;
-  /** Origin for HTTP /api/* fetches (http://localhost:<port>). */
   readonly apiOrigin: string;
-  /** Realpath of the project's content directory. */
   readonly projectPath: string;
-  /** Display name for the project (usually basename of projectPath). */
   readonly projectName: string;
-  /** Render mode — `navigator` renders the Project Navigator, `editor` renders the doc editor, `terminal` renders the standalone terminal window, `note` renders a single popped-out document full-window. */
   readonly mode: OkDesktopMode;
   readonly e2eSmoke: boolean;
   readonly singleFile: boolean;
@@ -157,35 +128,12 @@ export interface OkDesktopConfig {
   readonly freshlyCreated: boolean;
   readonly startupTraceparent?: string;
   readonly ptyAvailable: boolean;
-  /**
-   * The saved interface-language choice, unresolved, as main read it off disk
-   * while starting this window.
-   *
-   * Windows that mount a `ConfigProvider` get the preference from config and
-   * ignore this. The launcher has no project and therefore no config document,
-   * so without a value here it renders the bootstrap catalog under a menu bar
-   * main has already translated — main resolves the preference before any
-   * window exists, which is the whole reason the menus are right.
-   *
-   * Unresolved on purpose: `'system'` has to arrive as `'system'` so the
-   * renderer re-resolves it against the browser's current list rather than
-   * freezing whatever the OS said when the window opened.
-   */
   readonly languagePreference?: LanguagePreference;
 }
 
-/**
- * Menu-action IDs fired by main → renderer via `ok:menu-action` after a user
- * selects a menu bar item. The renderer dispatches the action into the editor
- * store. Keep this union flat and strongly typed — a single `kind` field
- * discriminates without payload.
- */
 export type OkMenuAction =
   | 'new-doc'
   | 'new-folder'
-  // Opens the create-new-project dialog in the focused window (a whole new
-  // project, distinct from new-doc/new-folder which create inside the current
-  // project). Sibling of Switch Project, which dispatches via `openNavigator`.
   | 'new-project'
   | 'rename'
   | 'delete'
@@ -196,10 +144,8 @@ export type OkMenuAction =
   | 'version-history'
   | 'focus-search'
   | 'focus-command-palette'
-  // Navigation history.
   | 'navigate-back'
   | 'navigate-forward'
-  // File menu state-aware items share this canonical bridge declaration.
   | 'new-from-template'
   | 'duplicate'
   | 'move-to-trash'
@@ -207,7 +153,6 @@ export type OkMenuAction =
   | 'send-to-ai'
   | 'copy-full-path'
   | 'copy-relative-path'
-  // View menu items.
   | 'toggle-show-hidden-files'
   | 'toggle-show-ok-folders'
   | 'toggle-show-only-markdown-files'
@@ -217,77 +162,23 @@ export type OkMenuAction =
   | 'toggle-doc-panel'
   | 'toggle-terminal'
   | 'move-terminal'
-  // Right agents-panel visibility. Unlike the terminal, agent threads are
-  // server-hosted and the panel is available outside the desktop PTY host.
   | 'toggle-agent-panel'
-  // Terminal application menu. `new-terminal` opens a new terminal tab
-  // (revealing the dock if hidden; never hides, unlike the toggle).
-  // `kill-terminal` closes the active tab, killing that session's PTY.
   | 'new-terminal'
   | 'kill-terminal'
-  // Worktree selector (worktree = window). `new-worktree` opens the
-  // create dialog; `switch-worktree` opens the sidebar worktree switcher.
-  // Both delegate to the renderer's ProjectSwitcher surface.
   | 'new-worktree'
   | 'switch-worktree'
-  // Help → Report a bug… — opens the in-app bug-report dialog. Both window
-  // types subscribe: editor windows report project-scoped, the Navigator
-  // reports system-wide.
   | 'report-bug'
-  // Help → Send feedback… — opens the in-app feedback form, the same one
-  // the Resources menu and the Cmd+K palette open. Both window types subscribe.
   | 'send-feedback';
 
-/**
- * Where a menu action was dispatched from, for the few subscribers whose
- * behavior depends on the dispatching SURFACE rather than on the action.
- *
- * `launcherBorne` means the surface the user reached the command through is a
- * transient overlay that is still on screen at dispatch time and is about to
- * dismiss itself — the Cmd+K palette, the renderer-drawn menu bar, a popover.
- * A native menu bar item, a keyboard accelerator, and a persistent chrome
- * button are all launcher-free: nothing is on screen that the command's own
- * arrival will take away.
- *
- * The bug-report dialog is the motivating consumer: it screenshots the page
- * beneath itself before revealing, and a launcher-borne open must let its
- * launcher unmount first (or the report is a picture of the palette the user
- * only opened to file it), while a launcher-free open must shoot immediately
- * (or the report is a picture of the app after the defect went away).
- *
- * An object rather than a bare boolean so call sites read as prose and so a
- * second provenance fact can be added without changing every signature.
- *
- * Electron already supplies one candidate for that second fact: the
- * `KeyboardEvent` handed to a `MenuItem` click carries `triggeredByAccelerator`,
- * separating a chord press from a click on the same item. This type deliberately
- * collapses both into launcher-free, because a native menu is OS chrome that no
- * renderer capture can see at any timing — but whoever adds the second fact
- * should know the platform is already offering one, and that every menu callback
- * in main currently discards the argument that carries it.
- */
 export interface OkMenuActionOrigin {
   readonly launcherBorne: boolean;
 }
 
-/**
- * The `ok:menu-action` wire payload: the action plus where it came from. The
- * origin is REQUIRED so main cannot forget to classify a new dispatch site —
- * a bare action would silently default to launcher-free and leak its launcher
- * into the next screenshot.
- */
 export interface OkMenuActionDispatch {
   readonly action: OkMenuAction;
   readonly origin: OkMenuActionOrigin;
 }
 
-/**
- * Unsubscribe closure returned from `onProjectSwitched` / `onMenuAction`.
- * Calling it removes the listener. Per-electron#33328, the bridge's
- * preload-side wrapper is what actually tracks the listener reference so
- * callers must use this returned closure rather than trying to remove by
- * reference from their own code.
- */
 export type OkUnsubscribe = () => void;
 
 export interface PersistedEditorPane {
@@ -304,10 +195,6 @@ export interface ProjectSessionState {
   focusedPaneId: string;
 }
 
-/**
- * Discriminator for the Navigator-side surface that initiated a project-open.
- * Matches the desktop runtime `EntryPoint` discriminator.
- */
 export type OkProjectEntryPoint =
   | 'create-new'
   | 'create-new-nested-redirect'
@@ -318,45 +205,17 @@ export type OkProjectEntryPoint =
   | 'share-receive'
   | 'worktree';
 
-/**
- * Payload accepted by `bridge.project.open(...)`. `target` stays in the
- * contract for forward-compat even though `'new-window'` is the only value
- * today (no switch-in-place). `entryPoint` tags the originating surface so
- * the consent-dialog gate can branch on user intent.
- */
 export interface OkProjectOpenRequest {
   path: string;
   target: 'new-window';
   entryPoint: OkProjectEntryPoint;
-  /**
-   * Optional kind-discriminated target to deep-link into after the project
-   * window mounts. Used by share-receive: Q1 hits and Q2/Q3 success both
-   * pass the share's target (a `doc` path or a `folder` path) so the editor
-   * opens it directly. Threaded through to `wm.createProjectWindow`'s
-   * `pendingDeepLinkTarget` (cold spawn → `dom-ready` deep-link IPC) and to
-   * `sendDeepLink` for the warm-focus path. Mirrors the existing
-   * `openknowledge://open?project=&doc=` flow.
-   */
   pendingDeepLinkTarget?: {
     kind: 'doc' | 'folder';
-    /** Content-relative renderer navigation path. */
     path: string;
-    /** Repository-relative path used only by receive-side Git/filesystem probes. */
     repositoryPath?: string;
-    /** Present only for v2; strips the repository prefix from rename results. */
     contentRootDepth?: number;
   };
-  /**
-   * Optional share branch riding alongside `pendingDeepLinkTarget`. See
-   * canonical bridge contract below.
-   */
   pendingBranch?: string | null;
-  /**
-   * Optional branch-switch payload for the share-receive "I already have it
-   * locally" path. When the located clone
-   * is on a different branch than the share, main delivers the
-   * `project-branch-switch` surface instead of a plain deep-link open.
-   */
   pendingShareBranchSwitch?: {
     share: OkSharePayloadFields;
     projectPath: string;
@@ -364,133 +223,57 @@ export interface OkProjectOpenRequest {
   };
 }
 
-/**
- * Outcome of `bridge.project.checkTargetExists({projectPath, kind, path})`.
- * Alias used by existing desktop consumers as `CheckTargetExistsResult`.
- *
- * Used by the main-side target-existence gate AFTER the branch comparison
- * passes — answers "does the share's target actually exist on the receiver's
- * currently-checked-out branch?" The `'unreadable'` sentinel collapses
- * the input-rejection + non-ENOENT I/O paths into a single graceful-fail
- * the caller treats as "silent dispatch is safe."
- */
 export type OkCheckTargetExistsResult = 'exists' | 'missing' | 'unreadable';
 
-/**
- * Outcome of `bridge.project.readHeadBranch(projectPath)`.
- *
- * All-null + `detached: false` is the "couldn't determine" sentinel returned
- * on every failure mode (missing `.git`, malformed HEAD, I/O error, traversal
- * attempt). Used by the Project Navigator's recent-projects list.
- */
 export interface OkHeadBranchInfo {
   readonly currentBranch: string | null;
   readonly headSha: string | null;
   readonly detached: boolean;
 }
 
-/**
- * Payload delivered to `onUpdateDownloaded` subscribers. Fires after
- * electron-updater has completed the ZIP download and is waiting for
- * install-on-quit (or an imperative `autoUpdater.quitAndInstall()` via
- * Toast A's "Relaunch now" action).
- */
 export interface OkUpdateDownloadedInfo {
   readonly version: string;
 }
 
-/**
- * Payload delivered to `onUpdateRelaunching` subscribers. Fires when one
- * window's "Relaunch now" click commits in main (`ok:update:relaunch-now`
- * passed its `versionPendingInstall` gate). Every window swaps its
- * `update-downloaded` card to the in-progress "Relaunching…" state.
- */
 export interface OkUpdateRelaunchingInfo {
   readonly version: string;
 }
 
-/**
- * Payload delivered to `onUpdateFetchingLatest` subscribers. Fires when a
- * "Relaunch" click is re-checking the feed before installing, and stays the
- * active state while a newer build found by that check downloads. `version` is
- * the build that was staged when the click landed — the one the user saw — and
- * a newer one may replace it before the install completes.
- */
 export interface OkUpdateFetchingLatestInfo {
   readonly version: string;
 }
 
-/**
- * Payload delivered to `onUpdateRelaunchFailed` subscribers. Fires when a
- * committed relaunch fails after the fact — the updater's `error` event
- * landed while the relaunch was in flight, the no-quit watchdog elapsed, or
- * `quitAndInstall()` threw. Main re-arms the banner separately via a
- * re-broadcast `ok:update:downloaded`; this carries the failure detail.
- */
 export interface OkUpdateRelaunchFailedInfo {
   readonly version: string;
   readonly message?: string;
   readonly downloadUrl?: string;
-  /** Clear the shared in-progress card instead of layering the error over it. */
   readonly dismissPending?: boolean;
 }
 
-/**
- * Payload delivered to `onWhatsNew` subscribers. Fires once per version
- * transition on first launch post-update (main compared `app.getVersion()`
- * to `AppState.lastSeenVersion`). `releaseUrl` is the GitHub Releases page
- * for the new version — renderer opens it via `bridge.shell.openExternal`.
- */
 export interface OkWhatsNewInfo {
   readonly version: string;
   readonly releaseUrl: string;
 }
 
-/**
- * Payload delivered to `onUpdateStuckHint` subscribers. Fires at most once
- * per installation after 7 consecutive calendar days of failed update
- * checks. `downloadUrl` is the manual-download page (inkeep.com's
- * OpenKnowledge download CTA); renderer opens it via
- * `bridge.shell.openExternal`.
- */
 export interface OkUpdateStuckHintInfo {
   readonly downloadUrl: string;
 }
 
-/**
- * Renderer-facing payload for `ok:share-received`. Carried by the main-
- * process share-flow handler in `url-scheme.ts` after `parseShareUrl`
- * dispatches on the universal-link / custom-scheme input shapes.
- *
- *   - `kind: 'project-branch-switch'` — editor-shell branch-switch surface
- *   - `kind: 'launcher-consent'` / `launcher-miss` — Navigator surfaces
- *   - `kind: 'unsupported-version'` — sonner toast "Update OpenKnowledge"
- *   - `kind: 'invalid'` — sonner toast "Invalid share URL"
- *
- * Source (universal-link vs custom-scheme) is NOT propagated — main-process
- * diagnostic logging only.
- */
-/** Kind-discriminated receiver target carried by `OkSharePayloadFields`. */
 export type ShareTarget =
   | { readonly kind: 'doc'; readonly docPath: string }
   | { readonly kind: 'folder'; readonly folderPath: string };
 
-/** Parsed project-share fields carried across the desktop host bridge. */
 export interface OkSharePayloadFields {
-  /** GitHub host of the shared repo: `github.com` or a GHES hostname. */
   readonly host: string;
   readonly owner: string;
   readonly repo: string;
   readonly branch: string;
   readonly sharedUrl: string;
-  /** URL-derived repository coordinate. Never inferred from receiver config. */
   readonly repositoryTarget: ShareTarget;
-  /** `null` for historical v1; positive decoded prefix depth for v2. */
   readonly contentRootDepth: number | null;
   readonly target: ShareTarget;
 }
 
-/** Renderer-facing payload for a received project share. */
 export type OkShareReceivedPayload =
   | { readonly kind: 'unsupported-version' }
   | { readonly kind: 'invalid' }
@@ -504,13 +287,6 @@ export type OkShareReceivedPayload =
       readonly kind: 'launcher-consent';
       readonly share: OkSharePayloadFields;
       readonly candidatePath: string;
-      /**
-       * Name of the Recents project whose `listGitWorktrees` anchor surfaced
-       * `candidatePath`, when the candidate came from worktree-enum off an
-       * existing OK project. `null` when the candidate was surfaced from
-       * a Recents path that itself matched the share. Drives the
-       * "(a worktree of <name>)" caption in the Navigator consent dialog.
-       */
       readonly parentProjectName: string | null;
     }
   | {
@@ -518,11 +294,6 @@ export type OkShareReceivedPayload =
       readonly share: OkSharePayloadFields;
     };
 
-/**
- * Renderer-facing representation of `ShareFolderValidationResult` from
- * `@inkeep/open-knowledge`'s `validateLocalFolderForShare`. Carried
- * by the `share.validateLocalFolder` IPC.
- */
 export type ShareFolderValidationResult =
   | { readonly kind: 'ok'; readonly gitRemoteUrl: string }
   | { readonly kind: 'not-git' }
@@ -532,37 +303,15 @@ export type ShareFolderValidationResult =
   | { readonly kind: 'non-github' }
   | { readonly kind: 'symlink-escape' };
 
-/**
- * Auto-update channel — derived in desktop's main from the running build's
- * version string. `'beta'` for a prerelease build, `'latest'` for a stable
- * one. Not a runtime preference. Mirrors `UpdateChannel` in desktop's
- * `state-store.ts`.
- */
 export type OkUpdateChannel = 'latest' | 'beta';
 
-/**
- * User-intent theme value. Mirrors Electron's `nativeTheme.themeSource`
- * union. Carried verbatim through the `ok:theme:set-source` IPC channel —
- * never resolved to a concrete light/dark value at the renderer call site
- * (the `'system'` value IS the lever that delegates appearance tracking to
- * macOS). The desktop and app compatibility paths re-export this declaration.
- */
 export type OkThemeSource = 'system' | 'light' | 'dark';
 
-/** Colors handed to Electron for OS-drawn window chrome. */
 export interface OkChromeColors {
-  /** Active theme's sidebar surface color. */
   bg: string;
-  /** Active theme's sidebar foreground color. */
   symbol: string;
 }
 
-/**
- * Snapshot returned by `state.query()` — newly-opened windows query on
- * mount to render the correct BETA badge / About-panel label (channel is
- * build-derived) and to route the refuse-downgrade UX when a future-build
- * state was rolled back.
- */
 export interface OkStateSnapshot {
   readonly channel: OkUpdateChannel;
   readonly schemaIncompatibility: {
@@ -572,44 +321,16 @@ export interface OkStateSnapshot {
   } | null;
 }
 
-/**
- * Editor IDs surfaced through the first-launch MCP consent bridge.
- * Aliased to the canonical `EditorId` from `constants/editors.ts` — single
- * source of truth for the literal union.
- */
 export type OkMcpWiringEditorId = EditorId;
 
-/**
- * Payload delivered to `mcpWiring.onShow` subscribers on first-launch MCP
- * consent. Every editor in `ALL_EDITOR_IDS` appears, but only `detected: true`
- * ones are in `<McpConsentDialog>`'s write set — the rest have no config to
- * wire and are not shown. `willReplace: true` signals an existing OK-managed
- * entry the setup would overwrite, which the dialog surfaces next to its
- * checkbox so long-time CLI users aren't surprised to find their pre-existing
- * entry stomped. `pathInstall` drives the dialog's shell-PATH toggle row:
- * `shellDetected: false` hides the row; `alreadyInstalled: true` renders it
- * informational; `rcFilesToTouch` names the tildified shell files a grant
- * would edit.
- */
 export interface OkMcpWiringShowPayload {
-  /**
-   * Which of the two situations this showing is. `'first-run'` is the
-   * unsolicited one — the app raised the dialog by itself because no decision
-   * has ever been recorded — and it is the only one that warrants a dialog the
-   * user cannot wave away. Every other entry point (command palette, in-app
-   * menu bar, native File menu, the Claude readiness banner's "Connect tools")
-   * is the user asking for this screen, and reports `'reconfigure'`, which the
-   * dialog renders as an ordinary dismissible surface.
-   */
   readonly origin: 'first-run' | 'reconfigure';
   readonly detectedEditors: readonly {
     readonly id: OkMcpWiringEditorId;
     readonly label: string;
     readonly detected: boolean;
     readonly willReplace: boolean;
-    /** Display-form user-global config path, or null when unavailable. */
     readonly configPath: string | null;
-    /** Locator for OpenKnowledge's entry within the editor config. */
     readonly entryLocator: string;
   }[];
   readonly pathInstall: {
@@ -617,11 +338,6 @@ export interface OkMcpWiringShowPayload {
     readonly rcFilesToTouch: readonly string[];
     readonly alreadyInstalled: boolean;
   };
-  /** The user-global skill bundles onboarding sets up alongside the MCP wiring.
-   *  Empty ⇒ no skill decision solicited. `paths` lists every destination the
-   *  install writes to, computed from the installer's own iteration set and
-   *  gates, so the dialog's disclosure can never advertise a copy that will not
-   *  be made. */
   readonly globalSkills: readonly {
     readonly id: string;
     readonly name: string;
@@ -629,44 +345,16 @@ export interface OkMcpWiringShowPayload {
   }[];
 }
 
-/**
- * Confirm payload for `mcpWiring.confirm`. `pathInstall` is the PATH
- * toggle, tri-state: `true` → append the managed rc block (consent
- * granted); `false` → record declined, touch no rc file; absent → no PATH
- * decision was solicited (row hidden or informational).
- *
- * `skills` — bundle ids the user left checked. An ARRAY (even empty) ⇒ a
- * decision was made, and every offered bundle not in the list is recorded
- * declined (and removed if already installed). Absent ⇒ no decision was made:
- * the skills leg is skipped, so nothing is written and nothing installed is
- * torn down. Onboarding sends the absent form when the user declines setup,
- * because declining must never uninstall an existing bundle.
- */
 export interface OkMcpWiringConfirmRequest {
   readonly editorIds: readonly OkMcpWiringEditorId[];
   readonly pathInstall?: boolean;
   readonly skills?: readonly string[];
 }
 
-/**
- * Result shape for `mcpWiring.confirm` / `skip`. `ok:false` surfaces only
- * when `writeUserMcpConfigs` throws — per-editor failures still resolve
- * `ok:true` and are surfaced to operator logs via structured
- * `mcp-wiring-write-failed` events (deferred-marker semantics).
- */
 export type OkMcpWiringResult = { ok: true } | { ok: false; error: string };
 
-/**
- * Per-editor MCP state for Settings → AI tools. `installed` rows uncheck to
- * remove; `not-installed` rows check to install; `foreign` is an entry under
- * OK's server name that isn't recognizably OK's own (uninstall refuses,
- * install overwrites); `unmanageable` is a config OK can't safely edit.
- */
 export type OkIntegrationsEditorState = 'installed' | 'not-installed' | 'foreign' | 'unmanageable';
 
-/** Component inventory for Settings → AI tools. `available: false` renders
- *  the section read-only (install actors gated off for this process). `path.
- *  installed` reflects the managed rc block actually being on disk. */
 export interface OkIntegrationsStatus {
   readonly available: boolean;
   readonly editors: readonly {
@@ -685,42 +373,21 @@ export interface OkIntegrationsStatus {
   readonly skills: readonly {
     readonly id: string;
     readonly name: string;
-    /** The skill's own frontmatter description; empty when the bundle is
-     *  unreadable. This is the AGENT's trigger text — the install-confirm modal
-     *  quotes it, the row does not. */
     readonly description: string;
     readonly installed: boolean;
-    /** True when first-launch setup offers this bundle. Uninstalled-and-
-     *  onboarding means the user was asked and said no; uninstalled-and-not-
-     *  onboarding means they were never asked. The renderer cannot tell those
-     *  apart from `installed` alone, and only the second is offerable again. */
     readonly onboarding: boolean;
     readonly paths: readonly string[];
-    /** Three-tier context cost from the shared estimator. Absent when the
-     *  bundle could not be parsed (broken build) — the row hides the cost. */
     readonly size?: SkillCostTiers;
-    /** On-disk source directory of the built-in bundle (its SKILL.md + files). */
     readonly sourceDir: string;
-    /** Every place this skill would install: static agent hosts present on disk
-     *  plus declared custom roots. For a custom root `editor === skillsRoot`. */
     readonly resolvedHosts: readonly {
       readonly editor: string;
       readonly skillsRoot: string;
       readonly custom: boolean;
     }[];
   }[];
-  /**
-   * Every editor whose host root already exists on this machine — a SUPERSET
-   * of the ids in `editors[]`, which is filtered to targets with a user-global
-   * MCP surface. The Create-new-project dialog seeds its editor checkboxes
-   * from this so a user who never opens "Advanced settings" still gets MCP
-   * config + the project skill for the tools they actually have, and none for
-   * the ones they don't.
-   */
   readonly detectedEditorIds: readonly OkMcpWiringEditorId[];
 }
 
-/** One toggle for `integrations.setComponent`. */
 export interface OkIntegrationsSetRequest {
   readonly component:
     | { readonly kind: 'editor'; readonly id: OkMcpWiringEditorId }
@@ -729,26 +396,16 @@ export interface OkIntegrationsSetRequest {
   readonly enabled: boolean;
 }
 
-/** Set-component result — both arms carry a fresh status snapshot so the
- *  renderer re-renders truthfully after failed/refused toggles too. */
 export type OkIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkIntegrationsStatus };
 
-/** Post-install manual step a project MCP config needs before OK's tools
- *  connect: `approve-once` (Claude Code), `enable-manually` (Cursor, silently
- *  disabled until toggled), `auto-connect` (Codex on a trusted project),
- *  `none`. */
 export type OkProjectIntegrationsFollowUp =
   | 'approve-once'
   | 'enable-manually'
   | 'auto-connect'
   | 'none';
 
-/** Component inventory for Settings → This project → AI tools (per-editor
- *  PROJECT MCP config files + the single project runtime skill), scoped to the
- *  project the requesting window has open. `hasProject: false` → empty state;
- *  `available: false` → read-only. */
 export interface OkProjectIntegrationsStatus {
   readonly available: boolean;
   readonly hasProject: boolean;
@@ -756,7 +413,6 @@ export interface OkProjectIntegrationsStatus {
   readonly editors: readonly {
     readonly id: OkMcpWiringEditorId;
     readonly label: string;
-    /** Machine-level presence from CLI / URL-scheme probes. Ranking only. */
     readonly detected: boolean;
     readonly state: OkIntegrationsEditorState;
     readonly configPath: string;
@@ -766,23 +422,13 @@ export interface OkProjectIntegrationsStatus {
   readonly skill: {
     readonly installed: boolean;
     readonly paths: readonly string[];
-    /** The skill's own frontmatter description — the agent's trigger text,
-     *  quoted by the install-confirm modal. */
     readonly description: string;
-    /** Editor ids this project's skill fans out to — the reach cluster's input.
-     *  Project-scoped, so these are the editors with a project skill root here,
-     *  not the user-global host set. */
     readonly hosts: readonly string[];
-    /** Three-tier context cost of the bundled project skill. Absent when the
-     *  bundle cannot be read. */
     readonly size?: SkillCostTiers;
-    /** On-disk source of the bundled skill, so the row can open its preview. */
     readonly sourceDir?: string;
   } | null;
 }
 
-/** One toggle for `projectIntegrations.setComponent`. The skill is a single
- *  row (no id) — it fans out across every capable editor. */
 export interface OkProjectIntegrationsSetRequest {
   readonly component:
     | { readonly kind: 'editor'; readonly id: OkMcpWiringEditorId }
@@ -794,9 +440,6 @@ export type OkProjectIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkProjectIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkProjectIntegrationsStatus };
 
-/**
- * Per-project consent dialog — renderer-facing payload + result shapes.
- */
 export type OkOnboardingWarningKind =
   | 'root'
   | 'home'
@@ -822,9 +465,6 @@ export interface OkOnboardingConfirmRequest {
   readonly contentDir: string;
   readonly additionalIgnores: string;
   readonly editorIds: readonly OkMcpWiringEditorId[];
-  /** The AI-tools checkbox as the user left it. `editorIds` alone cannot say:
-   *  an empty list means "declined" on a machine with tools and "nothing to
-   *  offer" on one without, and the two are different answers. */
   readonly connectEditors: boolean;
   readonly sharing: 'shared' | 'local-only';
 }
@@ -844,13 +484,6 @@ export type OkOnboardingProbeContentResult =
     }
   | { readonly ok: false; readonly error: string };
 
-/**
- * Result shape for `bridge.debug?.keyringSmoke()` — mirrors
- * `KeyringSmokeResult` in `packages/desktop/src/utility/keyring-smoke.ts`
- * (identical field set). Duplicated here (not imported) because core has no
- * dep on desktop. The desktop utility remains checked against this canonical
- * field set by the desktop architecture test.
- */
 export interface OkKeyringSmokeResult {
   ok: boolean;
   backend?: 'keyring' | 'file';
@@ -859,18 +492,6 @@ export interface OkKeyringSmokeResult {
   timestamp: string;
 }
 
-/**
- * Seed scaffolder shapes duplicated structurally (same rationale as
- * `OkKeyringSmokeResult` above — avoids pulling the server package into
- * core's compilation tree). Structural shape tracks
- * `@inkeep/open-knowledge-server`'s `ScaffoldPlan` / `ApplyResult` /
- * `ApplyError` / `FileEntry` / `SkipEntry`.
- *
- * Folder defaults moved out of `config.yml` `folders:` and into nested
- * `<folder>/.ok/frontmatter.yml` files written via the standard file-entry
- * path. The previous `OkFolderRule` / `OkScaffoldConfigEdit` mirror types
- * + the `configEdits` field on `OkScaffoldPlan` were removed alongside.
- */
 export interface OkScaffoldFileEntry {
   path: string;
   kind: 'folder' | 'file';
@@ -884,18 +505,7 @@ export interface OkScaffoldPlan {
   created: OkScaffoldFileEntry[];
   skipped: OkScaffoldSkipEntry[];
   warnings: string[];
-  /** Project-local skills shipped by the pack. `pending` means apply would
-   * author or refresh the skill source. `conflict` means a user-owned skill
-   * holds the name; apply will neither install nor clobber it. */
   packSkills?: { name: string; pending: boolean; conflict?: boolean }[];
-  /**
-   * Lint plugins the pack requires. `pending` means apply would turn one on.
-   *
-   * `id` is the plugin union rather than a bare `string`: this interface is
-   * hand-mirrored from the server's `ScaffoldPlan`, and the preload passes one
-   * where the other is expected — so a widened field here does not read as
-   * "more permissive", it fails to assign.
-   */
   requiredPlugins?: { id: LintPluginId; pending: boolean }[];
 }
 export interface OkScaffoldApplyError {
@@ -906,11 +516,8 @@ export interface OkScaffoldApplyResult {
   applied: number;
   errors: OkScaffoldApplyError[];
   durationMs: number;
-  /** Editor display-names that received the pack's project skill (e.g. "Claude Code"). */
   packSkillsInstalled: string[];
-  /** Required plugins this apply actually turned on; empty when all were already enabled. */
   pluginsEnabled: LintPluginId[];
-  /** Pack skills skipped because a user-owned same-named skill holds the name. */
   packSkillConflicts: { name: string; hosts?: string[] }[];
 }
 
@@ -919,11 +526,6 @@ export interface OkSeedError {
   message: string;
 }
 
-/**
- * Pack-id wire shape — accepted strings; coerced server-side via `coercePackId`.
- *
- * This bridge leaf is the renderer contract's single declaration point.
- */
 export type OkPackId =
   | 'knowledge-base'
   | 'software-lifecycle'
@@ -937,16 +539,6 @@ export type OkPackId =
 export interface OkSeedPlanOptions {
   rootDir?: string;
   packId?: OkPackId;
-  /**
-   * Preview a pack for a project that does not exist yet. The create-new
-   * dialog runs on the Navigator window, which has no project bound, so the
-   * normal `resolveProjectRoot` path answers `no-project`. Main plans against
-   * a throwaway directory instead, so every entry reads as `created`.
-   *
-   * `skillsInstallable` is the part only the caller knows: whether the project
-   * about to be created has an editor selected, and so whether the pack's
-   * skills will actually install once it exists.
-   */
   preview?: { skillsInstallable: boolean };
 }
 
@@ -959,10 +551,6 @@ export interface OkSeedPackFolderInfo {
   summary: string;
 }
 
-/**
- * User-visible entry counts surfaced on each pack picker card as
- * "N files · N folders".
- */
 export interface OkSeedPackEntryCounts {
   files: number;
   folders: number;
@@ -977,9 +565,6 @@ export interface OkSeedPackInfo {
   entryCounts: OkSeedPackEntryCounts;
 }
 
-/** Pure-fs upward-walk result types mirrored from `@inkeep/open-knowledge-server`'s
- *  `fs/` module. Structurally duplicated for the same reason as the seed shapes
- *  above (core has no dep on server). */
 export interface OkFindEnclosingProjectRootResult {
   readonly rootPath: string;
   readonly distance: number;
@@ -1000,10 +585,6 @@ export type OkSeedListPacksResult =
 
 export type OkLocalOpAuthSignoutResponse = { ok: true } | { ok: false; error?: string };
 
-/**
- * Pre-project local-op event shapes — auth + clone flows surfaced to the
- * Navigator window via IPC because it has no backing API server.
- */
 export type OkLocalOpAuthEvent =
   | {
       type: 'verification';
@@ -1054,22 +635,12 @@ export type OkLocalOpAuthReposResponse =
   | { ok: true; host: string; repos: OkLocalOpRepoEntry[] }
   | { ok: false; error: string };
 
-/**
- * Renderer → main snapshot of the editor area's active target.
- * Discriminated-union shape so TypeScript narrows `identifier` per `kind`.
- * Drives the macOS File menu's state-aware enable/disable for items like
- * Rename / Move to Trash / Open with AI.
- */
 export type OkEditorActiveTargetSnapshot =
   | { readonly kind: 'doc'; readonly identifier: string }
   | { readonly kind: 'folder'; readonly identifier: string }
   | { readonly kind: 'asset'; readonly identifier: string }
   | { readonly kind: null };
 
-/**
- * Renderer → main snapshot of the View menu's checkbox + smart-hide state.
- * Sibling of `OkEditorActiveTargetSnapshot`.
- */
 export interface OkEditorViewMenuStateSnapshot {
   readonly showHiddenFiles: boolean;
   readonly showOkFolders: boolean;
@@ -1084,26 +655,9 @@ export interface OkEditorViewMenuStateSnapshot {
   readonly terminalLive?: boolean;
   readonly agentPanelVisible?: boolean;
   readonly canViewInSource?: boolean;
-  /**
-   * Is there a live editor selection? ⌘L stages that selection in the agents
-   * panel instead of toggling it, so the menu item has to know: without this the
-   * label reads "Hide Agents" while the click stages a passage and the panel
-   * stays open.
-   */
   readonly hasEditorSelection?: boolean;
 }
 
-/**
- * Windows/Linux renderer-menubar dispatch payloads (the windows-linux-port
- * renderer-menubar decision). macOS keeps the native menu bar; win/linux draw it in the
- * renderer and route every click through main via `menu.dispatch` so menu
- * semantics stay single-sourced: `menu-action` relays through the same
- * dispatch path the native menu items use, `role` maps onto Electron's
- * built-in menu roles, `command` covers the main-side click handlers
- * (navigator, folder picker, settings, updater…), and `query` returns the
- * aggregated state the native menu renders from. The IPC channel module
- * re-exports these canonical types under its transport-facing names.
- */
 export type OkMenuDispatchRole =
   | 'undo'
   | 'redo'
@@ -1139,7 +693,6 @@ export type OkMenuDispatchRequest =
   | { readonly kind: 'open-recent-project'; readonly path: string }
   | { readonly kind: 'role'; readonly role: OkMenuDispatchRole };
 
-/** `query` result — the same aggregated state the native menu renders from. */
 export interface OkMenuRendererSnapshot {
   readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
   readonly spellCheckEnabled: boolean;
@@ -1150,42 +703,13 @@ export interface OkMenuRendererSnapshot {
   readonly viewMenuState: OkEditorViewMenuStateSnapshot;
 }
 
-/** Consent-bearing payload for the renderer-to-main bug-report send hop. */
 export interface OkBugReportSendInput {
   zipPath: string;
   metadata: OkBugReportSendMetadata;
-  /**
-   * Whether the reviewed bundle contains an app screenshot. The bundle's
-   * inventory is the consent record; absent or false means main must not
-   * upload the capture it may still hold.
-   */
   includeScreenshot?: boolean;
-  /**
-   * W3C `traceparent` for the renderer span that owns this send attempt. Main
-   * extracts it and parents its transport span underneath, so one trace covers
-   * the whole send rather than two disconnected halves.
-   *
-   * Declared here because it genuinely crosses the boundary: without it on the
-   * shared contract the field travels undeclared (a conditional spread at the
-   * call site slips past excess-property checking), so anyone editing this
-   * interface cannot see it exists, and a validator that rejects unknown keys
-   * would drop it silently. Absent when telemetry is off, which is the default.
-   */
   traceparent?: string;
 }
 
-/**
- * Renderer-facing Electron bridge. Populated on `window.okDesktop` by the
- * desktop preload script. Web distribution omits the
- * global entirely — consumers MUST use `window.okDesktop?.` optional chaining.
- *
- * Method surface is intentionally small: dialog pickers, outbound URL /
- * clipboard relays, project subscriptions, and the readonly config snapshot.
- * Broad APIs (window sizing, system info, raw ipcRenderer) are deliberately
- * omitted — new capabilities cross the preload boundary deliberately, one at
- * a time, via new typed methods.
- */
-/** OK config sharing mode. */
 export interface OkSharingStatusResult {
   readonly kind: 'status';
   readonly mode: 'shared' | 'local-only' | 'no-git';
@@ -1205,17 +729,12 @@ export type OkSharingSetModeResult =
       readonly reason: 'no-git' | 'no-info-dir' | 'malformed-pointer' | 'inaccessible';
     };
 
-/** Slides (Slidev) — detect-only IPC payload. Canonical types in
- *  `packages/desktop/src/shared/ipc-channels.ts`; mirrored here per the
- *  OkDesktopBridge 3-way-mirror invariant. */
 export type SlidevSource = 'project-local' | 'global';
 
 export type OkSlidesStatusResult =
   | { readonly kind: 'status'; readonly available: true; readonly source: SlidevSource }
   | { readonly kind: 'status'; readonly available: false };
 
-/** Why opening a deck as slides failed. Canonical types in
- *  `packages/desktop/src/shared/ipc-channels.ts`; mirrored here. */
 export type SlidevOpenFailureReason =
   | 'not-available'
   | 'invalid-path'
@@ -1228,78 +747,50 @@ export type OkSlidesOpenResult =
   | { readonly kind: 'open'; readonly ok: true }
   | { readonly kind: 'open'; readonly ok: false; readonly reason: SlidevOpenFailureReason };
 
-/**
- * Payload for `onServerVersionDrift` — the desktop attached to a server whose
- * version differs from the running app's (most often a prior version's
- * detached server still alive after an auto-update).
- */
 export interface OkServerVersionDriftInfo {
-  /** `older` = the attached server predates the app; `newer` = it is ahead. */
   readonly relation: 'older' | 'newer';
-  /** Which dimension differed — diagnostic, not surfaced in copy. */
   readonly dimension: 'protocol' | 'runtime';
-  /** The attached server's runtime semver (for the notification body). */
   readonly serverRuntime: string;
-  /** The running app's runtime semver. */
   readonly appRuntime: string;
 }
 
-/** Payload for `onServerRestarted` — fired on the freshly-spawned window after a successful restart. */
 export interface OkServerRestartedInfo {
   readonly appRuntime: string;
 }
 
-/**
- * Payload for `onRecentRemovedMissing` — fired on the window that initiated a
- * recents open when the target folder was gone and its stale entry was pruned.
- */
 export interface OkRecentRemovedMissingInfo {
   readonly path: string;
   readonly projectName: string;
 }
 
-/**
- * Result of `restartServer`. Only the failure case reaches the originating
- * renderer — on success the window is recreated, so its invoke promise never
- * resolves (by design); the success toast fires on the new window instead.
- */
 export type OkServerRestartOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'eperm' | 'other' };
 
-/** Result of `terminal.create`. */
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
   | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
 
-/** Entry of `terminal.list`. */
 export interface OkPtyListEntry {
   readonly ptyId: string;
-  /** User-set custom tab name that survives a renderer reload; null when unset. */
   readonly customLabel: string | null;
-  /** Sticky per-session tab number, preserved across a renderer reload; null
-   *  until the renderer has reported it for a just-created session. */
   readonly ordinal: number | null;
 }
 
-/** Result of `terminal.adopt`. */
 export type OkPtyAdoptResult =
   | {
       readonly ok: true;
       readonly replay: string;
       readonly shellFamily?: WindowsShellFamily;
-      /** Standing capability notice restored when a live session is adopted after reload. */
       readonly shellNoticeReason?: Extract<TerminalShellNoticeReason, 'unsupported-family'>;
     }
   | { readonly ok: false; readonly reason: 'unknown-session' };
 
-/** Push payload for `ok:pty:data`. */
 export interface OkPtyData {
   readonly ptyId: string;
   readonly data: string;
 }
 
-/** Push payload for `ok:pty:exit`. */
 export interface OkPtyExit {
   readonly ptyId: string;
   readonly exitCode: number;
@@ -1307,7 +798,6 @@ export interface OkPtyExit {
   readonly error?: string;
 }
 
-/** Add recoverable shell-resolution reasons here and nowhere else. */
 const TERMINAL_SHELL_NOTICE_REASON_VOCABULARY = [
   'config-unreadable',
   'invalid-value',
@@ -1316,14 +806,12 @@ const TERMINAL_SHELL_NOTICE_REASON_VOCABULARY = [
   'unsupported-family',
 ] as const;
 
-/** Push payload for a recoverable PTY shell-resolution notice. */
 export type TerminalShellNoticeReason = (typeof TERMINAL_SHELL_NOTICE_REASON_VOCABULARY)[number];
 
 export const TERMINAL_SHELL_NOTICE_REASONS: ReadonlySet<TerminalShellNoticeReason> = new Set(
   TERMINAL_SHELL_NOTICE_REASON_VOCABULARY,
 );
 
-/** Guard the reason after its JSON IPC round-trip. */
 export function isTerminalShellNoticeReason(value: unknown): value is TerminalShellNoticeReason {
   return (
     typeof value === 'string' &&
@@ -1368,109 +856,30 @@ export type OkPtyNotice =
       readonly reason: TerminalSupportFileNoticeReason;
     };
 
-/**
- * Claude Code readiness for the docked terminal.
- */
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
   readonly mcp: 'wired' | 'needs-rewire';
-  /** True when the project's own `open-knowledge` `.mcp.json` entry is verified
-   *  to be OK's canonical managed server (cli `isOwnManagedEntry`), so the docked
-   *  terminal may pre-approve it on Claude launch instead of re-showing Claude's
-   *  trust prompt. False/absent for a foreign, tampered, or missing entry (the
-   *  supply-chain risk in a shared/cloned project) — launch bare and let Claude
-   *  prompt. Computed per-project by the desktop preflight; absent means false
-   *  (fail-safe). */
   readonly mcpPreApprovable?: boolean;
-  /** Set only on a `rewire`-action result when re-arming MCP wiring threw, so
-   *  the renderer can surface the failure instead of the button silently no-op'ing. */
   readonly rewireError?: string;
 }
 
-/** On-PATH readiness for a non-Claude agent CLI (codex / cursor-agent) launched
- *  in the docked terminal. */
 export interface CliReadiness {
   readonly onPath: 'present' | 'not-found' | 'unknown';
-  /** Codex-only: whether OK's `open-knowledge` MCP server is already configured
-   *  in the user's codex config. Gates the per-launch `-c` tool-auto-approve
-   *  override — codex fails to load its config if `-c` targets a server that is
-   *  not defined, so the launch site adds the override only when this is true.
-   *  Absent for CLIs where it does not apply.
-   *
-   *  DELIBERATELY WEAKER THAN CLAUDE'S GATE, and not its security equivalent.
-   *  This is existence-by-name (any object under `mcp_servers.open-knowledge`),
-   *  whereas claude's `mcpPreApprovable` runs `isOwnManagedEntry` to verify the
-   *  entry is byte-exactly OK's own. The asymmetry is sound because the two read
-   *  different files: claude's is a PROJECT-scoped `.mcp.json` that travels in a
-   *  clone, so a same-named foreign entry is a real RCE vector; codex's target is
-   *  `scope: 'global'` (`~/.codex/config.toml`, resolved from `home`, never from
-   *  cwd), so anyone able to plant a foreign entry there can already register
-   *  arbitrary MCP servers and has won regardless. Tightening this to an exact
-   *  ownership match would also fail closed on a legitimate entry carrying any
-   *  extra codex key, silently disabling auto-approve for real users. This gate's
-   *  job is availability (don't break codex's config load), not authorization. */
   readonly okServerConfigured?: boolean;
 }
 
 export interface OkDesktopBridge {
   readonly config: OkDesktopConfig;
 
-  /** Subscribe to project-switch events. Returns unsubscribe. */
   onProjectSwitched(cb: (next: OkDesktopConfig) => void): OkUnsubscribe;
-  /**
-   * Subscribe to menu-bar actions. Returns unsubscribe. The second argument
-   * carries the dispatching surface — subscribers that only branch on the
-   * action may keep a one-parameter callback.
-   */
   onMenuAction(cb: (action: OkMenuAction, origin: OkMenuActionOrigin) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `autoUpdater` `update-downloaded` events. Fires once per
-   * pending-update version (gated in main by `AppState.versionPendingInstall`).
-   * Returns unsubscribe. Toast A.
-   */
   onUpdateDownloaded(cb: (info: OkUpdateDownloadedInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:update:relaunching` — another window's "Relaunch now"
-   * click committed in main. Swap this window's `update-downloaded` card to the
-   * button-less "Relaunching…" in-progress state so every window shows
-   * consistent feedback during the pre-`quitAndInstall` server teardown.
-   * Returns unsubscribe.
-   */
   onUpdateRelaunching(cb: (info: OkUpdateRelaunchingInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:update:fetching-latest` — a "Relaunch" click is checking
-   * for a newer build before installing, and may then be downloading one. Swap
-   * this window's card to the button-less "Getting the latest version…" state.
-   * Distinct from `onUpdateRelaunching` because this wait can span a full
-   * update download rather than a few seconds of teardown. Returns unsubscribe.
-   */
   onUpdateFetchingLatest(cb: (info: OkUpdateFetchingLatestInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:update:relaunch-failed` — a committed relaunch failed
-   * (async updater error, no-quit watchdog, or sync throw). Surface the
-   * relaunch-error notice; the banner re-arm arrives separately as a
-   * re-broadcast `ok:update:downloaded`. Returns unsubscribe.
-   */
   onUpdateRelaunchFailed(cb: (info: OkUpdateRelaunchFailedInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to post-update "What's new" events. Fires once per version
-   * transition on first launch (gated in main by `AppState.lastSeenVersion`).
-   * Returns unsubscribe. Toast B.
-   */
   onWhatsNew(cb: (info: OkWhatsNewInfo) => void): OkUnsubscribe;
-  /** Subscribe to `ok:update:whats-new-dismissed` — another window dismissed the what's-new notice; clear this window's `whats-new-<version>` card. */
   onWhatsNewDismissed(cb: (info: { readonly version: string }) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `stuck-update` hints. Fires at most once per installation
-   * after 7 consecutive failed-check days. Returns unsubscribe. Toast C.
-   */
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:deep-link` — fired when an
-   * `openknowledge://open?project=…&doc=<name>` URL is routed to this
-   * window. Renderer updates `location.hash` to open the target doc via
-   * the existing hash-route listener. Returns unsubscribe.
-   */
   onDeepLink(
     cb: (evt: {
       doc: string;
@@ -1482,132 +891,32 @@ export interface OkDesktopBridge {
       contentRootDepth?: number;
     }) => void,
   ): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:share-received` — fired when a share URL (universal
-   * link `https://openknowledge.ai/d/<encoded>` or custom scheme
-   * `openknowledge://share?url=<blob-url>`) routes to this window. The
-   * discriminated payload tells the renderer to mount the receive dialog
-   * (kind `ok`) or surface a toast (kind `unsupported-version` / `invalid`).
-   */
   onShareReceived(cb: (payload: OkShareReceivedPayload) => void): OkUnsubscribe;
 
-  /**
-   * Subscribe to `ok:server-version-drift` — fired once when this window
-   * attaches to a server whose version differs from the app's. The renderer
-   * surfaces a cancelable notification offering to restart the server via
-   * `restartServer`.
-   */
   onServerVersionDrift(cb: (info: OkServerVersionDriftInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:server-restarted` — fired on a freshly-recreated window
-   * after a successful `restartServer`, so the renderer can confirm the
-   * server now matches the app.
-   */
   onServerRestarted(cb: (info: OkServerRestartedInfo) => void): OkUnsubscribe;
-  /**
-   * Subscribe to `ok:project:recent-removed-missing` — fired on the window that
-   * initiated a recents open of a folder that no longer exists. The stale entry
-   * has already been pruned from the recents list; the renderer surfaces a
-   * lightweight toast (and, in the Navigator, drops the row from its list).
-   */
   onRecentRemovedMissing(cb: (info: OkRecentRemovedMissingInfo) => void): OkUnsubscribe;
-  /**
-   * Restart the project's server to match this app's version: terminate the
-   * attached (not-owned) server and recreate the window against a fresh
-   * own-version spawn. Resolves to `{ ok:false }` only when termination fails
-   * (the originating window stays); on success the window is recreated and the
-   * success toast fires there.
-   */
   restartServer(projectPath: string): Promise<OkServerRestartOutcome>;
 
-  /**
-   * Push the user's chosen `nativeTheme.themeSource` value to main. Carries
-   * the user-intent value (`'system' | 'light' | 'dark'`) verbatim — NEVER
-   * resolve `'system'` to a concrete `'light' | 'dark'` at the call site
-   * (it IS the lever that delegates to macOS appearance). Renderer
-   * ConfigProvider runs this on every CRDT mutation of `appearance.theme`.
-   * Failure is best-effort — body theme stays correct via next-themes; next
-   * CRDT mutation re-fires.
-   */
   setThemeSource(source: OkThemeSource): Promise<{ ok: true }>;
 
-  /**
-   * Push the user's chosen interface language to main, which rebuilds the
-   * native menu bar in it. Carries the user-intent value (`'system'` or a
-   * supported tag) verbatim — NEVER resolve `'system'` to a concrete locale at
-   * the call site, for the same reason `setThemeSource` must not: `'system'`
-   * IS the lever that delegates to the OS preferred-language list, and a
-   * resolved value silently stops following it.
-   *
-   * Main resolves the language for its own boot by reading the persisted
-   * preference off disk, because the menu is built before any renderer exists;
-   * this call only carries subsequent changes. Failure is best-effort — the
-   * menu stays on the previous language and the next mutation re-fires.
-   */
   setLanguagePreference(preference: LanguagePreference): Promise<{ ok: true }>;
 
-  /**
-   * Fire-and-forget renderer→main signal that the theme has been applied
-   * to chrome. Main's per-window show-gate listens for this alongside
-   * `ready-to-show` before calling `BrowserWindow.show()` — eliminates the
-   * cold-launch staleness window. Implemented in preload as
-   * `invoke('ok:theme:applied', opts).catch(() => {})` so it composes
-   * through the typed `createInvoker` wrapper.
-   *
-   * Optional `opts.reducedTransparency` carries the renderer's live
-   * `matchMedia('(prefers-reduced-transparency: reduce)').matches` value;
-   * main toggles vibrancy material accordingly. `opts.chrome` carries the
-   * active palette's OS-drawn chrome colors.
-   */
   signalThemeApplied(opts?: { reducedTransparency?: boolean; chrome?: OkChromeColors }): void;
 
-  /** Native folder-picker dialog surfaces. */
   dialog: {
-    /** `dialog.showOpenDialog({ properties: ['openDirectory'] })`. Resolves to the selected path or `null` on cancel.
-     *  `defaultPath` seeds the initial directory shown to the user. */
     openFolder(opts?: { defaultPath?: string }): Promise<string | null>;
   };
 
-  /**
-   * IPC-relayed wrappers around Electron's `shell` module. Main-process
-   * handlers enforce the outbound-scheme allowlist (`https`, `http`,
-   * `mailto`, `openknowledge`, plus `claude`, `codex`, `cursor` for the
-   * "Open in Agent Desktop" dropdown) before delegating. Unauthorized
-   * schemes reject.
-   */
   shell: {
     openExternal(url: string): Promise<void>;
-    /**
-     * Probe whether a URL scheme has a registered handler on this OS.
-     * Used by the "Open in Agent Desktop" dropdown to render disabled-
-     * with-tooltip rows when the target app isn't installed. Returns
-     * `{installed: false}` on timeout or platform-API error.
-     *
-     * **Scheme format contract:** `scheme` is the scheme NAME without
-     * trailing colon (e.g. `'claude'`, not `'claude:'`). Matches the Linux
-     * `xdg-mime query default x-scheme-handler/<name>` shell-command form
-     * and the main-process shell-injection sanitizer — callers with a
-     * colonful scheme MUST strip the trailing `:` first.
-     */
     detectProtocol(scheme: string): Promise<{ installed: boolean; displayName?: string }>;
-    /**
-     * Step 1 of the Cursor two-step handoff — spawns `cursor <path>` via a
-     * validated argv (shell:false, 2s timeout). Dedicated channel because
-     * the threat model is a command allowlist (PATH hijacking, arg
-     * injection) distinct from the URL-scheme allowlist above.
-     */
     spawnCursor(
       path: string,
     ): Promise<
       | { ok: true }
       | { ok: false; reason: 'invalid-path' | 'not-installed' | 'timeout' | 'spawn-error' }
     >;
-    /**
-     * Append a local-only telemetry line to `~/.ok/stats.jsonl`. Zero
-     * phone-home. Resolves even if HOME is unwritable — telemetry failure
-     * must never bubble up and affect the dispatch path. The reason and scope
-     * fields use the handoff subsystem's canonical literal-union discriminators.
-     */
     recordHandoff(line: {
       readonly target: 'claude-cowork' | 'claude-code' | 'codex' | 'cursor';
       readonly host: 'electron' | 'web';
@@ -1617,14 +926,6 @@ export interface OkDesktopBridge {
       readonly scope?: HandoffScope;
     }): Promise<void>;
 
-    /**
-     * Open an asset via the OS default handler. `relPath` is project-relative
-     * (main-process resolves against `ProjectContext.projectPath` + `realpath` +
-     * `isPathWithinProject`). Executable extensions (`.exe`, `.sh`, `.app`, …)
-     * hard-refuse at the main handler — see
-     * `EXECUTABLE_BLOCKLIST_EXTENSIONS` in `core/constants/upload.ts` for
-     * the full blocklist.
-     */
     openAsset(
       relPath: string,
     ): Promise<
@@ -1632,23 +933,10 @@ export interface OkDesktopBridge {
       | { ok: false; reason: 'extension-blocked' | 'path-escape' | 'not-found' | 'resolve-error' }
     >;
 
-    /**
-     * Reveal an asset in the native file manager (macOS Finder / Windows
-     * Explorer / Linux xdg-open → default). Parent-only — does NOT invoke
-     * the OS default handler for content. Lower-risk than `openAsset`; the
-     * executable blocklist does NOT apply.
-     */
     revealAsset(
       relPath: string,
     ): Promise<{ ok: true } | { ok: false; reason: 'path-escape' | 'not-found' | 'resolve-error' }>;
 
-    /**
-     * Reveal an ABSOLUTE path outside the caller window's project — the
-     * terminal's "this file is outside your project" clickable-link flow.
-     * Deliberately NOT containment-gated (unlike `revealAsset`); main stats the
-     * path and pops a native confirmation dialog, revealing only on confirm. The
-     * dialog is the trust boundary.
-     */
     revealExternal(
       absPath: string,
     ): Promise<
@@ -1656,30 +944,12 @@ export interface OkDesktopBridge {
       | { ok: false; reason: 'not-found' | 'invalid-path' | 'error' }
     >;
 
-    /**
-     * Display the native right-click context menu for an on-disk reference
-     * (`asset`, `wiki-link`, or `image`). Built from `Menu.buildFromTemplate`
-     * in main — the gesture-attested pattern: main observes the click
-     * directly, no IPC gesture forwarding needed. Entries: Reveal in Finder
-     * + Open in default app + Copy link.
-     */
     showAssetMenu(params: {
       readonly relPath: string;
       readonly title: string;
       readonly kind: 'asset' | 'wiki-link' | 'image';
     }): Promise<void>;
-    /**
-     * Reveal a file or folder in the OS file manager (Finder / Explorer /
-     * Linux default). Path is validated against the caller window's project
-     * directory in main; out-of-project, non-absolute, or null-byte-bearing
-     * paths are silently refused at the wire (channel returns `undefined`
-     * regardless; refusals emit a main-process `console.warn` for debugging).
-     */
     showItemInFolder(path: string): Promise<void>;
-    /**
-     * Move a file or folder to the OS Trash via `shell.trashItem`. Step 1
-     * of the sidebar Delete flow's two-step Option B orchestration.
-     */
     trashItem(absPath: string): Promise<
       | { ok: true }
       | {
@@ -1690,26 +960,8 @@ export interface OkDesktopBridge {
     >;
   };
 
-  /** IPC-relayed clipboard writer (sandboxed renderer cannot call clipboard directly). */
   clipboard: {
     writeText(text: string): Promise<void>;
-    /**
-     * Copy an image to the clipboard as raster bytes via `nativeImage`,
-     * which macOS's pasteboard writer expands into the 9-flavor raster
-     * set (`«class PNGf»`, `TIFF picture`, `JPEG picture`, `GIF
-     * picture`, `«class jp2»`, `«class BMP»`, `«class TPIC»`,
-     * `«class 8BPS»`, `«class AVIF»`) — the same shape a macOS
-     * screenshot writes. Every rich receiver (Notes, Docs, Slack chat,
-     * Notion inline, iMessage) picks a compatible flavor and renders
-     * inline first-try.
-     *
-     * Renderer's own `navigator.clipboard.write` can't produce that
-     * 9-flavor set (Chromium's Async Clipboard API only accepts one
-     * blob per MIME key), which is why the copy has to run in main.
-     * `nativeImage.createFromBuffer` decodes PNG + JPEG only; other
-     * formats resolve `empty-image` and the renderer is expected to
-     * fall back to its own best-effort `navigator.clipboard.write`.
-     */
     copyImage(params: { readonly src: string; readonly alt: string }): Promise<
       | { ok: true }
       | {
@@ -1720,148 +972,71 @@ export interface OkDesktopBridge {
     >;
   };
 
-  /**
-   * Project-management surface consumed by the Navigator component.
-   * `listRecent` reads the LRU-capped recent list from app state; `open`
-   * spawns a NEW editor window for `request.path` (no switch-in-place);
-   * `close` tears down the window hosting the call site.
-   */
   project: {
     listRecent(): Promise<RecentProjectEntry[]>;
-    /** Forget one entry from the recent-projects list. */
     removeRecent(path: string): Promise<void>;
     getSessionState(): Promise<ProjectSessionState>;
     setSessionState(state: ProjectSessionState): Promise<void>;
     open(request: OkProjectOpenRequest): Promise<void>;
-    /**
-     * File → Open file… — show the native md/mdx picker and open the pick in a
-     * temporary single-file session (the desktop side of `ok <file>`). Picker +
-     * open both run main-side; the picked path never crosses back to the
-     * renderer.
-     */
     openFile(): Promise<void>;
-    /**
-     * Atomically scaffold a new project under `parent/name` with the
-     * user-chosen `editors` set. `editors` is the renderer's exact selection
-     * (seeded from `integrations.status().detectedEditorIds`, minus/plus
-     * anything the user toggled); main never widens or narrows it.
-     */
     createNew(args: {
       parent: string;
       name: string;
       editors: OkMcpWiringEditorId[];
-      /** OK config sharing mode — defaults to 'shared' when omitted. */
       sharing?: 'shared' | 'local-only';
       packId?: OkPackId;
-      /**
-       * Folder the pack scaffolds into, relative to the project root.
-       * Omitted → the project root (the dialog's default).
-       */
       rootDir?: string;
     }): Promise<void>;
-    /**
-     * Fire-and-forget renderer→main telemetry counter for the Create-new-project
-     * dialog cascade banners.
-     */
     recordCreateNewBannerShown(banner: CreateNewBannerKind): Promise<void>;
-    /**
-     * Probe `<projectPath>/<path>` for the share-receive target-existence
-     * gate, dispatching the on-disk predicate on `kind`.
-     */
     checkTargetExists(request: {
       projectPath: string;
       kind: 'doc' | 'folder';
       path: string;
     }): Promise<OkCheckTargetExistsResult>;
-    /** Read `<projectPath>/.git/HEAD` and classify the result. */
     readHeadBranch(projectPath: string): Promise<OkHeadBranchInfo>;
-    /** Proxy `GET /api/git/branch-info` against the project's running server. */
     fetchBranchInfo(request: {
       projectPath: string;
       branch: string;
       kind: 'doc' | 'folder';
-      /** URL-derived repository-relative target path. */
       path: string;
     }): Promise<BranchInfoResponse | null>;
-    /**
-     * Proxy `POST /api/git/checkout` against the project's running server.
-     * `fastForward` (on-origin "Switch and update branch") fast-forwards the
-     * target branch to origin's tip before checkout; divergence → `ff-diverged`
-     * (nothing mutated).
-     */
     runCheckout(request: {
       projectPath: string;
       branch: string;
       fastForward?: boolean;
     }): Promise<CheckoutResponse | null>;
-    /**
-     * Proxy `POST /api/share/target-status` for the branch-switch dialog's
-     * verdict pivot.
-     */
     fetchTargetStatus(request: {
       projectPath: string;
       branch: string;
-      /** URL-derived repository-relative target path. */
       path: string;
       kind: 'doc' | 'folder';
-      /** Present only for v2 so rename destinations can be content-relative. */
       contentRootDepth?: number;
     }): Promise<ShareTargetStatusResponse | null>;
-    /**
-     * Gate dialog dismissal on the `branch-switched` broadcast landing
-     * in the project window.
-     */
     awaitBranchSwitched(request: {
       projectPath: string;
       branch: string;
       timeoutMs: number;
     }): Promise<{ ok: true } | { ok: false; reason: 'timeout' | 'project-not-open' }>;
-    /** Run the share-receive scaffold inside a CLI-managed worktree. */
     okInit(request: { projectPath: string }): Promise<LocalOpOkInitResponse>;
     close(): Promise<void>;
   };
 
-  /**
-   * Worktree selector (worktree = window). `list` enumerates the
-   * sender window's project's local branches + their worktrees; `create`
-   * creates (or locates) the worktree for a branch under
-   * `<mainRoot>/.ok/worktrees/`; `checkout` is the share-receive arm
-   * (resolves where the branch lives — fetching from `origin` when
-   * needed — then create-or-locates). Opening a worktree window reuses
-   * `project.open({ entryPoint: 'worktree' })`.
-   */
   worktree: {
     list(): Promise<WorktreeListResult>;
     create(request: WorktreeCreateRequest): Promise<WorktreeCreateResult>;
     checkout(request: { branch: string }): Promise<WorktreeCreateResult>;
   };
 
-  /**
-   * OK config sharing mode — per-project sharing-mode posture.
-   */
   sharing: {
     status(): Promise<OkSharingStatusResult>;
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
   };
 
-  /**
-   * Slides (Slidev) — `status` detects a runnable `slidev`; `open` starts (or
-   * reuses) a server for the deck and resolves once it is confirmed serving.
-   * Canonical JSDoc in `packages/desktop/src/shared/ipc-channels.ts`.
-   * Mirrored here per the OkDesktopBridge 3-way-mirror invariant.
-   */
   slides: {
     status(): Promise<OkSlidesStatusResult>;
     open(docPath: string): Promise<OkSlidesOpenResult>;
   };
 
-  /**
-   * In-app "Report a bug" — `create` builds the redacted diagnostic zip
-   * (optional crash-dump opt-in via `includeCrashDump`, optional app
-   * screenshot via `includeScreenshot`); `captureScreenshot` grabs the app
-   * before the dialog paints; `send` uploads it with an email fallback;
-   * `onCrashDetected` / `crashAck` carry the crash-invite round-trip.
-   */
   bugReport: {
     create(request: {
       level: ReportBundleLevel;
@@ -1870,11 +1045,6 @@ export interface OkDesktopBridge {
       includeScreenshot?: boolean;
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
-    /**
-     * Whether main is holding a crash dump this report could carry. Only a
-     * report the user opened themselves needs to ask — a crash invitation
-     * already carries the answer on its event.
-     */
     crashDumpAvailability(): Promise<OkBugReportCrashDumpAvailability>;
     send(request: OkBugReportSendInput): Promise<OkBugReportSendResult>;
     crashAck(request: { eventId: string }): Promise<OkBugReportCrashAckResult>;
@@ -1883,7 +1053,6 @@ export interface OkDesktopBridge {
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
   };
 
-  /** Filesystem probes that back the Create-new-project dialog cascade. */
   fs: {
     defaultProjectsRoot(): Promise<string>;
     folderState(path: string): Promise<OkFolderState>;
@@ -1892,24 +1061,11 @@ export interface OkDesktopBridge {
     removeGitFolder(gitRoot: string): Promise<void>;
   };
 
-  /**
-   * Re-summon the Project Navigator window from inside an editor window.
-   * Backed by main's `openNavigator()` helper — focus-existing-or-create
-   * with no toggle semantics. Renderer call sites: `ProjectSwitcher`
-   * dropdown's "Switch Project…" item and `CommandPalette`'s "Switch
-   * Project" entry. The File menu's "Switch Project…" item invokes
-   * `openNavigator()` directly inside main without crossing the bridge.
-   */
   navigator: {
     open(): Promise<void>;
   };
 
-  /** Popped-out single-document windows (`--ok-mode=note`). */
   noteWindow: {
-    /**
-     * Pop `docName` out into its own window, or focus the window already
-     * showing it. `no-project` when the calling window has no project context.
-     */
     open(
       docName: string,
       entryPoint: 'tab-menu' | 'palette',
@@ -1917,47 +1073,18 @@ export interface OkDesktopBridge {
       | { ok: true; outcome: 'created' | 'focused' }
       | { ok: false; reason: 'no-project' | 'invalid-request' }
     >;
-    /**
-     * Focus the owning project window and deliver a conversation/comments
-     * action there. Note-window renderers call this instead of opening chrome
-     * that deliberately does not exist in their reduced surface.
-     */
     dispatchToMain(action: OkNoteWindowMainAction): Promise<OkNoteWindowMainActionResult>;
-    /** Receive a note-window action in the owning project renderer. */
     onMainAction(cb: (action: OkNoteWindowMainAction) => void): OkUnsubscribe;
   };
 
-  /**
-   * `ok seed` scaffolder surface consumed by the FileSidebar + menu.
-   * `plan()` is read-only and returns what the scaffolder would write;
-   * `apply(plan)` performs the writes. Same functions run under the
-   * Commander CLI (`ok seed`).
-   */
   seed: {
     plan(options?: OkSeedPlanOptions): Promise<OkSeedPlanResult>;
     apply(plan: OkScaffoldPlan, options?: OkSeedApplyOptions): Promise<OkSeedApplyResult>;
     listPacks(): Promise<OkSeedListPacksResult>;
   };
 
-  /**
-   * Claude Chat & Cowork skill install-dialog hooks. Drives the 2-click
-   * install via Claude.app's `.skill` `CFBundleDocumentType`. Local-build
-   * design: `.skill` is produced on demand from the app-bundled SKILL.md;
-   * no GitHub Releases dep.
-   */
   skill: {
-    /** True when Claude Desktop's config dir exists on this machine. */
     detectClaudeDesktop(): Promise<boolean>;
-    /**
-     * Build `openknowledge.skill` from the bundled source, save to
-     * Downloads, invoke the OS file association (`.skill` → Claude
-     * Desktop). Local build; no network.
-     *
-     * Gated by `~/.ok/skill-state/claude-cowork`: when the recorded
-     * version matches the current bundled skill version, resolves with
-     * `{ ok: true, skipped: true, version, recordedAt? }` without
-     * rebuilding. Pass `force: true` to bypass.
-     */
     buildAndOpen(opts?: { force?: boolean }): Promise<
       | { ok: true; path: string; skipped?: false; version?: string }
       | {
@@ -1975,115 +1102,43 @@ export interface OkDesktopBridge {
     >;
   };
 
-  /**
-   * Auto-update control surface. Toast A's "Relaunch now" button calls
-   * `relaunchNow()` which invokes `autoUpdater.quitAndInstall()` in main.
-   */
   update: {
     relaunchNow(): Promise<void>;
-    /**
-     * Force an out-of-cadence `checkForUpdates()` — fires the
-     * `ok:update:check-now` IPC. Surfaced from the application menu's
-     * "Check for Updates…" entries (App menu on macOS, Help menu
-     * cross-platform). The user-facing result reaches the UI through
-     * the existing toast event subscribers, so this resolves once main
-     * has fired the request rather than waiting on the network.
-     */
     checkNow(): Promise<void>;
-    /**
-     * Fire `ok:update:whats-new-dismiss` — tells main this window dismissed the
-     * what's-new notice so main clears it across all windows. Fire-and-forget.
-     */
     dismissWhatsNew(version: string): Promise<void>;
   };
 
-  /**
-   * Channel + schema-compatibility state surface. Renderer queries on mount
-   * to render the correct BETA badge / About-panel label and route the
-   * refuse-downgrade UX when a future-build state was rolled back.
-   */
   state: {
     query(): Promise<OkStateSnapshot>;
     resetIncompatible(): Promise<void>;
   };
 
-  /**
-   * First-launch MCP consent surface. Renderer mounts `<McpConsentDialog>`
-   * when `onShow` fires; calls `confirm` / `skip` on user action; calls
-   * `signalReady()` once on app mount so main knows a renderer is
-   * subscribed (mount-ack handshake).
-   */
   mcpWiring: {
-    /** Subscribe to the consent-dialog-show event. Returns unsubscribe. */
     onShow(cb: (payload: OkMcpWiringShowPayload) => void): OkUnsubscribe;
-    /** Fire a one-way mount-ack event so main's whenRendererReady gate opens. */
     signalReady(): void;
-    /** User clicked Add. `editorIds` is the subset the user checked;
-     *  `pathInstall` is the PATH toggle (tri-state — see
-     *  `OkMcpWiringConfirmRequest`). */
     confirm(request: OkMcpWiringConfirmRequest): Promise<OkMcpWiringResult>;
-    /** User clicked Skip (or pressed ESC). */
     skip(): Promise<OkMcpWiringResult>;
-    /**
-     * Re-arm the consent dialog on demand (File → "Set up OpenKnowledge
-     * integrations…" and the Cmd+K command). Resolves `true` when armed,
-     * `false` when unavailable (non-darwin / unpackaged / arming threw).
-     */
     reconfigure(): Promise<boolean>;
   };
 
-  /**
-   * App-wide spell-check toggle (Edit → "Check spelling while typing" and the
-   * Cmd+K command). `toggle()` flips the flag and resolves to the new enabled
-   * state. Bespoke main-side setting; NOT part of the View-menu-state snapshot.
-   */
   spellcheck: {
     toggle(): Promise<boolean>;
   };
 
-  /**
-   * Settings → AI tools: live per-component install state + one-component
-   * install/uninstall for OK's global footprint (per-editor MCP entries,
-   * shell-PATH shim, user-global skill bundles). Mutations serialize in main.
-   */
   integrations: {
     status(): Promise<OkIntegrationsStatus>;
     setComponent(request: OkIntegrationsSetRequest): Promise<OkIntegrationsSetResult>;
   };
 
-  /**
-   * Settings → This project → AI tools: live per-component install state +
-   * one-component install/uninstall for OK's PROJECT-LOCAL footprint (per-editor
-   * project MCP config files + the project runtime skill) against the project
-   * the requesting window has open. Mutations serialize in main.
-   */
   projectIntegrations: {
     status(): Promise<OkProjectIntegrationsStatus>;
     setComponent(request: OkProjectIntegrationsSetRequest): Promise<OkProjectIntegrationsSetResult>;
   };
 
-  /**
-   * Settings → This project → Remote control. OK does not detect or drive the
-   * tunnel (the setup how-to lives in the docs); the one main-process helper the
-   * pane needs is a local port probe.
-   */
   remoteAccess: {
-    /**
-     * Advisory check of whether `port` is bindable on loopback right now, so the
-     * pane can warn "that port is taken" while the user types a fixed port —
-     * before Apply restarts the server and silently falls back to an ephemeral
-     * port. Best-effort: a TOCTOU gap means `true` is a strong hint, not a lock.
-     */
     probePort(port: number): Promise<boolean>;
   };
 
-  /**
-   * Per-project consent dialog surface. Navigator-only.
-   * Renderer mounts a shadcn Dialog when `onShow` fires; calls
-   * `confirm` / `cancel` on user action; calls `signalReady()` once on app
-   * mount so main's mount-ack gate opens. `onToast` fires on freshly-spawned
-   * editor windows for ancestor- and git-root-promote events.
-   */
   onboarding: {
     onShow(cb: (payload: OkOnboardingShowPayload) => void): OkUnsubscribe;
     signalReady(): void;
@@ -2120,11 +1175,6 @@ export interface OkDesktopBridge {
     ): OkUnsubscribe;
   };
 
-  /**
-   * Pre-project local-op flows. Required by the Project Navigator window
-   * (no backing API server). Editor windows use the HTTP path; this
-   * surface is unused there.
-   */
   localOp: {
     auth: {
       start(): OkLocalOpStream<OkLocalOpAuthEvent>;
@@ -2140,11 +1190,6 @@ export interface OkDesktopBridge {
     authRepos(request?: { host?: string }): Promise<OkLocalOpAuthReposResponse>;
   };
 
-  /**
-   * Share-receive flow surface. `validateLocalFolder` runs the
-   * Q2 "I have it locally" folder validator in the main process via
-   * `validateLocalFolderForShare` from the CLI package.
-   */
   share: {
     validateLocalFolder(args: {
       folderPath: string;
@@ -2154,55 +1199,25 @@ export interface OkDesktopBridge {
     }): Promise<ShareFolderValidationResult>;
   };
 
-  /**
-   * Editor area state push surface. Renderer fires
-   * `notifyActiveTargetChanged` once per `activeTarget` transition in
-   * `useDocumentContext()`.
-   */
   editor: {
     notifyActiveTargetChanged(target: OkEditorActiveTargetSnapshot): void;
-    /** Fire-and-forget push of the sidebar's view-menu state. */
     notifyViewMenuStateChanged(state: Partial<OkEditorViewMenuStateSnapshot>): void;
-    /**
-     * Fire-and-forget push keying the window's Chromium background-throttling
-     * to its unsynced work.
-     */
     notifyBackgroundThrottle(signal: { hasPendingWork: boolean; enabled: boolean }): void;
   };
 
-  /**
-   * Windows/Linux renderer-menubar dispatch surface (windows-linux-port
-   * renderer-menubar decision). macOS keeps the native menu bar and never calls this; on
-   * win/linux the renderer-drawn menu bar routes every click through main
-   * so menu semantics live in one place. `query` resolves the aggregated
-   * `OkMenuRendererSnapshot`; every other kind performs the action
-   * main-side and resolves undefined.
-   */
   menu: {
     dispatch(request: OkMenuDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
   };
 
-  /**
-   * Startup-instrumentation push surface (desktop launch waterfall). The
-   * renderer reports its two launch checkpoints — page-list ready and first
-   * content — as epoch-ms once both land; main folds them into the
-   * `desktop.startup-timeline` log line.
-   */
   startup: {
     reportMarks(marks: { pageListReadyMs: number; firstContentMs: number }): void;
   };
 
-  /**
-   * Sidebar tree-state push subscriptions. Main pushes
-   * `ok:sidebar:expand-all` / `ok:sidebar:collapse-all` when the user picks
-   * View → Expand All / Collapse All.
-   */
   sidebar: {
     expandAll(cb: () => void): OkUnsubscribe;
     collapseAll(cb: () => void): OkUnsubscribe;
   };
 
-  /** Docked terminal panel surface (bottom or right). */
   terminal: {
     create(opts: {
       cols: number;
@@ -2213,100 +1228,34 @@ export interface OkDesktopBridge {
     resize(ptyId: string, cols: number, rows: number): void;
     kill(ptyId: string): Promise<void>;
     drain(ptyId: string, bytes: number): void;
-    /** Reload-rehydration inventory. */
     list(): Promise<OkPtyListEntry[]>;
-    /** Reload-rehydration adopt. */
     adopt(ptyId: string): Promise<OkPtyAdoptResult>;
-    /**
-     * Persist per-session tab metadata (custom name + sticky ordinal) in main so
-     * it survives a renderer reload — main outlives the reload, so a reloaded dock
-     * reads it back via `list`. Fire-and-forget; omit a field to leave it unchanged.
-     */
     setMeta(ptyId: string, meta: { customLabel?: string | null; ordinal?: number }): void;
-    /**
-     * Persist the tab display order in main (ptyIds in visual order) so a reorder
-     * survives a renderer reload. Fire-and-forget.
-     */
     setOrder(orderedPtyIds: readonly string[]): void;
-    /** Per-window state for the independent terminal and agents panels. */
     getDockState(): Promise<OkTerminalDockState>;
-    /** Persist one panel's session state per window and report durable-write failures. */
     setDockState(state: OkTerminalDockStateUpdate): Promise<OkTerminalDockStateWriteResult>;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
     onNotice(cb: (msg: OkPtyNotice) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;
     cliPreflight(cli: TerminalCli): Promise<CliReadiness>;
-    /**
-     * Batched on-PATH readiness. An absent key means the probe could not verify
-     * that CLI either way (NOT absence) — consumers must fail open on
-     * `undefined` and reserve gating-off for the positive `false`.
-     */
     cliInstalledMap(): Promise<Partial<Record<TerminalCli, boolean>>>;
     rewireClaudeMcp(): Promise<ClaudeReadiness>;
   };
 
-  /**
-   * OS assistive-tech signal gating xterm's `screenReaderMode`. Optional in
-   * the renderer contract: session-only
-   * bridges omit it, and consumers treat an absent surface as
-   * screen-reader-active (fail-accessible).
-   */
   accessibility?: {
     isScreenReaderActive(): boolean;
     onScreenReaderChanged(cb: (active: boolean) => void): OkUnsubscribe;
   };
 
-  /** Current platform — `process.platform` reported by preload. */
   readonly platform: 'darwin' | 'win32' | 'linux';
-  /** Electron app version (from main's `app.getVersion()`). */
   readonly appVersion: string;
-  /**
-   * Named parallel dev-instance label (branch/worktree) when this launch
-   * relocated `userData` to a named sibling — auto-derived from the git
-   * checkout or an explicit `OK_INSTANCE`. Null for the default install and in
-   * web / CLI distribution. Drives the header branch badge.
-   */
   readonly instanceLabel: string | null;
 
-  /**
-   * Resolve a dropped `File` to its absolute filesystem path via Electron
-   * `webUtils.getPathForFile` (renderer-side, no IPC). Returns null for a File
-   * with no backing path on disk (e.g. an in-memory clipboard blob). The
-   * docked terminal uses this to insert a dropped file's path at the prompt.
-   */
   getPathForFile(file: File): string | null;
 
-  /**
-   * Publish the editor's current `content-visibility` display-lock state as a
-   * crash key on THIS renderer's Crashpad annotations (renderer-side, no IPC).
-   *
-   * It has to be this process: Crashpad annotations are per-process, so a value
-   * set from main would ride main's dumps and never appear on the renderer dump
-   * that a display-lock crash actually produces.
-   *
-   * And it has to be continuous, not on-demand at crash time. The abort this
-   * exists to explain is a Blink `CHECK` in `HitTestResult::GetPosition()`,
-   * which fires when a click's hit-tested node has a paint-blocked ancestor —
-   * an immediate process abort, with no JS running afterwards. Only the value
-   * last published before it survives into the dump, so the caller keeps this
-   * current as lock state changes and the dump carries whatever was true in the
-   * crashing frame.
-   *
-   * `state` is an opaque compact string owned by the caller; this bridge only
-   * transports it and owns the key name. Over-budget values are dropped rather
-   * than sent, because Crashpad truncates silently and a half-written value in
-   * a dump would read as a complete reading.
-   *
-   * No-ops outside the desktop app.
-   */
   setDisplayLockCrashKey(state: string): void;
 
-  /**
-   * Debug-only namespace — populated by preload ONLY when the
-   * `OK_DEBUG_KEYRING_SMOKE=1` env var is set OR the app is unpacked (dev
-   * mode). Absent in normal production runs.
-   */
   debug?: {
     keyringSmoke(): Promise<OkKeyringSmokeResult>;
   };
@@ -2314,7 +1263,6 @@ export interface OkDesktopBridge {
 
 declare global {
   interface Window {
-    /** Populated by the desktop preload script. Absent in web / CLI distribution. */
     okDesktop?: OkDesktopBridge;
   }
 }

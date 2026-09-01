@@ -1,16 +1,3 @@
-/**
- * RTL behavioral tests for ShareBranchSwitchDialog.
- *
- * Exercises the actual main → renderer payload delivery seam at the unit
- * layer: emit a `project-branch-switch` payload on an injected store, then
- * assert the dialog mounts, Cancel just dismisses, Switch dispatches
- * runCheckout, and warm-focus dispatch fires after the CC1 ack.
- *
- * Mocks `@lingui/react/macro` so the Trans/useLingui wrapper resolves without
- * a real LinguiProvider (no babel-plugin-macros at test time — same gap
- * AddPropertyRow.dom.test.tsx avoids by stubbing the macro).
- */
-
 import type {
   BranchInfoResponse,
   CheckoutResponse,
@@ -21,8 +8,6 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge, OkShareReceivedPayload } from '@/lib/desktop-bridge-types';
 
-// Radix Dialog (focus-trap) reaches for `NodeFilter` + `ResizeObserver`.
-// Shim per the convention in sibling .dom.test.tsx files.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -42,9 +27,6 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
 
-// Lingui macros: not transformed in this test substrate. Stub to identity
-// renderers so Trans/Plural pass children through and useLingui returns a
-// passthrough `t` template tag.
 import * as actualLinguiMacro from '@lingui/react/macro';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -64,15 +46,11 @@ vi.doMock('@lingui/react/macro', () => ({
   Plural: ({ children }: { children?: ReactNode }) => children ?? null,
 }));
 
-// Sonner is loaded by the SUT — stub to mute its real toaster.
 const toastError = vi.fn(() => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
 
-// The worktree leg refreshes the window's cached worktree model on create
-// success. Spy at the module seam (same pattern as NewWorktreeDialog.dom.test)
-// so the production store never boots against the absent test bridge.
 const refreshWorktrees = vi.fn(() => {});
 vi.doMock('@/lib/worktree-store', () => ({ refreshWorktrees }));
 
@@ -131,12 +109,6 @@ function makeBridge(overrides: Partial<BridgeMock> = {}): {
   return { bridge, calls };
 }
 
-/**
- * branch-info for the "switch to recover" variant with an explicitly-false
- * origin hint — the state that triggers the verdict pivot. `shareTargetExists`
- * false (target missing on the current branch) + a clean tree = variant B;
- * `shareTargetOnOriginBranch: false` = the stale-local-ref hint.
- */
 function missWithFalseOriginHint(): BranchInfoResponse {
   return {
     ok: true,
@@ -216,14 +188,12 @@ describe('ShareBranchSwitchDialog — payload gating', () => {
     } as unknown as OkDesktopBridge;
     store.install({ bridge: fakeBridgeForStore });
     render(<ShareBranchSwitchDialog bridge={bridge} store={store} />);
-    // Component should not mount for launcher payloads.
     expect(screen.queryByTestId('share-branch-switch-dialog')).toBeNull();
   });
 
   test("mounts on a 'project-branch-switch' payload + fetches branch-info from the payload's projectPath", () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
-      // Pending so we observe the loading state before info arrives.
       fetchBranchInfo: vi.fn(() => new Promise<BranchInfoResponse>(() => {})),
     });
     const payload = projectBranchSwitchPayload();
@@ -259,7 +229,6 @@ describe('ShareBranchSwitchDialog — Cancel discipline (OQ2)', () => {
   test('Cancel dismisses the store snapshot — editor stays open (no bridge.project.open call)', () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({
-      // Hold the fetch open so we Cancel during loading state.
       fetchBranchInfo: vi.fn(() => new Promise<BranchInfoResponse>(() => {})),
     });
     const payload = projectBranchSwitchPayload();
@@ -275,9 +244,7 @@ describe('ShareBranchSwitchDialog — Cancel discipline (OQ2)', () => {
 
     fireEvent.click(screen.getByTestId('share-branch-switch-cancel'));
 
-    // Store dismissed → snapshot null → dialog unmounts.
     expect(store.getSnapshot()).toBeNull();
-    // must NOT dispatch a project.open call as part of Cancel.
     expect(calls.open).not.toHaveBeenCalled();
   });
 });
@@ -300,8 +267,6 @@ describe('ShareBranchSwitchDialog — Open-in-current dispatch', () => {
     store.install({ bridge: fakeBridgeForStore });
     render(<ShareBranchSwitchDialog bridge={bridge} store={store} />);
 
-    // Branch info is needed before the open-current button shows
-    // (shareFileExists + clean tree → openCurrentEnabled).
     const button = await screen.findByTestId('share-branch-switch-open-current');
     await act(async () => {
       fireEvent.click(button);
@@ -317,9 +282,7 @@ describe('ShareBranchSwitchDialog — Open-in-current dispatch', () => {
       path: 'docs/notes.md',
       repositoryPath: 'docs/notes.md',
     });
-    // Stay-on-current: no share-branch threading.
     expect(firstArg.pendingBranch).toBeUndefined();
-    // Store dismissed after dispatch.
     expect(store.getSnapshot()).toBeNull();
   });
 
@@ -346,10 +309,6 @@ describe('ShareBranchSwitchDialog — Open-in-current dispatch', () => {
       await Promise.resolve();
     });
 
-    // The dialog dismisses synchronously, but the open reject must still reach
-    // the user — otherwise they land in the editor with no doc and no feedback.
-    // Assert the path-specific message (not a global count) so a stray toast
-    // from a sibling test can't make this pass or fail spuriously.
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith(
         'The document could not be opened — try navigating to it manually.',
@@ -420,9 +379,6 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       await Promise.resolve();
     });
 
-    // runCheckout fires synchronously off the click. awaitBranchSwitched
-    // and the warm-focus open() fire after the phase transition lands
-    // in the next render (the phase-keyed effect).
     expect(calls.runCheckout).toHaveBeenCalledTimes(1);
     expect(calls.runCheckout).toHaveBeenCalledWith({
       projectPath: payload.projectPath,
@@ -523,7 +479,6 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
 
   test('Switch warm-focus open() reject surfaces a toast — no silent swallow', async () => {
     const store = createShareReceiveStore();
-    // Checkout + CC1 ack succeed; only the final warm-focus open() rejects.
     const { bridge, calls } = makeBridge({
       open: vi.fn(async () => {
         throw new Error('window-manager-error');
@@ -545,15 +500,10 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       await Promise.resolve();
     });
 
-    // Pump the phase-keyed CC1 gate: runCheckout → awaiting-cc1-recycle effect
-    // → awaitBranchSwitched(ok) → warm-focus open() (which rejects here).
     await waitFor(() => {
       expect(calls.open).toHaveBeenCalledTimes(1);
     });
 
-    // After the open reject lands, the user gets a distinct toast rather than a
-    // closed dialog with no doc and no signal. Assert the switch-path message
-    // specifically — contamination-proof and pins the exact copy for this path.
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith(
         'Branch switched but the document could not be opened — try navigating to it manually.',
@@ -582,7 +532,6 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       await Promise.resolve();
     });
 
-    // Checkout failure is surfaced and the CC1 gate never engages (no nav).
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith(
         'Could not switch to feat/branch-x. Try switching manually.',
@@ -594,7 +543,6 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
 
   test('Switch with awaitBranchSwitched {ok:false} (CC1 timeout) toasts the timeout copy', async () => {
     const store = createShareReceiveStore();
-    // Checkout succeeds; the CC1 recycle never acks within the window.
     const { bridge, calls } = makeBridge({
       awaitBranchSwitched: vi.fn(async () => ({ ok: false as const })),
     });
@@ -614,7 +562,6 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
       await Promise.resolve();
     });
 
-    // Pump the phase-keyed CC1 gate to its {ok:false} resolution.
     await waitFor(() => {
       expect(calls.awaitBranchSwitched).toHaveBeenCalledTimes(1);
     });
@@ -623,7 +570,6 @@ describe('ShareBranchSwitchDialog — Switch path (runCheckout + CC1 gate)', () 
         'Branch switch timed out — try opening the document manually.',
       );
     });
-    // CC1 timeout is distinct from success — no warm-focus navigation.
     expect(calls.open).not.toHaveBeenCalled();
   });
 });
@@ -701,7 +647,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     );
     const payload = installAndRender(bridge, store);
 
-    // The body names the new path so the receiver sees where it moved.
     const cell = await screen.findByTestId('share-branch-switch-verdict-renamed');
     expect(cell.textContent).toContain('guides/notes.md');
 
@@ -720,7 +665,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
       expect(calls.open).toHaveBeenCalledTimes(1);
     });
     const openArg = calls.open.mock.calls[0]?.[0] as Record<string, unknown>;
-    // Navigation lands on the renamed path, NOT the original share path.
     expect(openArg.pendingDeepLinkTarget).toEqual({
       kind: 'doc',
       path: 'guides/notes.md',
@@ -734,9 +678,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     const { bridge, calls } = pivotBridge(vi.fn(async () => ({ verdict: 'deleted' as const })));
     installAndRender(bridge, store);
 
-    // A gone-on-the-share-branch target has nothing to switch to — this shell
-    // hands off to the dedicated miss dialog (which owns the honest copy + a
-    // Browse-folder escape) rather than showing a terminal Cancel-only cell.
     await waitFor(() => {
       expect(missDialogStore.getSnapshot()).toEqual({
         kind: 'doc',
@@ -745,7 +686,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
         branch: 'feat/branch-x',
       });
     });
-    // This shell dismisses itself and never runs a checkout.
     expect(store.getSnapshot()).toBeNull();
     expect(calls.runCheckout).not.toHaveBeenCalled();
     missDialogStore.dismiss();
@@ -769,8 +709,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
 
   test('a fast-forward that diverges shows the diverged cell offering a plain switch (no merge)', async () => {
     const store = createShareReceiveStore();
-    // The server refuses the fast-forward only when it is requested; a plain
-    // switch (no fastForward) succeeds.
     const runCheckout = vi.fn(async (req: { fastForward?: boolean }) =>
       req.fastForward
         ? { ok: false as const, reason: 'ff-diverged' as const }
@@ -790,7 +728,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
       await Promise.resolve();
     });
 
-    // The fast-forward was refused → diverged cell, no navigation yet.
     await screen.findByTestId('share-branch-switch-verdict-diverged');
     expect(calls.open).not.toHaveBeenCalled();
 
@@ -800,7 +737,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
       await Promise.resolve();
     });
 
-    // The plain switch carries NO fastForward — the receive flow never merges.
     expect(calls.runCheckout).toHaveBeenLastCalledWith({
       projectPath: payload.projectPath,
       branch: payload.share.branch,
@@ -816,20 +752,16 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     const { bridge, calls } = pivotBridge(targetStatus);
     const payload = installAndRender(bridge, store);
 
-    // Fail-open: once the unknown verdict lands, the dialog re-enables today's
-    // plain switch button (it renders disabled during the checking state).
     const switchBtn = await screen.findByTestId('share-branch-switch-switch');
     await waitFor(() => {
       expect((switchBtn as HTMLButtonElement).disabled).toBe(false);
     });
-    // Single-fire guard: an `unknown` fallback to `ready` must not re-arm the probe.
     expect(calls.fetchTargetStatus).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       fireEvent.click(switchBtn);
       await Promise.resolve();
     });
-    // The plain switch does not fast-forward.
     expect(calls.runCheckout).toHaveBeenCalledWith({
       projectPath: payload.projectPath,
       branch: payload.share.branch,
@@ -855,7 +787,6 @@ describe('ShareBranchSwitchDialog — verdict pivot (FR9)', () => {
     installAndRender(bridge, store);
 
     await screen.findByTestId('share-branch-switch-switch');
-    // Fail-open on the omitted hint: no verdict fetch, today's behavior.
     expect(calls.fetchTargetStatus).not.toHaveBeenCalled();
   });
 });
@@ -869,10 +800,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     toastError.mockReset();
   });
 
-  /**
-   * Branch-info fixture spanning the ready-variant matrix: the variant derives
-   * from shareTargetExists × whether conflictFiles is non-empty.
-   */
   function branchInfoFor(fixture: {
     shareTargetExists: boolean;
     conflictFiles?: readonly string[];
@@ -889,11 +816,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     };
   }
 
-  /**
-   * Installs the payload and renders the dialog. Returns `emit` so a test can
-   * deliver a second share payload mid-flow — the store overwrites its
-   * snapshot, which is the dialog's per-payload reset trigger.
-   */
   function renderDialog(
     bridge: OkDesktopBridge,
     store: ReturnType<typeof createShareReceiveStore>,
@@ -962,8 +884,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
 
     await findEnabledWorktreeButton();
 
-    // Body copy points at the enabled worktree action instead of the old
-    // commit-or-stash-then-retry dead end.
     expect(screen.getByTestId('share-branch-switch-dialog').textContent).toContain(
       'open it in a worktree to leave your changes untouched',
     );
@@ -976,7 +896,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     expect(conflictList?.textContent).toContain('docs/notes.md');
     expect(conflictList?.textContent).toContain('package.json');
 
-    // No current-branch copy of the target exists in variant D.
     expect(screen.queryByTestId('share-branch-switch-open-current')).toBeNull();
   });
 
@@ -1023,17 +942,12 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     await waitFor(() => {
       expect(calls.open).toHaveBeenCalledTimes(1);
     });
-    // store.dismiss() runs synchronously before the open settles, so by the
-    // time the rejection lands the snapshot is already null and the catch's
-    // toast is the user's only signal — pin both.
     expect(store.getSnapshot()).toBeNull();
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith(
         `Could not open ${worktreePath}. Try opening it manually.`,
       );
     });
-    // The worktree exists on disk regardless of the failed window spawn; the
-    // cache refresh already ran, so the switcher/palette list it.
     expect(refreshWorktrees).toHaveBeenCalledTimes(1);
   });
 
@@ -1095,15 +1009,11 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     expect(calls.checkout).toHaveBeenCalledTimes(1);
     expect(calls.checkout).toHaveBeenCalledWith({ branch: payload.share.branch });
 
-    // Success opens the worktree window directly; the CC1 branch-switched gate
-    // belongs to the same-window switch leg only.
     await waitFor(() => {
       expect(calls.open).toHaveBeenCalledTimes(1);
     });
     expect(calls.awaitBranchSwitched).not.toHaveBeenCalled();
 
-    // Exact payload pin: path from the create result, its own window, worktree
-    // entry point, deep-link target passthrough, and the share branch.
     expect(calls.open.mock.calls[0]?.[0]).toEqual({
       path: worktreePath,
       target: 'new-window',
@@ -1116,11 +1026,8 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
       pendingBranch: payload.share.branch,
     });
 
-    // The anchor window's cached worktree model refreshes so the switcher and
-    // palette list the new worktree.
     expect(refreshWorktrees).toHaveBeenCalledTimes(1);
 
-    // Dialog dismissed after dispatch.
     expect(store.getSnapshot()).toBeNull();
   });
 
@@ -1162,8 +1069,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     });
     expect(store.getSnapshot()).toBeNull();
 
-    // The create resolving after dismissal is stale: no window, no cache
-    // refresh, no toast.
     await act(async () => {
       resolveCheckout({ ok: true, path: '/repo/.ok/worktrees/feat-branch-x', created: true });
       await Promise.resolve();
@@ -1189,8 +1094,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     await waitFor(() => {
       expect(toastError).toHaveBeenCalledWith('Could not fetch branch. Check your connection.');
     });
-    // Stay-open: the same dialog re-enables its actions for a retry or a
-    // different choice.
     expect(store.getSnapshot()).not.toBeNull();
     expect(screen.getByTestId('share-branch-switch-dialog')).toBeDefined();
     await waitFor(() => {
@@ -1201,12 +1104,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     expect(calls.open).not.toHaveBeenCalled();
   });
 
-  // The repository-not-found masquerade rides the fetch-failed reason with
-  // its own flag: the remote ANSWERED, so the connection copy is wrong, and
-  // the repo may not exist or the account used may not see it. The surface
-  // must render the not-found copy — a transposition of the two boolean-ish
-  // flags (or dropped threading) would silently fall back to the network
-  // dead end this arm exists to avoid.
   test('a not-found fetch failure shows the not-found copy, not the connection toast', async () => {
     const store = createShareReceiveStore();
     const { bridge } = makeBridge({
@@ -1284,7 +1181,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
       await Promise.resolve();
     });
 
-    // The dialog re-arms for the new payload.
     await waitFor(() => {
       expect(
         (screen.getByTestId('share-branch-switch-worktree') as HTMLButtonElement).disabled,
@@ -1294,8 +1190,6 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
       'feat/branch-y',
     );
 
-    // The superseded create resolving now is stale: nothing may fire, and the
-    // new payload's dialog must stay up untouched.
     await act(async () => {
       resolveCheckout({ ok: true, path: '/repo/.ok/worktrees/feat-branch-x', created: true });
       await Promise.resolve();

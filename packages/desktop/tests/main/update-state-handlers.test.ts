@@ -1,13 +1,3 @@
-/**
- * Unit tests for the schema-incompatibility IPC handlers in
- * `main/update-state-handlers.ts`. The handlers are pure async functions
- * taking dep injections so the composition (persist → clear pending,
- * including saveAppState rollback) can be pinned without an Electron `app`
- * module. The update channel is the build-derived channel
- * (`channelFromVersion(app.getVersion())`) surfaced via the `getBuildChannel`
- * dep on `ok:state:query`.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import {
   type AppState,

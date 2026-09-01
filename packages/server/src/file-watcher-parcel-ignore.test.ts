@@ -1,16 +1,3 @@
-/**
- * Pins what `startWatcher` actually hands `@parcel/watcher`.
- *
- * The sibling `toParcelIgnorePaths` unit tests cover the narrowing itself, but
- * they cannot catch the wiring regressing to pass the raw ignore list — a
- * one-token edit at the `subscribe` call that would restore the native
- * `std::regex` path and its process-killing stack overrun while leaving every
- * other test green. So this file intercepts the module and asserts on the
- * options object itself.
- *
- * Lives apart from `file-watcher.test.ts` because the mock is file-scoped and
- * those tests exercise the real backend.
- */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -63,8 +50,6 @@ describe('what startWatcher hands @parcel/watcher as `ignore`', () => {
       expect(subscribeCalls).toHaveLength(1);
       const ignore = subscribeCalls[0].ignore ?? [];
 
-      // The invariant the crash fix rests on: nothing `is-glob` would route to
-      // the native regex matcher. Non-empty guards against a vacuous pass.
       expect(ignore.length).toBeGreaterThan(0);
       for (const entry of ignore) {
         expect(entry).not.toMatch(/[*?[\]{}()!+@|\\]/);
@@ -80,7 +65,6 @@ describe('what startWatcher hands @parcel/watcher as `ignore`', () => {
         ]),
       );
 
-      // The user's own patterns stay on the JS side.
       expect(ignore).not.toContain('dist/');
       expect(ignore).not.toContain('*.log');
       expect(ignore).not.toContain('build/**');

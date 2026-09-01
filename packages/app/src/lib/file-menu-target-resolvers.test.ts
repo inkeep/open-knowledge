@@ -1,15 +1,3 @@
-/**
- * Pure unit coverage for the active-target → path / handoff-input
- * projections that drive the macOS File menu's state-aware items.
- *
- * These resolvers exist because the File menu doesn't have ambient row
- * context — they convert a `ResolvedNavigationTarget` snapshot into the
- * same path shapes the sidebar's per-row right-click menu derives from
- * the Pierre `ContextMenuItem`. Branching is the load-bearing logic worth
- * pinning so a refactor that changes the scope cascade (doc / folder /
- * project / asset) doesn't silently land the menu pick on the wrong path.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   buildSendToAiInputForActiveTarget,
@@ -155,9 +143,6 @@ describe('buildSendToAiInputForActiveTarget', () => {
     expect(input).not.toBeNull();
     expect(input?.docContext).toBeNull();
     expect(input?.folderRelativePath).toBe('reports');
-    // Folder scope keeps cwd at contentDir (project root) so project-level
-    // agent tooling resolves; the folder focus is conveyed via the directive
-    // prompt's relative path, not via cwd. See `buildFolderHandoffInput`.
     expect(input?.projectDir).toBe('/Users/test/project');
   });
 
@@ -217,9 +202,6 @@ describe('buildSendToAiInputForActiveTarget — skill targets', () => {
   const workspace = { contentDir: '/proj', workspaceRoot: '/proj' } as never;
 
   test('a skill preview hands off the SKILL, not nothing', () => {
-    // Falling through to null here is what made "send to AI for a specific
-    // skill" dispatch nothing — the pane showed only the dock session's
-    // standing bootstrap, "a message that had nothing to do with the skill".
     const input = buildSendToAiInputForActiveTarget(
       {
         kind: 'skill-preview',
@@ -250,8 +232,6 @@ describe('buildSendToAiInputForActiveTarget — skill targets', () => {
   });
 });
 
-// A session-restored target from a pre-level hash omits `level` — the handoff
-// must still dispatch, at project scope, not drop to null.
 test('a skill preview without a level falls back to project scope', () => {
   const input = buildSendToAiInputForActiveTarget(
     {

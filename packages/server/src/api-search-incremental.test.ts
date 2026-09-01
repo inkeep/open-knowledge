@@ -4,17 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-// The test-helper wrapper (not the base factory): its `onRequest` dispatches
-// the native route groups ahead of the legacy hook, so the now-native
-// `/api/search` reaches its real handler instead of the legacy 404 fallback.
 import { createApiExtension } from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
-// Count how the server maintains the search corpus: `create` = from-scratch
-// builds requested directly by the server (cold start), `update` = incremental
-// maintenance. `updateWorkspaceSearchCorpus`'s internal fallback rebuild calls
-// the module-local `createWorkspaceSearchCorpus`, which this mock does NOT
-// intercept — so `create` counts exactly the server's own cold builds.
 const corpusCalls = vi.hoisted(() => ({ create: 0, update: 0 }));
 vi.mock('@inkeep/open-knowledge-core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@inkeep/open-knowledge-core')>();
@@ -72,13 +64,6 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
   return { res, captured };
 }
 
-/**
- * A persistent extension over a mutable in-memory file index — the shape the
- * production server has (one long-lived extension whose index the file watcher
- * mutates), unlike the per-call throwaway extension in `api-search.test.ts`.
- * `modified` stamps are assigned from a deterministic sequence so every content
- * change also changes the entry fingerprint, mirroring the watcher's behavior.
- */
 function createHarness(contentDir: string, options: { withGeneration: boolean }) {
   const index = new Map<string, FileIndexEntry>();
   let generation = 0;
@@ -166,23 +151,18 @@ describe('incremental workspace search corpus maintenance', () => {
     expect(cold.results.map((r) => r.path)).toContain('docs/api');
     expect(corpusCalls).toEqual({ create: 1, update: 0 });
 
-    // Insert: a new doc is searchable without another from-scratch build.
     harness.setDoc('guides/tutorial', '# Tutorial\n\nZebra migration walkthrough\n');
     const afterInsert = await harness.search('zebra');
     expect(afterInsert.results.map((r) => r.path)).toContain('guides/tutorial');
     expect(corpusCalls).toEqual({ create: 1, update: 1 });
 
-    // Update: changed body content is re-indexed; the old tokens are gone.
     harness.setDoc('notes/graphing', '# Graphing Notes\n\nQuokka habitat research\n');
     const afterUpdate = await harness.search('quokka');
     expect(afterUpdate.results.map((r) => r.path)).toContain('notes/graphing');
-    // The second search after the same write hits the fingerprint cache — no
-    // further corpus work of either kind.
     const oldTokens = await harness.search('explorer');
     expect(oldTokens.results.map((r) => r.path)).not.toContain('notes/graphing');
     expect(corpusCalls).toEqual({ create: 1, update: 2 });
 
-    // Remove: the doc disappears from name and body tiers.
     harness.removeDoc('docs/api');
     const afterRemove = await harness.search('endpoint');
     expect(afterRemove.results.map((r) => r.path)).not.toContain('docs/api');
@@ -207,12 +187,8 @@ describe('incremental workspace search corpus maintenance', () => {
     harness.setDoc('docs/real-page', '# Real\n\nsystem architecture content\n');
     await harness.search('system');
 
-    // The build-time predicate skips these before any disk read, so the raw
-    // entries need no backing file.
     harness.setRawEntry('__system__', {});
     harness.setRawEntry('__config__/project', {});
-    // full_text searches name AND body, so this asserts the synthetic names are
-    // absent from every tier while the real page still matches on content.
     const results = await harness.search('system', 'full_text');
     const paths = results.results.map((r) => r.path);
     expect(paths).not.toContain('__system__');
@@ -228,8 +204,6 @@ describe('incremental workspace search corpus maintenance', () => {
     stamps.set('notes/two', harness.setDoc('notes/two', '# Two\n\ndelta editor fjord\n'));
     await harness.search('alpha');
 
-    // Burst: update, insert, remove, insert — each interleaved with a search so
-    // every step goes through the incremental path rather than one big diff.
     stamps.set('notes/one', harness.setDoc('notes/one', '# One\n\nalpha graph hocus\n'));
     await harness.search('graph');
     stamps.set('guides/four', harness.setDoc('guides/four', '# Four\n\nbravo delta alpha\n'));
@@ -240,8 +214,6 @@ describe('incremental workspace search corpus maintenance', () => {
     stamps.set('guides/five', harness.setDoc('guides/five', '# Five\n\nhocus fjord\n'));
     expect(corpusCalls.create).toBe(1);
 
-    // Reference: an identical workspace (same docNames, contents, and modified
-    // stamps) in a fresh contentDir, indexed from scratch by its own harness.
     const referenceDir = mkdtempSync(join(tmpdir(), 'ok-search-ref-'));
     try {
       const reference = createHarness(referenceDir, { withGeneration: true });

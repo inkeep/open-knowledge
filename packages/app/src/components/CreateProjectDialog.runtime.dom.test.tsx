@@ -3,10 +3,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Spy on the sonner toast surface so the empty-name submit can be asserted
-// deterministically (the e2e can't reliably catch the transient portal toast
-// in Electron). Mock before importing the component so its `toast` binding
-// resolves to the spy.
 const toastErrorSpy = vi.fn((_message: string) => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastErrorSpy, success: () => {}, warning: () => {}, message: () => {} },
@@ -19,8 +15,6 @@ import type {
   OkSeedPackInfo,
 } from '@/lib/desktop-bridge-types';
 
-// Two packs to look up `initialPackId`'s display metadata. Folder counts differ
-// so the read-only description's "N folders" phrasing is distinguishable per pack.
 const PACKS: OkSeedPackInfo[] = [
   {
     id: 'plain-notes',
@@ -66,18 +60,12 @@ const PARENT = '/Users/test/Projects';
 const PROJECT_NAME = 'Runtime Project';
 const SECOND_PARENT = '/Users/test/OtherProjects';
 
-// The tools the fake machine "has installed". Deliberately a strict, non-empty
-// subset of ALL_EDITOR_IDS so the seeded default is distinguishable from both
-// the empty set and the everything set.
 const DETECTED: OkMcpWiringEditorId[] = ['claude', 'cursor'];
-// An editor the fake machine does NOT have — must never be pre-checked, and
-// must never reach the createNew payload unless the user ticks it.
 const UNDETECTED: OkMcpWiringEditorId = 'codex';
 
 function makeBridge() {
   let pickedParent: string | null = PARENT;
   let detectedEditorIdsImpl = (): Promise<OkMcpWiringEditorId[]> => Promise.resolve([...DETECTED]);
-  /** Per-editor user-global MCP state. Empty = no editor has an OK entry yet. */
   let editorStatesImpl = (): Array<{
     id: OkMcpWiringEditorId;
     label: string;
@@ -118,10 +106,6 @@ function makeBridge() {
       }),
     },
     integrations: {
-      // The dialog reads `detectedEditorIds` plus each editor's `state` (which
-      // tells it whether a user-global OpenKnowledge entry exists — Copilot's
-      // project skill is gated on that). The rest of the shape exists so the
-      // fake matches the real status contract.
       status: vi.fn(async () => ({
         available: true,
         editors: editorStatesImpl(),
@@ -209,8 +193,6 @@ async function waitForSubmitEnabled() {
   );
 }
 
-// Import the component AFTER the mocks above register so its transitive
-// dependencies bind to the stubs rather than the real modules.
 const { CreateProjectDialog } = await import('./CreateProjectDialog');
 
 describe('CreateProjectDialog runtime wiring', () => {
@@ -237,8 +219,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(browse.type).toBe('button');
     expect(nameInput.tagName).toBe('INPUT');
 
-    // The Name input is the FIRST focusable form control: it precedes
-    // Browse in document order.
     const formInputs = Array.from(
       form.querySelectorAll('input, button, [role="checkbox"], [role="radio"]'),
     ) as HTMLElement[];
@@ -249,10 +229,6 @@ describe('CreateProjectDialog runtime wiring', () => {
 
     await waitForLocationHydrate();
 
-    // Config sharing sits at the top level — there is no "Advanced settings"
-    // section — and defaults to "Only me". The AI-tools decision is top-level
-    // too: it decides whether the project is reachable from the user's agents
-    // at all.
     expect(screen.queryByTestId('create-advanced-trigger')).toBeNull();
     expect(screen.getByTestId('create-sharing')).not.toBeNull();
     expect(screen.getByTestId('create-sharing-local-only').getAttribute('data-state')).toBe(
@@ -264,31 +240,22 @@ describe('CreateProjectDialog runtime wiring', () => {
       );
     });
 
-    // The title line is fixed-length — the tool list lives in the subtext, so
-    // a machine with many tools can't wrap it into the disclosure button.
     expect(screen.getByTestId('create-editors-title').textContent).toBe(
       'Connect your AI tools to this project',
     );
 
-    // Consent integrity: without opening anything, the row already names every
-    // tool that gets written to, and names no tool that doesn't.
     const summary = screen.getByTestId('create-editors-summary').textContent ?? '';
     for (const id of DETECTED) expect(summary).toContain(EDITOR_LABELS[id]);
     expect(summary).not.toContain(EDITOR_LABELS[UNDETECTED]);
-    // Undetected tools have no row anywhere — nothing is written for them.
     expect(screen.queryByTestId(`create-editor-${UNDETECTED}`)).toBeNull();
 
-    // The "What changes?" popover names the exact project-relative artifacts.
     await userEvent.click(screen.getByTestId('create-editors-details-toggle'));
     const details = await screen.findByTestId('create-editors-details');
-    // A real list, not styled spans: screen readers announce the item count
-    // and offer list navigation over this file enumeration.
     expect(details.tagName).toBe('UL');
     expect(details.querySelectorAll(':scope > li').length).toBe(DETECTED.length);
     expect(details.textContent).toContain('.mcp.json');
     expect(details.textContent).toContain('.claude/skills/open-knowledge/');
     expect(details.textContent).toContain('.cursor/mcp.json');
-    // Close it again so the popover doesn't sit over the footer buttons.
     await userEvent.keyboard('{Escape}');
 
     fireEvent.click(cancel);
@@ -312,10 +279,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('the straight-through path wires the detected editors', async () => {
-    // The overwhelmingly common path is name → Create. It must produce MCP
-    // config + the project skill for the tools the user actually has — an empty
-    // `editors` array silently yields a project wired to nothing, and nothing
-    // back-fills it.
     const stub = await renderDialog();
     await waitForLocationHydrate();
 
@@ -349,10 +312,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('a detected user-global-only tool is neither named nor submitted', async () => {
-    // Claude Desktop has no project MCP config and no project skill root, so
-    // every project writer returns `skipped-unsupported` for it. Detection
-    // still finds it (its host root exists), which is exactly why the filter
-    // has to be on what gets WRITTEN rather than on what was detected.
     const stub = makeBridge();
     stub.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'claude-desktop']));
     await renderDialog(stub);
@@ -375,10 +334,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('Copilot is dropped until its user-global entry exists, then included', async () => {
-    // Copilot's project skill (`.github/skills`) is refused by
-    // `isProjectSkillPrerequisiteMet` until Copilot's USER-GLOBAL OpenKnowledge
-    // entry is present, and it has no project MCP config — so before that, a
-    // create writes nothing for it and must not say otherwise.
     const withoutEntry = makeBridge();
     withoutEntry.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'copilot']));
     await renderDialog(withoutEntry);
@@ -422,11 +377,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('a foreign Copilot entry is treated as not-connected', async () => {
-    // The renderer reads `state === 'installed'` — deliberately stricter than the
-    // write path, which passes on ANY entry under OpenKnowledge's server name.
-    // A foreign entry means OK's MCP isn't registered, so the skill would point
-    // the agent at tools that aren't there. Widening this filter to
-    // `!== 'not-installed'` is the regression this pins.
     const stub = makeBridge();
     stub.setDetectedEditorsImpl(() => Promise.resolve(['claude', 'copilot']));
     stub.setEditorStatesImpl(() => [
@@ -459,10 +409,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('Create stays blocked while detection is in flight, so no project is wired to nothing', async () => {
-    // The detection probe settles independently of the location/cascade probes,
-    // so Create could otherwise unlock while `detectedEditors` is still null —
-    // and submitting then sends `editors: []`, silently creating a project wired
-    // to nothing while the row still reads "Checking which AI tools you have".
     let releaseDetection = (): void => {};
     const stub = makeBridge();
     stub.setDetectedEditorsImpl(
@@ -475,7 +421,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForLocationHydrate();
     await typeProjectName(PROJECT_NAME);
 
-    // Location probe has settled; detection has not. Create must stay disabled.
     await waitFor(() => {
       expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe(
         'probing',
@@ -489,14 +434,10 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitFor(() => {
       expect(stub.createNewCalls).toHaveLength(1);
     });
-    // The write set is the real one, not the empty list the race would produce.
     expect([...(stub.createNewCalls[0]?.editors ?? [])].sort()).toEqual([...DETECTED].sort());
   });
 
   test('a failed detection probe settles empty rather than guessing', async () => {
-    // Degrade toward writing nothing, never toward creating host roots for
-    // tools we could not confirm — and say so, rather than hanging on the
-    // in-flight placeholder forever.
     const stub = makeBridge();
     stub.setDetectedEditorsImpl(() => Promise.reject(new Error('detection blew up')));
     await renderDialog(stub);
@@ -518,8 +459,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('an in-flight probe shows a checking state, and a late result cannot flip the answer', async () => {
-    // The probe is a round-trip the user can beat. It fills the list of tools
-    // the label names; it never changes the answer the user already gave.
     let releaseDetection = (): void => {};
     const stub = makeBridge();
     stub.setDetectedEditorsImpl(
@@ -531,8 +470,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     await renderDialog(stub);
     await waitForLocationHydrate();
 
-    // While probing: no checkbox to click yet, and the row says why. The status
-    // region is always mounted, so assert its state rather than its presence.
     expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe('probing');
     expect(screen.queryByTestId('create-editors-checkbox')).toBeNull();
 
@@ -540,10 +477,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('create-editors-checkbox')).not.toBeNull();
     });
-    // Same node, new state — the region survived the transition rather than
-    // being torn down and remounted, which is what makes it announceable.
     expect(screen.getByTestId('create-editors-status').getAttribute('data-status')).toBe('ready');
-    // Pre-checked on arrival; unchecking after the fact still wins.
     fireEvent.click(screen.getByTestId('create-editors-checkbox'));
     expect(screen.getByTestId('create-editors-checkbox').getAttribute('aria-checked')).toBe(
       'false',
@@ -559,10 +493,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('reopening the dialog resets sharing to the "Only me" default', async () => {
-    // Sharing sits at the top level and defaults to "Only me" — a prior open's
-    // explicit "Shared" pick must not leak into the next open. Guard the
-    // on-open reset: pick Shared, close, reopen, and assert Only me is checked
-    // again.
     const stub = makeBridge();
     const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
@@ -588,12 +518,10 @@ describe('CreateProjectDialog runtime wiring', () => {
   test('Location hydrates from defaultProjectsRoot and Browse picks a fresh parent', async () => {
     const stub = await renderDialog();
 
-    // Hydrated on open.
     await waitForLocationHydrate();
     const displayInitial = screen.getByTestId('create-location-display').textContent ?? '';
     expect(displayInitial).toContain(PARENT);
 
-    // Browse picks the parent — display updates, name is untouched.
     stub.setPickedParent(SECOND_PARENT);
     fireEvent.click(screen.getByTestId('create-browse'));
     await waitFor(
@@ -604,7 +532,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     );
     expect((screen.getByTestId('create-name') as HTMLInputElement).value).toBe('');
 
-    // Browse passed the prior location as the picker's defaultPath hint.
     expect(stub.openFolderArgs.at(-1)).toEqual({ defaultPath: PARENT });
   });
 
@@ -613,7 +540,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForLocationHydrate();
 
     const caption = screen.getByTestId('create-target-caption');
-    // Hidden when name is empty.
     expect(caption.textContent ?? '').toBe('');
 
     await typeProjectName('Plant Care');
@@ -626,7 +552,6 @@ describe('CreateProjectDialog runtime wiring', () => {
       { timeout: 2000 },
     );
 
-    // Clearing the name hides the caption again.
     await typeProjectName('');
     await waitFor(
       () => {
@@ -659,7 +584,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     await typeProjectName(PROJECT_NAME);
     await waitForSubmitEnabled();
 
-    // "Only me" is the default, so exercise the non-default pick.
     await userEvent.click(screen.getByTestId('create-sharing-shared'));
 
     fireEvent.click(screen.getByTestId('create-submit'));
@@ -671,12 +595,6 @@ describe('CreateProjectDialog runtime wiring', () => {
   });
 
   test('a pre-selected pack threads packId through to the createNew payload', async () => {
-    // Pins the seam that makes the packs-forward launcher actually seed:
-    // `initialPackId` → `createNew({ ..., packId })`. Without this, dropping
-    // `packId` threading in the dialog would silently make every first-run
-    // pack pick produce a blank project (DOM tests mock the dialog; the
-    // desktop integration tests call `runCreateNew` directly — neither
-    // exercises the real dialog → bridge payload with a pack).
     const stub = makeBridge();
     const onOpenChange = vi.fn(() => {});
     render(
@@ -689,13 +607,9 @@ describe('CreateProjectDialog runtime wiring', () => {
       />,
     );
     await screen.findByTestId('create-project-dialog');
-    // A caller-supplied pack opens on the review screen; the form (and the
-    // location field this waits on) is the screen after it.
     fireEvent.click(await screen.findByTestId('create-review-continue'));
     await waitForLocationHydrate();
 
-    // The launcher-chosen pack is named as read-only context in the dialog
-    // description — no Select control.
     expect(screen.getByTestId('create-project-dialog').textContent).toContain('Plain notes');
 
     await typeProjectName(PROJECT_NAME);
@@ -727,12 +641,9 @@ describe('CreateProjectDialog runtime wiring', () => {
       },
       { timeout: 2000 },
     );
-    // No standalone subfolder-rescue mounts.
     expect(screen.queryByTestId('create-subfolder-rescue')).toBeNull();
-    // Telemetry still fires for the nonempty banner kind.
     expect(stub.bannerCalls).toContain('nonempty');
 
-    // Typing a different name clears the inline error.
     await typeProjectName('Fresh Name');
     await waitFor(
       () => {
@@ -767,8 +678,6 @@ describe('CreateProjectDialog runtime wiring', () => {
 
     const nameInput = screen.getByTestId('create-name') as HTMLInputElement;
 
-    // A valid name is not flagged invalid and is described only by the live
-    // resolved-path caption (so AT announces the target path as the user types).
     await typeProjectName('Fresh Name');
     await waitFor(() => {
       expect(nameInput.getAttribute('aria-invalid')).toBe('false');
@@ -777,8 +686,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(captionId).not.toBe('');
     expect(nameInput.getAttribute('aria-describedby')).toBe(captionId);
 
-    // A name colliding with a non-empty sibling folder is flagged invalid, and
-    // describedby appends the role="alert" error so AT announces caption + error.
     await typeProjectName(TAKEN);
     await waitFor(() => {
       expect(nameInput.getAttribute('aria-invalid')).toBe('true');
@@ -789,8 +696,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(describedBy).toContain(captionId);
     expect(describedBy).toContain(takenError.id);
 
-    // A name that sanitizes to empty is likewise flagged invalid with a
-    // role="alert" error.
     await typeProjectName('....');
     await waitFor(() => {
       expect(nameInput.getAttribute('aria-invalid')).toBe('true');
@@ -802,10 +707,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     const stub = await renderDialog();
     await waitForLocationHydrate();
 
-    // The info trigger lives in the sharing field, now at the top level.
     const info = screen.getByTestId('config-sharing-info') as HTMLButtonElement;
-    // A trigger that renders a <button> inside a <form> defaults to
-    // type="submit" — it MUST be type="button" or it fires the form.
     expect(info.type).toBe('button');
 
     fireEvent.click(info);
@@ -818,9 +720,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     await renderDialog();
     await waitForLocationHydrate();
 
-    // A slash is rewritten to a dash by sanitizeFolderName — valid but
-    // diverged, so the muted "Will be saved as <sanitized>" hint appears
-    // while Create stays usable (the divergence is informational, not a block).
     await typeProjectName('Plant/Care');
 
     await waitFor(
@@ -831,16 +730,11 @@ describe('CreateProjectDialog runtime wiring', () => {
       },
       { timeout: 2000 },
     );
-    // The caption shows the sanitized target and submit is not blocked.
     expect(screen.getByTestId('create-target-caption').textContent).toContain(
       `${PARENT}/Plant-Care`,
     );
     await waitForSubmitEnabled();
 
-    // The diverged hint is a polite status (non-blocking), NOT a role="alert"
-    // error, and is wired into the name input's aria-describedby so AT
-    // announces the caption plus the "Will be saved as" hint. aria-invalid
-    // stays false — divergence is informational, not a validation failure.
     const divergedHint = screen.getByTestId('create-name-hint-diverged');
     expect(divergedHint.getAttribute('role')).toBe('status');
     const divergedNameInput = screen.getByTestId('create-name') as HTMLInputElement;
@@ -851,7 +745,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(divergedDescribedBy).toContain(divergedHint.id);
     expect(divergedDescribedBy).toContain(screen.getByTestId('create-target-caption').id);
 
-    // Clearing the name removes the hint.
     await typeProjectName('');
     await waitFor(
       () => {
@@ -866,9 +759,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     stub.setDefaultProjectsRootImpl(() => Promise.reject(new Error('no default root')));
     await renderDialog(stub);
 
-    // Once the rejected probe settles, the field must stop claiming it is
-    // still "Resolving" — that present-participle implies in-flight work that
-    // has actually finished and failed. It shows actionable empty-state copy.
     await waitFor(
       () => {
         const display = screen.getByTestId('create-location-display').textContent ?? '';
@@ -878,7 +768,6 @@ describe('CreateProjectDialog runtime wiring', () => {
       { timeout: 2000 },
     );
 
-    // Browse is still usable from the empty Location and updates the field.
     stub.setPickedParent(SECOND_PARENT);
     fireEvent.click(screen.getByTestId('create-browse'));
     await waitFor(
@@ -891,8 +780,6 @@ describe('CreateProjectDialog runtime wiring', () => {
 
   test('createNew failure surfaces the inline error strip, keeps the dialog open, and re-enables Create', async () => {
     const stub = makeBridge();
-    // The IPC rejects with a reason-prefixed message — Electron strips the
-    // Error subclass over IPC, so the renderer recovers the reason from text.
     stub.setCreateNewImpl(() =>
       Promise.reject(
         new Error(`target-not-empty: Target folder is not empty: ${PARENT}/${PROJECT_NAME}`),
@@ -905,8 +792,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForSubmitEnabled();
     fireEvent.click(screen.getByTestId('create-submit'));
 
-    // The reason-mapped inline strip renders as a role="alert"; the dialog
-    // stays open (onOpenChange(false) only fires on the success path).
     await waitFor(() => {
       expect(screen.queryByTestId('create-submit-error')).not.toBeNull();
     });
@@ -914,8 +799,6 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(stub.createNewCalls).toHaveLength(1);
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
-    // Create re-enables for retry — the catch resets `busy`. Without that
-    // reset the dialog would freeze with every control disabled and no recovery.
     await waitFor(() => {
       expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(false);
     });
@@ -923,8 +806,6 @@ describe('CreateProjectDialog runtime wiring', () => {
 
   test('while createNew is in-flight the busy guard blocks dialog dismissal until it settles', async () => {
     const stub = makeBridge();
-    // Hold createNew pending so `busy` stays true after submit; capture the
-    // resolver so we can release it and confirm dismissal works again after.
     let releaseCreate: () => void = () => {};
     stub.setCreateNewImpl(
       () =>
@@ -939,20 +820,14 @@ describe('CreateProjectDialog runtime wiring', () => {
     await waitForSubmitEnabled();
     fireEvent.click(screen.getByTestId('create-submit'));
 
-    // In-flight: the submit button flips to its busy label and disables.
     await waitFor(() => {
       expect((screen.getByTestId('create-submit') as HTMLButtonElement).disabled).toBe(true);
     });
 
-    // Requesting dismissal via the close (X) control is a no-op while busy:
-    // onOpenChangeInternal's `if (busy) return` swallows it, so the parent's
-    // onOpenChange is never told to close.
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
 
-    // Once the in-flight call resolves, the success path closes the dialog —
-    // proving the guard gates on `busy`, not a permanent block.
     releaseCreate();
     await waitFor(() => {
       expect(onOpenChange).toHaveBeenCalledWith(false);

@@ -1,10 +1,3 @@
-/**
- * Shared staged-install primitives: the bounded rename retry (Windows
- * share-violation resilience) and the stale-artifact sweep both install
- * paths rely on. The end-to-end commit flow is covered through its callers
- * in `launch.test.ts` and `managed-runtime.test.ts`.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

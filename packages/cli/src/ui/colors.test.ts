@@ -241,7 +241,6 @@ describe('link() OSC 8 hyperlinks', () => {
       env: { ...process.env, FORCE_COLOR: '1', NO_COLOR: undefined },
     });
     const output = result.stdout.toString();
-    // Verify OSC 8 structure: ESC]8;;<url>BEL<text>ESC]8;;BEL
     expect(output).toContain('\x1b]8;;https://example.com\x07');
     expect(output).toContain('click me');
     expect(output).toContain('\x1b]8;;\x07');
@@ -267,7 +266,6 @@ describe('link() OSC 8 hyperlinks', () => {
     });
     const output = result.stdout.toString();
     expect(output).toBe('click me');
-    // No OSC 8 sequences
     expect(output).not.toContain('\x1b]8;;');
   });
 });

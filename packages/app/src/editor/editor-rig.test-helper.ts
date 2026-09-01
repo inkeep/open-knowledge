@@ -1,15 +1,3 @@
-/**
- * Shared headless-editor rigs for app editor-plugin tests.
- *
- * Real ProseMirror EditorViews over jsdom globals (callers own the
- * `installDomGlobals` lifecycle from the walk-currency harness), with the
- * schema base every link-behavior test agrees on: StarterKit minus its bundled
- * Link so the real fidelity mark (which carries `linkStyle`) is the only
- * `link` in the schema, and that mark's stock autolink disabled so the plugin
- * under test is the sole converter. Callers pass just the extension(s) under
- * test.
- */
-
 import { LinkFidelity } from '@inkeep/open-knowledge-core';
 import { Editor, type Extensions, isiOS, isMacOS } from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -32,23 +20,6 @@ export function mountLightEditor(options: { content?: string; extensions: Extens
   });
 }
 
-/**
- * An editor over the REAL app roster — `sharedExtensions` exactly as shipped,
- * nothing added, nothing swapped. That fidelity is the point for anything
- * asserting which extension wins a keystroke.
- *
- * NOT interchangeable with `mountLightEditor`, which assembles a minimal
- * link-testing schema from StarterKit. Handing `sharedExtensions` to that one
- * yields a doc with FOUR list nodes (`bulletList`, `orderedList`, `listItem`,
- * `list`) and raises nothing, because StarterKit's list family is disabled
- * only inside `sharedExtensions` itself — so the suite would quietly run
- * against a document model the app never builds.
- *
- * Focus is applied here rather than left to the caller (the departure from the
- * rigs above) because a full-roster editor has plugins gated on
- * `view.hasFocus()`. `editor.view.focus()`, not `commands.focus()`, which
- * defers the real DOM focus into a frame landing after a synchronous body.
- */
 export function mountAppEditor(): Editor {
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -57,11 +28,6 @@ export function mountAppEditor(): Editor {
   return editor;
 }
 
-/**
- * A `Collaboration`-bound editor over `ydoc` — real y-sync binding, real
- * y-undo manager. Collaboration owns history, so StarterKit's own undo/redo is
- * dropped to avoid two history stacks.
- */
 export function mountCollabEditor(ydoc: Y.Doc, extensions: Extensions): Editor {
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -76,12 +42,10 @@ export function mountCollabEditor(ydoc: Y.Doc, extensions: Extensions): Editor {
   });
 }
 
-/** Dispatch a local (non-sync) text insertion at an explicit position. */
 export function insertLocal(editor: Editor, text: string, at: number): void {
   editor.view.dispatch(editor.state.tr.insertText(text, at, at));
 }
 
-/** The bound y-undo manager, or null when the editor has no Collaboration. */
 export function readUndoManager(editor: Editor): Y.UndoManager | null {
   const pluginState: { undoManager?: Y.UndoManager } | undefined = yUndoPluginKey.getState(
     editor.state,
@@ -89,7 +53,6 @@ export function readUndoManager(editor: Editor): Y.UndoManager | null {
   return pluginState?.undoManager ?? null;
 }
 
-/** The href of the first link mark in document order, or null if none. */
 export function firstLinkHref(editor: Editor): string | null {
   let href: string | null = null;
   editor.state.doc.descendants((node) => {
@@ -101,7 +64,6 @@ export function firstLinkHref(editor: Editor): string | null {
   return href;
 }
 
-/** Attrs of the first link mark, or null. */
 export function firstLinkAttrs(editor: Editor): Record<string, unknown> | null {
   let attrs: Record<string, unknown> | null = null;
   editor.state.doc.descendants((node) => {
@@ -113,13 +75,6 @@ export function firstLinkAttrs(editor: Editor): Record<string, unknown> | null {
   return attrs;
 }
 
-/**
- * Resolve a TipTap shortcut string to the physical chord its keymap bindings
- * were normalized against, then build the `keydown` event for that chord. Kept
- * in step with TipTap's own `keyboardShortcut` normalization, including its
- * `Mod` -> Meta/Ctrl platform split, so a binding registered as 'Mod-u'
- * receives the same event here as it does in the product.
- */
 function shortcutToKeydownEvent(shortcut: string): KeyboardEvent {
   const parts = shortcut.split(/-(?!$)/);
   let result = parts[parts.length - 1];
@@ -152,31 +107,6 @@ function shortcutToKeydownEvent(shortcut: string): KeyboardEvent {
   });
 }
 
-/**
- * Press a key on a mounted editor by dispatching a real `keydown` at the
- * ProseMirror DOM, so the whole keymap chain runs the way it does for a user.
- *
- * Two hazards this exists to close:
- *
- * 1. `editor.commands.keyboardShortcut(name)` does not press a key. It captures
- *    the transaction the keymap produced, then re-applies only that
- *    transaction's `steps`, remapped through a mapping that has already
- *    accumulated them. Selection, stored marks and every `setMeta` are dropped,
- *    a multi-step transaction lands at shifted positions, and the command
- *    returns `true` whether or not anything handled the key.
- * 2. "The document changed" is not "the key was handled". A key that only moves
- *    the selection is handled and leaves the document identical, so a single
- *    boolean collapses those two outcomes into one. Both are reported here so a
- *    caller has to say which one it means.
- *
- * Focus is a third hazard and stays the caller's job, because it belongs at
- * mount rather than at each key: `editor.commands.focus()` defers the real DOM
- * focus into a `requestAnimationFrame`, so a synchronous read after it sees an
- * unfocused view and any plugin gated on `view.hasFocus()` stays dormant. Call
- * `editor.view.focus()` instead. The Playwright-tier write-up of the same trap,
- * including why `view.focus()` beats `view.dom.focus()`, is in
- * `packages/app/tests/stress/_helpers/editor-state.ts`.
- */
 export function pressEditorKey(
   editor: Editor,
   shortcut: string,
@@ -187,7 +117,6 @@ export function pressEditorKey(
   return { handled: event.defaultPrevented, docMoved: editor.state.doc !== before };
 }
 
-/** Distinct hrefs carried by link marks anywhere in the doc. */
 export function linkHrefs(editor: Editor): string[] {
   const hrefs = new Set<string>();
   editor.state.doc.descendants((node) => {

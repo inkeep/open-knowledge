@@ -6,14 +6,6 @@ import {
   lockCollabUrl,
 } from '../../src/main/window-manager';
 
-/**
- * Pins the hand-maintained mirror in `window-manager.ts` to the canonical
- * `lockBaseUrl` in the server package. The desktop module is deliberately
- * structurally independent of the server package at runtime, so nothing but
- * this test catches the two implementations drifting apart. Test-only
- * import — not a production coupling.
- */
-
 const DIALABLE_MATRIX: Array<{ label: string; lock: { port: number; url?: string } }> = [
   { label: 'port fallback (no url)', lock: { port: 4123 } },
   { label: 'url preferred over port', lock: { port: 4123, url: 'http://127.0.0.1:9999' } },
@@ -40,9 +32,6 @@ describe('lockApiOrigin parity with the canonical lockBaseUrl', () => {
   });
 
   test('port-0 divergence is deliberate: desktop returns a string, canonical returns null', () => {
-    // Desktop callers only reach lockApiOrigin with post-listen locks
-    // (port > 0), so the non-null fallback is safe there; the canonical
-    // helper serves callers that need "nothing dialable" as a signal.
     expect(lockBaseUrl({ port: 0 })).toBeNull();
     expect(lockApiOrigin({ port: 0 })).toBe('http://localhost:0');
   });
@@ -54,8 +43,6 @@ describe('lockApiOrigin parity with the canonical lockBaseUrl', () => {
     expect(lockCollabUrl({ port: 4123, url: 'http://evil.example.com:9999' })).toBe(
       'ws://localhost:4123/collab',
     );
-    // https must map to wss — pins the scheme swap against a future narrowing
-    // to /^http:/ that would silently break secure-loopback locks.
     expect(lockCollabUrl({ port: 4123, url: 'https://127.0.0.1:9999' })).toBe(
       'wss://127.0.0.1:9999/collab',
     );

@@ -1,37 +1,15 @@
-/**
- * Selection-predicate pin for the WYSIWYG path, where the active heading is
- * derived from real heading-element geometry.
- *
- * Scope is deliberately WYSIWYG-only. jsdom performs no layout, so every rect
- * here is a stub — that is legitimate for pinning the PRIORITY ORDER between
- * candidate headings (which is arithmetic over rects the caller supplies), and
- * illegitimate for anything that depends on where the browser actually places
- * content. Source-mode tracking is geometric by nature, so it is pinned in the
- * browser tier (`tests/stress/outline-active-heading.e2e.ts`), never here: a
- * jsdom assertion about source-mode position would be a green over fabricated
- * measurements.
- */
-
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { useActiveHeading } from './useActiveHeading';
 
-/** jsdom's default viewport height; the predicate's "top half" is above the midpoint. */
 const MID_Y = window.innerHeight / 2;
 
 interface Fixture {
   slugs: string[];
-  /** The nested element scroll events are dispatched from. */
   scrollport: HTMLElement;
-  /** Move a heading and return, so a test can re-measure without remounting. */
   setTop: (slug: string, top: number) => void;
 }
 
-/**
- * Mount `<h2 id={slug}>` elements inside a scroll container and give each a
- * stubbed viewport-relative `top`. Real elements with real ids, so the hook
- * resolves them through `document.getElementById` exactly as in production.
- */
 function mountHeadings(tops: Array<[slug: string, top: number]>): Fixture {
   const scrollport = document.createElement('div');
   document.body.append(scrollport);
@@ -117,9 +95,6 @@ describe('useActiveHeading (WYSIWYG geometry)', () => {
   });
 
   test('re-measures on a scroll event from a nested scroll container', async () => {
-    // `scroll` does not bubble from an element, so only a CAPTURE-phase document
-    // listener observes the editor scrollport scrolling. Dropping capture leaves
-    // the highlight frozen wherever it happened to land on mount.
     const { slugs, scrollport, setTop } = mountHeadings([
       ['alpha', MID_Y - 20],
       ['beta', MID_Y + 600],

@@ -1,14 +1,3 @@
-/**
- * Unit tests for the external link-preview data layer. Only the network boundary
- * (`globalThis.fetch`) is stubbed; the caching, single-flight, and
- * response-mapping logic runs for real and is asserted through the public
- * `loadLinkPreview` — so "negative results are not cached" and "concurrent
- * hovers coalesce" are behavioral pins, not stubbed internals.
- *
- * Each test uses a fresh URL so the module-level success cache never bleeds
- * across cases.
- */
-
 import type { LinkPreviewMetadata } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadLinkPreview, SUCCESS_CACHE_MAX_ENTRIES } from './external-link-preview.ts';
@@ -87,7 +76,6 @@ describe('loadLinkPreview — failures fall back to null and are not cached', ()
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     expect(await loadLinkPreview(url)).toBeNull();
-    // Not cached: the second hover re-requests and now succeeds.
     expect(await loadLinkPreview(url)).toEqual(META);
     expect(fetchMock.mock.calls.length).toBe(2);
   });
@@ -108,7 +96,6 @@ describe('loadLinkPreview — failures fall back to null and are not cached', ()
 });
 
 describe('loadLinkPreview — bounded LRU success cache', () => {
-  /** Fetch stub that succeeds for every URL and records which URL each call was for. */
   function countingFetch(): { calls: string[] } {
     const calls: string[] = [];
     globalThis.fetch = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
@@ -122,8 +109,6 @@ describe('loadLinkPreview — bounded LRU success cache', () => {
     const { calls } = countingFetch();
     const victim = uniqueUrl();
     await loadLinkPreview(victim);
-    // A full cap of newer entries lands after the victim, so it must be gone
-    // regardless of what earlier tests left in the module-level cache.
     for (let i = 0; i < SUCCESS_CACHE_MAX_ENTRIES; i += 1) {
       await loadLinkPreview(uniqueUrl());
     }
@@ -138,12 +123,10 @@ describe('loadLinkPreview — bounded LRU success cache', () => {
     for (let i = 0; i < SUCCESS_CACHE_MAX_ENTRIES - 1; i += 1) {
       await loadLinkPreview(uniqueUrl());
     }
-    // The survivor is now the oldest entry; this hit must move it to the back.
     await loadLinkPreview(survivor);
     for (let i = 0; i < SUCCESS_CACHE_MAX_ENTRIES - 1; i += 1) {
       await loadLinkPreview(uniqueUrl());
     }
-    // Without the recency bump the fillers above would have evicted it.
     await loadLinkPreview(survivor);
     expect(calls.filter((u) => u === survivor)).toHaveLength(1);
   });
@@ -187,7 +170,6 @@ describe('loadLinkPreview — single-flight + abort', () => {
     controller.abort();
     expect(await pending).toBeNull();
 
-    // Nothing cached from the aborted attempt: a fresh hover re-requests.
     globalThis.fetch = vi.fn(() => Promise.resolve(okResponse(META))) as unknown as typeof fetch;
     expect(await loadLinkPreview(url)).toEqual(META);
   });

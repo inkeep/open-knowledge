@@ -83,8 +83,6 @@ describe('installServerMemoryGauge — registered meter', () => {
     for (const p of points) {
       expect(p.value).toBeGreaterThanOrEqual(0);
     }
-    // The heap sections are always non-zero in a live process; external and
-    // array_buffers can legitimately be near-zero, hence the >= 0 floor above.
     const heapUsed = points.find((p) => p.label === 'heap_used');
     expect(heapUsed?.value).toBeGreaterThan(0);
   });
@@ -97,14 +95,8 @@ describe('installServerMemoryGauge — registered meter', () => {
 
   test('event-loop gauge arms on first export and reports p50/p99 on the next', async () => {
     installServerRuntimeGauges();
-    // First collection only enables the lazily-started histogram — the
-    // export window has no data yet, so no points are observed.
     const first = await collectPoints(EVENT_LOOP_METRIC, 'stat');
     expect(first).toHaveLength(0);
-    // Poll instead of sleeping a fixed interval: a heavily-loaded CI runner may
-    // not iterate the event loop enough within a fixed wall-clock window. Each
-    // forceFlush past the arming one observes p50/p99, so this converges to two
-    // points as soon as the loop ticks the histogram once.
     let second: Awaited<ReturnType<typeof collectPoints>> = [];
     const deadline = Date.now() + 2000;
     while (second.length < 2 && Date.now() < deadline) {
@@ -120,10 +112,6 @@ describe('installServerMemoryGauge — registered meter', () => {
 
   test('cpu gauge records the baseline on first export and utilization on the next', async () => {
     installServerRuntimeGauges();
-    // Two callbacks are required: the first records the baseline sample and
-    // observes nothing; the second computes the delta and reports both modes.
-    // Collect twice explicitly so the test does not depend on a prior test
-    // having already driven the first callback via shared module-level state.
     await collectPoints(CPU_METRIC, 'mode');
     const second = await collectPoints(CPU_METRIC, 'mode');
     expect(second.map((p) => p.label).sort()).toEqual(['system', 'user']);

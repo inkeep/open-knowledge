@@ -23,19 +23,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSkillTargets } from '@/hooks/use-skill-targets';
 import { formatToolList } from '@/lib/tool-list-format';
 
-/**
- * The per-scope FOLDERS surface: every host skills folder at this scope with its
- * observable state, and the two folder verbs — SYMLINK (pick another folder; it
- * merges into THIS one and becomes a symlink to it, so its agent reads
- * everything placed here; conflicts abort) and UNLINK (materialize back to
- * per-skill symlinks — lossless, the per-skill menus take over).
- *
- * Direction is "the row you act on survives". Acting on `.claude` and picking
- * `.cursor` leaves `.claude` a real folder and turns `.cursor` into a symlink to
- * it. It used to run the other way — the row you clicked became the symlink —
- * which read backwards against the arrow the row then drew, and left people
- * believing the folder they had just picked was the one that survived.
- */
 export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
   const { i18n, t } = useLingui();
   const { state, saving, folderAction } = useSkillTargets();
@@ -51,11 +38,6 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
   const folders =
     state.status === 'ready' ? (state.data.folders ?? []).filter((f) => f.scope === scope) : [];
 
-  // Group by the folder that SURVIVES. A symlinked folder is not a peer of its
-  // target — it is a reader of it — so it nests under the target rather than
-  // taking a row of its own. Drawn flat, the arrow put the follower on the left
-  // and the source on the right, which reads as "`.claude` owns these skills"
-  // when the truth is the reverse.
   const byRoot = new Map(folders.map((f) => [f.root, f]));
   const isFollower = (f: (typeof folders)[number]): boolean =>
     (f.state === 'linked' || f.state === 'linked-parent') &&
@@ -67,9 +49,6 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
     const target = f.target as string;
     followers.set(target, [...(followers.get(target) ?? []), f]);
   }
-  // A follower whose target is NOT one of these rows (an out-of-scope or
-  // vanished path) keeps its own row — otherwise it would disappear from the
-  // list entirely and its unlink verb with it.
   const rows = folders.filter((f) => !isFollower(f));
 
   const runFolderAction = (root: string, action: 'link' | 'unlink', target?: string) => {
@@ -80,15 +59,6 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
 
   const displayRoot = (root: string) => (scope === 'global' ? `~/${root}` : root);
 
-  /**
-   * A link only asks when it costs you something. Moves change what the
-   * surviving folder's agent reads; destroyed entries and replaced deliveries
-   * are outright losses. Duplicate drops are none of those — the folder becomes
-   * a symlink to the folder holding the identical copies, so every agent reads
-   * exactly what it read before — so they never open the dialog on their own.
-   * The two refusals are reported here rather than fired at a request that can
-   * only 409.
-   */
   const runFolderLink = (root: string, target: string) => {
     const pick = displayRoot(root);
     const keep = displayRoot(target);
@@ -160,42 +130,12 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
           {rows.map((f) => {
             const display = displayRoot(f.root);
             const following = followers.get(f.root) ?? [];
-            // Offerable: every OTHER root at this scope that can still BECOME a
-            // symlink to this one. A folder that is already a symlink (its own,
-            // or a parent's) has nothing left to merge and was the "why is that
-            // still in the list" bug — picking it could only fail. Order is list
-            // order: no name-based promotion of any root.
-            //
-            // `absent` stays offerable, and only because the server filters this
-            // list to roots whose agent home exists. So an absent row means
-            // "`.claude` is here, `.claude/skills` is not yet" — linking it
-            // creates a skills dir inside a dotdir the user already has, which is
-            // squarely inside the consent boundary. Before that filter the same
-            // disjunct offered `~/.copilot/skills` on a machine with no Copilot,
-            // and accepting it created `~/.copilot` — after which OK's own
-            // directory-based detection reported Copilot as installed.
-            //
-            // THE HUB IS THE ONE ROOT THAT BREAKS THAT PREMISE. `.agents/skills`
-            // is offered on a reader's presence (`HUB_READER_EDITORS`), so it can
-            // be `absent` on a base with no `.agents` at all — the agent-home
-            // guarantee above does not hold for it. A link does `mkdir` on either
-            // side and, in the merge-target direction, RENAMES the source's
-            // bundles into the target. Offering an absent hub as a target would
-            // therefore create a dotdir the user does not have AND relocate their
-            // existing skills into it, from a surface whose own copy promises it
-            // does not. So the hub is a destination, not a merge target, until it
-            // exists: `own` only. Once real, it behaves like any other root.
             const isAbsentHub = (r: { root: string; state: string }): boolean =>
               r.root === AGENTS_SKILLS_ROOT && r.state === 'absent';
             const targets = folders.filter(
               (o) =>
                 o.root !== f.root && (o.state === 'own' || o.state === 'absent') && !isAbsentHub(o),
             );
-            // The row you act on is the merge TARGET — it survives and RECEIVES
-            // the picked folder's bundles. So an absent hub is excluded from BOTH
-            // roles, not just from the pick list: acting on it would create
-            // `.agents` and rename the picked folder's skills into it, which is
-            // precisely the consent boundary the comment above describes.
             const canLink = (f.state === 'own' || f.state === 'absent') && !isAbsentHub(f);
             return (
               <li key={f.host} className="text-sm" data-testid={`skill-folder-row-${f.host}`}>
@@ -203,16 +143,12 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                   <AgentBrandIcon host={f.host} aria-hidden className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate font-mono text-xs">
                     {display}
-                    {/* Only reachable for a follower whose target left the list —
-                      an ordinary follower nests under its target instead. */}
+                    {}
                     {f.state === 'linked' || f.state === 'linked-parent' ? (
                       <span className="text-muted-foreground"> → {f.target ?? '?'}</span>
                     ) : null}
                   </span>
                   {f.drift ? (
-                    // PASSIVE disclosure, same doctrine as skill-level drift:
-                    // something outside OK rewrote this folder since OK set it.
-                    // No action here — the next explicit Symlink/Unlink wins.
                     <ChangedOutsideBadge
                       testId={`skill-folder-drift-${f.host}`}
                       title={t`OK last set this folder to ${f.expected ?? ''} — something outside OK changed it since. The state shown is what's on disk now; your next Symlink/Unlink wins.`}
@@ -227,9 +163,6 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                     </span>
                   ) : null}
                   {isAbsentHub(f) ? (
-                    // Without this the hub is the one row on the page with no
-                    // verb and no reason given — it reads as broken rather than
-                    // as deliberately destination-only. Says what to do instead.
                     <span
                       className="shrink-0 text-[10px] text-muted-foreground"
                       title={t`Linking merges another folder into this one. This folder does not exist yet, so install a skill here first.`}
@@ -252,15 +185,11 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                           <Trans>Link</Trans>
                         </Button>
                       </DropdownMenuTrigger>
-                      {/* Size to the widest item, not the tiny trigger: the base
-                        content width is the trigger width, which clipped the mono
-                        editor-root paths (e.g. `~/.cursor/skills`). */}
+                      {}
                       <DropdownMenuContent align="end" className="w-auto">
                         {targets.map((o) => (
                           <DropdownMenuItem
                             key={o.root}
-                            // THIS row survives: the PICKED folder is the one that
-                            // merges in and becomes the symlink.
                             onSelect={() => runFolderLink(o.root, f.root)}
                             data-testid={`skill-folder-link-${f.host}-to-${o.root}`}
                           >
@@ -287,10 +216,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                     </Button>
                   ) : null}
                 </div>
-                {/* The nesting alone never said what it meant. Naming the TOOLS
-                    that end up sharing the folder does, in the words someone
-                    picking a row already has — the paths below are the
-                    mechanism, this is the outcome. */}
+                {}
                 {following.length > 0 ? (
                   <p
                     className="mt-1 ml-6 text-muted-foreground text-xs"
@@ -302,9 +228,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                     )} share this folder.`}
                   </p>
                 ) : null}
-                {/* Folders that read THIS one. They are readers, not peers, so
-                    they sit under the folder that owns the skills — and each
-                    keeps its own unlink, which is the verb that gives it back. */}
+                {}
                 {following.length > 0 ? (
                   <ul
                     className="mt-1 ml-2 space-y-1 border-border/60 border-l pl-3"
@@ -351,8 +275,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
           })}
         </ul>
       )}
-      {/* Declare a NEW custom root — it becomes a row + link target from
-          declaration (no first placement needed). No root is privileged. */}
+      {}
       <form
         className="flex items-center gap-2 pt-1"
         onSubmit={(e) => {

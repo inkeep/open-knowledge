@@ -1,19 +1,3 @@
-/**
- * regression test for the main-side driver-boot-smoke
- * bridge. The `scripts/verify-keyring-in-packaged-dmg.mjs` driver invokes
- * the packaged app with `OK_DEBUG_KEYRING_SMOKE=1 + OK_DEBUG_KEYRING_SMOKE_EXIT=1`.
- * In that mode main must fork the utility at `app.whenReady()` and quit the
- * app once the utility exits — without this bridge, the Navigator opens
- * instead and the driver times out (the utility process is normally spawned
- * only by `createProjectWindow`, which requires user interaction).
- *
- * These tests exercise the extracted `runDriverBootSmoke` pure helper with
- * injected fake deps; they don't launch Electron. The production wiring in
- * `app.whenReady()` is a thin adapter (`runDriverBootSmokeInProduction`)
- * that just plumbs real `utilityProcess.fork` + `app.quit` into the same
- * helper.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   type DriverUtilityLike,
@@ -71,10 +55,6 @@ describe('runDriverBootSmoke (US-006 AC8 regression)', () => {
   });
 
   test('quit is idempotent when both exit and safety timeout fire', () => {
-    // Safety-net path: the utility exits AFTER the timer fires (or the timer
-    // fires and then utility exits). Either way, app.quit() must be called
-    // exactly once — Electron's app.quit throws on a second call in some
-    // lifecycle states, and the helper's contract is "quit once."
     let quitCount = 0;
     let safetyTimer: (() => void) | null = null;
     const fake = makeFakeUtility();
@@ -105,9 +85,6 @@ describe('runDriverBootSmoke (US-006 AC8 regression)', () => {
       },
       utilityEntryPath: '/ignored.js',
     });
-    // Default must be strictly less than the driver's 30 s DEFAULT_TIMEOUT_MS
-    // (scripts/verify-keyring-in-packaged-dmg.mjs) so main's own quit fires
-    // and the driver sees `exitCode !== null` rather than its SIGTERM path.
     expect(scheduledMs).toBe(25_000);
     expect(scheduledMs).toBeLessThan(30_000);
   });
@@ -139,8 +116,6 @@ describe('isDriverBootSmokeMode (US-006 AC8 gate)', () => {
   });
 
   test('false when only SMOKE=1 (dev-mode auto-smoke, not driver mode)', () => {
-    // This is the normal dev path — utility auto-runs smoke but
-    // doesn't self-exit, so main keeps the editor window alive.
     expect(isDriverBootSmokeMode({ OK_DEBUG_KEYRING_SMOKE: '1' })).toBe(false);
   });
 
@@ -153,8 +128,6 @@ describe('isDriverBootSmokeMode (US-006 AC8 gate)', () => {
   });
 
   test('false when vars are truthy-but-not-literal-"1"', () => {
-    // Strict comparison with literal '1' — defensive against truthy coercion
-    // that would mis-fire the driver path on stray 'true' / 'yes' env leaks.
     expect(
       isDriverBootSmokeMode({
         OK_DEBUG_KEYRING_SMOKE: 'true',

@@ -35,11 +35,6 @@ export interface CollaborationHostOptions {
   maintenanceCoordinator?: MaintenanceCoordinator;
   keepaliveGraceMs?: number;
   acpThreadManager?: AcpThreadManager | null;
-  /**
-   * The boot-built ingress policy — the same object gating the HTTP surface,
-   * so upgrades and requests can never disagree. Omitted (test rigs) ⇒ the
-   * loopback-only default policy.
-   */
   ingressPolicy?: IngressPolicy;
 }
 
@@ -106,10 +101,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
 
   wss.on('error', (err) => log.error({ err }, 'WebSocketServer error'));
 
-  // One admit shape for HTTP and WS: policy peer gate (loopback, or consent)
-  // AND policy Host gate (loopback names + admitted public names). Covers the
-  // legacy remote flow too — its tunnel host is in the policy's Host set and
-  // its peers are loopback (the tunnel connects from loopback).
   const admitted = (req: IncomingMessage): boolean =>
     isPeerAdmitted(req.socket.remoteAddress, ingressPolicy) &&
     isHostAdmitted(
@@ -138,21 +129,11 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
       log.error({ err, url: req.url }, `[collab] ${label} handleUpgrade threw`);
       try {
         socket.destroy();
-      } catch {
-        // Best effort for an already-destroyed upgrade socket.
-      }
+      } catch {}
     }
   };
 
   const handleKeepalive = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-    // Same CSWSH defense as `/collab/thread` and plain `/collab` (CWE-1275):
-    // a present-but-foreign Origin is refused. Lower-value channel (agent
-    // presence + session keepalive, no CRDT read/write), but the same class —
-    // under consent a foreign-origin page passes peer + Host, so Origin is the
-    // only signal that separates it from a first-party client. Unlike plain
-    // `/collab`, keepalive runs `admitted()` in every mode, so the Origin check
-    // rides along in every mode too; a missing Origin (native MCP clients)
-    // stays admitted.
     if (
       !admitted(req) ||
       (req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy))
@@ -184,8 +165,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
               displayName: identity.displayName,
               icon,
               color: AGENT_ICON_COLORS[icon] ?? colorFromSeed(identity.colorSeed),
-              // Presence filtering hides entries without `currentDoc`; this
-              // non-document sentinel surfaces the agent before its first write.
               currentDoc: '(connected)',
               mode: 'idle',
               ts: Date.now(),
@@ -199,14 +178,9 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
       const pingTimer = setInterval(() => {
         try {
           ws.ping();
-        } catch {
-          // The close/error callbacks dispose the dead socket.
-        }
+        } catch {}
       }, 30_000);
       pingTimer.unref?.();
-      // Refresh faster than the client-side 5 s TTL so an idle agent stays
-      // visible between tool calls. Presence lives under `agent-<id>`; using
-      // the raw URL id would make `bumpPresenceTs` a no-op.
       const tsRefreshTimer = connectionId
         ? setInterval(
             () => agentPresenceBroadcaster?.bumpPresenceTs(toBroadcasterKey(connectionId)),
@@ -220,8 +194,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
         if (!connectionId || shuttingDown) return;
         const timer = setTimeout(() => {
           keepaliveGraceTimers.delete(connectionId);
-          // Shutdown may begin after this timer is scheduled but before it
-          // fires; never race cleanup against session and broadcaster teardown.
           if (shuttingDown) return;
           const work = (async () => {
             log.info({ connectionId }, '[keepalive] grace expired — cleaning up sessions');
@@ -240,10 +212,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
             } catch (err) {
               log.error({ err, connectionId }, '[keepalive] clearPresence failed');
             }
-            // A closed keepalive means its writer is dead, so maintenance can
-            // evaluate off the write path. Flush-counter and boot maintenance
-            // reap other session types; only `session-close` telemetry is
-            // intentionally limited to keepalive-backed sessions.
             try {
               await maintenanceCoordinator?.onSessionClose();
             } catch (err) {
@@ -269,10 +237,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
 
   const handleUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): boolean => {
     if (!req.url?.startsWith('/collab')) return false;
-    // These breadcrumbs locate a stalled upgrade: `upgrade received` reached
-    // this host, `handleUpgrade starting` passed routing, `handleUpgrade threw`
-    // marks a synchronous WS handoff failure, and `handshake complete` means
-    // Hocuspocus owns the connection.
     log.info(
       {
         url: req.url,
@@ -282,8 +246,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
       },
       '[collab] upgrade received',
     );
-    // WS upgrades join the same ingress path as HTTP: stamp the shared
-    // actor-carrying context, then run the same policy tripwire + predicates.
     stampIngressContext(req, {});
     if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
       log.warn(
@@ -317,30 +279,6 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
       handleKeepalive(req, socket, head);
       return true;
     }
-    // Two independent axes gate plain `/collab`:
-    //
-    // (1) CSWSH defense (CWE-1275) — UNCONDITIONAL, in every mode, exactly as
-    //     `/collab/thread` and `/collab/keepalive` do it. WebSocket upgrades
-    //     bypass CORS, and localhost is reachable from any origin, so even a
-    //     pure-local server is exposed: a page on a foreign origin can open
-    //     `ws://127.0.0.1:<port>/collab` (loopback peer + loopback Host both
-    //     pass) and, without an Origin check, gain full CRDT read/write. A
-    //     present-but-foreign Origin is the only browser-side signal that
-    //     separates that attack from a first-party client, so refuse it in ALL
-    //     modes. A missing Origin (native / server-to-server clients) is
-    //     admitted — those are not CSWSH vectors and legitimately carry none.
-    //
-    // (2) Peer + Host admission (`admitted()`) — only when EXPOSED
-    //     (`allowExternal` consent).
-    //     Pure-local keeps its historical ungated posture on this axis — a
-    //     deliberate carve-out from the read-posture hardening that
-    //     Host-gates `/api` reads and content-asset serving in every mode: WS
-    //     upgrades are not reachable from a rebound page without an Origin
-    //     header, and axis (1) refuses the foreign-Origin shape
-    //     unconditionally. Under consent the loopback bind no longer implies
-    //     a loopback peer, so `admitted()` (loopback + bind literals +
-    //     externalUrl, identical to the HTTP API gate) keeps direct-IP access
-    //     matching what `/api` accepts.
     const foreignOrigin =
       req.headers.origin !== undefined && !isOriginAdmitted(req.headers.origin, ingressPolicy);
     const exposed = ingressPolicy.allowExternal;
@@ -398,17 +336,11 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
 
   const shutdown = (): Promise<void> => {
     shutdownPromise ??= (async () => {
-      // Socket destruction emits close events; set the guard first so those
-      // callbacks cannot schedule fresh grace cleanup during teardown.
       shuttingDown = true;
-      // Callers close WSS/HTTP after this promise. Live upgraded sockets would
-      // keep those closes pending, while destroying them also drives WS cleanup.
       for (const socket of liveUpgradeSockets) {
         try {
           socket.destroy();
-        } catch {
-          /* best effort */
-        }
+        } catch {}
       }
       liveUpgradeSockets.clear();
       for (const timer of keepaliveGraceTimers.values()) clearTimeout(timer);

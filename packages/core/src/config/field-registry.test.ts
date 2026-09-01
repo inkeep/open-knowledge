@@ -11,9 +11,6 @@ describe('fieldRegistry singleton', () => {
   });
 
   test('two callers see the same registry instance', async () => {
-    // Re-import the same module spec; ESM caching means the second import
-    // resolves to the already-loaded module, but the Symbol-keyed singleton
-    // would also dedupe across genuinely separate copies of the module.
     const reimport = await import('./field-registry.ts');
     expect(reimport.fieldRegistry).toBe(fieldRegistry);
   });
@@ -87,11 +84,6 @@ describe('getFieldMeta walker (descends innerType)', () => {
 });
 
 describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)', () => {
-  // Walks ConfigSchema's structural shape and asserts that every leaf field
-  // (scalar, array-leaf, enum) has a `fieldRegistry` entry. Catches the
-  // load-bearing declaration-order rule: `.register()` MUST come BEFORE
-  // `.default()` / `.optional()` / `.nullable()`. Only ONE `fieldRegistry`
-  // per process, so misregistration here is unrecoverable.
   function isObjectLike(schema: unknown): schema is { _zod: { def: { shape: unknown } } } {
     const def = (schema as { _zod?: { def?: { type?: string } } })._zod?.def;
     return def?.type === 'object' || def?.type === 'looseObject';
@@ -102,9 +94,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     while (cur) {
       const def = (cur as { _zod?: { def?: { type?: string; innerType?: unknown } } })._zod?.def;
       if (!def) return cur;
-      // Stop at object/looseObject — they're walkable, not leaves.
       if (def.type === 'object' || def.type === 'looseObject') return cur;
-      // Descend wrappers.
       if (def.innerType !== undefined) {
         cur = def.innerType;
         continue;
@@ -144,10 +134,6 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test('no fields are agent-settable in the current schema', () => {
-    // The two MCP-tool tuning fields that used to be agent-settable were
-    // removed alongside the rest of the either-scope surface; their values
-    // now live as constants in `@inkeep/open-knowledge-core`. Re-introduce
-    // an entry here when an agent-tunable field actually returns.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const allowlisted = leaves
@@ -166,14 +152,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(userStrict).toEqual([
       'agents.autoApproveOkTools',
-      // One palette per light/dark mode, plus the single pre-pair palette they
-      // superseded — still read as the seed for both slots on an older config.
       'appearance.colorTheme',
       'appearance.colorThemeDark',
       'appearance.colorThemeEnabled',
       'appearance.colorThemeLight',
-      // The custom theme is a base16 scheme: sixteen palette slots plus the
-      // three metadata fields an imported scheme carries.
       'appearance.customTheme.author',
       'appearance.customTheme.base00',
       'appearance.customTheme.base01',
@@ -199,47 +181,12 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.theme',
       'editor.previewTabs',
       'editor.wordWrap',
-      // The Slides plugin toggle — a personal preference like the Themes
-      // toggle above, gating whether a `slides: true` doc offers the deck view.
       'slides.enabled',
-      // The one `telemetry` leaf that leaves the machine. USER scope so a
-      // repository cannot decide that its collaborators report to a third
-      // party — its `localSink.*` siblings are project-scope and local-only.
       'telemetry.skillInstallReports.enabled',
     ]);
   });
 
   test('project-strict fields cover autoSync.default + content.* + contentRules.* + lossCapture.* + telemetry.localSink.*', () => {
-    // `autoSync.default` is the committed seed for a machine's sync mode on
-    // first open ('off'/'pull'/'full', or the legacy boolean, or null). Project
-    // scope is the whole point — it travels with the repo so a maintainer
-    // pre-answers the onboarding prompt for everyone. Its per-machine siblings
-    // `autoSync.mode`/`autoSync.enabled` stay project-local so scopes never
-    // collide.
-    //
-    // `content.dir` names the root of this project's knowledge graph — it is
-    // project-shared (committed `config.yml`), so a user-global override
-    // doesn't make sense for it.
-    //
-    // `content.attachmentFolderPath` is project-shared: all collaborators use
-    // the same asset-placement convention (e.g. 'attachments/' mirror of Obsidian
-    // vaults) so assets land consistently regardless of who made the edit.
-    //
-    // `telemetry.localSink.*` controls the local file sink used by
-    // `ok diagnose bundle`. Project scope keeps the rotation/denylist
-    // defaults shared across collaborators in the committed `config.yml`;
-    // disabling the sink is also a project-level decision (sensitive
-    // workspaces opt out across the whole team).
-    //
-    // `lossCapture.*` controls the dedicated bridge loss-class ring harvested
-    // by the same bundle. Project scope for the same reason as the telemetry
-    // sink: rotation cap shared via the committed `config.yml`, and disabling
-    // the ring is a whole-team decision for a sensitive workspace.
-    //
-    // `contentRules.*` is the project's markdown authoring standard — which
-    // lint plugins run. Shared via the committed `config.yml` (the OK analog of
-    // a checked-in `.markdownlint.json`). Each plugin's slice registers its own
-    // leaves under `contentRules.<id>.*`.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const projectStrict = leaves
@@ -264,40 +211,18 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'contentRules.okf.rules',
       'lossCapture.enabled',
       'lossCapture.maxBytes',
-      // `server.{port,externalUrl}` are the committed, reviewed shape of this
-      // knowledge base's server — project scope. `server.bind` and the rest of
-      // the listener's consent/workflow siblings are project-local (below).
-      // Both are never agent-settable: an agent setting these would be widening
-      // its own network exposure.
       'server.externalUrl',
       'server.port',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',
       'telemetry.localSink.spans.maxBytes',
-      // `validation.*` — the audit plane's non-plugin knobs (broken-link
-      // posture + file-tree indicators), shared like `contentRules.*`.
       'validation.fileTreeIndicators',
       'validation.links',
     ]);
   });
 
   test('project-local-strict fields cover autoSync.mode + autoSync.enabled + appearance.sidebar.* + linkPreviews.enabled + search.semantic.* + terminal.*', () => {
-    // Project-local fields are per-machine, per-project: each teammate's
-    // choice never crosses the git boundary.
-    // `<projectDir>/.ok/local/config.yml` is gitignored and never mirrored
-    // to the public repo. `autoSync.mode` is the canonical per-machine sync
-    // knob (its legacy sibling `autoSync.enabled` stays project-local too);
-    // the `appearance.sidebar.*` toggles are per-machine view preferences
-    // for what the file tree and sidebar show; `search.semantic.*` is the
-    // per-machine opt-in for embeddings search — enabling it sends content to
-    // a third-party provider (egress) and needs a local API key, so the choice
-    // (and its non-secret provider knobs) is inherently per-machine.
-    // `linkPreviews.enabled` is the per-machine opt-in for external link-hover
-    // previews — enabling it sends the hovered URL to the destination site
-    // (egress), so like semantic search the choice is inherently per-machine.
-    // `terminal.enabled` gates the in-app real OS shell: a full-privilege
-    // capability consented per-machine, never inherited via a clone.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const projectLocalStrict = leaves
@@ -322,13 +247,6 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'search.semantic.enabled',
       'search.semantic.model',
       'search.semantic.similarityFloor',
-      // `server.allowExternal` is exposure CONSENT — the `terminal.enabled`
-      // posture: never inherited via clone, sync, or share, so a committed
-      // `allowExternal: true` can never expose a future cloner's machine.
-      // `server.bind` is per-machine for the same clone-safety reason: a
-      // committed non-loopback bind must never break a teammate's local run.
-      // `server.{openBrowser,idleShutdown}` are personal workflow, like the
-      // sidebar toggles.
       'server.allowExternal',
       'server.bind',
       'server.idleShutdown',
@@ -339,9 +257,6 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test('showOnlyMarkdownFiles description documents the .md/.mdx extension contract', () => {
-    // "Markdown" canonically includes .mdx here; the registered description
-    // is the single documented home for that contract (it is the source
-    // injected into the published JSON schema).
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const leaf = leaves.find(
@@ -366,10 +281,6 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
   });
 
   test("boot-only leaves are exactly content.dir + the listener/exposure keys — everything else is 'live'", () => {
-    // `content.dir` re-roots the whole index (watcher, Y.Doc registry, link
-    // graph); the `server.*` keys shape the listener and its exposure — none
-    // can change under a running server. `server.idleShutdown` is the one
-    // listener leaf that CAN re-arm live.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const bootOnly = leaves

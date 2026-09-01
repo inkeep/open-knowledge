@@ -1,7 +1,5 @@
 import type { SVGProps } from 'react';
 
-// Docker whale mark (simple-icons path) — fill-based, tracks `currentColor`
-// like the other nav icons.
 export function DockerIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

@@ -1,13 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-/**
- * The rename flow busy-marks BOTH names for the tab reconciler and must
- * release them on EVERY path — a leaked mark suppresses the reconciler for
- * that skill for the rest of the session (module state only a reload clears).
- * Mirrors the sibling `use-move-skill-scope.dom.test.tsx`, which pins the same
- * always-released contract for the scope-move flow.
- */
 const openTarget = vi.fn();
 const closeDocument = vi.fn();
 vi.doMock('@/editor/DocumentContext', () => ({
@@ -88,7 +81,6 @@ describe('useRenameSkill busy-mark bracketing', () => {
 
     const out = await result.current({ scope: 'project', name: 'old-name' }, 'new-name');
     expect(out.ok).toBe(true);
-    // Release rides the list-confirmation waiter (mocked resolved), so flush it.
     await waitFor(() => {
       expect(endSkillWrite.mock.calls).toEqual(
         expect.arrayContaining([

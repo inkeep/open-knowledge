@@ -54,10 +54,6 @@ describe('inspectLock', () => {
   });
 
   test('foreign host with dead PID classifies dead-pid (hostname drift cleanup)', () => {
-    // macOS BonjourName ↔ FQDN drift across DHCP/VPN/sleep can leave a stale
-    // lock under a previous hostname. Once the recorded PID is gone, the
-    // entry is stale, not a genuine cross-host server — classify as dead-pid
-    // so `ok clean` can prune it and `ok ps` hides it by default.
     const dir = freshLockDir();
     writeFileSync(
       join(dir, 'server.lock'),
@@ -82,9 +78,6 @@ describe('inspectLock', () => {
   });
 
   test('matching machineId classifies alive even when hostname has drifted', () => {
-    // machineId is the identity signal (the production path — every current
-    // binary stamps it): a lock carrying THIS machine's stable id is `alive`
-    // even when the recorded hostname has since drifted.
     const dir = freshLockDir();
     writeFileSync(
       join(dir, 'server.lock'),
@@ -107,9 +100,6 @@ describe('inspectLock', () => {
   });
 
   test('foreign machineId with a live PID classifies foreign-host (machineId beats a matching hostname)', () => {
-    // A live lock stamped with a DIFFERENT machine's id is genuine cross-machine
-    // drift → foreign-host, even though the hostname matches — machineId takes
-    // precedence over the pre-machineId hostname fallback.
     const dir = freshLockDir();
     writeFileSync(
       join(dir, 'server.lock'),

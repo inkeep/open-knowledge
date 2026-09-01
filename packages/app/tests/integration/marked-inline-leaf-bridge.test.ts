@@ -45,12 +45,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-/**
- * Write through the real agent path and wait for the debounced persistence
- * flush, which is the write-back that runs the bridge watchdog. Polling the
- * on-disk file gates on that flush having happened rather than on a wall-clock
- * guess.
- */
 async function writeAndSettle(docName: string, markdown: string) {
   await agentWriteMd(server.port, markdown, { docName, position: 'replace' });
 
@@ -64,11 +58,6 @@ async function writeAndSettle(docName: string, markdown: string) {
   return state;
 }
 
-/**
- * Structured watchdog events for one document. The watchdog debounces per
- * (site, docName), so a per-test unique docName keeps one test's events from
- * suppressing another's.
- */
 function bridgeEventsFor(docName: string): string[] {
   return warnLines.filter((line) => {
     if (!line.startsWith('{')) return false;
@@ -98,12 +87,6 @@ describe('marked inline leaf nodes through the live bridge', () => {
     expect(bridgeEventsFor(docName)).toEqual([]);
   }, 30000);
 
-  /**
-   * Inline JSX is the one inline node the shared schema already allows marks
-   * on, so it isolates the conversion layer from any question of schema
-   * legality.
-   *
-   */
   test('a strong-marked inline JSX node keeps its mark', async () => {
     const docName = `marked-inline-leaf-${randomUUID()}`;
     const state = await writeAndSettle(docName, '**<Icon />**\n');
@@ -114,13 +97,6 @@ describe('marked inline leaf nodes through the live bridge', () => {
     expect(bridgeEventsFor(docName)).toEqual([]);
   }, 30000);
 
-  /**
-   * Control: marks on text runs already round-trip, and an unmarked leaf has
-   * no mark to lose. Both travel the same path as the cases above, so a
-   * failure here would mean the harness or the assertions are wrong rather
-   * than the bridge.
-   *
-   */
   test('marked text and an unmarked wikilink are unaffected', async () => {
     const docName = `marked-inline-leaf-control-${randomUUID()}`;
     const state = await writeAndSettle(docName, '**bold text**\n\n[[a]]\n');

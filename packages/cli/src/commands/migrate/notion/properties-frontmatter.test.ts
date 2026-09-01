@@ -87,7 +87,6 @@ describe('propertiesToFrontmatter', () => {
     const out = propertiesToFrontmatter(input, new Set(['Status']));
     expect(out).toContain('Status: Todo');
     expect(out).toContain('Note: this is body prose, not a property.');
-    // The prose line stays in the body, not the frontmatter.
     expect(out.indexOf('Note:')).toBeGreaterThan(out.indexOf('---', 3));
   });
 

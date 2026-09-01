@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { postUninstallFeedback as barrelPostUninstallFeedback } from '../index.ts';
 import { hasUninstallFeedbackContent, postUninstallFeedback } from './uninstall-feedback-submit.ts';
 
-/** The origin baked into shipped builds, which a GUI app has no env to override. */
 const SHIPPED_INTAKE_ORIGIN = 'https://openknowledge.ai';
 
 const HOST_FACTS = { source: 'cli_uninstall', appVersion: '1.2.3', platform: 'darwin' } as const;
@@ -23,7 +22,6 @@ afterEach(() => {
   else process.env.OK_FEEDBACK_INTAKE_ORIGIN = realOriginEnv;
 });
 
-/** Installs a fetch that records each request and answers with `respond()`. */
 function recordRequests(respond: () => Response | Promise<Response>): SeenRequest[] {
   const seen: SeenRequest[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
@@ -45,7 +43,6 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-/** A request that never answers on its own — only the caller's abort ends it. */
 function hangUntilAborted(): { wasAborted: () => boolean } {
   let wasAborted = false;
   globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
@@ -95,8 +92,6 @@ describe('postUninstallFeedback', () => {
     expect(seen[0]?.body).not.toHaveProperty('email');
   });
 
-  // The intake validates `email` as an email and would 400 on `''`, so a
-  // blanked-out field has to travel as absent rather than as an empty string.
   test('omits blank note and email rather than sending empty strings', async () => {
     const seen = recordRequests(() => jsonResponse(200, { reference: 'OK-44' }));
 
@@ -160,8 +155,6 @@ describe('postUninstallFeedback', () => {
     });
   });
 
-  // A departing user must never be parked on a hung intake: the request is
-  // abandoned at the ceiling so the caller can get on with the uninstall.
   test('abandons a hung request at the timeout instead of blocking the caller', async () => {
     const hung = hangUntilAborted();
 
@@ -183,9 +176,6 @@ describe('postUninstallFeedback', () => {
     expect(seen[0]?.url).toBe('http://localhost:4321/api/feedback');
   });
 
-  // A departing user's note and follow-up address must never go out in
-  // cleartext, and a bad origin must fail the send rather than silently
-  // reverting to the shipped one.
   test.each([
     { origin: 'not a url', label: 'unparseable' },
     { origin: 'http://feedback.example.com', label: 'plaintext off-box' },
@@ -210,8 +200,6 @@ describe('postUninstallFeedback', () => {
     expect(seen[0]?.url).toBe('https://staging.example.com/api/feedback');
   });
 
-  // The intake validates the whole body at once, so shipping a typo'd address
-  // would 400 the request and lose the reason and note along with it.
   test.each([
     'me@',
     'me.com',
@@ -232,9 +220,6 @@ describe('postUninstallFeedback', () => {
     expect(seen[0]?.body).not.toHaveProperty('email');
   });
 
-  // These pass this side's cheap check but fail the intake's stricter
-  // `z.email()`, which would otherwise reject the whole body. Correctness must
-  // not depend on the two validators agreeing across the mirror boundary.
   test.each([
     'me@example.c',
     'josé@example.com',
@@ -283,9 +268,6 @@ describe('postUninstallFeedback', () => {
     expect(seen).toHaveLength(1);
   });
 
-  // Only a rejected body is worth refiling. Feedback being switched off, a
-  // hung intake, or a dead network say nothing about the address, and a second
-  // attempt would just spend the caller's remaining budget.
   test.each([503, 500])('does not retry a %s, which the address cannot explain', async (status) => {
     const seen = recordRequests(() => new Response('', { status }));
 
@@ -294,25 +276,12 @@ describe('postUninstallFeedback', () => {
     expect(seen).toHaveLength(1);
   });
 
-  // The retry shares the caller's ceiling rather than starting a fresh one —
-  // the desktop flow holds the finish screen open for exactly this budget.
-  //
-  // Deliberately slow for a unit test. The only thing separating the two
-  // implementations is elapsed time, and `AbortSignal.timeout` runs on Node's
-  // internal timer, which vitest's fake timers do not drive — so this has to
-  // use the real clock, and the constants are sized to leave a margin that
-  // survives CPU contention across parallel workers rather than to run fast.
-  // The shared deadline is self-correcting (overshoot on the first attempt
-  // shrinks what the retry gets), so the margin only has to cover the final
-  // abort delivery: correct lands at ~BUDGET, per-attempt at ~BUDGET + FIRST.
   test('spends one budget across both attempts, not one budget each', async () => {
     const BUDGET = 600;
     const FIRST_ATTEMPT_MS = 360;
     let attempts = 0;
     globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
       attempts += 1;
-      // The rejection arrives late, then the refile hangs: a per-attempt
-      // timeout would let the pair run to BUDGET + FIRST_ATTEMPT_MS.
       if (attempts === 1) {
         return new Promise<Response>((resolve) =>
           setTimeout(() => resolve(new Response('', { status: 400 })), FIRST_ATTEMPT_MS),
@@ -343,9 +312,6 @@ describe('postUninstallFeedback', () => {
 });
 
 describe('hasUninstallFeedbackContent', () => {
-  // Both uninstall surfaces gate their POST on this so an untouched form can
-  // never file an empty churn ticket, and so the two can't drift on what
-  // "empty" means.
   test.each([
     { answers: {}, expected: false },
     { answers: { note: '   ', email: '\t' }, expected: false },

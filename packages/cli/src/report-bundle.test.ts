@@ -1,10 +1,3 @@
-/**
- * Tests for the leveled report-bundle entry. Real disk fixtures (no fs
- * mocks) matching the bug-report-bundle conventions: injected userLogsDir
- * keeps tests off the real `~/.ok`, and zip verification shells out to
- * `unzip` rather than adding a parser dep.
- */
-
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,13 +16,6 @@ function makeTmpDir(prefix = 'ok-report-test-'): string {
   return dir;
 }
 
-// Several sources default to a path under the home directory when the caller
-// supplies no override — the user-level logs, the ShipIt cache, and the
-// bug-report send ledger. Every one of those resolves `homedir()` at call time
-// rather than at import, precisely so a test can move it. Point HOME at an
-// empty directory for the whole file so a developer's own logs and prior bug
-// reports cannot end up staged into a fixture bundle, and so a run here matches
-// a run on CI, where that directory does not exist.
 const realHome = process.env.HOME;
 beforeAll(() => {
   process.env.HOME = mkdtempSync(resolve(tmpdir(), 'ok-report-test-home-'));
@@ -80,7 +66,6 @@ function makeStandardProjectDir(slug = 'report-proj'): string {
   return projectDir;
 }
 
-/** A project with telemetry + log sinks but no shadow repo and no server lock. */
 function makeFullProjectDir(slug = 'full-proj'): string {
   const projectDir = makeTmpDir();
   writeAt(projectDir, '.ok/config.yml', `name: ${slug}\n`);
@@ -94,12 +79,6 @@ function makeFullProjectDir(slug = 'full-proj'): string {
   return projectDir;
 }
 
-/**
- * One realistically-shaped credential per input the STANDARD tier harvests,
- * paired with the zip entry it must not survive in. The standard tier is
- * `collectStandardBundle`, a different assembler from the full tier's
- * `collectBundle` — the full-tier canary does not cover any of these sinks.
- */
 const STANDARD_PLANTS = {
   'logs/desktop.log': 'AKIAIOSFODNN7EXAMPLE',
   'local-logs/server-current.jsonl': SECRET,
@@ -111,20 +90,15 @@ const STANDARD_PLANTS = {
 
 const PLANTED_NOTE = `it died right after I pasted ${STANDARD_PLANTS['note.txt']}`;
 
-/** Every standard-tier source seeded with its planted credential. */
 function makePlantedStandardProject(): { projectDir: string; userLogsDir: string } {
   const projectDir = makeTmpDir();
   const userLogsDir = makeTmpDir();
   writeAt(projectDir, '.ok/config.yml', 'name: planted-proj\n');
-  // The desktop transport's sink: renderer console output captured into
-  // `~/.ok/logs`, which the standard tier harvests wholesale.
   writeAt(
     userLogsDir,
     'desktop.log',
     `{"level":50,"msg":"assume-role ${STANDARD_PLANTS['logs/desktop.log']} denied"}\n`,
   );
-  // The web transport's sink: the same renderer console output, ingested
-  // through `/api/client-logs` into the project-local server log.
   writeAt(
     projectDir,
     '.ok/local/logs/server-current.jsonl',
@@ -234,12 +208,9 @@ describe('collectReportBundle — standard level', () => {
       userLogsDir,
     });
 
-    // Every seeded source really did reach the bundle — otherwise the sweep
-    // below would pass by collecting nothing.
     const entries = listZipEntries(zipPath);
     for (const entry of Object.keys(STANDARD_PLANTS)) expect(entries).toContain(entry);
 
-    // No text artifact anywhere in the assembled bundle carries any of them.
     const textEntries = entries.filter((e) => /\.(jsonl?|txt|log|lock|md)$/.test(e));
     for (const entry of textEntries) {
       const content = readZipEntry(zipPath, entry);
@@ -263,8 +234,6 @@ describe('collectReportBundle — standard level', () => {
       userLogsDir,
     });
 
-    // The scrub is the only thing removing them: unredacted, each planted
-    // credential is present in the entry it was planted in.
     for (const [entry, secret] of Object.entries(STANDARD_PLANTS)) {
       expect(readZipEntry(zipPath, entry)).toContain(secret);
     }
@@ -290,10 +259,6 @@ describe('collectReportBundle — standard level', () => {
     expect(summary.projectSlug).toBeNull();
   });
 
-  // The collector is tested directly beside `collectShipItLogFiles`, but this
-  // entry is where the caches dir is actually resolved and handed to it — the
-  // seam a triager's bundle depends on, and the one a refactor can drop
-  // without any collector test noticing.
   test('resolves the ShipIt install log from the caches dir and stages it under logs/', async () => {
     const cachesDir = makeTmpDir();
     writeAt(
@@ -336,8 +301,6 @@ describe('collectReportBundle — full level', () => {
     expect(entries).toContain('logs/server-current.jsonl');
     expect(entries).toContain('state/runtime.json');
     expect(entries).toContain('state/server-status.txt');
-    // No shadow repo and no server lock in the fixture: both pieces are
-    // omitted, and the bundled manifest inventory reflects the omission.
     expect(entries).not.toContain('state/shadow-head.txt');
     expect(entries).not.toContain('state/server.lock');
     expect(entries).not.toContain('state/agent-presence.json');
@@ -353,9 +316,6 @@ describe('collectReportBundle — full level', () => {
   });
 
   test('carries the user-level logs the standard level collects, scrubbed', async () => {
-    // On desktop the Electron main process captures the renderer console into
-    // the user-level log, never into the project's server sink — so this is the
-    // only path a renderer crash reaches a full bundle by.
     const projectDir = makeFullProjectDir();
     const userLogsDir = makeTmpDir();
     writeAt(
@@ -378,14 +338,9 @@ describe('collectReportBundle — full level', () => {
     expect(summary.files).toContain('logs/desktop.2026-07-28.log');
     const body = readZipEntry(zipPath, 'logs/desktop.2026-07-28.log');
     expect(body).toContain('app-shell render crash');
-    // Staged before the scrub, unlike extra/ payloads.
     expect(body).not.toContain(SECRET);
   });
 
-  // The full level assembles through `diagnose/bundle.ts` rather than the
-  // standard collector, so its ShipIt wiring is a second seam that can break
-  // on its own. Directory name spelled out rather than imported from
-  // `DESKTOP_BUNDLE_ID`, so this also pins the path macOS actually writes.
   test('carries the ShipIt install log the standard level collects', async () => {
     const cachesDir = makeTmpDir();
     writeAt(
@@ -413,7 +368,6 @@ describe('collectReportBundle — full level', () => {
   test('scrubs ROTATED user logs too, whose counter suffix defeats an extension test', async () => {
     const projectDir = makeFullProjectDir();
     const userLogsDir = makeTmpDir();
-    // `desktop.2026-07-28.log.1` slices to `.1`, not `.log`.
     writeAt(
       userLogsDir,
       'desktop.2026-07-28.log.1',
@@ -434,11 +388,6 @@ describe('collectReportBundle — full level', () => {
   });
 
   test('scrubs credentials in user logs, which are pino JSONL behind a .log suffix', async () => {
-    // User-level logs carry a .log suffix but are line-delimited JSON, so
-    // routing them by extension alone would give them the substring-only pass
-    // and skip the per-line credential scrub. Doc names stay in cleartext by
-    // the ratified consent posture: legible names are what make a bundle
-    // diagnosable, and the summary says so before anything is written.
     const projectDir = makeFullProjectDir();
     const userLogsDir = makeTmpDir();
     writeAt(
@@ -494,10 +443,8 @@ describe('collectReportBundle — full level', () => {
     });
 
     const spans = readZipEntry(zipPath, 'telemetry/spans-current.jsonl');
-    // Credentials are scrubbed, unconditionally.
     expect(spans).not.toContain(SECRET);
     expect(spans).toContain('[REDACTED-GH-PAT]');
-    // Doc names ship raw under Detailed-diagnostics consent — no hashing.
     expect(spans).toContain('secret-notes/plan');
     expect(spans).not.toMatch(/doc:[a-f0-9]{8}/);
     const manifest = JSON.parse(readZipEntry(zipPath, 'manifest.json'));
@@ -509,15 +456,12 @@ describe('collectReportBundle — full level', () => {
     expect(summary.redactions).toEqual(scrub.redactions);
     expect(summary.redactedLineCount).toBe(scrub.redactedLineCount);
     expect(summary.redactedLineCount).toBeGreaterThanOrEqual(1);
-    // No inverse-map sidecar is written next to the zip anymore.
     expect(existsSync(join(dirname(outputPath), 'report.docnames.json'))).toBe(false);
     expect(listZipEntries(zipPath)).not.toContain('report.docnames.json');
   });
 
   test('canary: planted credentials appear in no full-tier bundle artifact', async () => {
     const projectDir = makeFullProjectDir();
-    // Plant the same secret across multiple sinks: the server log and a
-    // loss-ring event field, on top of the span leak makeFullProjectDir seeds.
     writeAt(
       projectDir,
       '.ok/local/logs/server-current.jsonl',
@@ -544,12 +488,10 @@ describe('collectReportBundle — full level', () => {
       outputPath,
     });
 
-    // No text artifact anywhere in the assembled bundle carries the secret.
     const textEntries = listZipEntries(zipPath).filter((e) => /\.(jsonl?|txt|log|lock)$/.test(e));
     for (const entry of textEntries) {
       expect(readZipEntry(zipPath, entry)).not.toContain(SECRET);
     }
-    // The loss ring rode the full tier; its doc name shipped raw, secret gone.
     const ring = readZipEntry(zipPath, 'state/loss-current.jsonl');
     expect(ring).toContain('notes/plan');
     expect(ring).not.toContain(SECRET);
@@ -778,10 +720,6 @@ describe('collectReportBundle — interface-language seam', () => {
     expect(JSON.parse(readZipEntry(zipPath, 'manifest.json')).host.language).toEqual(LANGUAGE);
   });
 
-  // The preference is the field a triager reads to tell a deliberate choice
-  // from an inherited one, so it has to survive the round trip unresolved —
-  // a bundle recording `'es'` where the user chose `'system'` reads as a
-  // decision they never made.
   test('an explicit choice is recorded unresolved beside what it resolved to', async () => {
     const projectDir = makeStandardProjectDir();
     const outputPath = join(makeTmpDir(), 'report.zip');
@@ -804,8 +742,6 @@ describe('collectReportBundle — interface-language seam', () => {
     expect(language.source).toBe('explicit');
   });
 
-  // Every bundle carries the key, so an absent language is legible as "this
-  // build could not tell" rather than as a bundle predating the field.
   test('the default seam still records a language block at both levels', async () => {
     const standardOut = join(makeTmpDir(), 'standard.zip');
     const fullOut = join(makeTmpDir(), 'full.zip');
@@ -893,16 +829,6 @@ describe('collectReportBundle — package surface', () => {
   });
 });
 
-/**
- * The per-report send ledger (`~/.ok/bug-reports/*.yaml`) records every send
- * attempt with its outcome, and it is the artifact that made the two observed
- * send failures diagnosable at all — but only because they happened on a
- * machine we could read directly.
- *
- * It is also the copy that outlives the logs: `desktop.*.log` rotates on a
- * seven-day/45 MB budget, while a sidecar persists next to its zip. A reporter
- * filing a bug about a send that failed last week has the ledger and no log.
- */
 describe('collectReportBundle — bug-report send ledger', () => {
   const LEDGER_YAML = [
     'version: 1',
@@ -921,7 +847,6 @@ describe('collectReportBundle — bug-report send ledger', () => {
     '',
   ].join('\n');
 
-  /** A reports dir shaped like the real one: sidecars beside their payloads. */
   function makeBugReportsDir(): string {
     const dir = makeTmpDir('ok-bug-reports-');
     writeAt(dir, '2026-08-19T16-42-03-547Z-bugreport.yaml', LEDGER_YAML);
@@ -944,13 +869,10 @@ describe('collectReportBundle — bug-report send ledger', () => {
     const entry = 'state/bug-reports/2026-08-19T16-42-03-547Z-bugreport.yaml';
     expect(listZipEntries(zipPath)).toContain(entry);
     expect(summary.files).toContain(entry);
-    // The attempt sequence is the whole point: two failures then a success is
-    // what separates a transient fault from a broken intake.
     expect(readZipEntry(zipPath, entry)).toContain('upload-network-error');
   });
 
   test('standard level stages it too', async () => {
-    // A reporter filing at standard level is reporting the same failed send.
     const outputPath = join(makeTmpDir(), 'report.zip');
 
     const { zipPath } = await collectReportBundle({
@@ -968,9 +890,6 @@ describe('collectReportBundle — bug-report send ledger', () => {
   });
 
   test('neither level stages the zip payloads sitting beside the sidecars', async () => {
-    // A bundle must not contain other bundles: the reports dir holds every
-    // previously-captured zip, and harvesting them would multiply a 6 MB
-    // report by every report the machine has ever kept.
     for (const level of ['standard', 'full'] as const) {
       const outputPath = join(makeTmpDir(), `${level}.zip`);
       const { zipPath } = await collectReportBundle({
@@ -987,11 +906,6 @@ describe('collectReportBundle — bug-report send ledger', () => {
   });
 
   test('the ledger goes through the secret scrub like every other staged text file', async () => {
-    // Sidecars carry a `note` field holding the reporter's own words, so this
-    // is user-authored text, not machine output. Staging it without the scrub
-    // would ship a credential a reporter pasted into a bug description.
-    // `.yaml` is not one of the extensions the full-level scrub recognized, so
-    // this is the failure mode a scrub-by-extension design invites.
     const dir = makeTmpDir('ok-bug-reports-');
     writeAt(
       dir,
@@ -1020,9 +934,6 @@ describe('collectReportBundle — bug-report send ledger', () => {
   });
 
   test('a dir with dozens of reports contributes a bounded, newest-first slice', async () => {
-    // Retention keeps reports around, so this directory grows without limit on
-    // a machine that files often. Report ids are timestamp-prefixed, so newest
-    // sorts last lexicographically and no stat call is needed to rank them.
     const dir = makeTmpDir('ok-bug-reports-');
     for (let i = 0; i < 40; i += 1) {
       const stamp = `2026-08-${String((i % 28) + 1).padStart(2, '0')}T10-00-${String(i).padStart(2, '0')}-000Z`;
@@ -1040,11 +951,7 @@ describe('collectReportBundle — bug-report send ledger', () => {
     });
 
     const staged = listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'));
-    // Exact, not a range: 40 readable sidecars go in, so a range assertion
-    // holds just as well if the cap regresses to 1, and the ordering
-    // assertions below would still pass. The number is the contract.
     expect(staged.length).toBe(25);
-    // Newest kept: the last id by sort order must be present, the first absent.
     expect(staged).toContain('state/bug-reports/2026-08-28T10-00-27-000Z-bugreport.yaml');
     expect(staged).not.toContain('state/bug-reports/2026-08-01T10-00-00-000Z-bugreport.yaml');
   });

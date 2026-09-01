@@ -1,15 +1,3 @@
-/**
- * In-viewer find bar for read-only rendered prose (§8.4) — Cmd/Ctrl+F inside a
- * read-only surface opens it; matches highlight via the CSS Custom Highlight
- * API (`CSS.highlights`), so the DOM is never rewritten (no <mark> injection
- * into TipTap's rendered output). Self-contained + surface-agnostic: give it
- * the scroll container ref and it owns query state, match ranges, highlight
- * painting, and next/prev navigation. Works identically in web and desktop —
- * no Electron `findInPage` IPC (which would also highlight the sidebar).
- *
- * The text viewer (CodeMirror) doesn't need this — `basicSetup` ships the CM
- * search keymap, so Cmd+F there opens CodeMirror's own panel when focused.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -45,7 +33,6 @@ export function ProseFindBar({
   containerRef,
   onClose,
 }: {
-  /** The scrollable element holding the rendered prose to search. */
   containerRef: RefObject<HTMLElement | null>;
   onClose: () => void;
 }) {
@@ -59,8 +46,6 @@ export function ProseFindBar({
     inputRef.current?.focus();
   }, []);
 
-  // Recompute + repaint on query change; clear the painted highlights on
-  // unmount so closing the bar removes every mark.
   // biome-ignore lint/correctness/useExhaustiveDependencies: containerRef is a stable ref
   useEffect(() => {
     const root = containerRef.current;
@@ -76,7 +61,6 @@ export function ProseFindBar({
     };
   }, [query]);
 
-  // Paint + scroll the active match.
   useEffect(() => {
     const highlights = CSS.highlights;
     if (highlights === undefined) return;

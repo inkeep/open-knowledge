@@ -11,14 +11,12 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
-/** In-memory index (no disk) — the pure incremental machinery. */
 function createIndex(): LocalTargetIndex {
   const index = new LocalTargetIndex({ contentDir: join(tmpdir(), 'ok-lti-nonexistent') });
   cleanups.push(() => index.close());
   return index;
 }
 
-/** Disk-backed index over a fresh temp content dir. */
 function createDiskRig(
   overrides: Omit<LocalTargetIndexOptions, 'contentDir' | 'contentFilter'> = {},
 ): {
@@ -62,7 +60,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     });
     expect(index.getDocumentDependents('target')).toEqual(['src']);
 
-    // The target document appears; the referencing source is NOT re-authored.
     index.setSource('target', '# Target\n');
 
     expect(index.getAssessments('src')[0]).toMatchObject({
@@ -77,19 +74,16 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     index.setSource('src', 'See [x](alpha).\n');
     expect(index.getDocumentDependents('alpha')).toEqual(['src']);
 
-    // Re-author the source to point elsewhere.
     index.setSource('src', 'See [x](beta).\n');
     expect(index.getDocumentDependents('alpha')).toEqual([]);
     expect(index.getDocumentDependents('beta')).toEqual(['src']);
 
-    // The abandoned target appearing must not touch the source anymore.
     index.setSource('alpha', '# Alpha\n');
     expect(index.getAssessments('src')[0]).toMatchObject({
       resolvedTarget: 'beta',
       status: 'missing',
     });
 
-    // The current target appearing heals it.
     index.setSource('beta', '# Beta\n');
     expect(index.getAssessments('src')[0]).toMatchObject({
       resolvedTarget: 'beta',
@@ -157,20 +151,12 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
   });
 
   test('wiki forms are not projected here, which is what fixes this index on the URI plane', () => {
-    // The extension-less disambiguation candidate resolves every href as a URI
-    // (percent escapes decode). That is only sound because no wiki form reaches
-    // this index — a wiki target is a literal filename, and decoding one would
-    // key its dependent under a path nothing else looks up. Admitting wiki
-    // forms without revisiting the plane turns this red rather than silently
-    // registering candidates under decoded names.
     const index = createIndex();
     index.setSource('src', 'See [[100%20done]] and ![[100%20done.png]].\n');
     expect(index.getAssessments('src')).toEqual([]);
     expect(index.getFileDependents('100 done')).toEqual([]);
     expect(index.getDocumentDependents('100 done')).toEqual([]);
 
-    // Control: identical bytes authored as a markdown link ARE a URI, so the
-    // decoded candidate is exactly right there.
     const markdownIndex = createIndex();
     markdownIndex.setSource('src', 'See [progress](100%20done).\n');
     expect(markdownIndex.getFileDependents('100 done')).toEqual(['src']);
@@ -183,7 +169,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     index.setFileTarget('assets/report.pdf', true);
     const generation = index.generation;
 
-    // The watcher reports the same file again (content changed, still present).
     expect(index.setFileTarget('assets/report.pdf', true)).toBe(0);
     expect(index.generation).toBe(generation);
     expect(index.getAssessments('src')[0]).toMatchObject({ status: 'exact' });
@@ -228,7 +213,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     for (let i = 0; i < fanout; i++) {
       index.setSource(`dependent-${i}`, 'Download [pdf](assets/shared.pdf).\n');
     }
-    // Unrelated sources pointing at a different, still-missing file.
     for (let i = 0; i < 15; i++) {
       index.setSource(`unrelated-${i}`, 'Download [pdf](assets/other.pdf).\n');
     }
@@ -237,7 +221,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     expect(affected).toBe(fanout);
     expect(index.getFileDependents('assets/shared.pdf')).toHaveLength(fanout);
 
-    // Every dependent healed; every unrelated source is untouched.
     for (let i = 0; i < fanout; i++) {
       expect(index.getAssessments(`dependent-${i}`)[0]).toMatchObject({ status: 'exact' });
     }
@@ -252,7 +235,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     const before = index.getAssessments('src');
     expect(before).toHaveLength(2);
     expect(before.every((a) => a.status === 'missing')).toBe(true);
-    // Distinct ranges preserved per occurrence.
     expect(before[0]?.occurrence.range).not.toEqual(before[1]?.occurrence.range);
 
     expect(index.setFileTarget('assets/a.pdf', true)).toBe(1);
@@ -307,9 +289,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
   });
 
   test('a folder target is exact; a bare basename still records its fallback', () => {
-    // `guides` names an existing folder, which is a real
-    // destination (the folder view) — exact under its authored identity, no
-    // fallback re-pointing. The bare-basename tolerant fallback is untouched.
     const index = createIndex();
     index.setSource('guides/index', '# Guides\n');
     index.setSource('nested/analysis', '# Analysis\n');
@@ -328,9 +307,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
   });
 
   test('reconcileFolderTargets flips folder links as watcher folders come and go', () => {
-    // An asset-only folder never appears among doc ancestors; only the
-    // injected watcher inventory can prove it. The reconcile must reassess
-    // sources holding a folder: dependency in both directions.
     const index = createIndex();
     index.setSource('src', 'See [dir](assets).\n');
     expect(index.getAssessments('src')[0]).toMatchObject({
@@ -352,11 +328,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
   });
 
   test('a staged rebuild carries the folder oracle into live reassessment (PRD-7956)', async () => {
-    // rebuildFromDisk assesses inside a STAGED instance and swaps its fields
-    // into the live one. The folder set must swap with `documents`, or the
-    // first live setSource after a rebuild reassesses folder-exact targets
-    // against an empty folder set and flips them to missing — clean at boot,
-    // broken the moment a doc is opened.
     const index = createIndex();
     await index.rebuildFromDisk({
       documentTargets: ['guides/guide-one'],
@@ -373,13 +344,11 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
   test('folder existence tracks the docs beneath it in both directions (PRD-7956)', () => {
     const index = createIndex();
     index.setSource('src', 'See [folder](guides).\n');
-    // Nothing named guides exists yet — missing.
     expect(index.getAssessments('src')[0]).toMatchObject({
       status: 'missing',
       resolvedTarget: 'guides',
     });
 
-    // First doc under guides/ brings the folder into existence — heals to exact.
     index.setSource('guides/first', '# First\n');
     expect(index.getAssessments('src')[0]).toMatchObject({
       status: 'exact',
@@ -387,7 +356,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
       fallbackTarget: null,
     });
 
-    // Deleting the folder's last doc takes the folder with it — back to missing.
     index.removeSource('guides/first');
     expect(index.getAssessments('src')[0]).toMatchObject({
       status: 'missing',
@@ -410,8 +378,6 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
       'src',
       'Ext [a](https://example.com) anchor [b](#section) escape [c](../../secret.pdf) beyond [d](../../nope).\n',
     );
-    // External + anchor are dropped at extraction; the two escaping forms assess
-    // as unresolvable with no resolvable identity, so nothing depends on them.
     for (const assessment of index.getAssessments('src')) {
       expect(assessment.status).toBe('unresolvable');
       expect(assessment.resolvedTarget).toBeNull();
@@ -454,7 +420,6 @@ describe('LocalTargetIndex disk lifecycle', () => {
     expect(rig.index.isReady()).toBe(true);
     const assessments = rig.index.getAssessments('a');
     expect(assessments).toHaveLength(2);
-    // `b` exists as a walked document; `assets/f.pdf` exists via the seeded file inventory.
     expect(assessments.every((assessment) => assessment.status === 'exact')).toBe(true);
   });
 
@@ -472,7 +437,6 @@ describe('LocalTargetIndex disk lifecycle', () => {
 
     expect(rig.index.setFileTarget('assets/pic.png', true)).toBe(1);
     expect(rig.index.getAssessments('c')[0]).toMatchObject({ status: 'exact' });
-    // `a`'s missing doc reference is untouched by the file create.
     expect(rig.index.getAssessments('a')[0]).toMatchObject({ status: 'missing' });
   });
 

@@ -1,19 +1,3 @@
-/**
- * The deck-path admission decision, driven against a REAL filesystem.
- *
- * The symlink-escape case is the reason this suite exists, and it is the one
- * case a stubbed resolver cannot honestly prove: the guard's whole job is that
- * `realpath` collapses an in-project symlink to its out-of-project target, so a
- * fake `realpath` returning whatever the test scripts would be asserting the
- * fake, not the guard. These build genuine symlinks in a temp dir and let the
- * real `realpathSync` resolve them.
- *
- * `realpath` stays injected for OS-returned canonical-path edge cases and the
- * throwing paths (ENOENT / ELOOP), where provoking the real behavior is either
- * slow or platform-fragile — and those cases assert the refusal, not a resolved
- * value.
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,9 +9,6 @@ let projectRoot: string;
 let outside: string;
 
 beforeAll(() => {
-  // realpath the temp root itself: on macOS /var is a symlink to /private/var,
-  // so an unresolved projectRoot would make every containment check fail and
-  // the suite would pass for the wrong reason.
   root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-deck-path-')));
   projectRoot = join(root, 'project');
   outside = join(root, 'outside');
@@ -35,9 +16,7 @@ beforeAll(() => {
   mkdirSync(outside, { recursive: true });
   writeFileSync(join(projectRoot, 'decks', 'talk.md'), '---\nslides: true\n---\n# Deck\n');
   writeFileSync(join(outside, 'secret.md'), '---\nslides: true\n---\n# Outside\n');
-  // The attack: a file that LOOKS in-project but resolves outside it.
   symlinkSync(join(outside, 'secret.md'), join(projectRoot, 'decks', 'escape.md'));
-  // A broken symlink — resolves to nothing at all.
   symlinkSync(join(outside, 'gone.md'), join(projectRoot, 'decks', 'broken.md'));
 });
 
@@ -62,8 +41,6 @@ describe('resolveDeckPath — admits a genuine in-project deck', () => {
   });
 
   test('admits a symlink whose target is ALSO inside the project', () => {
-    // Containment is about where the path RESOLVES, not whether a symlink was
-    // involved — refusing every symlink would break legitimate in-project ones.
     const alias = join(projectRoot, 'decks', 'alias.md');
     symlinkSync(join(projectRoot, 'decks', 'talk.md'), alias);
     const result = resolveDeckPath({ ...real, docPath: alias, projectRoot });
@@ -77,9 +54,6 @@ describe('resolveDeckPath — admits a genuine in-project deck', () => {
 
 describe('resolveDeckPath — refuses an escape', () => {
   test('refuses an in-project symlink that resolves OUTSIDE the project', () => {
-    // The security property. Lexically `decks/escape.md` is inside the project;
-    // it resolves to `outside/secret.md`. Admitting it would have Slidev serve
-    // an out-of-project file over loopback.
     const result = resolveDeckPath({
       ...real,
       docPath: join(projectRoot, 'decks', 'escape.md'),
@@ -107,7 +81,6 @@ describe('resolveDeckPath — refuses an escape', () => {
     if (result.ok) throw new Error('unreachable');
     expect(result.reason).toBe('invalid-path');
     expect(result.cause?.code).toBe('ENOENT');
-    // The deck path must never ride along in diagnostics.
     expect(JSON.stringify(result)).not.toContain('broken.md');
   });
 
@@ -161,8 +134,6 @@ describe('resolveDeckPath — refuses an escape', () => {
   });
 
   test('surfaces a symlink loop as a refusal with its code', () => {
-    // ELOOP is awkward to provoke portably, so this one case uses an injected
-    // resolver — it asserts the refusal shape, never a resolved path.
     const result = resolveDeckPath({
       platform: process.platform,
       docPath: join(projectRoot, 'decks', 'talk.md'),

@@ -22,31 +22,11 @@ import {
 } from '@/lib/skill-track-prompt-store';
 import { trackSkillInGit } from '@/lib/skills-api';
 
-/**
- * Why a skill you can see refuses to open, and the one line that fixes it.
- *
- * A gitignored bundle is listed but never indexed — OK will not index a doc the
- * sync engine could never commit — so the row is real and the click has nothing
- * behind it. `.claude/*` is a common rule, which made this look like a random
- * bug rather than a policy. The dialog shows the literal `.gitignore` line
- * BEFORE writing: it edits the user's repo, so it never happens on open.
- *
- * The line re-includes the whole skills DIRECTORY because git cannot re-include
- * a file whose parent directory is excluded; the server owns that rule and
- * hands it back here, so the two can't drift.
- *
- * Mounted once in `App` — the guard fires from the shared opener, which has no
- * surface of its own.
- */
 export function SkillTrackInGitDialog() {
   const { t } = useLingui();
   const prompt = useSyncExternalStore(subscribeToSkillTrackPrompt, getSkillTrackPrompt);
   const { openTarget } = useDocumentContext();
   const { merged } = useConfigContext();
-  // Gated: this host is mounted for the whole session but inert almost all of
-  // it, and `/api/skills` is a synchronous walk of every skills root on the
-  // machine. Ungated it costs that scan at every boot and on every `files`
-  // signal, for a dialog nobody has opened.
   const skillsState = useSkills({ enabled: prompt !== null });
   const [line, setLine] = useState<string | null>(null);
   const [gitignorePath, setGitignorePath] = useState('.gitignore');
@@ -62,12 +42,9 @@ export function SkillTrackInGitDialog() {
     }
     let cancelled = false;
     setPreviewError(null);
-    // Preview only — `apply` defaults to false, so this cannot touch the repo.
     void trackSkillInGit({ name, scope }).then((r) => {
       if (cancelled) return;
       if (!r.ok) {
-        // Without this the dialog explains the fix and then disables the only
-        // button that applies it, with no reason given.
         setPreviewError(r.error);
         return;
       }
@@ -135,9 +112,6 @@ export function SkillTrackInGitDialog() {
                 return;
               }
               clearSkillTrackPrompt();
-              // Open what the user asked for in the first place. Addressed by
-              // the entry's own doc name rather than back through the opener,
-              // whose `ignored` guard is still true until the list refetches.
               const entry =
                 skillsState.status === 'ready'
                   ? skillsState.data.find((s) => s.scope === prompt.scope && s.name === prompt.name)

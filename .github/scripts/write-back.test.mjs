@@ -34,8 +34,6 @@ const LINEAR_UPLOAD = 'https://uploads.linear.app/abc/def/diagnostics.zip';
 const DISCORD_THREAD = 'https://discord.com/channels/1514363990740828223/1528881792063508610';
 const CHANGESET = { title: 'Honor backslash escapes', body: 'Honor backslash escapes in the markdown promoters.' };
 
-// The real chain off the mirror: a private merge commit, its mirrored copy, and
-// the stable tag that first contains it.
 const PRIVATE_SHA = 'da71f0c698ccaac11da915169ca6c7d585d5eb97';
 const MIRRORED_SHA = 'eb52a625cd86859a8ec43ddc8f96e9b418d092a7';
 const STABLE_TAGS = ['v0.35.0', 'v0.35.2', 'v0.35.6', 'v0.36.0'];
@@ -49,8 +47,6 @@ const candidate = (overrides = {}) => ({
   ...overrides,
 });
 
-// Every boundary is a plain closure. `writes` is the ledger the dry-run test
-// asserts stays empty.
 function harness(overrides = {}) {
   const logs = [];
   const writes = [];
@@ -61,8 +57,6 @@ function harness(overrides = {}) {
     readChangesetProse: async () => CHANGESET,
     postReply: async (origin, text) => writes.push({ kind: 'post', origin: origin.url, text }),
     recordNotification: async (marker) => writes.push({ kind: 'mark', url: marker.url }),
-    // Every candidate in these fixtures ships in v0.36.0; the window tests
-    // below drive the scoping itself.
     classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
     selfRepo: 'inkeep/open-knowledge',
     log: (m) => logs.push(m),
@@ -79,11 +73,6 @@ describe('candidate enumeration', () => {
   });
 
   test('no label narrows the enumeration, because a label was never what a reply depends on', () => {
-    // The Bug label used to be the filter, and it silently excluded every
-    // community feature request from ever being told its fix shipped. Whether a
-    // reporter hears back must not depend on how triage classified them, so the
-    // query narrows on nothing but completion and the real preconditions (an
-    // origin, a fix reference) are checked against the data it returns.
     expect(CANDIDATE_QUERY).not.toMatch(/labels\s*:/);
     expect(CANDIDATE_QUERY).not.toContain('Bug');
     expect(CANDIDATE_QUERY).toContain('state: { type: { eq: "completed" } }');
@@ -95,21 +84,9 @@ describe('candidate enumeration', () => {
   });
 
   test('the tag list comes from the shared boundary, never a private copy of it', () => {
-    // A private `realStableTags` here filtered the list to bare vX.Y.Z, so no
-    // prerelease ever reached the channel-aware resolver and the beta channel
-    // resolved nothing in production. Every beta test injects its own tag list,
-    // so the unit suite could not see it; this is what stands in for that.
-    //
-    // Two classes, two mechanisms. THIS pin covers the bypass: the shared reader
-    // must actually be imported, which no link check can assert (a file that
-    // imports nothing links perfectly). `module-graph.test.mjs` covers the rename:
-    // that the imported symbol still EXISTS, which this pin cannot see, since it
-    // reads the subject module's text and a rename of the export leaves that untouched.
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
     expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/);
     expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
-    // The list reaches the resolver exactly as git gave it. Narrowing it here,
-    // at the definition or at the call site, is the whole failure.
     expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
   });
 
@@ -117,8 +94,6 @@ describe('candidate enumeration', () => {
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
     expect(source).toMatch(/from '\.\/resolve-shipped-version\.mjs'/);
     expect(source).toContain('resolveShippedVersion');
-    // The one place tag containment may be spelled out is the injected git
-    // boundary it hands to that resolver.
     expect(source.match(/merge-base/g)?.length ?? 0).toBeLessThanOrEqual(2);
   });
 });
@@ -189,15 +164,12 @@ describe('version derivation', () => {
   });
 
   test('the beta channel threads through to the resolver and answers with the beta', () => {
-    // The seam this whole feature hangs off: deriveVersionForFixRefs ->
-    // resolveShippedVersion with a channel. Same fix, same inputs, two answers.
     const shared = {
       fixReferences: [{ channel: 'pull-request', url: GH_PULL }],
       stableTags: [...STABLE_TAGS, 'v0.37.0-beta.0', 'v0.37.0-beta.1'],
       contains: containsFrom({ [MIRRORED_SHA]: ['v0.37.0-beta.0', 'v0.37.0-beta.1'] }),
     };
     expect(derive({ ...shared, channel: 'beta' })).toBe('0.37.0-beta.0');
-    // No stable carries it yet, so the stable channel correctly has no answer.
     expect(derive(shared)).toBeNull();
   });
 
@@ -212,8 +184,6 @@ describe('version derivation', () => {
   });
 
   test('the mirror-PR containment fallback honours the channel it was given', () => {
-    // A mirror merge commit with no usable origin trailer falls back to direct
-    // containment, which is a second place the tag list has to be channel-aware.
     const mirrorMain = 'd'.repeat(40);
     expect(
       deriveVersionForFixRefs({
@@ -230,11 +200,6 @@ describe('version derivation', () => {
   });
 
   test('a mirror pull request in this repo resolves through its merge commit trailer', () => {
-    // The Copybara mirror lands every export through a short-lived PR in this
-    // repo, and Linear's linkback attaches it to the ticket. Its merge commit
-    // IS the mirrored copy, so the resolvable identity is the origin SHA in
-    // its own trailer — which also finds the cherry-picked copy a point
-    // release carries when the main-line copy is in no stable yet.
     const mirrorMain = 'd'.repeat(40);
     const cherryPick = 'e'.repeat(40);
     expect(
@@ -257,9 +222,6 @@ describe('version derivation', () => {
   });
 
   test('a private fix reference still derives with the mirror PR echo attached beside it', () => {
-    // Regression: the echo used to be trailer-searched as a private SHA, find
-    // nothing, and null the whole ticket — every ticket whose fix PR title
-    // carried an identifier became permanently underivable.
     const mirrorEcho = 'f'.repeat(40);
     expect(
       deriveVersionForFixRefs({
@@ -296,8 +258,6 @@ describe('version derivation', () => {
   });
 
   test('a mirror merge commit with more than one origin trailer is ambiguous and falls back to containment', () => {
-    // A message can embed someone else's footer; picking either trailer would
-    // be a guess, so the merge commit's own containment is the answer.
     const otherSha = '9'.repeat(40);
     const mergeSha = 'c3'.repeat(20);
     const logs = [];
@@ -325,8 +285,6 @@ describe('version derivation', () => {
     expect(isSelfRepoPr(pr('inkeep', 'agents-private'), 'inkeep/open-knowledge')).toBe(false);
     expect(isSelfRepoPr({ kind: 'sha', sha: 'a'.repeat(40) }, 'inkeep/open-knowledge')).toBe(false);
     expect(isSelfRepoPr(pr('inkeep', 'open-knowledge'), undefined)).toBe(false);
-    // A run inside the private monorepo: its own PRs are private references,
-    // not mirror-side ones, even though repo identity matches selfRepo.
     expect(isSelfRepoPr(pr('inkeep', 'agents-private'), 'inkeep/agents-private')).toBe(false);
     expect(isSelfRepoPr(pr('inkeep', 'some-fork'), 'inkeep/some-fork', 'inkeep/some-fork')).toBe(false);
   });
@@ -349,9 +307,6 @@ describe('version derivation', () => {
   });
 
   test('a fix reference naming a pull request that was closed unmerged is an answer, not a fault', () => {
-    // Real shape: PRD-7539 still carries agents-private#2844, which was closed
-    // in favour of #2864. A stale attachment is for a human to fix in Linear,
-    // so it warns and skips rather than painting the run red.
     const logs = [];
     expect(
       derive({
@@ -367,21 +322,15 @@ describe('version derivation', () => {
     const at = { owner: 'inkeep', repo: 'agents-private', number: 2844 };
     const sha = 'da71f0c698ccaac11da915169ca6c7d585d5eb97';
 
-    // The real reply for agents-private#2844: closed, so merged_at is null.
     expect(parseMergeShaOutput('null\n', at)).toBeNull();
     expect(parseMergeShaOutput('\n', at)).toBeNull();
     expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha, at)).toBe(sha);
     expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha.toUpperCase(), at)).toBe(sha);
 
-    // Merged but with no usable sha is neither a fix nor an answer.
     expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(/merge_commit_sha/);
   });
 
   test('a fix reference in a repo this workflow cannot reach is skipped, not attempted', () => {
-    // The Linear backlog carries pre-Open-Knowledge tickets whose fix references
-    // point at other products' private repos. The cross-repo token is scoped to
-    // agents-private, so those reads 404 permanently — attempting them turned
-    // every run red on 39 candidates that will never resolve.
     const logs = [];
     expect(
       derive({
@@ -397,10 +346,6 @@ describe('version derivation', () => {
   });
 
   test('the two repos it CAN read are still attempted, so the 404 bug cannot come back', () => {
-    // A blanket 404 suppression would have masked the missing-permission bug on
-    // agents-private. These two must always reach the API. The self-repo PR
-    // resolves through its merge commit's own trailer rather than a trailer
-    // search for its SHA, but it is attempted all the same.
     for (const url of [
       'https://github.com/inkeep/agents-private/pull/2864',
       'https://github.com/inkeep/open-knowledge/pull/12',
@@ -429,14 +374,10 @@ describe('version derivation', () => {
     expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge' }, at)).toBe(true);
     expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'management' }, at)).toBe(false);
     expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge-legacy' }, at)).toBe(false);
-    // Resolved against local git history rather than a repo API.
     expect(isFixRepoInRemit({ kind: 'sha', sha: PRIVATE_SHA }, at)).toBe(true);
   });
 
   test('an unreadable pull request still throws, because that one is not an answer', () => {
-    // The 404 that broke the first live run was authorisation, not data. It
-    // must stay loud; folding it in with the stale-attachment case would make
-    // a repo-wide permission failure look like a tidy row of skips.
     expect(() =>
       derive({
         fixReferences: [{ channel: 'pull-request', url: GH_PULL }],
@@ -488,9 +429,6 @@ describe('write-back run', () => {
   test('in live mode it records the notification before posting to the origin', async () => {
     const h = harness({ live: true });
     await h.run();
-    // The order is the at-most-once guarantee, not an incidental detail. Were
-    // the reply to land first, a crash before the marker was written would
-    // re-send a reply the reporter had already read on the next run.
     expect(h.writes.map((w) => w.kind)).toEqual(['mark', 'post']);
     const post = h.writes.find((w) => w.kind === 'post');
     const mark = h.writes.find((w) => w.kind === 'mark');
@@ -507,10 +445,6 @@ describe('write-back run', () => {
     });
     await h.run();
     const post = h.writes.find((w) => w.kind === 'post');
-    // The gate's own tests pin the two formattings; what this pins is the
-    // wiring between them, which a rename anywhere along
-    // classify -> origin.channel -> composeReply would sever silently while
-    // every unit test still passed.
     expect(post.origin).toBe(DISCORD_THREAD);
     expect(post.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
   });
@@ -523,8 +457,6 @@ describe('write-back run', () => {
       },
     });
     const result = await h.run();
-    // The at-most-once contract: no marker, therefore no reply. The failure is
-    // carried out as an error rather than a skip so the run still goes red.
     expect(h.writes.filter((w) => w.kind === 'post')).toHaveLength(0);
     expect(result.errored).toHaveLength(1);
     expect(result.errored[0].message).toMatch(/attachmentCreate/);
@@ -537,8 +469,6 @@ describe('write-back run', () => {
     await first.run();
     expect(first.writes.filter((w) => w.kind === 'post')).toHaveLength(1);
 
-    // The second run sees the marker the first one recorded, exactly as a
-    // re-read of the ticket would.
     const second = harness({
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, marker] })],
@@ -646,11 +576,7 @@ describe('changeset parsing', () => {
   });
 });
 
-// The properties that keep a reporter-facing side effect from ever touching a
-// release: its own trigger, its own concurrency group, and no edit to any of
-// the three publish workflows.
 describe('locating the changeset a fix shipped with', () => {
-  // The real file list off the pull request the first live run choked on.
   const MONOREPO_FILES = [
     'public/open-knowledge/.changeset/default-theme-tile-own-colors.md',
     'public/open-knowledge/packages/app/src/components/ThemeTile.tsx',
@@ -667,9 +593,6 @@ describe('locating the changeset a fix shipped with', () => {
   });
 
   test("another product's changeset is never quoted to an Open Knowledge reporter", () => {
-    // The monorepo has three .changeset dirs. Matching any `.changeset/` on the
-    // path would put agents-platform release notes in front of an OK reporter,
-    // and they would read plausibly enough that nobody would catch it.
     const foreign = ['public/agents/.changeset/some-agents-fix.md', '.changeset/a-stray-root-changeset.md'];
     expect(findChangesetPath(foreign, { repo: 'agents-private' })).toBeNull();
   });
@@ -697,8 +620,6 @@ describe('cross-repo token selection', () => {
   });
 
   test('a read against this repo keeps the ambient token, which the bridge token cannot replace', () => {
-    // The bridge token is scoped to agents-private, so handing it to a call
-    // against this repo would 404 the very thing the ambient token can do.
     expect(selectGhToken({ owner: 'inkeep', repo: 'open-knowledge', env })).toBeNull();
     expect(selectGhToken({ owner: 'InKeep', repo: 'Open-Knowledge', env })).toBeNull();
   });
@@ -747,7 +668,6 @@ describe('one unreadable candidate does not silence the rest', () => {
   });
 
   test('errors still turn the run red once the reachable reporters have been told', () => {
-    // Surviving a bad candidate must not become a way of passing while broken.
     expect(runFailureMessage({ posted: [], skipped: [], errored: [] })).toBeNull();
     expect(runFailureMessage({ skipped: [{ identifier: 'PRD-1', reason: 'no-origin' }], errored: [] })).toBeNull();
 
@@ -776,7 +696,6 @@ describe('one unreadable candidate does not silence the rest', () => {
     expect(failure.message).toContain('did NOT send');
     expect(failure.message).toContain('by hand');
     expect(failure.message).toContain('502');
-    // The marker really was written; that is why the message says what it says.
     expect(h.writes.map((w) => w.kind)).toEqual(['mark']);
   });
 });
@@ -791,8 +710,6 @@ describe('telling a failure that waits from a failure that needs a person', () =
     });
     const result = await h.run();
 
-    // No marker was written, so the ticket is enumerated again next release and
-    // tried again by itself. Nobody has to do anything.
     expect(h.writes).toEqual([]);
     expect(result.errored[0].disposition).toBe('retried-next-run');
   });
@@ -823,8 +740,6 @@ describe('telling a failure that waits from a failure that needs a person', () =
         { identifier: 'PRD-0002', message: 'marker written, reply did NOT send', disposition: 'needs-human' },
       ],
     });
-    // Both are red. Only one of them is a job for a person, and a verdict that
-    // did not say which would read as one more flake.
     expect(needsHuman).toContain('ACTION REQUIRED');
     expect(needsHuman).toContain('PRD-0002');
     expect(needsHuman).not.toMatch(/ACTION REQUIRED[^.]*PRD-0001/);
@@ -840,8 +755,6 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     headers: { get: (name) => headers[String(name).toLowerCase()] ?? null },
   });
 
-  // Every attempt is recorded and no wall-clock time passes: `sleep` only notes
-  // what it was asked to wait, and `random` is fixed so the delay is exact.
   function callLinear(replies, overrides = {}) {
     const slept = [];
     const logs = [];
@@ -865,8 +778,6 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   }
 
   test('a 503 is asked again rather than failing the whole job', async () => {
-    // The exact shape of the failure that broke the v0.45.0 run: an Envoy reply
-    // raised before authentication, among hundreds of requests that worked.
     const h = callLinear([
       fail(503, 'upstream connect error or disconnect/reset before headers'),
       ok({ issues: { nodes: [] } }),
@@ -878,8 +789,6 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('a 401 is not asked again, because the answer would be the same', async () => {
-    // Retrying a genuine credential failure only delays a correct verdict and
-    // buries its message under attempts. The distinguishing detail must survive.
     const h = callLinear([fail(401, '{"errors":[{"type":"AUTHENTICATION_ERROR"}]}')]);
     await expect(h.call).rejects.toThrow(/HTTP 401/);
     await expect(h.call).rejects.toThrow(/AUTHENTICATION_ERROR/);
@@ -902,7 +811,6 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   test('an outsized Retry-After is capped, so one reply cannot park the job', () => {
     expect(retryDelayMs({ attempt: 1, retryAfterSeconds: 3600 })).toBe(LINEAR_RETRY_CAP_MS);
     expect(parseRetryAfterSeconds('2')).toBe(2);
-    // The HTTP-date form is not delta-seconds; it falls through to backoff.
     expect(parseRetryAfterSeconds('Wed, 30 Jul 2026 19:11:09 GMT')).toBeNull();
     expect(parseRetryAfterSeconds(null)).toBeNull();
     expect(parseRetryAfterSeconds('0')).toBeNull();
@@ -913,15 +821,11 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     const second = retryDelayMs({ attempt: 2, random: () => 0.5 });
     expect(second).toBeGreaterThan(first);
     expect(retryDelayMs({ attempt: 20, random: () => 1 })).toBeLessThanOrEqual(LINEAR_RETRY_CAP_MS);
-    // Half the window is fixed, so a retry is never a second helping of the
-    // same hammering; the other half is where the jitter lives.
     expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeLessThan(retryDelayMs({ attempt: 1, random: () => 1 }));
     expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeGreaterThan(0);
   });
 
   test('a connection that never produced a reply is retried like a 5xx', async () => {
-    // undici reports a reset as a bare `fetch failed` and hangs the reason off
-    // `cause`, so the chain has to be walked rather than the message read.
     const reset = Object.assign(new TypeError('fetch failed'), {
       cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
     });
@@ -946,16 +850,10 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('a reply that never arrives is given up on rather than allowed to eat the job', async () => {
-    // The case the retry is otherwise blind to. undici leaves a connection that
-    // was accepted and then went silent running for five minutes by default, so
-    // two of them exceed the job's own budget: without a deadline on the request
-    // the attempt below is never reached, and the run dies as an Actions timeout
-    // carrying none of the disposition it would otherwise have reported.
     const h = callLinear(
       [
         (init) => {
           if (!init?.signal) throw new Error('the request carried no deadline');
-          // What undici does when the signal fires: reject with its reason.
           return new Promise((_resolve, reject) => {
             init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
           });
@@ -969,16 +867,10 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('a request given up on at its deadline is retried, but a deliberate cancellation is not', async () => {
-    // Taken from the runtime rather than hand-rolled, because the shape is the
-    // whole point: `AbortSignal.timeout` rejects with a DOMException whose
-    // `code` is the numeric legacy 23 and not a string, so the code table cannot
-    // recognise it and its name is the only thing that can.
     const signal = AbortSignal.timeout(1);
     await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
     expect(signal.reason.name).toBe('TimeoutError');
     expect(isRetryableNetworkError(signal.reason)).toBe(true);
-    // An abort nobody asked a clock for was somebody's decision, and repeating
-    // the request would be overriding it.
     expect(isRetryableNetworkError(new DOMException('cancelled', 'AbortError'))).toBe(false);
   });
 
@@ -1042,9 +934,6 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('an unreadable error body cannot cost the status that decides retryability', async () => {
-    // The same dropped connection that produced the 5xx can drop again while
-    // its body is being read. Losing the status there would turn a retryable
-    // failure into an unclassifiable one.
     const h = callLinear([
       {
         ok: false,
@@ -1061,10 +950,6 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('the marker mutation is retried too, since its url is what makes it idempotent', async () => {
-    // The deterministic (origin, version) url is already what stops a SECOND
-    // RUN re-replying, which is a stronger claim than repeating one call. Not
-    // retrying it leaves the worse hole open: a marker that landed while its
-    // reply was lost reads to the next run as already-notified.
     const h = callLinear([fail(503), ok({ attachmentCreate: { success: true } })]);
     await expect(h.call).resolves.toEqual({ attachmentCreate: { success: true } });
     expect(h.attemptCount()).toBe(2);
@@ -1087,18 +972,13 @@ describe('workflow shape', () => {
     expect(workflow).toContain("echo \"channel=stable\"");
     expect(workflow).toContain("echo \"channel=beta\"");
     expect(workflow).toContain("echo \"channel=none\"");
-    // Every step that does real work stays behind the gate, so a tag of neither
-    // shape reaches nothing: no checkout, no token mint, no reply.
     expect(workflow).toMatch(/if:\s*steps\.tag\.outputs\.channel != 'none'/);
     expect(workflow).not.toMatch(/steps\.tag\.outputs\.stable/);
   });
 
   test('no working step is left outside the channel gate', () => {
-    // A step that forgot the gate would run on a tag the script then refuses,
-    // which reads as a red write-back on an ordinary release.
     const stepNames = [...workflow.matchAll(/^ {6}- (?:name:.*|uses:.*)$/gm)].length;
     const gated = [...workflow.matchAll(/if: steps\.tag\.outputs\.channel != 'none'/g)].length;
-    // Every step but the channel decision itself is gated.
     expect(gated).toBe(stepNames - 1);
   });
 
@@ -1128,16 +1008,12 @@ describe('workflow shape', () => {
   });
 
   test('the private monorepo is read with a bridge App token, not with this repo own token', () => {
-    // The default token cannot see agents-private at all, so a run wired with
-    // only `GH_TOKEN` 404s on every fix reference.
     expect(workflow).toContain('CROSS_REPO_TOKEN: ${{ steps.bridge-token.outputs.token }}');
     expect(workflow).toMatch(/uses: actions\/create-github-app-token@[0-9a-f]{40}/);
     expect(workflow).toContain('repositories: agents-private');
   });
 
   test('the bridge token is minted read-only, and for both scopes the reads need', () => {
-    // Contents alone finds no changeset (the path comes from the PR file list);
-    // pull-requests alone yields a version with nothing to quote.
     expect(workflow).toContain('permission-contents: read');
     expect(workflow).toContain('permission-pull-requests: read');
     expect(workflow).not.toMatch(/permission-\w+(-\w+)*: write/);
@@ -1149,14 +1025,12 @@ describe('workflow shape', () => {
   });
 
   test('a missing bridge App degrades to a warning rather than failing the mint', () => {
-    // Secrets are unreadable in `if:`, so the gate is an output from a step.
     expect(workflow).toMatch(/id: bridge-check/);
     expect(workflow).toMatch(/if:.*steps\.bridge-check\.outputs\.configured == 'true'/);
   });
 });
 
 describe('release window', () => {
-  // A longer history than the lookback, so "outside the window" is reachable.
   const TAGS = ['v0.34.0', 'v0.35.0', 'v0.35.1', 'v0.35.2', 'v0.36.0', 'v0.37.0'];
   const windowFor = (releaseTag, lookback) =>
     makeReleaseWindow({ releaseTag, stableTags: TAGS, lookback });
@@ -1171,7 +1045,6 @@ describe('release window', () => {
 
   test('the lookback keeps recent releases reachable so a missed run self-heals', () => {
     const classify = windowFor('v0.36.0', 3);
-    // v0.36.0 plus the three before it.
     for (const v of ['0.36.0', '0.35.2', '0.35.1', '0.35.0']) {
       expect(classify(v)).toBe('in-window');
     }
@@ -1194,9 +1067,6 @@ describe('release window', () => {
   });
 
   test('too little history to reach back keeps everything at or below the release', () => {
-    // Fewer known tags than the lookback wants leaves no floor at all, so the
-    // ceiling is the only bound. Pinned because it is a distinct branch from
-    // the one every other case here exercises.
     const classify = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: ['v0.36.0'] });
     expect(classify('0.36.0')).toBe('in-window');
     expect(classify('0.35.0')).toBe('in-window');
@@ -1224,15 +1094,10 @@ describe('release window', () => {
     });
     expect(window('0.36.0-beta.0')).toBe('in-window');
     expect(window('0.36.0-beta.1')).toBe('in-window');
-    // The stable of the same cycle supersedes the beta, so it has not shipped
-    // yet from the beta run's point of view.
     expect(window('0.36.0')).toBe('not-yet-shipped');
   });
 
   test('a stable run counts stables, so the betas between them cannot eat the lookback', () => {
-    // `git tag --list v*` hands over the betas too. If the stable window counted
-    // them, three releases back would reach hours rather than weeks and the
-    // catch-up the lookback exists for would stop happening.
     const dense = ['v0.33.0', 'v0.34.0', 'v0.35.0', 'v0.36.0'].flatMap((tag) => [
       `${tag}-beta.0`,
       `${tag}-beta.1`,
@@ -1248,7 +1113,6 @@ describe('release window', () => {
 });
 
 describe('release window applied to a run', () => {
-  // The fixture candidate ships in v0.36.0 throughout.
   test('a candidate that shipped before the window is skipped, not replied to', async () => {
     const h = harness({
       live: true,
@@ -1314,8 +1178,6 @@ describe('release channels', () => {
   });
 
   test('the beta lookback is wider than the stable one, because betas cut far more often', () => {
-    // Three betas can span less than a day, so reusing the stable number would
-    // age a reporter out of the window over a quiet weekend.
     expect(DEFAULT_BETA_LOOKBACK).toBeGreaterThan(DEFAULT_RELEASE_LOOKBACK);
   });
 });
@@ -1324,9 +1186,6 @@ describe('origin remit', () => {
   const foreignIssue = 'https://github.com/inkeep/agents/issues/412';
 
   test('a report from another repo is passed over instead of attempted', async () => {
-    // The reply is posted with this job's own token, which has no standing in
-    // any other repository. Attempting it would 403 and turn a run that behaved
-    // correctly red, on a ticket it was never meant to speak about.
     const h = harness({
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, foreignIssue] })],
@@ -1339,10 +1198,6 @@ describe('origin remit', () => {
   });
 
   test('a foreign origin costs no round trip, which is what makes the wider candidate list affordable', async () => {
-    // The gate has to sit in front of the children query, not behind it. With
-    // no label narrowing the enumeration, every completed ticket in the
-    // workspace arrives here; one GraphQL call each would exhaust the API
-    // budget long before the run finished.
     let childrenCalls = 0;
     const h = harness({
       live: true,
@@ -1360,10 +1215,6 @@ describe('origin remit', () => {
   });
 
   test('a ticket whose only extra attachment is an upload is passed over as having no origin', async () => {
-    // `uploads.linear.app` is a screenshot or a diagnostic zip, which is most of
-    // the workspace once no label narrows the enumeration. Reading it as an
-    // origin both kept those tickets on the expensive path and warned that their
-    // "only origin" had nowhere to post a reply, which was never true.
     let childrenCalls = 0;
     const h = harness({
       live: true,
@@ -1381,8 +1232,6 @@ describe('origin remit', () => {
   });
 
   test('the reachability warning names every origin that cannot be answered, not just one', async () => {
-    // A ticket can carry both a foreign-repo issue and a Slack link. Calling the
-    // Slack link its "only" origin would hide the other one from an operator.
     const h = harness({
       live: true,
       listCandidates: async () => [
@@ -1398,8 +1247,6 @@ describe('origin remit', () => {
   });
 
   test('a Slack archive is still a real origin, so it still reports a reachability gap', async () => {
-    // Someone IS waiting in that thread; this workflow simply cannot post there.
-    // That distinction is the whole reason `unrepliable` stays on the full path.
     const h = harness({
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, SLACK_ARCHIVE] })],
@@ -1419,13 +1266,6 @@ describe('origin remit', () => {
   });
 
   test('an unknown self repo refuses the run rather than skipping every candidate as foreign', async () => {
-    // The dangerous reading of a missing GITHUB_REPOSITORY is the quiet one: no
-    // origin matches, every candidate is skipped, and the run exits 0 looking
-    // like a healthy release in which nobody happened to need telling.
-    //
-    // The env var is stubbed rather than left alone: `selfRepo: undefined` falls
-    // through to the destructuring default, so under Actions the runner's own
-    // GITHUB_REPOSITORY would satisfy a check this test exists to see fail.
     const previous = process.env.GITHUB_REPOSITORY;
     delete process.env.GITHUB_REPOSITORY;
     try {
@@ -1440,8 +1280,6 @@ describe('origin remit', () => {
   });
 
   test('a channel that is neither is refused at the entry point, before any round trip', async () => {
-    // Every downstream decision is a `channel === 'beta'` ternary, so an
-    // unexpected value would quietly behave as stable all the way to the reply.
     const h = harness({
       live: true,
       channel: 'nightly',
@@ -1455,9 +1293,6 @@ describe('origin remit', () => {
 
 describe('a linked pull request, not a label, is what a reply depends on', () => {
   test('a ticket nobody linked a fix to is passed over quietly, not warned about', async () => {
-    // This is the ordinary state of a completed ticket that carried no code
-    // change, and with the label filter gone it is much the commonest outcome of
-    // a run. Warning on it would bury the genuine broken-chain warning under it.
     const h = harness({
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
@@ -1479,9 +1314,6 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
   });
 
   test('a sibling that resolved does not make an unlinked sibling look like a broken chain', async () => {
-    // One child shipped, the other was closed with no pull request at all. The
-    // warning must not name the child that is fine, and must not send an
-    // operator looking for attachments the other one never had.
     const h = harness({
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
@@ -1515,8 +1347,6 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
   });
 
   test('a fix reference on a child counts for the parent that has none of its own', async () => {
-    // A report that fanned out carries its links on the children. Looking only
-    // at the parent would file every fanned-in report as unlinked.
     const h = harness({
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
@@ -1555,9 +1385,6 @@ describe('the beta leg', () => {
     expect(post.text).toContain('going out now on the Open Knowledge beta channel');
     expect(post.text).toContain('follow up here');
     expect(post.text).not.toContain('This shipped in');
-    // The beta leg is first contact for most reporters, so it is the leg that
-    // must always carry the changeset — a regression here would strip the
-    // note from every reply, beta and stable, from then on.
     expect(post.text).toContain(CHANGESET.body);
   });
 
@@ -1573,9 +1400,6 @@ describe('the beta leg', () => {
   });
 
   test('a later beta of the same cycle re-reads the same marker and says nothing more', async () => {
-    // The beta version is the FIRST tag containing the fix, so it does not move
-    // as the cycle cuts beta.1, beta.2 and so on. That is what stops a reporter
-    // being pinged once per beta.
     const marked = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
     const h = betaHarness({
       listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, marked] })],
@@ -1590,10 +1414,6 @@ describe('the beta leg', () => {
   });
 
   test('a fix that only ever appeared in a stable is left to the stable leg', async () => {
-    // A point release cherry-picks a fix straight onto the stable line, so its
-    // earliest containing tag is a stable and there is no beta to point anyone
-    // at. Announcing it here would name a stable version as a beta and promise a
-    // follow-up that the stable leg has already made.
     const h = betaHarness({ versionFor: async () => '0.35.6' });
     const result = await h.run();
     expect(h.writes).toEqual([]);
@@ -1609,10 +1429,6 @@ describe('the beta leg', () => {
   });
 
   test('the stable leg omits the changeset prose when a beta reply already quoted it on this origin', async () => {
-    // The beta marker names v0.37.0-beta.0, a version the stable run is not
-    // about to post about, so the exact-marker check does not fire — but the
-    // presence of ANY marker for this origin means a beta reply ordinarily
-    // already said everything the prose would say a second time.
     const betaMarker = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
     const h = harness({
       live: true,
@@ -1623,8 +1439,6 @@ describe('the beta leg', () => {
     expect(post.text).toContain('This shipped in Open Knowledge v0.36.0');
     expect(post.text).not.toContain(CHANGESET.body);
     expect(result.posted.map((p) => p.identifier)).toEqual(['PRD-7539']);
-    // Pins the live push site's `quoted` flag to what the reply actually did.
-    // The dry-run push site and notice line get their own coverage below.
     expect(result.posted[0].quoted).toBe(false);
   });
 
@@ -1639,10 +1453,6 @@ describe('the beta leg', () => {
   });
 
   test('the quote decision is made per origin, not once for the whole candidate', async () => {
-    // One origin already carries a marker from an earlier version; the other
-    // has never been notified. Hoisting `quotedBefore` out of the per-origin
-    // loop would suppress the quote on the wrong origin without failing any
-    // single-origin test.
     const betaMarker = notificationMarkerUrl({ version: '0.35.0', originUrl: GH_ISSUE });
     const h = harness({
       live: true,

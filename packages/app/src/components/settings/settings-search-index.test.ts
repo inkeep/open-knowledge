@@ -6,8 +6,6 @@ import { FIELDS_USER_PREFERENCES } from './settings-fields';
 import { buildSettingsSearchIndex } from './settings-search-index';
 import type { SidebarGroup } from './settings-sidebar-types';
 
-// A translate stub — the FieldDef labels are Lingui MessageDescriptors; the
-// real Shell passes `useLingui().t`. For the index we only need a string.
 const translate = (message: { id?: string }) => message.id ?? '';
 
 function groupsFixture(opts: {
@@ -49,7 +47,6 @@ describe('buildSettingsSearchIndex', () => {
       groups: groupsFixture({ projectEnabled: false }),
       translate,
     });
-    // The disabled THIS-PROJECT group contributes no section entries.
     expect(disabled.some((e) => e.sectionId === 'sync')).toBe(false);
     expect(disabled.some((e) => e.sectionId === 'preferences')).toBe(true);
   });
@@ -91,9 +88,6 @@ describe('buildSettingsSearchIndex', () => {
     expect(structuralTranslate).toHaveBeenCalledWith(previewField.description);
   });
 
-  // Two sidebar rows are both called "Preferences" (User and This project). The
-  // result list renders the label, so without a context the two rows are
-  // indistinguishable and search stops being a usable way to reach either.
   test('sections carry their group as context, so colliding labels stay tellable apart', () => {
     const groups: SidebarGroup[] = [
       {
@@ -113,7 +107,6 @@ describe('buildSettingsSearchIndex', () => {
     const preferences = entries.filter((e) => e.label === 'Preferences');
 
     expect(preferences).toHaveLength(2);
-    // The pair is what matters: same label, different context.
     expect(preferences.map((e) => e.context).sort()).toEqual(['This project', 'User']);
   });
 
@@ -145,7 +138,6 @@ describe('buildSettingsSearchIndex', () => {
       targetField: 'section:content-rules',
     });
 
-    // Subsections inherit the group's enablement gate like everything else.
     const disabled = buildSettingsSearchIndex({
       groups: [{ ...groups[0], enabled: false }],
       translate,
@@ -196,11 +188,6 @@ describe('buildSettingsSearchIndex', () => {
   });
 });
 
-// Pins the settings-specific search SEMANTICS: the entries this module produces,
-// filtered by the same `matchesCommandQuery` the sidebar uses, resolve the
-// queries a user actually types. (Field label matching is covered end-to-end at
-// real-locale fidelity by the e2e; here we pin rule + section matching, which is
-// deterministic without the Lingui runtime.)
 describe('buildSettingsSearchIndex + matchesCommandQuery', () => {
   const entries = buildSettingsSearchIndex({ groups: groupsFixture({}), translate });
   const find = (query: string) =>
@@ -224,17 +211,12 @@ describe('buildSettingsSearchIndex + matchesCommandQuery', () => {
   });
 
   test('a section is found by a multi-word query spanning its label and its group', () => {
-    // "Sync" is the item label and "This project" its group heading, so the two
-    // words a user types are both in the searchable text but never adjacent in
-    // the order typed.
     expect(find('project sync').some((e) => e.kind === 'section' && e.sectionId === 'sync')).toBe(
       true,
     );
   });
 
   test('a query whose terms are not ALL present returns no entries', () => {
-    // The counterweight: matching on any one term would surface the Sync
-    // section here.
     expect(find('sync zzzznomatch')).toHaveLength(0);
   });
 });

@@ -1,23 +1,3 @@
-/**
- * E2E coverage for the Settings sidebar search + scope badges.
- *
- * These are the real-browser seams the jsdom DOM tests structurally cannot
- * reach at fidelity:
- *   - The search box stays PINNED while the section list scrolls (real layout +
- *     scroll — jsdom has no layout).
- *   - A section result NAVIGATES the real composed dialog (real Shell → index →
- *     matchesCommandQuery → cmdk → onNavigate, over the real dev server).
- *   - A field result SCROLLS its target into view and FLASHES it — the flash is
- *     a real CSS keyframe here, not a jsdom classList assertion.
- *   - A markdownlint rule result opens the panel PRE-FILTERED to that rule, and
- *     rules are searchable only while the plugin is ENABLED (disabled-plugin
- *     exclusion), driven through the real enable/disable toggle.
- *   - The plugin panels carry the correct User/Project scope badge.
- *
- * Runnable via `pnpm exec playwright test tests/stress/settings-search.e2e.ts`;
- * wired into the CI `test:e2e` subset (packages/app/package.json).
- */
-
 import {
   expect,
   SETTINGS_PANEL_TIMEOUT_MS,
@@ -26,12 +6,6 @@ import {
   waitForSettingsPanel,
 } from './_helpers';
 
-/**
- * Open the dialog only. The frame and sidebar ship in the main bundle, so this
- * wait is cheap and stays short — every wait BELOW that reaches panel-body
- * content carries `SETTINGS_PANEL_TIMEOUT_MS` instead, because the body is one
- * lazy chunk whose first resolve on a worker is an order of magnitude slower.
- */
 async function openSettings(page: import('@playwright/test').Page) {
   await page.goto('/#settings');
   await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: 10_000 });
@@ -39,8 +13,6 @@ async function openSettings(page: import('@playwright/test').Page) {
 
 test.describe('Settings search — navigation + pinned layout', () => {
   test('the search box stays pinned while the section list scrolls', async ({ page }) => {
-    // Shrink the viewport so the dialog (max-h: 100dvh-4rem) is shorter than the
-    // section list — forcing the sidebar scroll region to actually overflow.
     await page.setViewportSize({ width: 1000, height: 460 });
     await openSettings(page);
 
@@ -48,13 +20,10 @@ test.describe('Settings search — navigation + pinned layout', () => {
     await expect(search).toBeVisible();
     const before = await search.boundingBox();
 
-    // Scroll a bottom-of-list item into view — this scrolls the inner group
-    // region, NOT the pinned search box.
     await page.getByTestId('settings-sidebar-item-okignore').scrollIntoViewIfNeeded();
 
     const after = await search.boundingBox();
     await expect(search).toBeInViewport();
-    // The search box has not moved: it is outside the scroll region.
     expect(before).not.toBeNull();
     expect(after).not.toBeNull();
     expect(Math.round(after?.y ?? -1)).toBe(Math.round(before?.y ?? -2));
@@ -68,7 +37,6 @@ test.describe('Settings search — navigation + pinned layout', () => {
     await expect(result).toBeVisible({ timeout: 5_000 });
 
     await result.click();
-    // Real body swapped to the Hotkeys section; query cleared → group nav back.
     await expect(page.getByTestId('settings-hotkeys')).toBeVisible({
       timeout: SETTINGS_PANEL_TIMEOUT_MS,
     });
@@ -91,9 +59,7 @@ test.describe('Settings search — navigation + pinned layout', () => {
 
     const field = page.locator('[data-field="editor.wordWrap"]');
     await expect(field).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
-    // Rendered outcome: the field is scrolled into the viewport…
     await expect(field).toBeInViewport();
-    // …and the real CSS flash keyframe is applied, then clears.
     await expect(field).toHaveClass(/animate-settings-nav-flash/, { timeout: 2_000 });
     await expect(field).not.toHaveClass(/animate-settings-nav-flash/, { timeout: 3_000 });
   });
@@ -103,8 +69,6 @@ test.describe('Settings search — navigation + pinned layout', () => {
   }) => {
     await openSettings(page);
 
-    // Config sharing merged into Sync & sharing; its subsection entry
-    // navigates there and flashes the sharing block's anchor.
     await page.getByTestId('settings-search-input').fill('Config sharing');
     const result = page.getByTestId('settings-search-result-subsection:sync:sharing');
     await expect(result).toBeVisible({ timeout: 5_000 });
@@ -139,7 +103,6 @@ test.describe('Settings search — navigation + pinned layout', () => {
 test.describe('Settings search — scope badges + markdownlint rules', () => {
   test('the Themes plugin panel shows a User scope badge', async ({ page }) => {
     await openSettings(page);
-    // Themes is a user-scope plugin, enabled by default.
     await page.getByTestId('settings-sidebar-item-plugin:theme').click();
     await expect(page.getByTestId('settings-scope-badge-user')).toBeVisible({
       timeout: SETTINGS_PANEL_TIMEOUT_MS,
@@ -152,16 +115,10 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
   }) => {
     await openSettings(page);
 
-    // Ensure markdownlint is ENABLED via the real project-plugins toggle. The
-    // panel wait is the caller's job: it is this page's first body render, so it
-    // pays the cold chunk, while the helper's own gate is budgeted only for the
-    // config binding that leaves the switch disabled.
     await page.getByTestId('settings-sidebar-item-plugins-manage').click();
     await waitForSettingsPanel(page, 'settings-plugins-manage');
     await setPluginEnabled(page, 'markdownlint', true);
 
-    // A rule is now searchable from the sidebar search; the result opens the
-    // panel pre-filtered to that rule, and the header shows the Project badge.
     await page.getByTestId('settings-search-input').fill('MD013');
     const ruleResult = page.getByTestId('settings-search-result-rule:MD013');
     await expect(ruleResult).toBeVisible({ timeout: 5_000 });
@@ -173,9 +130,6 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
     await expect(page.getByTestId('markdownlint-rule-row-MD013')).toBeVisible();
     await expect(page.getByTestId('markdownlint-rule-row-MD001')).toHaveCount(0);
 
-    // Now DISABLE markdownlint; its rules drop out of the search index. No
-    // panel wait here: the body chunk resolved above, so the helper's binding
-    // gate is the only readiness left to wait on.
     await page.getByTestId('settings-sidebar-item-plugins-manage').click();
     await setPluginEnabled(page, 'markdownlint', false);
 

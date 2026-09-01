@@ -1,15 +1,3 @@
-/**
- * Behavioral tests for TerminalPanel's bridge wiring + a11y.
- *
- * xterm (`@xterm/*`) and the desktop terminal bridge are mocked at the module
- * boundary (both are system boundaries the component talks to). The assertions
- * pin the component's orchestration — PTY sizing, output→write→drain
- * backpressure, keystroke→input, resize→fit→resize, Escape-reaches-the-PTY
- * (no key interception), dispose+kill teardown, WebGL degrade, and ptyId
- * addressing — through its public surface, not xterm internals. Real xterm
- * rendering + a real PTY are the browser/packaged rung.
- */
-
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import type {
@@ -26,7 +14,6 @@ import {
   instrumentSmoothScrollOption,
 } from './terminal-scroll-model.test-helper';
 
-// --- xterm mocks (3rd-party system boundary) ---
 class MockFitAddon {
   fit = vi.fn(() => {});
   constructor() {
@@ -34,8 +21,6 @@ class MockFitAddon {
   }
 }
 class MockWebglAddon {}
-// Captures the click handler the panel passes to WebLinksAddon so the test can
-// assert URL activation routes through the bridge.
 let lastWebLinksHandler: ((event: MouseEvent, uri: string) => void) | null = null;
 class MockWebLinksAddon {
   constructor(handler?: (event: MouseEvent, uri: string) => void) {
@@ -48,17 +33,8 @@ class MockTerminal {
   cols = 80;
   rows = 24;
   unicode = { activeVersion: '6' };
-  // Mouse-tracking mode the wheel handler reads; default 'none' = normal
-  // scrollback (handler defers to xterm). Tests flip this to exercise the
-  // mouse-mode wheel path.
   modes = { mouseTrackingMode: 'none' as string };
-  // Active mouse encoding the handler gates on ('SGR'/'SGR_PIXELS' = take over;
-  // 'DEFAULT' X10 = defer to xterm). Exposed via the `_core` getter below to
-  // mirror xterm's internal shape the production handler reads.
   mouseEncoding = 'SGR' as string;
-  // Captures the synchronous render-debouncer flush the resize path invokes to
-  // repaint in the same frame (the WebGL canvas is cleared on resize; without
-  // the flush the glyphs land one frame late — a visible blank flash).
   renderFlush = vi.fn(() => {});
   refresh = vi.fn((_start: number, _end: number) => {});
   selection = '';
@@ -76,28 +52,9 @@ class MockTerminal {
       },
     };
   }
-  // The wheel handler reads `term.element` to hit-test the pointer's cell for
-  // SGR report coordinates. Left undefined by default (mock `open` builds no
-  // DOM) → the handler's viewport-center fallback; the pointer-mapping test
-  // assigns a real element.
   element: HTMLElement | undefined = undefined;
-  // Text the mocked buffer returns for any row — tests set it, then drive the
-  // captured link provider to exercise file-path detection + click routing.
   lineText = '';
-  // Optional wrapped-line fixture: each entry is one buffer row; rows after the
-  // first carry `isWrapped` so the provider stitches them into one logical line.
   lineRows: string[] | null = null;
-  // Where the viewport sits in the scrollback. `viewportY === baseY` is the
-  // bottom; anything lower is scrolled back, which is what the panel's
-  // post-resize scroll-reach restore keys off.
-  //
-  // The public scrolls model the pinned `CoreBrowserTerminal`: under
-  // `smoothScrollDuration` they hand a target to an animated viewport and
-  // return with `viewportY` unmoved, and `scrollToLine` does nothing at all
-  // when `line - viewportY` is zero. A mock that simply recorded the calls
-  // would accept a restore the real terminal swallows.
-  // The scroll rules live in `terminal-scroll-model.test-helper`, shared with
-  // the unit fake beside `restoreScrollReach` so the two cannot drift.
   scrollState = createScrollModelState(0);
   baseY = 0;
   get viewportY() {
@@ -153,9 +110,6 @@ class MockTerminal {
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   wheelHandler: ((e: WheelEvent) => boolean) | null = null;
   options: Record<string, unknown>;
-  // Builds the minimal WebGL-renderer DOM (.xterm-screen > canvas) so the
-  // panel's device-pixel canvas observer — the second-clear repaint hook —
-  // has a canvas to find, matching real xterm's structure.
   open = vi.fn((container: HTMLElement) => {
     const screen = document.createElement('div');
     screen.className = 'xterm-screen';
@@ -186,28 +140,17 @@ class MockTerminal {
     this.onDataCb = cb;
     return { dispose() {} };
   });
-  // Captures the OSC 0/2 title listener; firing onTitleChangeCb mimics the PTY
-  // program setting the window title. Returns a disposable like real xterm.
   onTitleChangeCb: ((title: string) => void) | null = null;
   onTitleChange = vi.fn((cb: (title: string) => void) => {
     this.onTitleChangeCb = cb;
     return { dispose() {} };
   });
-  // Captures the custom key handler the panel attaches. Production attaches one
-  // handler that patches two Shift chords — Shift+Tab (cancel the browser
-  // default so it reaches the PTY instead of escaping focus) and Shift+Enter
-  // (send LF instead of xterm's default CR so the CLI inserts a newline). Every
-  // other key returns true, so xterm processes it and Escape reaches the PTY.
   attachCustomKeyEventHandler = vi.fn((h: (e: KeyboardEvent) => boolean) => {
     this.keyHandler = h;
   });
-  // Production attaches a wheel handler that, in mouse-tracking mode, replaces
-  // xterm's flooding one-report-per-event behavior with an accumulated,
-  // frequency-independent stream (see terminal-wheel.ts).
   attachCustomWheelEventHandler = vi.fn((h: (e: WheelEvent) => boolean) => {
     this.wheelHandler = h;
   });
-  /** Writes to `smoothScrollDuration`; the scrolled-back guard's only trace. */
   smoothScrollWrites: () => number;
   constructor(options: Record<string, unknown>) {
     this.smoothScrollWrites = instrumentSmoothScrollOption(
@@ -223,16 +166,9 @@ let lastFit: MockFitAddon | null = null;
 let webglThrows = false;
 let deferTerminalWrites = false;
 let terminalGeneratedInput: string | null = null;
-// Drives the mocked next-themes `resolvedTheme`; mutate + rerender to exercise
-// a live light/dark switch.
 let mockResolvedTheme: string | undefined = 'dark';
 
-// Capturing ResizeObserver — the jsdom preload installs a no-op one whose
-// callback never fires, so override it to drive the resize path explicitly.
 let roCallback: (() => void) | null = null;
-// Every constructed observer, so tests can find a specific one by its
-// observed target (e.g. the device-pixel canvas observer vs the container
-// refit observer — `roCallback` only tracks the most recent construction).
 let allROs: MockResizeObserver[] = [];
 class MockResizeObserver {
   cb: () => void;
@@ -326,8 +262,6 @@ function makeBridge(
       project: { checkTargetExists },
       config: { e2eSmoke: false, projectPath: '/Users/me/project' },
       platform,
-      // Stand in for Electron `webUtils.getPathForFile`: a dropped File resolves
-      // to a deterministic on-disk path so the drop→input wiring is assertable.
       getPathForFile: (file: File) => `/dropped/${file.name}`,
     } as unknown as OkDesktopBridge,
     terminal,
@@ -385,16 +319,10 @@ describe('TerminalPanel', () => {
     const region = screen.getByRole('region', { name: 'Terminal' });
     expect(region).toBeTruthy();
 
-    // No `accessibility` surface on this bridge → the fail-accessible default:
-    // screen-reader mode stays ON when the assistive-tech signal is absent.
     expect(lastTerm?.options.screenReaderMode).toBe(true);
     expect(lastTerm?.options.minimumContrastRatio).toBe(4.5);
     expect(lastTerm?.unicode.activeVersion).toBe('11');
-    // Deep per-session history so switching away and back keeps a useful
-    // scrollback, rather than xterm's 1000-line default.
     expect(lastTerm?.options.scrollback).toBe(10000);
-    // Smooth scrolling on: xterm's default of 0 applies wheel/trackpad scroll as
-    // instant whole-line jumps, which reads as choppy under trackpad momentum.
     expect(lastTerm?.options.smoothScrollDuration).toBe(125);
 
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
@@ -418,12 +346,8 @@ describe('TerminalPanel', () => {
     const { unmount } = render(<TerminalPanel bridge={withA11y} />);
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
 
-    // No assistive tech detected → xterm skips its a11y DOM mirror (the
-    // dominant typing/scrolling cost when no screen reader is attached).
     expect(lastTerm?.options.screenReaderMode).toBe(false);
 
-    // A screen reader attaching mid-session re-skins the live terminal in
-    // place — no restart, the PTY and scrollback survive.
     act(() => {
       for (const f of a11ySubs) f(true);
     });
@@ -433,8 +357,6 @@ describe('TerminalPanel', () => {
     });
     expect(lastTerm?.options.screenReaderMode).toBe(false);
 
-    // The subscription is released with the panel — a leaked listener would
-    // keep touching a disposed terminal on later attach/detach flips.
     act(() => unmount());
     expect(a11yUnsub).toHaveBeenCalledTimes(1);
   });
@@ -458,13 +380,8 @@ describe('TerminalPanel', () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-fresh' });
     render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
 
-    // A tab restored from a surviving session carries its ptyId, so the panel
-    // reconnects the live shell rather than creating a new one — the running
-    // program and its I/O survive the reload.
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
     expect(terminal.create).not.toHaveBeenCalled();
-    // The adopted shell is nudged to repaint at the current viewport so a
-    // full-screen TUI (claude, vim) redraws its screen after the reload.
     expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 80, 24);
     act(() => lastTerm?.onDataCb?.('user input'));
     expect(terminal.input).toHaveBeenCalledWith('pty-survivor', 'user input');
@@ -478,16 +395,8 @@ describe('TerminalPanel', () => {
     render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
 
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
-    // The retained screen + scrollback main returned on adopt is written into the
-    // fresh xterm so the reconnected tab repaints instead of coming back blank.
-    // This is the renderer half of the replay contract the
-    // main-process test pins on the producing side.
     expect(lastTerm?.write).toHaveBeenCalledWith('REPLAYED-SCREEN-BYTES', expect.any(Function));
     expect(terminal.create).not.toHaveBeenCalled();
-    // Replayed bytes are output, so the pending notice must clear. Without the
-    // markFirstOutput() call on this path a reload-recovered terminal would sit
-    // under a permanent "Starting terminal…" over already-restored content until
-    // the shell happened to emit a fresh byte.
     expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
   });
 
@@ -505,14 +414,9 @@ describe('TerminalPanel', () => {
     expect(lastTerm?.focus).not.toHaveBeenCalled();
     act(() => lastTerm?.onDataCb?.('early user input'));
     expect(terminal.input).not.toHaveBeenCalledWith('pty-survivor', 'early user input');
-    // The replay callback is still pending, so the TUI repaint nudge cannot be
-    // gated behind replay parsing.
     expect(terminal.resize).toHaveBeenCalledWith('pty-survivor', 80, 24);
     act(() => lastTerm?.flushPendingWrites());
 
-    // Replaying a retained Device Attributes request makes xterm answer it.
-    // That answer belongs to the old screen reconstruction, not the live PTY;
-    // forwarding it corrupts PowerShell's line editor before the next command.
     expect(terminal.input).not.toHaveBeenCalledWith('pty-survivor', '\x1b[?1;2c');
     expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy();
     expect(lastTerm?.focus).toHaveBeenCalledTimes(1);
@@ -641,12 +545,8 @@ describe('TerminalPanel', () => {
     }));
     render(<TerminalPanel bridge={bridge} adoptPtyId="pty-gone" />);
 
-    // The surviving session exited before this mount; adopt is refused and the
-    // panel spawns a fresh shell rather than wiring xterm to a dead ptyId.
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(terminal.adopt).toHaveBeenCalledWith('pty-gone');
-    // resize is gated behind `if (adopted.ok)`, so the refused ptyId is never
-    // resized — a refactor moving resize before that check would regress here.
     expect(terminal.resize).not.toHaveBeenCalled();
   });
 
@@ -656,23 +556,12 @@ describe('TerminalPanel', () => {
     });
     render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
 
-    // An IPC failure on adopt must not strand the panel on a permanently blank
-    // terminal — the catch degrades to the same fresh-create fallback as an
-    // explicit refusal.
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
     expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor');
-    // A thrown adopt never reaches the `if (adopted.ok)` branch, so the dead
-    // ptyId is never resized either.
     expect(terminal.resize).not.toHaveBeenCalled();
   });
 
   test('reload rehydration: an unmount mid-adopt leaves the surviving session alive (does not kill it)', async () => {
-    // Cancelled adopt is deliberately asymmetric with cancelled create: a create
-    // reaps the orphan PTY it just made, but an adopt only resumed a shell that
-    // is still alive in main, so it must leave it for the next mount to re-adopt.
-    // Harmonizing the two (adding kill() to the adopt cancel path) would kill
-    // running programs on every React StrictMode double-mount — this pins against
-    // that regression.
     let releaseAdopt: (() => void) | null = null;
     const { bridge, terminal } = makeBridge(
       { ok: true, ptyId: 'pty-fresh' },
@@ -684,11 +573,8 @@ describe('TerminalPanel', () => {
     );
     const { unmount } = render(<TerminalPanel bridge={bridge} adoptPtyId="pty-survivor" />);
 
-    // Let adopt get in flight, then tear the panel down before it resolves.
     await waitFor(() => expect(terminal.adopt).toHaveBeenCalledWith('pty-survivor'));
     unmount();
-    // The adopt resolves after the unmount; the cancelled effect must ignore it
-    // (no attach) rather than wiring or reaping the still-live session.
     releaseAdopt?.();
     await act(async () => {});
 
@@ -700,14 +586,11 @@ describe('TerminalPanel', () => {
     const onTitleChange = vi.fn((_title: string) => {});
     render(<TerminalPanel bridge={bridge} onTitleChange={onTitleChange} />);
 
-    // xterm registers the title listener synchronously at mount (before the PTY
-    // create resolves), so the program's first title can land immediately.
     await waitFor(() => expect(lastTerm?.onTitleChangeCb).toBeTruthy());
 
     act(() => lastTerm?.onTitleChangeCb?.('claude — repo'));
     expect(onTitleChange).toHaveBeenCalledWith('claude — repo');
 
-    // Live binding: a later title forwards again.
     act(() => lastTerm?.onTitleChangeCb?.('claude — done'));
     expect(onTitleChange).toHaveBeenLastCalledWith('claude — done');
   });
@@ -719,8 +602,6 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(lastTerm?.onTitleChangeCb).toBeTruthy());
 
     unmount();
-    // After teardown the panel must not forward a late title (the disposed
-    // listener's callback is cleared by the cancelled-guard regardless).
     onTitleChange.mockClear();
     act(() => lastTerm?.onTitleChangeCb?.('late'));
     expect(onTitleChange).not.toHaveBeenCalled();
@@ -731,8 +612,6 @@ describe('TerminalPanel', () => {
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(terminal.onData).toHaveBeenCalledTimes(1));
 
-    // 4-codepoint multibyte string: drain must report UTF-16 .length (6), the
-    // unit terminal-manager accounts in — not the byte length.
     const payload = 'hi🎉';
     expect(payload.length).toBe(4);
     act(() => pushData({ ptyId: 'pty-1', data: payload }));
@@ -746,16 +625,11 @@ describe('TerminalPanel', () => {
     const { bridge, terminal, pushData } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
 
-    // Attached — a ptyId came back, so the status machine already reads
-    // 'running'. But the PTY host still has to fork and the login shell still
-    // has to source its rc chain, and until a byte arrives the pane is empty.
-    // This is the window the user reads as "my keystroke did nothing".
     await waitFor(() => expect(terminal.onData).toHaveBeenCalledTimes(1));
     expect(screen.getByTestId('terminal-starting-notice')).toBeTruthy();
 
     act(() => pushData({ ptyId: 'pty-1', data: '$ ' }));
 
-    // The shell is talking; the notice must not sit on top of live output.
     expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
   });
 
@@ -766,32 +640,13 @@ describe('TerminalPanel', () => {
     );
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
-    // The readiness verdict is resolved BEFORE create() returns a ptyId, so a
-    // banner-bearing launch always has the banner mounted for the whole
-    // pre-first-byte window. The two coexist by construction, not by race.
     const banner = await screen.findByTestId('terminal-readiness-banner');
     const notice = screen.getByTestId('terminal-starting-notice');
 
-    // jsdom has no layout engine, so occlusion itself cannot be measured here
-    // (a click on a covered button still "succeeds"). What it can pin are the
-    // two properties whose absence caused it. First: the overlay's CONTAINING
-    // BLOCK — the positioned ancestor `inset-0` resolves against — must not span
-    // the banner. Asserting on the notice itself would be a tautology, since the
-    // broken tree had banner and notice as SIBLINGS: the occlusion never came
-    // from nesting, it came from the containing block being the whole column.
     const containingBlock = notice.parentElement;
     expect(containingBlock).not.toBeNull();
     expect(containingBlock?.contains(banner)).toBe(false);
-    // ...and it must actually BE the containing block. Without this, dropping
-    // `relative` from the canvas wrapper re-resolves `inset-0` against the
-    // column wrapper one level up — which spans the banner strips — while
-    // `parentElement` still points at the now-unpositioned canvas box and every
-    // other assertion here stays green. That is the column-wide overlay
-    // occlusion this test exists to kill, reachable by deleting one class.
-    // Token match, not substring: `sm:relative` would satisfy `toContain` while
-    // leaving the wrapper unpositioned below the breakpoint.
     expect(containingBlock?.className.split(/\s+/)).toContain('relative');
-    // Second: even where it does overlay, it must not intercept pointer events.
     expect(notice.className).toContain('pointer-events-none');
     expect(screen.getByRole('button', { name: 'Connect tools' })).toBeTruthy();
 
@@ -811,23 +666,17 @@ describe('TerminalPanel', () => {
   test('dropping files inserts their shell-escaped paths at the prompt (PRD-7238)', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
-    // Same readiness gate as the keystroke test: once onData is subscribed the
-    // create() promise has settled and ptyIdRef points at the live PTY.
     await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
 
     const container = document.querySelector('[data-terminal-status]');
     if (container === null) throw new Error('terminal container not found');
 
     const fileA = new File(['x'], 'shot.png', { type: 'image/png' });
-    // A name with a space and an apostrophe exercises the shell escaping.
     const fileB = new File(['y'], "a b's.png", { type: 'image/png' });
     const dataTransfer = { types: ['Files'], files: [fileA, fileB] };
     fireEvent.dragOver(container, { dataTransfer });
     fireEvent.drop(container, { dataTransfer });
 
-    // Each path single-quoted (apostrophe → '\''), space-joined, trailing space
-    // so a following keystroke doesn't glue onto the path. No newline — the user
-    // reviews the composed prompt before submitting.
     expect(terminal.input).toHaveBeenCalledWith(
       'pty-1',
       "'/dropped/shot.png' '/dropped/a b'\\''s.png' ",
@@ -911,9 +760,6 @@ describe('TerminalPanel', () => {
 
   test('a drop where every file resolves to no disk path writes nothing (clipboard blobs)', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
-    // Electron `webUtils.getPathForFile` returns '' for a File with no disk
-    // backing (a pasted/synthetic blob) — the null/empty filter must drop it so
-    // the prompt never receives a literal empty-quoted argument.
     (bridge as unknown as { getPathForFile: (f: File) => string }).getPathForFile = () => '';
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
@@ -932,8 +778,6 @@ describe('TerminalPanel', () => {
 
   test('a mixed drop writes only the files that resolve to a disk path', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
-    // Only on-disk files resolve; the synthetic one yields null and is filtered
-    // out (never interpolated as a literal 'null' into the shell-quoted string).
     (bridge as unknown as { getPathForFile: (f: File) => string | null }).getPathForFile = (
       file,
     ) => (file.name === 'ghost.png' ? null : `/dropped/${file.name}`);
@@ -949,7 +793,6 @@ describe('TerminalPanel', () => {
     fireEvent.dragOver(container, { dataTransfer });
     fireEvent.drop(container, { dataTransfer });
 
-    // Exactly the resolvable path, once — no 'null' text, no empty argument.
     expect(terminal.input).toHaveBeenCalledTimes(1);
     expect(terminal.input).toHaveBeenCalledWith('pty-1', "'/dropped/shot.png' ");
   });
@@ -962,10 +805,6 @@ describe('TerminalPanel', () => {
     const container = document.querySelector('[data-terminal-status]');
     if (container === null) throw new Error('terminal container not found');
 
-    // A newline in the (legal, if exotic) filename → the resolved path carries a
-    // control byte the tty would act on before the shell, submitting the trailing
-    // `rm -rf ~` as its own command. The clean sibling still inserts; the tainted
-    // one is dropped entirely.
     const clean = new File(['x'], 'shot.png', { type: 'image/png' });
     const tainted = new File(['y'], 'a\nrm -rf ~.png', { type: 'image/png' });
     const dataTransfer = { types: ['Files'], files: [clean, tainted] };
@@ -984,7 +823,6 @@ describe('TerminalPanel', () => {
     const container = document.querySelector('[data-terminal-status]');
     if (container === null) throw new Error('terminal container not found');
 
-    // An internal sidebar drag (no 'Files' in types) must not reach the PTY.
     const dataTransfer = { types: ['text/plain'], files: [] };
     fireEvent.drop(container, { dataTransfer });
     expect(terminal.input).not.toHaveBeenCalled();
@@ -1009,11 +847,6 @@ describe('TerminalPanel', () => {
 
     const fitsBefore = lastFit?.fit.mock.calls.length ?? 0;
     const resizesBefore = terminal.resize.mock.calls.length;
-    // Simulate a section drag: a stream of ResizeObserver callbacks inside one
-    // throttle interval. Every event fits — the grid stays glued to the panel
-    // edge (throttling the fit made it visibly step/flicker) — but only the
-    // leading PTY resize goes out; unthrottled, each one SIGWINCHes the
-    // running TUI into a full repaint per pointer frame.
     act(() => {
       roCallback?.();
       roCallback?.();
@@ -1022,8 +855,6 @@ describe('TerminalPanel', () => {
     expect((lastFit?.fit.mock.calls.length ?? 0) - fitsBefore).toBe(3);
     expect(terminal.resize.mock.calls.length - resizesBefore).toBe(1);
 
-    // The trailing PTY resize lands after the interval so the shell settles at
-    // the final drag size (PTY_RESIZE_THROTTLE_MS = 100).
     await waitFor(() => expect(terminal.resize.mock.calls.length - resizesBefore).toBe(2), {
       timeout: 1000,
     });
@@ -1034,16 +865,9 @@ describe('TerminalPanel', () => {
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(roCallback).toBeTruthy());
 
-    // A resize that does NOT cross a cell boundary leaves the canvas bitmap
-    // intact — no forced repaint.
     act(() => roCallback?.());
     expect(lastTerm?.renderFlush).not.toHaveBeenCalled();
 
-    // A fit that changes the grid resizes the WebGL canvas, which clears its
-    // bitmap; xterm's own repaint is rAF-scheduled (one frame LATE, after the
-    // browser paints the cleared canvas). The panel must queue a full refresh
-    // and flush the render debouncer synchronously so the glyphs are back
-    // before this frame paints.
     lastFit?.fit.mockImplementation(() => {
       if (lastTerm) lastTerm.cols = 100;
     });
@@ -1057,8 +881,6 @@ describe('TerminalPanel', () => {
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(roCallback).toBeTruthy());
 
-    // At the bottom there is no reach to lose, so the common resize must leave
-    // even a disagreeing scrollbar alone.
     if (lastTerm) {
       lastTerm.viewportY = 120;
       lastTerm.baseY = 120;
@@ -1071,40 +893,24 @@ describe('TerminalPanel', () => {
     expect(lastTerm?.viewportY).toBe(120);
     expect(lastTerm?.scrollbarLine).toBe(7);
     expect(lastTerm?.pendingScrollTarget).toBeNull();
-    // The ordinary resize decides it has nothing to do without touching the
-    // terminal's options; at the bottom both halves of the bounce would be
-    // no-ops anyway, so this is the guard's only observable trace.
     expect(lastTerm?.smoothScrollWrites()).toBe(0);
 
-    // Scrolled back, the same fit re-asserts the position outright: the reader
-    // is left where they were, the scrollbar agrees again, and there is no
-    // animation still to run.
     if (lastTerm) {
       lastTerm.viewportY = 34;
       lastTerm.scrollbarLine = 0;
-      // Scoped to this act, so the ordering assertion below compares the two
-      // calls from the SAME resize rather than an earlier flush.
       lastTerm.renderFlush.mockClear();
       lastTerm.scrollToBottom.mockClear();
     }
     act(() => roCallback?.());
-    // Pins the CALL ORDER: the repaint must precede the restore, because
-    // flushing the render debouncer runs the refresh callbacks the viewport
-    // queued its scroll-area sync onto. What this cannot pin is the
-    // consequence — the mock always supplies the debouncer internal, so it
-    // never enters the degraded path where the flush defers to the next frame
-    // and the restore lands ahead of the sync regardless of call order.
     expect(lastTerm?.renderFlush.mock.invocationCallOrder[0]).toBeLessThan(
       lastTerm?.scrollToBottom.mock.invocationCallOrder[0] ?? 0,
     );
     expect(lastTerm?.viewportY).toBe(34);
     expect(lastTerm?.scrollbarLine).toBe(34);
     expect(lastTerm?.pendingScrollTarget).toBeNull();
-    // Suppressed across the pair, then put back.
     expect(lastTerm?.smoothScrollWrites()).toBe(2);
     expect(lastTerm?.options.smoothScrollDuration).toBe(125);
 
-    // A resize that leaves the grid alone is not a resize that can cost reach.
     if (lastTerm) {
       lastTerm.viewportY = 12;
       lastTerm.scrollbarLine = 3;
@@ -1121,19 +927,12 @@ describe('TerminalPanel', () => {
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
 
-    // The panel wires its own device-pixel-content-box observer on the WebGL
-    // canvas: the addon's sibling observer re-sets canvas.width (a SECOND
-    // bitmap clear, after the fit-path repaint) whenever a fractional CSS
-    // width snaps differently to device pixels, and its own redraw is a frame
-    // late. Find the observer whose target is the canvas.
     const canvas = document.querySelector('.xterm-screen canvas');
     expect(canvas).toBeTruthy();
     const canvasRO = allROs.find((ro) => ro.observed.some((o) => o.el === canvas));
     expect(canvasRO).toBeTruthy();
     expect(canvasRO?.observed[0]?.opts).toEqual({ box: 'device-pixel-content-box' });
 
-    // Firing it (the addon just cleared the bitmap) must flush a repaint
-    // synchronously so the blank canvas is never painted.
     const flushesBefore = lastTerm?.renderFlush.mock.calls.length ?? 0;
     act(() => canvasRO?.cb());
     expect((lastTerm?.renderFlush.mock.calls.length ?? 0) - flushesBefore).toBe(1);
@@ -1144,17 +943,10 @@ describe('TerminalPanel', () => {
     render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
 
-    // One custom key handler is attached to patch two Shift chords: Shift+Tab
-    // (cancel the browser default so it reaches the PTY instead of escaping
-    // focus; returns true so xterm still emits the reverse-tab sequence) and
-    // Shift+Enter (send LF to the PTY, return false to suppress xterm's default
-    // CR — exercised in the next test). Every other key returns true unchanged.
     expect(lastTerm?.attachCustomKeyEventHandler).toHaveBeenCalledTimes(1);
     const handler = lastTerm?.keyHandler;
     expect(handler).toBeTruthy();
 
-    // Shift+Tab keydown: browser default cancelled, but still handed to xterm
-    // (returns true) so the reverse-tab sequence reaches the PTY / Claude TUI.
     const shiftTabPreventDefault = vi.fn(() => {});
     const shiftTab = {
       type: 'keydown',
@@ -1165,7 +957,6 @@ describe('TerminalPanel', () => {
     expect(handler?.(shiftTab)).toBe(true);
     expect(shiftTabPreventDefault).toHaveBeenCalledTimes(1);
 
-    // Plain Tab is left to xterm, which already cancels that one itself.
     const plainTabPreventDefault = vi.fn(() => {});
     const plainTab = {
       type: 'keydown',
@@ -1176,8 +967,6 @@ describe('TerminalPanel', () => {
     expect(handler?.(plainTab)).toBe(true);
     expect(plainTabPreventDefault).not.toHaveBeenCalled();
 
-    // Escape is never intercepted (no preventDefault) so terminal apps (vim, the
-    // `claude` TUI) receive it — and it reaches the PTY via the data callback.
     const escapePreventDefault = vi.fn(() => {});
     const escapeKey = {
       type: 'keydown',
@@ -1199,8 +988,6 @@ describe('TerminalPanel', () => {
     const handler = lastTerm?.keyHandler;
     expect(handler).toBeTruthy();
 
-    // Shift+Enter: send LF ourselves and return false so xterm does NOT also
-    // emit its default CR — the CLI inserts a newline rather than submitting.
     const shiftEnterPreventDefault = vi.fn(() => {});
     const shiftEnter = {
       type: 'keydown',
@@ -1212,7 +999,6 @@ describe('TerminalPanel', () => {
     expect(shiftEnterPreventDefault).toHaveBeenCalledTimes(1);
     expect(terminal.input).toHaveBeenCalledWith('pty-1', '\n');
 
-    // Plain Enter is left to xterm, which sends its default CR (submit).
     const plainEnterPreventDefault = vi.fn(() => {});
     const plainEnter = {
       type: 'keydown',
@@ -1494,49 +1280,25 @@ describe('TerminalPanel', () => {
     if (term?.wheelHandler == null) throw new Error('wheel handler not attached');
     const wheel = term.wheelHandler;
 
-    // Normal scrollback (no TUI mouse tracking): the handler returns true so
-    // xterm's own (smoothed) scrollback handling runs, and nothing is written
-    // to the PTY.
     term.modes.mouseTrackingMode = 'none';
     expect(wheel({ deltaY: 120, deltaMode: 0 } as unknown as WheelEvent)).toBe(true);
     expect(terminal.input).not.toHaveBeenCalled();
 
-    // Mouse-tracking TUI using a non-SGR (legacy X10/DEFAULT) encoding: the
-    // handler must NOT synthesize SGR reports it can't parse — it defers to
-    // xterm's own correctly-encoded path (returns true, writes nothing).
     term.modes.mouseTrackingMode = 'any';
     term.mouseEncoding = 'DEFAULT';
     expect(wheel({ deltaY: 120, deltaMode: 0 } as unknown as WheelEvent)).toBe(true);
     expect(terminal.input).not.toHaveBeenCalled();
 
-    // Mouse-tracking TUI with SGR encoding (claude/vim): the handler takes over,
-    // returns false to suppress xterm's flooding default, and forwards a burst
-    // of accumulated SGR wheel-down reports to the PTY. The exact tick count is
-    // a tuned product of sensitivity/cell-height/cap (decoupled from this test
-    // on purpose) — pin the payload SHAPE, not the count, so re-tuning the feel
-    // doesn't break the wiring assertion.
     term.mouseEncoding = 'SGR';
     expect(wheel({ deltaY: 120, deltaMode: 0 } as unknown as WheelEvent)).toBe(false);
     expect(terminal.input).toHaveBeenCalledTimes(1);
     const [ptyId, payload] = terminal.input.mock.calls[0] as [string, string];
     expect(ptyId).toBe('pty-1');
-    // Positive deltaY = wheel-down = SGR button 65; one or more whole-row ticks.
-    // The mock terminal exposes no `element`, so the report position takes the
-    // viewport-center fallback (80×24 → 40;12) — never a corner, which
-    // hit-testing TUIs (opencode) treat as a dead cell and drop the scroll.
-    // Assert the payload is purely repeated wheel-down reports (string ops, not
-    // a regex — the ESC byte trips biome's control-char-in-regex rule).
     const downTick = '\x1b[<65;40;12M';
     expect(payload.length).toBeGreaterThan(0);
     expect(payload.length % downTick.length).toBe(0);
     expect(payload.replaceAll(downTick, '')).toBe('');
 
-    // SGR_PIXELS (1016, pixel-precision) also takes over — the gate accepts
-    // both SGR encodings, so pin the second branch against a refactor/typo.
-    // The payload must carry CSS-px coordinates, not cells: with the mock's
-    // 10×17 cells, no element (center fallback), and an 80×24 grid, the pixel
-    // center is ceil(10·80/2)=400, ceil(17·24/2)=204. A regression in the
-    // `pixels` flag wiring would emit cell coordinates and fail here.
     terminal.input.mockClear();
     term.mouseEncoding = 'SGR_PIXELS';
     expect(wheel({ deltaY: 120, deltaMode: 0 } as unknown as WheelEvent)).toBe(false);
@@ -1557,8 +1319,6 @@ describe('TerminalPanel', () => {
     term.modes.mouseTrackingMode = 'any';
     term.mouseEncoding = 'SGR';
 
-    // Give the terminal a screen element at a known origin; the pointer sits
-    // 505px right / 110px below it. With 10×17 cells that's cell (51, 7).
     const screenEl = document.createElement('div');
     screenEl.className = 'xterm-screen';
     screenEl.getBoundingClientRect = () => ({ left: 100, top: 50 }) as DOMRect;
@@ -1591,9 +1351,6 @@ describe('TerminalPanel', () => {
     term.modes.mouseTrackingMode = 'any';
     term.mouseEncoding = 'SGR';
 
-    // No `.xterm-screen` child (e.g. an xterm DOM restructure): the handler
-    // must measure `term.element` itself rather than degrade to the center
-    // fallback. Same pointer math as above but from the element's own origin.
     const host = document.createElement('div');
     host.getBoundingClientRect = () => ({ left: 200, top: 100 }) as DOMRect;
     term.element = host;
@@ -1623,18 +1380,13 @@ describe('TerminalPanel', () => {
     const wheel = term.wheelHandler;
     term.mouseEncoding = 'SGR';
 
-    // SGR active: a 30px wheel (~1.76 rows at 17px) fires 1 report and leaves a
-    // ~0.76-row fractional carry in the accumulator.
     term.modes.mouseTrackingMode = 'any';
     expect(wheel({ deltaY: 30, deltaMode: 0 } as unknown as WheelEvent)).toBe(false);
     expect(terminal.input).toHaveBeenCalledTimes(1);
 
-    // App releases the mouse (mode → none): the defer branch must zero the carry.
     term.modes.mouseTrackingMode = 'none';
     expect(wheel({ deltaY: 5, deltaMode: 0 } as unknown as WheelEvent)).toBe(true);
 
-    // Mouse mode again: a fresh sub-row 10px (~0.59 rows) must NOT fire — it
-    // would only cross a row boundary if the stale 0.76 carry had survived.
     term.modes.mouseTrackingMode = 'any';
     terminal.input.mockClear();
     expect(wheel({ deltaY: 10, deltaMode: 0 } as unknown as WheelEvent)).toBe(false);
@@ -1648,8 +1400,6 @@ describe('TerminalPanel', () => {
 
     const term = lastTerm;
     const ros = allROs.slice();
-    // Two observers per session: the container refit observer and the
-    // device-pixel canvas observer (the second-clear repaint hook).
     expect(ros.length).toBe(2);
     act(() => unmount());
 
@@ -1657,8 +1407,6 @@ describe('TerminalPanel', () => {
     expect(terminal.kill).toHaveBeenCalledWith('pty-1');
     expect(unsubData).toHaveBeenCalledTimes(1);
     expect(unsubExit).toHaveBeenCalledTimes(1);
-    // EVERY observer disconnects — a surviving canvas observer would keep
-    // flushing renders into a disposed terminal.
     for (const ro of ros) expect(ro.disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -1727,7 +1475,6 @@ describe('TerminalPanel', () => {
     const { bridge, terminal, pushData } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);
 
-    // Mount + PTY wiring still complete despite the WebGL addon throwing.
     await waitFor(() => expect(terminal.onData).toHaveBeenCalledTimes(1));
     act(() => pushData({ ptyId: 'pty-1', data: 'ok' }));
     expect(lastTerm?.write).toHaveBeenCalledTimes(1);
@@ -1934,9 +1681,7 @@ describe('TerminalPanel', () => {
     );
     expect(terminal.onData).not.toHaveBeenCalled();
     expect(terminal.drain).not.toHaveBeenCalled();
-    // The accessible region is still present.
     expect(screen.getByRole('region', { name: 'Terminal' })).toBeTruthy();
-    // An explicit refusal notice — not a bare, focused, message-less canvas.
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/no project folder/i);
     expect(lastTerm?.focus).not.toHaveBeenCalled();
@@ -1950,13 +1695,10 @@ describe('TerminalPanel', () => {
     await waitFor(() =>
       expect(document.querySelector('[data-terminal-status="not-consented"]')).not.toBeNull(),
     );
-    // A distinct, accessible reason — and the dead canvas is never focused.
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/isn't enabled for this project/i);
     expect(lastTerm?.focus).not.toHaveBeenCalled();
     expect(terminal.onData).not.toHaveBeenCalled();
-    // The "Close terminal" button is gated on `onClose` (collapse the dock) —
-    // clicking it collapses via the close callback.
     const closeButton = screen.getByRole('button', { name: 'Close terminal' });
     fireEvent.click(closeButton);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -1994,8 +1736,6 @@ describe('TerminalPanel', () => {
     const { unmount } = render(<TerminalPanel bridge={bridge} />);
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
 
-    // Unmount BEFORE create() resolves: the in-flight spawn is orphaned, so the
-    // late resolution must reap it rather than leak a PTY into a dead panel.
     act(() => unmount());
     await act(async () => {
       resolveCreate?.({ ok: true, ptyId: 'pty-late' });
@@ -2006,10 +1746,6 @@ describe('TerminalPanel', () => {
     expect(terminal.onData).not.toHaveBeenCalled();
   });
 
-  // The readiness banner is launch-scoped: only a session whose launch targets
-  // claude carries a verdict (resolveLaunchCommand's preflight). These tests
-  // arrange it via a promptless claude launch; launch-less sessions are pinned
-  // banner-free further down.
   test('a claude launch probes readiness and shows a help affordance when claude is not on PATH', async () => {
     const { bridge, terminal, openExternal } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
@@ -2020,7 +1756,6 @@ describe('TerminalPanel', () => {
     await waitFor(() => expect(terminal.claudePreflight).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/isn't installed or on your PATH/)).toBeTruthy();
 
-    // The help affordance opens the Claude Code docs via the bridge.
     fireEvent.click(screen.getByRole('button', { name: 'Get Claude Code' }));
     expect(openExternal).toHaveBeenCalledTimes(1);
     expect(openExternal.mock.calls[0]?.[0]).toContain('claude-code');
@@ -2036,7 +1771,6 @@ describe('TerminalPanel', () => {
     expect(await screen.findByText(/aren't connected to it yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
     expect(rewireClaudeMcp).toHaveBeenCalledTimes(1);
-    // The banner hands off to the consent dialog and dismisses itself.
     await waitFor(() => expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull());
   });
 
@@ -2064,8 +1798,6 @@ describe('TerminalPanel', () => {
   });
 
   test('surfaces a restartable error state when create() rejects (startup failure, no silent dead-end)', async () => {
-    // create() rejects (e.g. utilityProcess.fork throwing on resource
-    // exhaustion). Without containment status stays 'starting' → blank box.
     let resolveCreate: (() => void) | undefined;
     let createCalls = 0;
     const createGate = new Promise<void>((res) => {
@@ -2075,7 +1807,6 @@ describe('TerminalPanel', () => {
       create: vi.fn(async () => {
         createCalls += 1;
         if (createCalls === 1) throw new Error('fork EMFILE');
-        // After restart, succeed so we can prove the restart path works.
         await createGate;
         return { ok: true, ptyId: 'pty-restarted' } as const;
       }),
@@ -2098,18 +1829,15 @@ describe('TerminalPanel', () => {
 
     render(<TerminalPanel bridge={bridge} />);
 
-    // A visible alert with a restart affordance, not a blank/frozen view.
     expect(await screen.findByRole('alert')).toBeTruthy();
     const restart = screen.getByRole('button', { name: 'Restart terminal' });
 
-    // Restart re-mounts the session and re-invokes create().
     fireEvent.click(restart);
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(2));
     await act(async () => {
       resolveCreate?.();
       await Promise.resolve();
     });
-    // The second (successful) create clears the error state.
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
@@ -2120,7 +1848,6 @@ describe('TerminalPanel', () => {
 
     act(() => pushExit({ ptyId: 'pty-1', exitCode: 1, signal: null }));
 
-    // A visible alert conveys the exit (and the code) — not a blank/frozen view.
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText(/exit code 1/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Restart terminal' })).toBeTruthy();
@@ -2134,7 +1861,6 @@ describe('TerminalPanel', () => {
     act(() => pushExit({ ptyId: 'pty-1', exitCode: 0, signal: null }));
     fireEvent.click(screen.getByRole('button', { name: 'Restart terminal' }));
 
-    // A second create() proves a fresh PTY was requested; the exit state clears.
     await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
@@ -2146,21 +1872,13 @@ describe('TerminalPanel', () => {
     );
     render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
 
-    // The readiness nudge appears while the shell is live...
     await screen.findByText(/isn't installed or on your PATH/);
 
-    // ...and is replaced by the exit state once the shell dies — a tools nudge
-    // over a dead terminal would be misleading.
     act(() => pushExit({ ptyId: 'pty-1', exitCode: 0, signal: null }));
     await waitFor(() => expect(screen.queryByText(/isn't installed or on your PATH/)).toBeNull());
     expect(screen.getByRole('alert')).toBeTruthy();
   });
 
-  // A plain tab is precisely the session that did NOT choose claude (the dock
-  // only launches a TUI on an explicit pick), so claude-readiness feedback on
-  // it reads as an unprompted nag. The readiness verdict belongs to launches
-  // that actually target claude (TerminalPanel.launch.dom.test.tsx covers
-  // those); a launch-less session must stay banner-free.
   test('a plain tab (no launch intent) shows no claude-readiness banner even when claude is not on PATH', async () => {
     const { bridge } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
@@ -2171,8 +1889,6 @@ describe('TerminalPanel', () => {
     await waitFor(() =>
       expect(document.querySelector('[data-terminal-status="running"]')).toBeTruthy(),
     );
-    // Flush any pending readiness probe so a late-arriving banner cannot slip
-    // past the absence assertion below.
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -2218,8 +1934,6 @@ describe('TerminalPanel', () => {
   });
 
   test('an adopted tab (reload survivor) shows no claude-readiness banner', async () => {
-    // An adopted session cannot know whether it was a claude launch or a bare
-    // shell, so under the intent-scoped contract it gets no nudge either.
     const { bridge } = makeBridge(
       { ok: true, ptyId: 'pty-ignored' },
       { claude: 'not-found', mcp: 'needs-rewire' },
@@ -2238,15 +1952,6 @@ describe('TerminalPanel', () => {
   });
 
   test('an adopted tab that still carries a stale claude launch intent shows no readiness banner', async () => {
-    // The compound reload-survivor case: a claude-launch tab that survived a
-    // reload keeps its (now stale) launch intent, but adoption reconnects the
-    // already-running claude session, so resolveLaunchCommand never runs (the
-    // adoptPtyId guard) and attachSession must not probe. A probe re-added to
-    // attachSession gated only on `launch !== null` would re-nag this
-    // reconnected session — the launch-less adopted test above wouldn't catch
-    // it (launch is null there), and the launch suite's adopted test uses a
-    // WIRED preflight that hides the banner either way. This is the one axis
-    // where those two pins intersect.
     const { bridge } = makeBridge(
       { ok: true, ptyId: 'pty-ignored' },
       { claude: 'not-found', mcp: 'needs-rewire' },
@@ -2295,12 +2000,10 @@ describe('TerminalPanel', () => {
     const term = lastTerm;
     expect(term?.options.theme).toEqual(XTERM_DARK_THEME);
 
-    // Flip the app theme and re-render: the open session must re-skin in place.
     mockResolvedTheme = 'light';
     rerender(<TerminalPanel bridge={bridge} />);
 
     await waitFor(() => expect(lastTerm?.options.theme).toEqual(XTERM_LIGHT_THEME));
-    // Same xterm instance, same PTY — no teardown/respawn on a theme change.
     expect(lastTerm).toBe(term);
     expect(term?.dispose).not.toHaveBeenCalled();
     expect(terminal.create).toHaveBeenCalledTimes(1);
@@ -2308,9 +2011,6 @@ describe('TerminalPanel', () => {
   });
 
   test('restarting one session spawns a fresh PTY for it without disturbing a sibling', async () => {
-    // The multi-tab reality: one shared bridge (one host) multiplexing two
-    // sessions/PTYs. A crash + restart in one tab must re-create only that
-    // session's PTY and leave the sibling's PTY untouched.
     const exitSubs: Array<(m: OkPtyExit) => void> = [];
     let created = 0;
     const create = vi.fn(async () => {
@@ -2348,27 +2048,19 @@ describe('TerminalPanel', () => {
         <TerminalPanel bridge={bridge} />
       </>,
     );
-    // Two independent sessions spawn: pty-1 and pty-2.
     await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
 
-    // Crash only the first session.
     act(() => pushExit({ ptyId: 'pty-1', exitCode: 1, signal: null }));
-    // Exactly one exit notice — the sibling keeps running with no exit state.
     expect(screen.getAllByRole('alert')).toHaveLength(1);
 
-    // Restart the crashed session: a fresh PTY just for it (3rd create overall).
     fireEvent.click(screen.getByRole('button', { name: 'Restart terminal' }));
     await waitFor(() => expect(create).toHaveBeenCalledTimes(3));
 
-    // The sibling's PTY was never reaped and it shows no exit state.
     expect(kill).not.toHaveBeenCalledWith('pty-2');
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
   describe('clickable links', () => {
-    // Drive the captured file-link provider for a buffer row (1-based; defaults
-    // to the first) and resolve with the links it emits (async — snapshot
-    // fast-path or probe). Pass a continuation row to exercise the backward walk.
     function provide(
       term: MockTerminal,
       bufferLine = 1,
@@ -2387,13 +2079,10 @@ describe('TerminalPanel', () => {
       render(<TerminalPanel bridge={bridge} />);
       await waitFor(() => expect(lastTerm).not.toBeNull());
 
-      // WebLinksAddon received an explicit handler (not the default window.open
-      // bounce); it opens the URL via the scheme-allowlisted bridge call.
       expect(lastWebLinksHandler).not.toBeNull();
       lastWebLinksHandler?.({} as MouseEvent, 'https://example.com');
       expect(openExternal).toHaveBeenCalledWith('https://example.com');
 
-      // OSC 8 explicit hyperlinks route the same way via Terminal.linkHandler.
       const linkHandler = lastTerm?.options.linkHandler as
         | { activate: (e: MouseEvent, uri: string) => void }
         | undefined;
@@ -2427,8 +2116,6 @@ describe('TerminalPanel', () => {
       await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
       const term = lastTerm as MockTerminal;
       term.cols = 19;
-      // The path straddles the wrap: row 0 ends mid-path, row 1 (isWrapped)
-      // finishes it. A single-row read would see only `docs/guide/very` and miss.
       term.lineRows = ['see docs/guide/very', '-long.md'];
 
       const [link] = await provide(term);
@@ -2445,8 +2132,6 @@ describe('TerminalPanel', () => {
       const term = lastTerm as MockTerminal;
       term.cols = 19;
       term.lineRows = ['see docs/guide/very', '-long.md'];
-      // Hover the CONTINUATION row (row 2): readLogicalLine must walk BACK to the
-      // logical start to rebuild the full path, not just read the hovered tail.
       const [link] = await provide(term, 2);
       expect(link?.text).toBe('docs/guide/very-long.md');
       window.location.hash = '';
@@ -2459,7 +2144,6 @@ describe('TerminalPanel', () => {
       render(<TerminalPanel bridge={bridge} />);
       await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
       const term = lastTerm as MockTerminal;
-      // A trailing slash classifies the path as a folder (not a doc/asset).
       term.lineText = 'cd packages/app/';
 
       const [link] = await provide(term);
@@ -2477,8 +2161,6 @@ describe('TerminalPanel', () => {
       term.lineText = 'wrote data/x.csv';
 
       const [link] = await provide(term);
-      // Only `extension-blocked` escalates to reveal-in-Finder; a plain miss
-      // (e.g. the file vanished between probe and click) fails silently.
       openAsset.mockResolvedValueOnce({ ok: false, reason: 'not-found' });
       link?.activate({} as MouseEvent, link.text);
       await waitFor(() => expect(openAsset).toHaveBeenCalledWith('data/x.csv'));
@@ -2506,7 +2188,6 @@ describe('TerminalPanel', () => {
       link?.activate({} as MouseEvent, link.text);
       await waitFor(() => expect(openAsset).toHaveBeenCalledWith('data/x.csv'));
 
-      // An executable-blocked type falls back to reveal-in-Finder.
       openAsset.mockResolvedValueOnce({ ok: false, reason: 'extension-blocked' });
       link?.activate({} as MouseEvent, link.text);
       await waitFor(() => expect(revealAsset).toHaveBeenCalledWith('data/x.csv'));
@@ -2517,7 +2198,6 @@ describe('TerminalPanel', () => {
       render(<TerminalPanel bridge={bridge} />);
       await waitFor(() => expect(lastTerm?.linkProvider).toBeTruthy());
       const term = lastTerm as MockTerminal;
-      // Bridge projectPath is /Users/me/project, so this absolute path is external.
       term.lineText = 'built /tmp/out/report.pdf';
       const [link] = await provide(term);
       expect(link?.text).toBe('/tmp/out/report.pdf');
@@ -2529,8 +2209,6 @@ describe('TerminalPanel', () => {
       const { bridge, openExternal } = makeBridge({ ok: true, ptyId: 'pty-1' });
       render(<TerminalPanel bridge={bridge} />);
       await waitFor(() => expect(lastTerm).not.toBeNull());
-      // A full-screen TUI enabled mouse tracking — it owns the click and opens
-      // the link itself, so the terminal must not also open it.
       (lastTerm as MockTerminal).modes.mouseTrackingMode = 'any';
       lastWebLinksHandler?.({} as MouseEvent, 'https://example.com');
       const osc8 = lastTerm?.options.linkHandler as {
@@ -2547,7 +2225,6 @@ describe('TerminalPanel', () => {
       const term = lastTerm as MockTerminal;
       term.lineText = 'wrote data/x.csv';
       const [link] = await provide(term);
-      // A TUI owns the mouse, but it doesn't open file paths — the terminal must.
       term.modes.mouseTrackingMode = 'any';
       link?.activate({} as MouseEvent, link.text);
       await waitFor(() => expect(openAsset).toHaveBeenCalledWith('data/x.csv'));

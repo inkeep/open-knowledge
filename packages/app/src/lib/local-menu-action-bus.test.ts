@@ -112,15 +112,10 @@ describe('local menu-action bus', () => {
 
     emitLocalMenuAction('report-bug');
 
-    // A subscriber may read `origin.launcherBorne` without a null check, so the
-    // default has to be a real origin rather than an absent second argument.
     expect(seen).toEqual({ launcherBorne: false });
   });
 });
 
-// The forwarder path reads `window.okDesktop`, absent in this non-DOM unit env.
-// These tests stub it and MUST restore `globalThis.window` afterward — a leaked
-// stub breaks unrelated non-DOM tests on Linux CI.
 type InboundMenuAction = (action: OkMenuAction, origin: OkMenuActionOrigin) => void;
 
 describe('local menu-action bus — bridge forwarder', () => {
@@ -150,9 +145,7 @@ describe('local menu-action bus — bridge forwarder', () => {
 
     const handler = vi.fn(() => {});
     subscribeLocalMenuAction(handler);
-    // The forwarder installed exactly one bridge listener.
     expect(inbound).not.toBeNull();
-    // One inbound native action → exactly one handler invocation (no double-fire).
     inbound?.('toggle-sidebar', { launcherBorne: false });
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenLastCalledWith('toggle-sidebar', { launcherBorne: false });
@@ -169,7 +162,6 @@ describe('local menu-action bus — bridge forwarder', () => {
 
     const handler = vi.fn(() => {});
     subscribeLocalMenuAction(handler);
-    // Main classifies the dispatching surface; the forwarder must not re-decide.
     inbound?.('report-bug', { launcherBorne: true });
 
     expect(handler).toHaveBeenLastCalledWith('report-bug', { launcherBorne: true });
@@ -187,16 +179,15 @@ describe('local menu-action bus — bridge forwarder', () => {
 
     const off1 = subscribeLocalMenuAction(() => {});
     const off2 = subscribeLocalMenuAction(() => {});
-    // One forwarder shared across subscribers, not one per subscriber.
     expect(installs).toBe(1);
     off1();
-    expect(unsubscribe).toHaveBeenCalledTimes(0); // one subscriber remains
+    expect(unsubscribe).toHaveBeenCalledTimes(0);
     off2();
-    expect(unsubscribe).toHaveBeenCalledTimes(1); // last out → forwarder torn down
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
   test('a partial bridge without onMenuAction never throws; direct emits still deliver', () => {
-    setDesktop({}); // truthy-but-thin host (session-only / test stub)
+    setDesktop({});
     const handler = vi.fn(() => {});
     expect(() => subscribeLocalMenuAction(handler)).not.toThrow();
     emitLocalMenuAction('rename');
@@ -204,23 +195,6 @@ describe('local menu-action bus — bridge forwarder', () => {
   });
 });
 
-/**
- * Every production emitter, with the origin it declares.
- *
- * `emitLocalMenuAction`'s origin parameter defaults to launcher-free, and that
- * default is deliberate — a persistent chrome button IS launcher-free, and
- * spelling it out at twenty call sites would add noise for no information. The
- * exposure is one-directional and lands on this changeset's own subject: an
- * emitter that IS a transient overlay and forgets to say so compiles clean and
- * ships a bug report whose screenshot is a picture of the launcher the user
- * opened only in order to file it.
- *
- * Making the parameter required would enforce it in the type system at the cost
- * of ~22 argument edits across eleven unrelated test files. This is the same
- * enforcement for the cost of one list: a new emitter cannot land without
- * appearing here, so its provenance is a decision someone made rather than one
- * the default made for them.
- */
 const EXPECTED_EMITTERS = [
   { file: 'components/CommandPalette.tsx', origins: ['{ launcherBorne: true }'] },
   {
@@ -229,7 +203,6 @@ const EXPECTED_EMITTERS = [
   },
 ];
 
-/** Argument text of each `emitLocalMenuAction(...)` call, paren-balanced. */
 function emitCallArguments(source: string): string[] {
   const calls: string[] = [];
   const needle = 'emitLocalMenuAction(';
@@ -255,7 +228,6 @@ function emitCallArguments(source: string): string[] {
   }
 }
 
-/** The origin argument as written, or the marker for "took the default". */
 function declaredOrigin(args: string): string {
   let depth = 0;
   for (let i = 0; i < args.length; i += 1) {
@@ -275,11 +247,6 @@ describe('local menu-action bus — production emitters declare their provenance
     const appSrc = join(import.meta.dir, '..');
     const isTestLike = (name: string) => /\.(test|dom\.test|test-helper)\.[cm]?tsx?$/.test(name);
     const found: { file: string; origins: string[] }[] = [];
-    // A file that imports the emitter but whose calls this census cannot parse
-    // — an aliased import, say — would otherwise fall through the `continue`
-    // below and never reach `found`, leaving the exact-equality assertion to
-    // pass with an unclassified emitter in the tree. That is the one outcome
-    // this census exists to rule out, so make it loud instead.
     const importsButUnparsed: string[] = [];
     const walk = (dir: string): void => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -290,7 +257,6 @@ describe('local menu-action bus — production emitters declare their provenance
         }
         if (!/\.[cm]?tsx?$/.test(entry.name) || isTestLike(entry.name)) continue;
         const source = readFileSync(full, 'utf8');
-        // The bus declares the function; it does not call it.
         if (full.endsWith('local-menu-action-bus.ts')) continue;
         const calls = emitCallArguments(source);
         if (calls.length === 0) {

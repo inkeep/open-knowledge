@@ -1,11 +1,3 @@
-/**
- * QA controls: classify the four FWD failures.
- *  C1: agent undo WITHOUT edge runs (was FWD-04's '' an edge-run effect?)
- *  C2: WYSIWYG DELETE (not undo) of a W1-authored tail run — does the
- *      deletion half of the doc-edge class propagate at all?
- *  C3: WYSIWYG last-paragraph delete on an IN-SYNC doc (DESTROY-A baseline).
- */
-
 import { appendFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -82,7 +74,6 @@ describe('classification controls', () => {
         'precondition: run landed',
       ).toBe(true);
 
-      // Select-and-delete the two empty paragraphs in the WYSIWYG.
       a.doc.transact(() => {
         a.fragment.delete(a.fragment.length - 2, 2);
       });

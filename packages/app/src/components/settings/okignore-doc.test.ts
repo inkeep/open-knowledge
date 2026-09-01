@@ -1,11 +1,3 @@
-/**
- * Pure unit tests for the okignore-doc parser + serializer + structural ops.
- *
- * The byte-identical round-trip property is the critical invariant — every
- * mutation op composes against `serializeOkignoreDoc(parseOkignoreDoc(text))`
- * and the no-edit path must be a no-op.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   appendPattern,
@@ -61,8 +53,6 @@ describe('parseOkignoreDoc — line classification', () => {
   });
 
   test('whitespace-only line classifies as blank (NOT pattern)', () => {
-    // L3 rejects whitespace-only lines but the parser must preserve them
-    // verbatim — adversarial bodies shouldn't crash the parser.
     const doc = parseOkignoreDoc('   \n');
     expect(doc.lines[0]).toEqual({ kind: 'blank', raw: '   ' });
   });
@@ -183,9 +173,6 @@ describe('appendPattern', () => {
   });
 
   test('doc that already contains the duplicate twice still short-circuits — does not strip later duplicates', () => {
-    // A future "while we're here, also strip later duplicates" refactor would
-    // silently start mutating the doc and still pass every other case in this
-    // suite. Pin first-match short-circuit explicitly.
     const original = parseOkignoreDoc('drafts/\ndrafts/\n');
     expect(appendPattern(original, 'drafts/')).toBe(original);
     expect(serializeOkignoreDoc(original)).toBe('drafts/\ndrafts/\n');
@@ -221,11 +208,6 @@ describe('findPatternIndex', () => {
   });
 
   test('returns the pattern-only index when comments precede patterns', () => {
-    // Load-bearing for the Settings handleAdd dedup-flash path: the returned
-    // index flows into rowFlashKey(trimmed, existingIndex) which targets the
-    // n-th pattern row. If comments leaked into the count, the flash would
-    // land on the wrong row. Other tests use docs where the naive line index
-    // and pattern-only index happen to agree — this one explicitly diverges.
     const doc = parseOkignoreDoc('# c\ndrafts/\nvendor/\n');
     expect(findPatternIndex(doc, 'drafts/')).toBe(0);
     expect(findPatternIndex(doc, 'vendor/')).toBe(1);
@@ -317,9 +299,6 @@ describe('reorderPatterns', () => {
   });
 
   test('comment + blank line positions are PRESERVED — patterns rotate through pattern slots', () => {
-    // The user moved 'b/' to position 1 (was position 2). Comments at line 0
-    // ("# A") and line 3 ("# B") stay where they are — they belong to the
-    // SLOT in the source, not the pattern that happens to occupy it.
     const text = '# A\na/\n# B\nb/\nc/\n';
     const next = reorderPatterns(parseOkignoreDoc(text), 1, 0);
     expect(serializeOkignoreDoc(next)).toBe('# A\nb/\n# B\na/\nc/\n');
@@ -328,8 +307,6 @@ describe('reorderPatterns', () => {
   test('reorder preserves leading/trailing whitespace on pattern lines (raw travels with text)', () => {
     const text = '  drafts/  \nvendor/\n';
     const next = reorderPatterns(parseOkignoreDoc(text), 0, 1);
-    // Patterns 0 and 1 swap places — the whitespace on the original line 0
-    // travels with its pattern entry, not the slot.
     expect(serializeOkignoreDoc(next)).toBe('vendor/\n  drafts/  \n');
   });
 
@@ -354,7 +331,6 @@ describe('compositional integrity', () => {
     doc = editPatternAt(doc, 1, 'lib/');
     expect(serializeOkignoreDoc(doc)).toBe('# Header\ndrafts/\n# Mid\nlib/\n*.tmp\n');
     doc = reorderPatterns(doc, 2, 0);
-    // Three patterns: drafts, lib, *.tmp -> *.tmp first, then drafts, then lib.
     expect(serializeOkignoreDoc(doc)).toBe('# Header\n*.tmp\n# Mid\ndrafts/\nlib/\n');
     doc = removePatternAt(doc, 0);
     expect(serializeOkignoreDoc(doc)).toBe('# Header\n# Mid\ndrafts/\nlib/\n');

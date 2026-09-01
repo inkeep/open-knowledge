@@ -3,10 +3,6 @@ import { useEffect } from 'react';
 import { detectedHarnessAgents, fetchAgentCatalog } from '@/lib/acp/catalog';
 import { setDetectedRegisteredAgentSuggestions } from '@/lib/acp/registered-agents';
 
-/**
- * Projects server-host harness detection into every registered-agent picker.
- * Suggestions remain non-persistent and never become the explicit default.
- */
 export function AcpHarnessAgentDetection() {
   const catalog = useQuery({
     queryKey: ['acp-catalog'],

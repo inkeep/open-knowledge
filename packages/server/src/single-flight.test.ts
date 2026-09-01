@@ -14,15 +14,14 @@ describe('createSingleFlight (PRD-6972 FR2)', () => {
       return gate;
     };
 
-    // 5 concurrent runs on the same tick, same key.
     const runs = Array.from({ length: 5 }, () => sf.run('k', fn));
-    expect(calls).toBe(1); // exactly one git walk
-    expect(runs.filter((r) => r.coalesced)).toHaveLength(4); // N-1 coalesced
+    expect(calls).toBe(1);
+    expect(runs.filter((r) => r.coalesced)).toHaveLength(4);
     expect(sf.size).toBe(1);
 
     resolveWalk(42);
     const results = await Promise.all(runs.map((r) => r.promise));
-    expect(results).toEqual([42, 42, 42, 42, 42]); // N identical responses
+    expect(results).toEqual([42, 42, 42, 42, 42]);
   });
 
   test('distinct keys run independently', async () => {
@@ -51,12 +50,11 @@ describe('createSingleFlight (PRD-6972 FR2)', () => {
 
     const first = sf.run('k', fn);
     await first.promise;
-    // Let the finally() eviction microtask run.
     await Promise.resolve();
     expect(sf.size).toBe(0);
 
     const second = sf.run('k', fn);
-    expect(second.coalesced).toBe(false); // fresh run, not a stale shared result
+    expect(second.coalesced).toBe(false);
     expect(await second.promise).toBe(2);
   });
 

@@ -100,38 +100,19 @@ import {
 import { __rejectSyncPromise, __test_armPendingRejection } from './sync-promise';
 import { tabSessionId } from './tab-identity';
 
-/**
- * Read-only projection of a `PoolEntry` — exposes the fields downstream React
- * components need without leaking the mutable pool internals (`kind`
- * discriminator, `persistence`, `observerCleanup`, `pendingRecycleTimer`).
- * Sorted by `lastAccessedAt` descending so consumers like `EditorActivityPool`
- * can apply LRU bounding without re-sorting.
- */
 export interface PoolEntrySnapshot {
   docName: string;
   provider: HocuspocusProvider;
   lastAccessedAt: number;
-  /**
-   * Cross-namespace correlation seed minted at fresh-construct time by
-   * `ProviderPool.open()`. Adopted as `mountId` by the activity-pool's
-   * promote-to-mount-list transition so prewarm → mount → cache / sync
-   * / cold marks share one deterministic ID.
-   */
   poolEventId: string;
 }
 
 interface DocumentContextValue {
-  /**
-   * The resolved principal from `/api/principal`. Null while the fetch is in
-   * flight or if it failed/was absent. Consumers use this to prefer real
-   * git-config identity over the random animal-adjective fallback in awareness.
-   */
   principal: Principal | null;
   activeTarget: ResolvedNavigationTarget | null;
   activeTabId: string | null;
   activeDocName: string | null;
   activeProvider: HocuspocusProvider | null;
-  /** Canonical side-by-side editor workspace. Flat tab fields below are compatibility projections. */
   workspace: EditorWorkspaceState;
   panes: ReadonlyArray<EditorPaneState>;
   focusedPaneId: EditorPaneId;
@@ -157,286 +138,79 @@ interface DocumentContextValue {
   splitTab: (tabId: string, targetPaneId: EditorPaneId, side: PaneSide) => EditorPaneId | null;
   moveTabToNewPane: (tabId: string, side: PaneSide) => EditorPaneId | null;
   resizePanes: (sizesByPane: ReadonlyMap<EditorPaneId, number>) => void;
-  /**
-   * User-open tabs, distinct from `poolEntries`: prewarmed providers can be
-   * pool-resident without becoming visible tabs. Document tabs use the
-   * docName as their ID; folder and asset tabs use internal tab IDs.
-   * Compatibility projection; pane-aware code should use `panes[].openTabs`.
-   */
   openTabs: ReadonlyArray<string>;
-  /**
-   * Tab IDs protected from tab-strip close affordances until explicitly unpinned.
-   * Compatibility projection; pane-aware code should use `panes[].pinnedTabIds`.
-   */
   pinnedTabIds: ReadonlyArray<string>;
-  /** Visible tab-strip order keyed by pane. */
   visibleTabIdsByPane: ReadonlyMap<EditorPaneId, ReadonlyArray<string>>;
   previewTabIdsByPane: ReadonlyMap<EditorPaneId, string | null>;
-  /**
-   * Visible tab-strip order across document/folder tabs and ephemeral blank tabs.
-   * Compatibility projection; pane-aware code should use `visibleTabIdsByPane`.
-   */
   visibleTabIds: ReadonlyArray<string>;
-  /** True once persisted tab session restore has either applied or intentionally skipped. */
   tabSessionLoaded: boolean;
   syncState: SyncState;
   serverRestartRecovery: ServerRestartRecoveryState;
-  /**
-   * All currently-pooled docs, sorted by `lastAccessedAt` descending (MRU first).
-   * Drives `EditorActivityPool`'s ACTIVITY_MOUNT_LIMIT-bounded Activity rendering.
-   * System docs (CC1 `__system__`) are filtered at pool admission so they never
-   * appear here.
-   */
   poolEntries: ReadonlyArray<PoolEntrySnapshot>;
   openDocument: (docName: string) => void;
-  /**
-   * Navigation entry — kept for API symmetry with `openTargetTransition`.
-   * Not wrapped in `startTransition`: deferring shell state
-   * (`activeDocName`, `activeTarget`) would make the sidebar highlight and
-   * header title lag the click. React's default Suspense behavior already
-   * handles both paths: cold nav suspends → `<EditorSkeleton />` fallback
-   * paints immediately; warm nav doesn't suspend (`syncPromise` is
-   * pre-resolved for `hasSynced=true` providers) so the commit lands in a
-   * single synchronous paint. The name is preserved to keep the migration
-   * path to a future per-subtree transition open — callers shouldn't need
-   * to choose between transition and non-transition APIs.
-   */
   openDocumentTransition: (docName: string) => void;
-  /**
-   * Set the active navigation target (doc / folder-index / folder / asset / missing)
-   * per the folder-aware resolver. For a `doc` target
-   * this opens/activates the pooled provider; for `folder` it clears the
-   * active doc so `EditorArea` renders `<FolderOverview>`; for `missing` it
-   * sets the new-doc intent and opens the pooled provider.
-   */
   openTarget: (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => void;
-  /** Open a target in a specific pane, moving an existing tab there when necessary. */
   openTargetInPane: (
     paneId: EditorPaneId,
     target: ResolvedNavigationTarget,
     options?: OpenTargetOptions,
   ) => void;
-  /**
-   * Hash-driven navigation entry (`NavigationHandler` in `App.tsx`). Kept
-   * alongside `openTarget` for API symmetry with `openDocumentTransition`.
-   * Neither wraps the underlying call in `startTransition`; see
-   * `openDocumentTransition` for rationale. `openTarget` is retained for
-   * non-transition callers (tests, direct agent actions).
-   */
   openTargetTransition: (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => void;
   promoteTabInPane: (paneId: EditorPaneId, tabId: string) => void;
   promoteAllPreviewTabs: () => void;
   clearTarget: () => void;
   closeDocument: (docName: string) => void;
-  /** Close the active tab if one exists; returns false when the window should close instead. */
   closeActiveTabOrWindow: () => boolean;
-  /** Close a visible tab and navigate to the nearest remaining tab when needed. */
   closeTab: (tabId: string) => void;
-  /** Mark a visible tab as pinned so tab-strip close actions skip it. */
   pinTab: (tabId: string) => void;
-  /** Remove pin protection from a visible tab. */
   unpinTab: (tabId: string) => void;
-  /** Activate a visible tab even when it points at the same document as another tab. */
   activateTab: (tabId: string) => void;
-  /**
-   * Reorder visible tabs after a drag. `newOrder` is the desired post-drag
-   * order (real openTabs and new-tab placeholders, as visibleTabIds is
-   * rendered); `draggedTabId` is the tab the user moved. Pin state is
-   * drag-mutable: only the dragged tab's pin status can flip, and only if it
-   * crossed the pinned/unpinned divide (a pinned tab dragged past every other
-   * pinned tab unpins; an unpinned tab dragged into the pinned extent pins).
-   * Every other tab keeps its pin state, so pinned and unpinned tabs still
-   * interleave freely (no enforced visual pin-section boundary). pinTab/
-   * unpinTab remain the explicit toggles. Persistence is automatic via the
-   * existing effect watching workspace.
-   */
   reorderTabs: (newOrder: readonly string[], draggedTabId: string) => void;
-  /** Empty tab placeholders created by the tab strip's New tab button. */
   newTabIds: ReadonlyArray<string>;
-  /** The currently active empty tab placeholder, if any. */
   activeNewTabId: string | null;
-  /** True when the active editor surface is the empty "New tab" placeholder. */
   isNewTabActive: boolean;
-  /** Open an empty tab placeholder that the next sidebar document click can fill. */
   openNewTab: () => void;
-  /** Focus the blob-runner tab, opening one if it is not already around. */
   openBlobRunner: () => void;
-  /** Activate an existing empty tab placeholder. */
   activateNewTab: (tabId: string) => void;
-  /** Close the empty tab placeholder and return to the nearest document tab. */
   closeNewTab: (tabId: string) => void;
-  /** Reopen the most recently closed editor tab, if any. */
   reopenClosedTab: () => void;
-  /**
-   * Close multiple visible tabs with a single active-tab/navigation decision.
-   * Pinned tabs are skipped unless `force` is set for backing file/folder removal.
-   */
   closeTabs: (tabIds: readonly string[], options?: CloseTabsOptions) => void;
-  /** Drop tabs whose backing file/folder no longer exists in the refreshed tree. */
   syncOpenTabsWithKnownTargets: (targets: {
     pages: ReadonlySet<string>;
     folderPaths: ReadonlySet<string>;
     assetPaths: ReadonlySet<string>;
     filePaths?: ReadonlySet<string>;
   }) => void;
-  /** Reconcile provider, persistence, and tab state for a local rename. The caller navigates. */
   reconcileLocalRename: (input: LocalRenameReconciliation) => Promise<void>;
-  /** Reconcile forced tab closure and persistence removal after a local delete. */
   reconcileLocalRemoval: (input: LocalRemovalReconciliation) => Promise<void>;
-  /**
-   * Destroy and recreate the pool entry for `docName` while preserving
-   * `activeDocName`. Used by the "Try again" path in `DocumentErrorBoundary`
-   * to recover from `BridgeSetupError` (and any other sync failure where the
-   * existing provider is in a known-broken state) without flashing the
-   * "Select a document" empty state during the swap.
-   */
   recycleDocument: (docName: string) => void;
-  /**
-   * Prewarm a doc's provider before the user clicks. Returns the
-   * `poolEventId` of the resulting pool entry on success (so the
-   * sidebar-hover layer can correlate prewarm-then-click hit/miss
-   * deterministically), or `null` when the prewarm is rejected
-   * (system doc, missing collab URL).
-   */
   prewarm: (docName: string) => string | null;
-  /**
-   * The `__system__` HocuspocusProvider, lifted from `SystemDocSubscriber`
-   * so presence-bar consumers (`usePresence`) can read agent presence from
-   * `__system__.awareness` without re-materializing a second provider.
-   * `null` while the subscriber is mounting or between collabUrl resets.
-   * Set via `setSystemProvider` — do NOT assign directly.
-   */
   systemProvider: HocuspocusProvider | null;
-  /**
-   * Provider-registration callback used by `SystemDocSubscriber` to publish
-   * its `__system__` provider (and null on unmount). Single-writer by
-   * convention — only one SystemDocSubscriber should mount at a time.
-   */
   setSystemProvider: (provider: HocuspocusProvider | null) => void;
-  /**
-   * Update the pool's cached server instance ID. Called by
-   * `SystemDocSubscriber` on every `__system__` CC1 `server-info` broadcast
-   * so the pool's next provider-open claim matches the live server. Null
-   * clears the claim (used by the auth-failure recycle path).
-   */
   updateServerInstanceId: (id: string | null) => void;
-  /**
-   * Invalidate every open provider's IndexedDB persistence and recycle
-   * the providers. Called by `SystemDocSubscriber` on every `__system__`
-   * CC1 `branch-switched` broadcast so the client discards content
-   * authored against the previous branch and re-syncs from the
-   * markdown-rebuilt post-switch state. Delegates to
-   * `handleBranchSwitched` in `branch-invalidation.ts`.
-   */
   onBranchSwitched: (branch: string) => Promise<void>;
-  /**
-   * Late-join backstop for CC1 `branch-switched`. Called whenever a
-   * channel reports the current branch (boot HTTP `/api/server-info`
-   * fetch + every CC1 `server-info` frame on `__system__` connect /
-   * reconnect). First call seeds the observed value; subsequent
-   * mismatches replay `handleBranchSwitched` client-side, covering the
-   * window where the live broadcast was missed.
-   */
   observeBranch: (branch: string) => Promise<void>;
-  /**
-   * Dispatcher for CC1 `disk-ack` payloads — advances the per-entry
-   * `lastDiskAckedSV` watermark. `handleServerInstanceMismatch` reads
-   * this watermark when computing the recycle buffer baseline so the
-   * client only re-replays updates the server has NOT yet durably
-   * persisted. Called by `SystemDocSubscriber` for every recognized
-   * `disk-ack` frame.
-   */
   observeDiskAck: (docName: string, sv: Uint8Array) => void;
-  /**
-   * Re-fetch `/api/server-info` and dispatch every recognized field
-   * (instanceId, branch, disk-ack watermarks). Called by
-   * `SystemDocSubscriber` on every `__system__` reconnect to recover
-   * from missed CC1 stateless broadcasts (which have no replay).
-   * Boot path uses the same helper for consistency. Idempotent —
-   * each dispatcher no-ops on unchanged inputs, so a redundant call
-   * costs only one HTTP round-trip.
-   */
   refreshServerInfo: () => Promise<void>;
-  /**
-   * Resolved collab WebSocket URL (from `/api/config` or `bun run dev`
-   * same-origin fallback). Null while the initial fetch is in flight or
-   * while `server.lock` is absent — consumers that also need the URL
-   * (e.g. `SystemDocSubscriber`) skip wiring until resolved.
-   */
   collabUrl: string | null;
-  /**
-   * True when the `/api/config` resolver has given up automatic retries
-   * (no resolution within ~30s). Consumer banners surface an actionable
-   * error message + manual-retry button. `retryCollab()` resets to
-   * auto-retry mode.
-   */
   collabTerminal: boolean;
-  /** Observed last-error shape (only populated when `collabTerminal`). */
   collabLastError:
     | { kind: 'error'; code: number | 'network' | 'invalid-body' }
     | { kind: 'null-collab' }
     | null;
-  /** Reset retry state — exits terminal mode, resumes polling. */
   retryCollab: () => void;
-  /**
-   * Branch-driven content-recycle notice (switch in progress / server
-   * refusing this window's branch claim). Rendered by `BranchRecycleBanner`.
-   */
   contentRecycleNotice: ContentRecycleNotice | null;
   dismissContentRecycleNotice: () => void;
-  /**
-   * DocPanel mode — which scope the right-rail panel is showing.
-   *   - `'doc'`:   existing 5-tab info pane keyed to `activeDocName`.
-   *   - `'agent'`: Activity view keyed to `docPanelAgentId` (one agent session).
-   *
-   * Default is `'doc'` on every fresh tab. Tab-scoped state (not persisted).
-   */
   docPanelMode: 'doc' | 'agent';
-  /**
-   * connectionId of the agent the panel is scoped to when in `'agent'` mode.
-   * Preserved across mode flips — flipping `agent → doc → agent` still
-   * shows the prior agent scope. Cleared only by explicit
-   * `closeActivityPanel()` or swap to a different agent.
-   */
   docPanelAgentId: string | null;
-  /**
-   * Monotonic expand-request counter. `openActivityPanel` increments this
-   * in the same setState pass that flips `docPanelMode`. `EditorArea`
-   * observes the counter via `useEffect` and calls `panel.expand()` (desktop)
-   * or `setSheetOpen(true)` (mobile) on each increment — idempotent if the
-   * panel is already visible.
-   */
   docPanelExpandSignal: number;
-  /**
-   * Open (or swap, or toggle off) the DocPanel's agent mode:
-   *   - Panel is doc mode, or agent mode with a different agent → flip to
-   *     agent mode, scope to this connectionId, increment expand signal.
-   *   - Panel is agent mode with this SAME connectionId → flip back to doc
-   *     mode. Agent id is preserved so flipping back via the mode toggle
-   *     resumes the same session (toggle semantics).
-   *
-   * Method name preserved so the `PresenceBar` call site does
-   * not change. The hook `useActivityPanel` resets burst-cache and expand
-   * state on connectionId change, so swap semantics fall out naturally.
-   *
-   * `targetDoc` is the document the agent is editing (the caller's
-   * already-sentinel-filtered `realCurrentDoc`). It is consulted ONLY when no
-   * document is currently selected — the DocPanel can't mount without an
-   * active doc, so the panel open would otherwise be a silent no-op. In that
-   * case we navigate to `targetDoc` first, which mounts the DocPanel, then the
-   * mode flip + expand land on the freshly-mounted panel. When a doc is
-   * already active the argument is ignored (cross-doc avatars keep opening the
-   * agent's Activity view in the current panel, filename-nav stays inside it).
-   */
   openActivityPanel: (connectionId: string, targetDoc: string | null) => void;
-  /** Explicit "show the doc info again" affordance. Clears agent id too. */
   closeActivityPanel: () => void;
 }
 
 export interface OpenTargetOptions {
   disposition?: TabOpenDisposition;
   consumeActiveNewTab?: boolean;
-  /** Compatibility policy used by sidebar callers and the preview-tabs setting. */
   tabBehavior?: 'append' | 'replace-active';
 }
 
@@ -457,31 +231,13 @@ function warnPrincipalFetchOnce(err: unknown): void {
 const DocumentContext = createContext<DocumentContextValue | null>(null);
 const MARKDOWN_EXTENSION_QUALIFIED_DOC_PATTERN = /\.(md|mdx)$/i;
 
-// Module-level singleton — survives React re-renders and StrictMode double-mount.
-// Same pattern the old singleton HocuspocusProvider used. Instantiated lazily
-// when `collabUrl` resolves — not at module load.
-//
-// Under Vite HMR the binding resets on module reload; the `import.meta.hot.dispose`
-// handler at the bottom of this file disposes the previous pool before the new
-// module instance takes over so WebSocket / observer / timer state doesn't leak.
 let pool: ProviderPool | null = null;
 
 export function getPool(collabUrl: string): ProviderPool {
   if (!pool) {
-    // Scope the pool's localStorage keys AND the replay-outbox's IndexedDB
-    // database name to THIS project — see `lib/storage-scope.ts` for the
-    // shared-origin why. `resolveSyncWorkspace()` is the right resolver here
-    // because it answers synchronously on Electron, the host where the
-    // collision exists, so the very first name this pool touches is scoped.
     pool = new ProviderPool(MAX_POOL, collabUrl, {
       storageNamespace: resolveSyncWorkspace()?.contentDir ?? null,
     });
-    // Wire the editor cache to the pool's eviction events. Without this
-    // subscription, cached `Editor` / `EditorView` instances would
-    // outlive the Y.Doc they're bound to. Single subscription per pool
-    // lifetime; the unsubscribe handle is intentionally dropped — the
-    // pool is a module-level singleton and only torn down on HMR/dispose,
-    // at which point its listener Set is GC'd along with the pool.
     subscribePoolEviction(pool);
   }
   return pool;
@@ -523,24 +279,10 @@ function readInitialLocalTabSession() {
   return readLocalTabSessionState(storage, key);
 }
 
-// New tabs are ephemeral placeholders (never persisted) keyed only by identity,
-// so their id doubles as the surface tag: a skills-mode new tab carries the
-// `skills:` infix, and its empty state renders the Skills home instead of the
-// Files "Create something great" one.
 const NEW_TAB_PREFIX = 'new-tab:';
 
-// The blob runner is a full-pane surface with no document behind it, so it
-// rides the same ephemeral new-tab placeholder the Skills home uses rather
-// than a standing tab id. Deliberately NOT a persisted tab kind: a game has no
-// state worth restoring across reloads, and the standing-singleton pattern was
-// retired from this codebase (see SKILLS_HUB_TAB_ID in editor-tabs.ts).
 const BLOB_RUNNER_NEW_TAB_PREFIX = 'new-tab:blob-runner:';
 
-/**
- * Which full-pane surface a new-tab placeholder stands for. `NEW_TAB_PREFIX` is
- * a literal prefix of the other two, so classification MUST test the specific
- * surfaces first — a plain `startsWith(NEW_TAB_PREFIX)` matches all three.
- */
 export type NewTabSurface = 'files' | 'blob-runner';
 
 const NEW_TAB_PREFIX_BY_SURFACE: Record<NewTabSurface, string> = {
@@ -573,11 +315,6 @@ function hashFromTabId(tabId: string): string {
         source: tab.source,
         name: tab.name,
         subtitle: tab.subtitle,
-        // Level is part of the tab's IDENTITY (`encodeSkillPreviewSegments`
-        // includes it). Dropping it here made the tab→hash→tab roundtrip land
-        // on the DEFAULT level: clicking a global-level preview tab activated —
-        // or minted — its project-level twin, which is exactly "multiple tabs
-        // of the same file open, only able to focus one".
         level: tab.level,
       });
   }
@@ -627,21 +364,6 @@ function resolvedTargetForTabId(tabId: string): ResolvedNavigationTarget {
   }
 }
 
-/**
- * Re-derive a pane's `activeTarget` from its own `activeTabId`.
- *
- * The workspace invariant this establishes: every pane in `workspaceRef.current`
- * carries a target derived from ITS OWN `activeTabId`. `commitWorkspace` is the
- * single site that assigns that ref, and it maps this over every pane first, so
- * no reader can observe a target belonging to some other tab, or a null one left
- * behind by a transition.
- *
- * That is load-bearing because transitions do NOT carry a target across a tab-id
- * change: `remapWorkspaceTabs` NULLS `activeTarget` whenever the id moves rather
- * than remapping it, and this re-derive is what puts it back. Readers that key
- * off `activeTarget` depend on this invariant, not on ids and targets moving
- * together — they do not.
- */
 function paneWithResolvedTarget(pane: EditorPaneState): EditorPaneState {
   if (pane.activeNewTabId !== null || pane.activeTabId === null) {
     return pane.activeTarget === null ? pane : { ...pane, activeTarget: null };
@@ -661,9 +383,6 @@ function workspaceWithResolvedTargets(workspace: EditorWorkspaceState): EditorWo
 }
 
 function readInitialEditorWorkspace(): EditorWorkspaceState {
-  // Only PEEKS the suppression latch — the async restore effect is the single
-  // owner that resets it, so this initializer (which renders first) and that
-  // effect both observe the same armed value on a suppressed mount.
   const session = shouldSuppressTabSessionRestore()
     ? parseEditorTabSessionState(null)
     : readInitialLocalTabSession();
@@ -742,9 +461,6 @@ function navigationTargetKey(target: ResolvedNavigationTarget): string {
     case 'skills':
       return 'skills:hub';
     case 'skill-preview':
-      // `path` is part of the key so selecting a different file within the SAME
-      // preview updates the active target (the tab id stays path-less, so it is
-      // one tab whose body switches — not a new tab).
       return `skill-preview:${target.flavor}:${target.source}:${target.name}:${target.subtitle}:${target.path ?? ''}`;
     case 'large-file':
       return `large-file:${target.docName}:${target.size}:${target.limit}`;
@@ -762,30 +478,12 @@ function sameNavigationTarget(
   return navigationTargetKey(a) === navigationTargetKey(b);
 }
 
-/**
- * Structural equality for two pool snapshots, so a notify that changes nothing
- * a consumer can observe does not re-render the provider.
- *
- * `lastAccessedAt` is deliberately excluded. It never reaches the DOM — its
- * only job is to order `poolEntries`, and that ordering is already encoded in
- * the array itself (`takeSnapshot` sorts MRU-first, and `computeActivityMountList`
- * re-sorts by the same key). Comparing it would defeat the bailout entirely,
- * because `ProviderPool.open()` bumps it on every cache hit.
- *
- * Without this guard the provider re-renders on every pool mutation, which
- * hands every context consumer a fresh callback identity. An effect that both
- * calls one of those callbacks and depends on it — `NavigationHandler` in
- * `App.tsx` is the load-bearing one — then closes into a self-feeding cycle
- * that terminates only at React's nested-update limit.
- */
 function sameSnapshot(a: Snapshot, b: Snapshot): boolean {
   if (a === b) return true;
   if (
     a.activeDocName !== b.activeDocName ||
     a.activeProvider !== b.activeProvider ||
     a.syncState !== b.syncState ||
-    // Reference comparison is sufficient: the pool only reassigns
-    // `serverRestartRecoveryState` on an actual transition.
     a.serverRestartRecovery !== b.serverRestartRecovery ||
     a.poolEntries.length !== b.poolEntries.length
   ) {
@@ -803,9 +501,6 @@ function sameSnapshot(a: Snapshot, b: Snapshot): boolean {
 
 function takeSnapshot(p: ProviderPool): Snapshot {
   const active = p.getActive();
-  // Project mutable pool entries to immutable read-only snapshots, sorted MRU-first.
-  // The sort lives here (not in ProviderPool) so the pool stays a plain LRU map and
-  // doesn't need to know about React-side ordering preferences.
   const poolEntries: PoolEntrySnapshot[] = [];
   for (const entry of p.entries.values()) {
     poolEntries.push({
@@ -849,18 +544,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const nextPaneOrdinalRef = useRef(1);
   const recentlyClosedTabsRef = useRef<RecentlyClosedEditorTab[]>([]);
   const removalReconcilerRef = useRef<ClientRemovalReconciler | null>(null);
-  // Set true when the user explicitly CLOSES (or unpins/replaces) a tab during
-  // the async session-restore window. Bails the restore merge so a freshly-
-  // closed tab cannot resurrect from the about-to-arrive restored snapshot.
-  //
-  // OPENS (hash-nav, sidebar clicks, agent links) intentionally do NOT set this
-  // ref — the restore merge is additive, so an opened-during-restore tab
-  // coexists with the restored set without collision.
   const tabSessionUserClosedRef = useRef(false);
-  // How this mount's restore ended. Guards the persist effect below so an
-  // in-memory workspace that is not a continuation of the stored session never
-  // overwrites it. Starts at 'unread': a rejected read leaves it there, and
-  // only a resolved read promotes it to 'applied'.
   const restoreOutcomeRef = useRef<TabSessionRestoreOutcome>('unread');
   const [principal, setPrincipal] = useState<Principal | null>(null);
   const [systemProvider, setSystemProvider] = useState<HocuspocusProvider | null>(null);
@@ -873,9 +557,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     lastError: collabLastError,
     retry: retryCollab,
   } = useCollabUrl();
-  // Branch-driven content recycles were invisible: a switch blanked every open
-  // doc silently, and a NON-converging branch-mismatch refusal loop rendered
-  // the app empty with no explanation. `BranchRecycleBanner` renders this.
   const [contentRecycleNotice, setContentRecycleNotice] = useState<ContentRecycleNotice | null>(
     null,
   );
@@ -908,12 +589,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
     if (!updateHash) return;
     let nextHash = '';
-    // A new tab is deliberately the EMPTY hash: it has no target to address, and
-    // falling through to the active tab's hash would put the previous document's
-    // URL on a blank tab — so back/forward would return to a tab that no longer
-    // shows what its address claims. Empty branch rather than a negated
-    // condition, because the ordering states the precedence: new tab first, then
-    // whatever is open.
     if (focused.activeNewTabId !== null) {
     } else if (focused.activeTabId !== null) {
       nextHash = hashFromTabId(focused.activeTabId);
@@ -980,9 +655,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     commitWorkspace(next, options.updateHash);
   }
 
-  // One surface: file tabs and skill tabs share the strip. The filter that used
-  // to hide the other surface's tabs is gone, so a file and a skill can be open
-  // side by side — the whole point of unifying the sidebar.
   const surfaceWorkspace = workspaceWithResolvedTargets(
     projectVisibleEditorWorkspace(workspace, visibleTabIdsByPane),
   );
@@ -991,16 +663,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: workspace mutations read the live ref; collaboration readiness and load state are the restore triggers.
   useEffect(() => {
     if (collabUrl === null || tabSessionLoaded) return;
-    // A repeat app-shell crash armed restore suppression. Skip the read that
-    // would reopen the crashing document (bridge or localStorage alike, since
-    // this precedes that choice), then reset so the next mount or a reload
-    // restores normally — suppression covers exactly one recovery, not the
-    // session. The stored session is left untouched here, and recording the
-    // outcome keeps it that way for the whole recovery mount: what the user
-    // builds from the empty workspace is not a continuation of the session we
-    // declined to open, so it must not be written over it. A notice tells the
-    // user the last document could not be restored, so the recovered empty
-    // workspace does not read as a forgotten tab.
     if (shouldSuppressTabSessionRestore()) {
       resetTabSessionRestoreSuppression();
       showTabSessionRestoreRecoveryNotice();
@@ -1030,8 +692,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         );
         const restoredFocusedPaneId = nextWorkspace.focusedPaneId;
 
-        // Restore is authoritative for pane layout and ordering, while opens
-        // that raced it remain additive in the restored focused pane.
         for (const current of currentWorkspace.panes) {
           for (const tabId of current.openTabs) {
             const owner = findPaneOwningTab(nextWorkspace, tabId);
@@ -1140,10 +800,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     writeLocalTabSessionState(storage, localKey, state);
   }, [openTabs.length, tabSessionLoaded, workspace]);
 
-  // Closes (and close-like preview replacement) during the restore window bail the
-  // restore merge. Other mutations (open, pin, activate) are no-ops here because
-  // the restore merge is additive — see tabSessionUserClosedRef declaration for
-  // the full rationale.
   function markTabSessionClosedDuringRestore() {
     if (!tabSessionLoaded) tabSessionUserClosedRef.current = true;
   }
@@ -1211,9 +867,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
           : null;
     if (!closedActiveTabId) return workspaceAfterClose;
 
-    // One surface now, so the transition's own fallback is always acceptable:
-    // the strip no longer hides tabs, and a close should land on whatever tab
-    // is next regardless of whether it is a file or a skill.
     return workspaceAfterClose;
   }
 
@@ -1309,16 +962,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         const focused = focusedPane(workspaceRef.current);
         navigateToHash(focused.activeTabId ? hashFromTabId(focused.activeTabId) : '');
       },
-      // A popped-out window has one document and no home surface to land on, so
-      // it shows an explicit deleted state rather than navigating. Declining in
-      // every other window keeps the workspace behavior untouched.
       showDocumentDeletedState: (docName) =>
         isNoteWindow() ? markNoteWindowDocDeleted(docName) : false,
     });
   }
 
-  // No dependency array: auth callbacks need a reconciler with the latest
-  // collab URL and locally-scoped state helpers after every render.
   useEffect(() => {
     removalReconcilerRef.current = createRemovalReconciler();
   });
@@ -1329,8 +977,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const p = getPool(collabUrl);
 
-    // Reuses the previous snapshot when nothing observable changed, so a pool
-    // notify that only touched LRU bookkeeping doesn't re-render the shell.
     const commitSnapshot = () => {
       setSnapshot((current) => {
         const next = takeSnapshot(p);
@@ -1338,26 +984,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       });
     };
 
-    // Sync initial state
     commitSnapshot();
     syncPoolToWorkspace(workspaceRef.current);
 
-    // Late-join branch backstop. Auth-token `expectedBranch` claim
-    // mismatch (server is on branch B, client claims branch A) routes
-    // through the same handleBranchSwitched flow as the live CC1
-    // broadcast. The fresh branch comes from /api/server-info — the
-    // pool's lastObservedBranch is stale by definition (it's what the
-    // failed claim was built from).
-    //
-    // Returning the promise (not `void`) is load-bearing: the pool's
-    // in-flight gate awaits whatever the callback returns. A
-    // `void`-fronted fetch resolves the gate on the next microtask
-    // while the recovery is still in flight, so cross-turn mismatches
-    // (N providers, N RTTs) re-fire the dispatch and double-recycle.
     p.setOnBranchMismatch(() => {
-      // One dispatch is the normal recovery (refresh → recycle → reconnect)
-      // and stays silent; a second inside the window means the server is
-      // STILL refusing — the formerly-invisible empty-app state. Surface it.
       const { times, escalate } = recordBranchMismatchDispatch(
         branchMismatchTimesRef.current,
         Date.now(),
@@ -1367,20 +997,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       return refreshServerInfo(p);
     });
 
-    // Auth-rejection cleanup arms. The pool fires these synchronously from
-    // its authenticationFailed handler; we own the React-state-aware
-    // cleanup (close + IDB clear via the pool, tab remap, active-tab
-    // navigation, and the structured `removal.cleanup` event). Mirrors
-    // the FileTree.tsx sidebar precedents (`applyRenamedDocuments` for
-    // rename, `handleDelete` for delete) so a server-driven removal lands
-    // through the same code shape as a sidebar-driven one.
     p.setOnRenameRedirect(({ fromDocName, toDocName, hadOpenProvider }) => {
-      // Fire-and-forget: the pool's auth-failed callback is sync; the
-      // React-state-aware cleanup is async. The catch surfaces failures
-      // explicitly (the void IIFE would otherwise route them to the
-      // window's unhandledrejection handler). The catch arm is also
-      // load-bearing for React Compiler — `try/finally` without `catch`
-      // is unsupported by `BuildHIR::lowerStatement`.
       void (async () => {
         let cleanupError: unknown;
         try {
@@ -1415,7 +1032,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       })();
     });
     p.setOnDocDeleted(({ docName, hadOpenProvider }) => {
-      // See comment above; same React Compiler constraint applies.
       void (async () => {
         let cleanupError: unknown;
         try {
@@ -1447,15 +1063,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       })();
     });
 
-    // Subscribe to pool changes
     p.setOnChange(commitSnapshot);
 
-    // Fetch principal and wire tab identity so HocuspocusProvider includes
-    // {principalId, tabSessionId} in its auth token. The server's
-    // onAuthenticate hook reads this to set connection.context.principalId for
-    // correct writer attribution. Also lifts the resolved principal into React
-    // state so TiptapEditor can prefer real names over random animal fallbacks.
-    // Silent on failure — pool uses anonymous token; presence falls back to random.
     fetch('/api/principal')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((json: unknown) => {
@@ -1473,44 +1082,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         warnPrincipalFetchOnce(err);
       });
 
-    // CRDT server-restart recovery boot fetch: pull the server's
-    // per-process instance ID, current git branch, and per-doc
-    // disk-ack watermarks at startup, dispatch them all into the
-    // pool. Subsequent provider opens claim the instance ID + branch
-    // in their auth tokens so server-side enforcement can reject a
-    // stale-client reconnect before Yjs sync merges ghost state. The
-    // disk-ack batch refreshes per-entry `lastDiskAckedSV` so the
-    // mismatch-recycle baseline-selection always operates on fresh
-    // data (closes the missed-frame staleness gap that CC1 stateless
-    // broadcasts otherwise leave open).
-    //
-    // SystemDocSubscriber re-fires this on every `__system__` reconnect
-    // — same helper, same dispatch — so a brief WS drop doesn't leave
-    // any of the three watermarks permanently stale.
     void refreshServerInfo(p);
 
-    // systemProvider exposure happens in a dedicated effect below because it
-    // depends on `systemProvider` state, not `collabUrl`.
-    // Expose pool + test hooks on window for Playwright E2E access. Gated on
-    // `import.meta.env.DEV` so production bundles don't ship a sync-promise
-    // rejection trigger or a WebSocket close primitive — both useful for E2E,
-    // both unsafe to leave callable from arbitrary page-context script
-    // (extensions, bookmarklets, future embed consumers). Vite replaces this
-    // statically at build time, so the entire branch tree-shakes out of the
-    // production bundle. Mirrors the dev-only pattern already used in
-    // `editor/extensions/slash-command.ts`.
     if (import.meta.env.DEV) {
       window.__providerPool = p;
       Object.defineProperty(window, '__activeProvider', {
         get: () => p.getActive()?.provider ?? null,
         configurable: true,
       });
-      // Mirror of `__activeProvider` for the registered Editor instance.
-      // Resolving via `getActive()?.docName` keeps the getter consistent with
-      // `__activeProvider`'s active-entry semantics even when multiple editors
-      // are mounted concurrently (EditorActivityPool's ACTIVITY_MOUNT_LIMIT).
-      // Playwright reads this to poll PM `editor.state.selection` directly.
-      // see precedent §20(a) category C.
       Object.defineProperty(window, '__activeEditor', {
         get: () => {
           const active = p.getActive();
@@ -1525,9 +1104,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       window.__test_closeActiveWebSocket = () => {
         const provider = p.getActive()?.provider;
         if (!provider) return false;
-        // HocuspocusProvider wraps y-websocket internally; reach for the live WS
-        // via the typed fields we can see, falling back to any-cast for the
-        // nested websocketProvider (not in the provider's public TS surface).
         const cfg = provider.configuration as unknown as {
           websocketProvider?: { webSocket?: { close?: () => void } };
         };
@@ -1604,12 +1180,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       { disposition: 'permanent', consumeActiveNewTab: true },
     );
   };
-  // Pass-through wrapper. React's default Suspense behavior handles cold
-  // (skeleton) and warm (no suspension → fast commit) without deferring
-  // the shell — wrapping in `startTransition` (or a fast/slow split keyed
-  // on the provider's `hasSynced`) would hold shell state (activeDocName
-  // driving the sidebar highlight + header title) for the full editor-mount
-  // window, making the click feel laggy.
   const openDocumentTransition = (docName: string) => {
     mark('ok/nav/open-document', { docName, transition: false });
     openDocument(docName);
@@ -1618,11 +1188,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   function activateOrOpenSurfaceNewTab(paneId: EditorPaneId, surface: NewTabSurface) {
     const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
     if (!pane) return;
-    // A pane can hold several new tabs per surface, and a surface hub route
-    // (`#/__skills__`) addresses the surface, not one tab - so re-resolving it
-    // has to keep whichever tab is already active instead of snapping back to
-    // the first. Without this the nav effect, which re-fires on the unchanged
-    // hub hash, steals activation from every other new tab on that surface.
     const activeOnSurface =
       pane.activeNewTabId !== null && newTabSurfaceOf(pane.activeNewTabId) === surface
         ? pane.activeNewTabId
@@ -1665,9 +1230,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const paneId = requestedPaneId ?? workspaceRef.current.focusedPaneId;
     const p = getPool(collabUrl);
     if (target.kind === 'skills') {
-      // The Skills home is gone with the surface it belonged to, so an old deep
-      // link or a restored history entry lands on the ordinary new tab instead
-      // of a route that renders nothing.
       activateOrOpenSurfaceNewTab(paneId, 'files');
       return;
     }
@@ -1692,21 +1254,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     });
     if (transition.replacedPreviewTabId !== null) markTabSessionClosedDuringRestore();
     let nextWorkspace = transition.workspace;
-    // A LOCAL skill preview's identity includes its `source` path, which moves
-    // under the tab: a plugin update bumps the version in the cache path, a
-    // detected skill relocates when a copy is deleted. The same skill then
-    // opens under a NEW id while the old tab survives as an identically
-    // labelled twin ("multiple tabs of the same file open"). One skill, one
-    // local preview: opening one closes any twin holding the same
-    // (flavor, name, level) under a different id. Explore previews keep
-    // `source` in their identity on purpose — one name from two repos is two
-    // different previews.
-    //
-    // Folded into the SAME commit as the open. A separate
-    // `closeTabsAcrossPanes` call would commit a second time with
-    // updateHash=true whenever a twin sits in the focused pane, navigating the
-    // hash mid-open — an extra history entry and a re-entrant `hashchange`
-    // the open path (which owns the hash, updateHash=false) never asked for.
     if (target.kind === 'skill-preview' && target.level) {
       const twins = new Set(
         staleLocalSkillPreviewTwins(
@@ -2020,15 +1567,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  /**
-   * Make a tab permanent once the user commits to it, so the next sidebar click
-   * opens beside it instead of replacing it.
-   *
-   * Guarded on the pane's current `previewTabId` before committing, because the
-   * edit path calls this on every user keystroke: only the FIRST request for a
-   * given preview tab reaches `commitWorkspace`, and every later one returns
-   * without touching workspace state, persistence, or React.
-   */
   function promotePreviewTab(tabId: string) {
     const owner = findPaneOwningTab(workspaceRef.current, tabId);
     if (!owner || owner.previewTabId !== tabId) return;
@@ -2098,16 +1636,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openTargetTransition,
     promoteTabInPane: promoteTabInPaneById,
     promoteAllPreviewTabs,
-    // An empty hash means nothing is addressed. A wholly empty pane needs no
-    // placeholder: a blank tab renders exactly what the empty state renders, so
-    // minting one adds nothing but a close button that appears to do nothing.
-    //
-    // While ANY tab remains the placeholder is load-bearing, which is why this
-    // still routes through the surface activator rather than holding the empty
-    // state. It clears `activeTarget` — a stale folder target otherwise keeps
-    // capturing sidebar creates, so a new folder lands inside whatever you last
-    // had open — and it occupies `activeNewTabId`, without which `normalizePane`
-    // falls back to `openTabs[0]` and the hash follows a tab nobody picked.
     clearTarget: () => {
       const pane = focusedPane(workspaceRef.current);
       if (pane.activeNewTabId !== null) return;
@@ -2176,26 +1704,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
           pane.activeTarget?.kind === 'missing' ? [pane.activeTarget.target] : [],
         ),
       );
-      // Never evict the doc the hash currently points at: on cold start the page
-      // list arrives empty-then-populated, and a sync firing in that window would
-      // otherwise prune the just-seeded doc and clear the hash (→ empty-state
-      // splash) before the nav effect resolves it to a `missing` target. This is
-      // order-independent insurance over `keepMissingDocName`, which the prune
-      // can race ahead of.
       const keepHashDocName =
         typeof window !== 'undefined' ? docNameFromHash(window.location.hash) : null;
-      // Folder counterpart of the insurance above, read from the panes' RESOLVED
-      // targets rather than from the hash.
-      //
-      // Hash SHAPE cannot answer this. A folder opened from a wiki link or the
-      // Links panel is addressed by `hashFromDocName`, which emits no trailing
-      // slash, so `#/notes` is byte-identical whether `notes` is a doc or a
-      // folder. What tells them apart is `resolveNavigationTarget`, and it does
-      // so by consulting `folderPaths` — the very set that is stale here. The
-      // target a pane already resolved is the only non-circular answer, and
-      // reading it also avoids a second hash decoder that could drift from
-      // `tabIdFromHash`. Rebuilt per sync, so it tracks whatever the panes
-      // currently display.
       const keepFolderPaths = new Set(
         workspaceRef.current.panes.flatMap((pane) =>
           pane.activeTarget?.kind === 'folder' ? [pane.activeTarget.folderPath] : [],
@@ -2253,18 +1763,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       branchMismatchTimesRef.current = [];
       setContentRecycleNotice({ kind: 'branch-switch', branch, at: Date.now() });
       await handleBranchSwitched(p, branch);
-      // CRDT provider recycle alone leaves the non-Y.Doc derived-view stores
-      // (PageList / FileTree / backlinks / graph) on stale-branch data until
-      // a focus refetch trips them. Piggyback on the same channels the
-      // SystemDocSubscriber `synced` handler uses on initial connect.
       emitDocumentsChanged(['files', 'backlinks', 'graph']);
       emitBranchChanged(branch);
     },
     observeBranch: async (branch: string) => {
       if (collabUrl === null) return;
       const p = getPool(collabUrl);
-      // First observation seeds the pool's branch state without invalidating;
-      // subsequent mismatches replay handleBranchSwitched client-side.
       if (p.compareAndUpdateObservedBranch(branch)) {
         branchMismatchTimesRef.current = [];
         setContentRecycleNotice({ kind: 'branch-switch', branch, at: Date.now() });
@@ -2293,16 +1797,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     docPanelAgentId,
     docPanelExpandSignal,
     openActivityPanel: (connectionId: string, targetDoc: string | null) => {
-      // No doc selected → the DocPanel isn't mounted, so opening the Activity
-      // view below would be a silent no-op. Navigate to the agent's doc first
-      // (via the hash — the canonical nav path: App's NavigationHandler
-      // `hashchange` → openTargetTransition; `openDocument` bypasses the hash
-      // and is a non-resolver/test affordance only). The mode flip + expand
-      // signal are React state on DocumentProvider (above EditorArea), so the
-      // freshly-mounted DocPanel reads the already-set values and renders in
-      // agent mode. Return early so a double-click landing before the
-      // hashchange resolves (activeDocName still null) can't fall through to
-      // the toggle guard below and flip the just-opened panel back to doc mode.
       if (!activeDocName && targetDoc) {
         navigateToHash(hashFromDocName(targetDoc));
         setDocPanelAgentId(connectionId);
@@ -2310,11 +1804,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         setDocPanelExpandSignal((prev) => prev + 1);
         return;
       }
-      // Toggle / swap / open-with-expand.
-      // Same agent already scoped AND already in agent mode → flip back
-      // to doc mode (toggle). Anything else → go/stay in agent mode with
-      // the new (or same) id AND bump the expand signal so `EditorArea`
-      // expands a collapsed panel.
       if (docPanelMode === 'agent' && docPanelAgentId === connectionId) {
         setDocPanelModeState('doc');
         return;
@@ -2332,14 +1821,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   return <DocumentContext value={value}>{children}</DocumentContext>;
 }
 
-/**
- * The blob-runner opener, or null outside a `DocumentProvider`.
- *
- * `HelpPopover` is a generic resources menu, not an editor-only surface: the
- * Navigator window mounts no provider and the menu's own tests render it
- * standalone. Hard-requiring the document context there would trade a menu
- * entry for a crash, so callers hide the row when this is null.
- */
 export function useOpenBlobRunner(): (() => void) | null {
   return use(DocumentContext)?.openBlobRunner ?? null;
 }
@@ -2352,15 +1833,6 @@ export function useDocumentContext(): DocumentContextValue {
   return ctx;
 }
 
-/**
- * Convenience hook for navigation consumers (`NavigationHandler`,
- * `DocumentErrorBoundary` retry, sidebar click handlers) that only need the
- * nav surface and don't care about the rest of the document context.
- * `openDocumentTransition` is the doc-by-name path; `openTargetTransition`
- * is the folder-aware resolver path (hash-driven nav via `NavigationHandler`).
- * The `*Transition` suffix is a historical name — see the context values'
- * docstrings for why there is no longer a React transition behind it.
- */
 export function useDocumentTransition(): {
   openDocumentTransition: (docName: string) => void;
   openTargetTransition: (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => void;
@@ -2369,15 +1841,6 @@ export function useDocumentTransition(): {
   return { openDocumentTransition, openTargetTransition };
 }
 
-// Vite HMR dispose — when this module is hot-replaced in dev, tear down the
-// previous pool + the dev-only `window.__*` hooks so the replacement module
-// instance doesn't see stale providers, WebSockets, observers, timers, or
-// dangling getters bound to the old module's `pool` closure. Without this,
-// editing this file in dev leaks every provider + observer ever created,
-// and Playwright tests reaching for `window.__test_*` after an HMR reload
-// would race the old module's references. Production builds strip this
-// branch entirely (Vite replaces `import.meta.hot` with `undefined` at
-// build time).
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     pool?.dispose();
@@ -2391,10 +1854,7 @@ if (import.meta.hot) {
         delete (window as { __test_rejectSyncPromise?: unknown }).__test_rejectSyncPromise;
         delete (window as { __test_armPendingRejection?: unknown }).__test_armPendingRejection;
         delete (window as { __test_closeActiveWebSocket?: unknown }).__test_closeActiveWebSocket;
-      } catch {
-        // `delete` can fail on non-configurable properties in older engines;
-        // acceptable fall-through in a dev-only cleanup path.
-      }
+      } catch {}
     }
   });
 }

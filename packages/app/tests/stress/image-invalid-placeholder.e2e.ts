@@ -1,20 +1,3 @@
-/**
- * Real-browser coverage for the truthful invalid-image placeholder
- * (LoadingImage + the target-existence oracle). jsdom can drive the state
- * machine but cannot load bytes, decode, cache, or run the watcher → oracle
- * push; this exercises all of those against real Chromium + a real asset
- * server:
- *
- *   - a proven-absent target renders "Image not found" (markdown + HTML forms)
- *     without rewriting the authored source bytes;
- *   - an existing target whose bytes can't decode renders "Image couldn't be
- *     displayed", never claiming absence;
- *   - a page reload keeps the undecodable placeholder (cached-failure path:
- *     the <img> is `complete` at mount, so decode() is the only signal);
- *   - creating the target on disk heals "Image not found" to a loaded image
- *     without a reload (watcher → CC1 files push → oracle flip → remount).
- */
-
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -54,15 +37,12 @@ test.describe('invalid-image placeholder (PRD-7860)', () => {
     const body = `# Missing\n\n![a missing photo](${missing})\n`;
     await openDocWithBody(page, api, body);
 
-    // The oracle settles to "missing" once /api/documents (which omits the
-    // absent file) has loaded; a proven-absent target is authoritative.
     await expect(page.getByRole('img', { name: /Image not found/i })).toBeVisible({
       timeout: 15_000,
     });
     const slot = page.locator('[data-testid="image-slot"][data-image-error-kind="not-found"]');
     await expect(slot).toHaveCount(1);
 
-    // Byte-sacred: the authored markdown is untouched by the placeholder.
     expect(await getSourceText(page)).toContain(`![a missing photo](${missing})`);
   });
 
@@ -84,16 +64,12 @@ test.describe('invalid-image placeholder (PRD-7860)', () => {
     workerServer,
   }) => {
     const name = `corrupt-${randomUUID().slice(0, 8)}.png`;
-    // A real file exists (so the oracle reports it present), but the bytes are
-    // not a decodable image → the browser fires `error` → undisplayable, never
-    // "not found".
     writeFileSync(join(workerServer.contentDir, name), 'this is definitely not a PNG', 'utf-8');
     await openDocWithBody(page, api, `# Corrupt\n\n![corrupt](/${name})\n`);
 
     await expect(page.getByRole('img', { name: /couldn't be displayed/i })).toBeVisible({
       timeout: 15_000,
     });
-    // It must not read as absent.
     await expect(page.locator('[data-image-error-kind="not-found"]')).toHaveCount(0);
   });
 
@@ -240,8 +216,6 @@ test.describe('invalid-image placeholder (PRD-7860)', () => {
       timeout: 15_000,
     });
 
-    // On reload the <img> is `complete` at first mount and `error` will not
-    // re-fire; decode() must reclassify the cached failure.
     await page.goto(`/#/${docName}`);
     await waitForProvider(page);
     await expect(page.getByRole('img', { name: /couldn't be displayed/i })).toBeVisible({
@@ -261,13 +235,9 @@ test.describe('invalid-image placeholder (PRD-7860)', () => {
       timeout: 15_000,
     });
 
-    // Land real, decodable PNG bytes at the target path. The watcher indexes
-    // it → CC1 `files` push → page-list refetch → oracle flips exists →
-    // LoadingImage remounts and re-requests the now-present bytes.
     const png = readFileSync(join(FIXTURES_DIR, 'real-shot.png'));
     writeFileSync(join(workerServer.contentDir, name), png);
 
-    // Placeholder clears without a reload and the real <img> loads.
     await expect(page.getByRole('img', { name: /Image not found/i })).toHaveCount(0, {
       timeout: 25_000,
     });

@@ -49,7 +49,6 @@ function run(state: RunnerState, seconds: number, rng: () => number = midRng): R
   return state;
 }
 
-/** Advance without ever colliding, to reach speeds an unattended blob never survives to. */
 function runClear(state: RunnerState, seconds: number, rng: () => number = midRng): RunnerState {
   for (let elapsed = 0; elapsed < seconds; elapsed += 1 / 60) {
     stepRunner(state, 1 / 60, VIEW_WIDTH, rng);
@@ -58,7 +57,6 @@ function runClear(state: RunnerState, seconds: number, rng: () => number = midRn
   return state;
 }
 
-/** Spawn one obstacle of each kind, positioned right on top of the player. */
 function atPlayer(kind: 'ground' | 'overhead'): RunnerObstacle {
   return kind === 'ground'
     ? { id: 0, kind, x: 40, y: 0, width: 16, height: 38 }
@@ -82,7 +80,6 @@ describe('idle gait', () => {
       }
     }
     expect(apex).toBeGreaterThan(0);
-    // Two full seconds of gait is several hops, not one launch.
     expect(contacts).toBeGreaterThanOrEqual(3);
   });
 
@@ -99,9 +96,6 @@ describe('idle gait', () => {
 });
 
 describe('difficulty contract', () => {
-  // These four are the whole game. If any flips, the run becomes either
-  // unloseable or unwinnable, and no other test would notice.
-
   test('the idle hop can NEVER clear a ground obstacle', () => {
     const state = running();
     state.y = HOP_HEIGHT;
@@ -146,9 +140,6 @@ describe('jump', () => {
   });
 
   test('a press made mid-hop launches IMMEDIATELY, not on the next landing', () => {
-    // The reported "button delay": the gait is airborne most of the cycle, so
-    // gating the jump on ground contact made the blob wait to land before
-    // responding. Bouncing is not jumping, and must not block one.
     const state = running();
     run(state, 0.12);
     state.obstacles = [];
@@ -162,17 +153,12 @@ describe('jump', () => {
 
   test('a press DURING a commanded jump is buffered, not a double jump', () => {
     const state = running();
-    // Pin the precondition rather than assuming the gait produced it: without a
-    // commanded jump in flight, `jumping` is false and the press below would
-    // take the launch-immediately branch, leaving the buffer at 0 and making
-    // the assertion pass for the wrong reason.
     expect(jumpRunner(state)).toBe(true);
     runClear(state, 0.15);
     expect(state.jumping).toBe(true);
     expect(state.y).toBeGreaterThan(0);
     const airborneVy = state.vy;
 
-    // No double jump: the second press cannot re-launch mid-flight.
     expect(jumpRunner(state)).toBe(false);
     expect(state.vy).toBe(airborneVy);
     expect(state.jumpBuffer).toBeGreaterThan(0);
@@ -186,16 +172,13 @@ describe('jump', () => {
   });
 
   test('a press at ANY point during a full jump still jumps on landing', () => {
-    // The reported input lag: with a buffer shorter than the jump's airtime, a
-    // second press mid-jump expired before touchdown and was silently eaten,
-    // so the blob did an idle hop instead of the jump the player asked for.
     for (const pressAt of [0.05, 0.15, 0.25, 0.35, 0.45]) {
       const state = running();
       jumpRunner(state);
       runClear(state, pressAt);
       expect(state.y).toBeGreaterThan(0);
 
-      jumpRunner(state); // buffered: we are airborne
+      jumpRunner(state);
       let peak = 0;
       for (let i = 0; i < 300; i++) {
         stepRunner(state, 1 / 120, VIEW_WIDTH, midRng);
@@ -203,7 +186,6 @@ describe('jump', () => {
         if (state.y === 0 && i > 60) break;
         peak = Math.max(peak, state.y);
       }
-      // A real jump, not the idle hop it degraded to before.
       expect(peak, `press at ${pressAt}s`).toBeGreaterThan(HOP_HEIGHT * 2);
     }
   });
@@ -213,7 +195,7 @@ describe('jump', () => {
     run(state, 0.1);
     state.obstacles = [];
     jumpRunner(state);
-    state.y = 400; // park it far above the ground so it cannot land in time
+    state.y = 400;
     state.vy = 0;
     run(state, JUMP_BUFFER_SECONDS + 0.1);
     expect(state.jumpBuffer).toBe(0);
@@ -229,7 +211,6 @@ describe('jump', () => {
 describe('duck', () => {
   test('holding the duck pins the blob to the ground, suppressing the gait', () => {
     const state = running();
-    // Land first, then hold.
     run(state, 0.4);
     state.obstacles = [];
     setDucking(state, true);
@@ -265,7 +246,6 @@ describe('duck', () => {
       state.dwell = 0;
     }
     setDucking(falling, true);
-    // Airborne, so the duck reads as fast-fall and the shape stays unsquashed.
     expect(isDucked(falling)).toBe(false);
 
     runClear(floating, 0.08);
@@ -358,8 +338,6 @@ describe('phase gating', () => {
     runClear(state, 3);
     expect(state.distance).toBeGreaterThan(0);
 
-    // Dirty every field the reset must clear, so a future selective reset that
-    // forgets one is caught here.
     state.jumping = true;
     state.jumpBuffer = 1;
     state.ducking = true;
@@ -415,8 +393,6 @@ describe('obstacle stream', () => {
     const state = running();
     const kinds: string[] = [];
     let seen = state.nextObstacleId;
-    // Always-overhead rng draw: if any overhead slips out early, it is the
-    // warmup gate that failed, not the dice.
     const alwaysOverhead = () => 0;
     for (let i = 0; i < 300; i++) {
       stepRunner(state, 1 / 60, 0, alwaysOverhead);
@@ -456,7 +432,6 @@ describe('obstacle stream', () => {
 
     const spawnPositions: number[] = [];
     let seen = state.nextObstacleId;
-    // Smallest jitter draw is the worst case for spacing.
     for (let i = 0; i < 4000 && spawnPositions.length < 12; i++) {
       stepRunner(state, 1 / 60, VIEW_WIDTH, () => 0);
       if (state.nextObstacleId > seen) {
@@ -523,8 +498,6 @@ describe('progressive difficulty', () => {
   });
 
   test('the gap NEVER closes past what a jump can clear', () => {
-    // The one bound that separates "hard" from "unwinnable": if obstacles can
-    // arrive closer together than a jump lasts, the second is unavoidable.
     for (const distance of [0, 1000, 7000, 14_000, 100_000, 1e9]) {
       expect(gapSecondsAt(distance), `at ${distance}px`).toBeGreaterThan(JUMP_AIRTIME_SECONDS);
     }
@@ -541,7 +514,6 @@ describe('progressive difficulty', () => {
   });
 
   test('a long run really does spawn denser than its opening', () => {
-    // End to end through the spawner, not just the pure helpers.
     function gapsAround(startDistance: number): number {
       const state = running();
       state.distance = startDistance;
@@ -558,7 +530,6 @@ describe('progressive difficulty', () => {
       const deltas = marks.slice(1).map((m, i) => m - marks[i]);
       return deltas.reduce((a, b) => a + b, 0) / deltas.length;
     }
-    // Compare in SECONDS of warning, which is what the player actually feels.
     const openingSeconds = gapsAround(0) / START_SPEED;
     const lateSeconds = gapsAround(60_000) / MAX_SPEED;
     expect(lateSeconds).toBeLessThan(openingSeconds);
@@ -582,8 +553,6 @@ describe('persisted high score', () => {
   });
 
   test('absent storage reads zero instead of throwing', () => {
-    // The real failure on Node without --localstorage-file, and in locked-down
-    // browsers. The game must still render.
     expect(readBestScore(null)).toBe(0);
     expect(() => writeBestScore(10, null)).not.toThrow();
   });
@@ -617,15 +586,7 @@ describe('persisted high score', () => {
 });
 
 describe('rage streak (reveal gate)', () => {
-  // Reaching rage is the firework and nothing else. The reveal is gated on
-  // staying on it, so someone who stumbles into the sparkle keeps the sparkle
-  // and nothing surprising happens to their tab.
   test('the reveal threshold is the value the product ships', () => {
-    // The cadence tests below drive off the constant, which is what keeps them
-    // honest through a retune — but it also means they would all still pass if
-    // the constant silently went back to 2 and the reveal became a four-click
-    // gesture again. This literal is the guard against that. Retuning is fine;
-    // edit it deliberately, not to make a red suite green.
     expect(RAGE_STREAK_TO_REVEAL).toBe(6);
   });
 
@@ -644,8 +605,6 @@ describe('rage streak (reveal gate)', () => {
   });
 
   test('one click short of the threshold still hides the game', () => {
-    // The gate is the last click, not an early one — the burst has to be
-    // sustained the whole way or the mascot keeps its secret.
     expect(nextRageStreak(RAGE_STREAK_TO_REVEAL - 2, RAGE_STREAK_WINDOW_MS - 1)).toBe(
       RAGE_STREAK_TO_REVEAL - 1,
     );
@@ -664,15 +623,11 @@ describe('rage streak (reveal gate)', () => {
 });
 
 describe('pool bound', () => {
-  // An obstacle past the render pool still collides while never being painted.
-  // Measured peaks: 4 at 1200px, 5 at 1600px, 7 at 2400px, 10 at 3400px — the
-  // original pool of 8 was sized from the 1200px case and broke on wide panes.
   test('concurrent obstacles never exceed the render pool, even ultrawide', () => {
     for (const width of [1200, 1600, 2400, 3400, 5000, 8000]) {
       const state = running();
       let peak = 0;
       for (let i = 0; i < 8000; i++) {
-        // Tightest jitter draw is the densest the spawner can be.
         stepRunner(state, 1 / 60, width, () => 0);
         peak = Math.max(peak, state.obstacles.length);
         state.phase = 'running';
@@ -684,8 +639,6 @@ describe('pool bound', () => {
 
 describe('mid-air duck', () => {
   test('ducking in mid-air does NOT shrink the hitbox', () => {
-    // `isDucked` requires ground contact. If playerBox ever read `ducking`
-    // directly, a mid-air duck would silently clear overhead hazards.
     const state = running();
     state.y = HOP_HEIGHT;
     setDucking(state, true);

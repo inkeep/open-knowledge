@@ -1,20 +1,3 @@
-/**
- * Tests for the pure `runCollabUrlPoll` primitive behind `useCollabUrl`.
- *
- * We exercise:
- *   (a) happy-path resolve (200 with collabUrl string → onStateChange fires
- *       once with resolved URL, no further ticks),
- *   (b) 404 fallback (same-origin defaultCollabWsUrl),
- *   (c) null-collab retry-until-terminal (one-shot info log, terminal fires
- *       once wall-clock elapses `terminalAfterMs`),
- *   (d) cancel() aborts in-flight and prevents subsequent ticks,
- *   (e) retry-like behavior — caller constructs a fresh loop with new deps
- *       to reset the wall-clock window (the hook does this via retrySignal).
- *
- * Uses a manual scheduler + virtual clock (same pattern as idle-shutdown
- * and ui safety-net) so tests are deterministic — no real wall-clock waits.
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { describe, expect, test } from 'vitest';
 import type { FetchApiConfigResult } from './api-config';
@@ -47,15 +30,9 @@ function createManualScheduler(): ManualScheduler {
     },
     async advanceTime(ms) {
       const target = now + ms;
-      // Fire any due entries in order. Entries scheduled during a callback
-      // can become due during the same advance, so loop until quiescent OR
-      // we've exceeded a generous bound (prevents runaway self-rescheduling).
       for (let pass = 0; pass < 200; pass++) {
         const due = queue.filter((e) => e.dueAt <= target);
         if (due.length === 0) break;
-        // Pop the earliest entry, step `now` to its dueAt, fire it, then
-        // yield a microtask so any awaited fetch resolves before we check
-        // the queue again.
         due.sort((a, b) => a.dueAt - b.dueAt);
         const next = due[0];
         if (!next) break;
@@ -120,7 +97,6 @@ describe('runCollabUrlPoll', () => {
   test('resolves healthy /api/config with a real collabUrl on first tick', async () => {
     const { deps, scheduler, states } = makeDeps();
     const handle = runCollabUrlPoll(deps);
-    // The first tick's fetch is async — yield so it settles.
     await wait(0);
     await wait(0);
 
@@ -129,7 +105,6 @@ describe('runCollabUrlPoll', () => {
     expect(last?.collabUrl).toBe('ws://localhost:52000/collab');
     expect(last?.terminal).toBe(false);
     expect(last?.attempts).toBe(1);
-    // No pending timer after a successful resolve — loop is done.
     expect(scheduler.pendingCount()).toBe(0);
     handle.cancel();
   });
@@ -163,10 +138,8 @@ describe('runCollabUrlPoll', () => {
       },
     });
     runCollabUrlPoll(deps);
-    // Initial null-collab tick settles.
     await wait(0);
     await wait(0);
-    // Three null-collab retries at 2s / 4s / 8s, fourth tick resolves.
     await scheduler.advanceTime(2_100);
     await scheduler.advanceTime(4_100);
     await scheduler.advanceTime(8_100);
@@ -175,8 +148,6 @@ describe('runCollabUrlPoll', () => {
     expect(last?.collabUrl).toBe('ws://localhost:52000/collab');
     expect(callCount).toBe(4);
 
-    // Exactly one info log across all null-collab ticks (latching prevents
-    // log-spam on a long boot race).
     const infoLogs = logged.filter((l) => l.level === 'info');
     expect(infoLogs.length).toBe(1);
     expect(infoLogs[0]?.msg).toContain('no port yet');
@@ -195,8 +166,6 @@ describe('runCollabUrlPoll', () => {
     runCollabUrlPoll(deps);
     await wait(0);
     await wait(0);
-    // Advance past the terminal deadline. Each tick reschedules with backoff
-    // (100 → 200 → 400 → 400 ... capped).
     await scheduler.advanceTime(150);
     await scheduler.advanceTime(250);
     await scheduler.advanceTime(500);
@@ -205,7 +174,6 @@ describe('runCollabUrlPoll', () => {
     const terminal = states.find((s) => s.terminal === true);
     expect(terminal).toBeDefined();
     expect(terminal?.collabUrl).toBe(null);
-    // No further timers pending after terminal fires — retries have stopped.
     expect(scheduler.pendingCount()).toBe(0);
   });
 
@@ -228,13 +196,11 @@ describe('runCollabUrlPoll', () => {
       terminalAfterMs: 1_000,
     });
     const handle = runCollabUrlPoll(deps);
-    // Let the fetch start.
     await wait(0);
     handle.cancel();
     await wait(0);
 
     expect(aborted).toBe(true);
-    // No new state updates after cancel even if a timer would fire.
     const pendingBefore = scheduler.pendingCount();
     await scheduler.advanceTime(5_000);
     expect(scheduler.pendingCount()).toBeLessThanOrEqual(pendingBefore);
@@ -247,16 +213,11 @@ describe('runCollabUrlPoll', () => {
     await wait(0);
 
     expect(scheduler.pendingCount()).toBe(0);
-    // Advance time far — nothing should fire.
     await scheduler.advanceTime(60_000);
     expect(scheduler.pendingCount()).toBe(0);
   });
 
   test('retry semantics — starting a second loop with fresh deps resets the wall-clock', async () => {
-    // Simulates the hook's retry() path: the consumer constructs a new loop
-    // (via retrySignal bump) with a fresh scheduler/window. We reuse the same
-    // scheduler to verify the second loop's startedAt comes from `now()` at
-    // second-loop time, not first-loop time.
     const {
       deps: deps1,
       scheduler,
@@ -273,15 +234,12 @@ describe('runCollabUrlPoll', () => {
     const handle1 = runCollabUrlPoll(deps1);
     await wait(0);
     await wait(0);
-    // Drive to terminal — tick times: 0, 50, 150, 350 (all null-collab).
-    // At tick 4 (t=350), elapsed=350 ≥ 300 → terminal.
     await scheduler.advanceTime(60);
     await scheduler.advanceTime(110);
     await scheduler.advanceTime(250);
     expect(states1.some((s) => s.terminal)).toBe(true);
     handle1.cancel();
 
-    // Now simulate retry — start a fresh loop at the current (advanced) clock.
     let fetchCalls = 0;
     const deps2 = {
       ...deps1,
@@ -313,8 +271,6 @@ describe('runCollabUrlPoll', () => {
     await wait(0);
     await wait(0);
 
-    // Second loop resolves on its first tick with the new URL — no carry-over
-    // from the first loop's terminal state.
     expect(fetchCalls).toBe(1);
     const lastSecond = secondStates[secondStates.length - 1];
     expect(lastSecond?.collabUrl).toBe('ws://localhost:54000/collab');
@@ -339,7 +295,6 @@ describe('runCollabUrlPoll', () => {
     await wait(0);
     await wait(0);
 
-    // First tick should have emitted lastError.kind=error, code=network.
     const firstErroredState = states.find(
       (s) =>
         (s as { lastError: unknown }).lastError !== null &&
@@ -347,7 +302,6 @@ describe('runCollabUrlPoll', () => {
     );
     expect(firstErroredState).toBeDefined();
 
-    // Drive retry.
     await scheduler.advanceTime(150);
     await wait(0);
 

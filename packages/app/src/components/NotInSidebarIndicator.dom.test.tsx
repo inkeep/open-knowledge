@@ -124,8 +124,6 @@ describe('NotInSidebarIndicator', () => {
     fireEvent.click(onlyMarkdownFlip() as HTMLElement);
     expect(patchCalls).toEqual([{ appearance: { sidebar: { showOnlyMarkdownFiles: false } } }]);
 
-    // The patch lands in merged config via the CRDT round-trip; mirror that
-    // by re-rendering with the updated merged view.
     mergedConfig = { appearance: { sidebar: { showOnlyMarkdownFiles: false } } };
     rendered.rerender(
       <NotInSidebarIndicator entry={{ kind: 'asset', path: '.scratch/data.csv' }} />,

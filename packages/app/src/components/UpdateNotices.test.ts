@@ -1,17 +1,3 @@
-/**
- * UpdateNotices — unit tests for the pure subscription logic
- * (`attachUpdateSubscribers`) + the canonical copy strings.
- *
- * The React effect wrapper in `UpdateNotices()` is a thin adapter over
- * `attachUpdateSubscribers` — the interesting logic (notice shape,
- * action-button plumbing, unsubscribe-on-unmount semantics) is all exercised
- * here without a DOM renderer.
- *
- * Verifying the full render path (card actually appears in the sidebar
- * footer, close button dismisses, action button fires) is manual +
- * Playwright's job.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
@@ -63,7 +49,6 @@ interface FakeBridge {
     resetIncompatible: ReturnType<typeof vi.fn>;
   };
   shell: { openExternal: ReturnType<typeof vi.fn> };
-  /** Test-side handles — set by the `on*` mocks so tests can drive dispatches. */
   _downloaded?: UpdateDownloadedCb;
   _relaunching?: RelaunchingCb;
   _fetchingLatest?: FetchingLatestCb;
@@ -141,10 +126,6 @@ function castBridge(fake: FakeBridge): OkDesktopBridge {
   return fake as unknown as OkDesktopBridge;
 }
 
-// ————————————————————————————————————————————————————————
-// Pure helpers
-// ————————————————————————————————————————————————————————
-
 describe('copy helpers (minimal-wording revision)', () => {
   test('toastABody formats the version-specific pending-install string', () => {
     expect(toastABody('0.1.1')).toBe('Version 0.1.1 ready to install');
@@ -177,8 +158,6 @@ describe('copy helpers (minimal-wording revision)', () => {
   });
 
   test('Notice E action copy names the consequence honestly', () => {
-    // Reset wipes the entire AppState (recentProjects, lastOpenedProject, ...).
-    // The body names recent projects so the action label can stay generic.
     expect(TOAST_E_ACTION_RESET).toBe('Reset to defaults');
   });
 
@@ -209,10 +188,6 @@ describe('appendErrorDetail', () => {
   });
 });
 
-// ————————————————————————————————————————————————————————
-// attachUpdateSubscribers — subscription
-// ————————————————————————————————————————————————————————
-
 describe('attachUpdateSubscribers — registration', () => {
   test('subscribes to all six update channels on the bridge', () => {
     const bridge = makeFakeBridge();
@@ -240,17 +215,8 @@ describe('attachUpdateSubscribers — registration', () => {
   });
 });
 
-// ————————————————————————————————————————————————————————
-// Cross-window relaunch propagation — ok:update:relaunching
-// ————————————————————————————————————————————————————————
-
 describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
   test('swaps the update-downloaded card to the button-less in-progress card', () => {
-    // Another window's "Relaunch" click committed in main, which fans
-    // ok:update:relaunching out to every window. This window must swap its
-    // "…ready to install [Relaunch]" banner to the same terminal in-progress
-    // card the clicked window shows — same stable id (in-place replace), no
-    // action button (blocks a redundant relaunch), no dismiss X.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
@@ -266,11 +232,6 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
   });
 
   test('onUpdateFetchingLatest → the fetching card, same id and shape as relaunching', () => {
-    // The click is checking whether the staged build is still the newest one.
-    // Same stable id as the relaunching card so the in-progress states replace
-    // each other in place rather than stacking, and equally button-less: the
-    // relaunch is already committed, so there is nothing to click and nothing
-    // to dismiss.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
@@ -286,8 +247,6 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
   });
 
   test('the fetching card is worded apart from the relaunching one', () => {
-    // The two waits differ by orders of magnitude — teardown is seconds,
-    // fetching a newer build can be minutes — so they must not share copy.
     expect(TOAST_A_FETCHING_LATEST_BODY).toBe('Getting the latest version…');
     expect(TOAST_A_FETCHING_LATEST_BODY).not.toBe(TOAST_A_PROGRESS_BODY);
   });
@@ -315,10 +274,6 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
   });
 
   test('relaunch-failed with dismissPending clears the stuck fetching card', () => {
-    // The click repainted every window with the button-less, non-dismissible
-    // fetching card and then found nothing staged to install. No banner re-arm
-    // follows, so the card has to be cleared explicitly or the error notice
-    // simply layers over one the user can never remove.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     const dismissed: string[] = [];
@@ -334,9 +289,6 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     });
 
     expect(dismissed).toContain('update-downloaded');
-    // Both halves of the contract: clearing the stuck card is only correct if
-    // the user is also told why it went away. An early return after the
-    // dismiss would satisfy the assertion above and leave them with nothing.
     const error = addNotice.mock.calls.at(-1)?.[0] as UpdateNotice;
     expect(error.id).toBe('relaunch-error-0.1.1');
     expect(error.variant).toBe('error');
@@ -419,10 +371,6 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
   });
 
   test('a downloaded re-broadcast after a failed relaunch replaces the stuck in-progress card in place', () => {
-    // Main's quitAndInstall-throw recovery re-broadcasts ok:update:downloaded.
-    // Because both cards share the stable id, the armed banner (with its
-    // Relaunch action and dismiss X) replaces the button-less in-progress
-    // card — the non-clicked window is never stranded on a dead-end card.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
@@ -435,10 +383,6 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     expect(reArmed.dismissible).toBeUndefined();
   });
 });
-
-// ————————————————————————————————————————————————————————
-// Notice A: update-downloaded
-// ————————————————————————————————————————————————————————
 
 describe('Notice A — ok:update:downloaded', () => {
   test('emits notice with canonical copy + relaunch action on dispatch', () => {
@@ -453,9 +397,7 @@ describe('Notice A — ok:update:downloaded', () => {
     expect(notice.id).toBe('update-downloaded');
     expect(notice.action?.label).toBe(TOAST_A_ACTION);
     expect(notice.variant).toBeUndefined();
-    expect(notice.priority).toBe(2); // update-downloaded = A
-    // The armed "ready to install" card stays dismissible — the user can
-    // close it and relaunch later. Only the in-progress swap drops the X.
+    expect(notice.priority).toBe(2);
     expect(notice.dismissible).toBeUndefined();
   });
 
@@ -470,13 +412,6 @@ describe('Notice A — ok:update:downloaded', () => {
   });
 
   test('action onClick synchronously swaps Toast A in-place to a button-less, non-dismissible in-progress card', () => {
-    // Immediate feedback: production relaunch tears down servers before
-    // quitAndInstall, so relaunchNow() never resolves before the window
-    // dies. The swap (same id → in-place replace, no action button) is the
-    // only signal the click landed, and dropping the button blocks a
-    // double-fire. Asserted synchronously — before any microtask resolves.
-    // `dismissible: false` also drops the X — this terminal state has nothing
-    // to dismiss; the card disappears when the app restarts.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
@@ -501,18 +436,17 @@ describe('Notice A — ok:update:downloaded', () => {
     noticeA.action?.onClick();
     await Promise.resolve();
     await Promise.resolve();
-    // Sequence: [armed, in-progress swap, armed-restored (retry), error].
     expect(addNotice).toHaveBeenCalledTimes(4);
     const reArmed = addNotice.mock.calls[2]?.[0] as UpdateNotice;
     expect(reArmed.id).toBe('update-downloaded');
     expect(reArmed.body).toBe(toastABody('0.1.1'));
-    expect(reArmed.action?.label).toBe(TOAST_A_ACTION); // Relaunch retry restored
+    expect(reArmed.action?.label).toBe(TOAST_A_ACTION);
     const errorNotice = addNotice.mock.calls.at(-1)?.[0] as UpdateNotice;
     expect(errorNotice.body).toBe(`${TOAST_A_ERROR_BODY}: quitAndInstall failed`);
     expect(errorNotice.id).toBe('relaunch-error-0.1.1');
     expect(errorNotice.variant).toBe('error');
     expect(errorNotice.action).toBeUndefined();
-    expect(errorNotice.priority).toBe(1); // relaunch-error = higher than A
+    expect(errorNotice.priority).toBe(1);
   });
 
   test('relaunchNow non-Error rejection (string throw) → error notice without trailing colon', async () => {
@@ -539,7 +473,6 @@ describe('Notice A — ok:update:downloaded', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(bridge.update.relaunchNow).toHaveBeenCalledTimes(1);
-    // Success dismisses the in-progress card rather than adding more notices.
     expect(addNotice).toHaveBeenCalledTimes(2);
     const variants = addNotice.mock.calls.map((c) => (c[0] as UpdateNotice).variant);
     expect(variants).not.toContain('error');
@@ -571,19 +504,10 @@ describe('Notice A — ok:update:downloaded', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(dismissNotice).not.toHaveBeenCalled();
-    // [armed, in-progress swap, armed-restored, error] — success would have
-    // dismissed instead; rejection re-arms + surfaces the error.
     expect(addNotice).toHaveBeenCalledTimes(4);
   });
 
   test('a newer download supersedes the prior notice in place — single stable id, body advances to the latest version', () => {
-    // Regression: previously each version produced a distinct notice id
-    // (`update-downloaded-${version}`), so a second download (beta.18
-    // staged, then beta.19 discovered minutes later) accumulated a
-    // second notice at the same priority. `pickActiveNotice`'s first-wins
-    // tie-break kept the older notice on screen while Squirrel's staged
-    // install advanced to the newer version — the user saw "Version
-    // beta.18 ready to install" but relaunched onto beta.19.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     attachUpdateSubscribers(castBridge(bridge), addNotice);
@@ -595,12 +519,6 @@ describe('Notice A — ok:update:downloaded', () => {
   });
 
   test('error notice after supersession carries latest version (closure freshness)', async () => {
-    // Disambiguates which onClick closure fired post-supersession. Both
-    // closures share `bridge.update.relaunchNow` so a call-count assertion
-    // can't tell beta.18 from beta.19, but the error notice id encodes
-    // the version captured at closure creation time
-    // (`relaunch-error-${version}`). If the stale beta.18 closure fired,
-    // the error id would be `relaunch-error-0.1.1`.
     const bridge = makeFakeBridge();
     bridge.update.relaunchNow = vi.fn(() => Promise.reject(new Error('quitAndInstall failed')));
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
@@ -626,10 +544,6 @@ describe('Notice A — ok:update:downloaded', () => {
   });
 });
 
-// ————————————————————————————————————————————————————————
-// Notice B: what's-new
-// ————————————————————————————————————————————————————————
-
 describe('Notice B — ok:update:whats-new', () => {
   test('emits notice with version-specific copy + release URL action', () => {
     const bridge = makeFakeBridge();
@@ -642,8 +556,8 @@ describe('Notice B — ok:update:whats-new', () => {
     expect(notice.body).toBe('Updated to Version 0.3.1');
     expect(notice.id).toBe('whats-new-0.3.1');
     expect(notice.action?.label).toBe(TOAST_B_ACTION);
-    expect(notice.variant).toBe('success'); // green card — distinct from the gray "ready to install"
-    expect(notice.priority).toBe(3); // whats-new = lowest
+    expect(notice.variant).toBe('success');
+    expect(notice.priority).toBe(3);
     notice.action?.onClick();
     expect(bridge.shell.openExternal).toHaveBeenCalledWith(releaseUrl);
   });
@@ -675,8 +589,6 @@ describe('Notice B — ok:update:whats-new', () => {
   });
 
   test('two whats-new events each schedule an independent auto-dismiss timer', async () => {
-    // The timer-tracking Set exists to hold multiple concurrent timers; a
-    // regression to a single variable would silently drop the first one.
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
     const dismissNotice = vi.fn<(id: string) => void>(() => {});
@@ -716,14 +628,9 @@ describe('Notice B — ok:update:whats-new', () => {
     attachUpdateSubscribers(castBridge(bridge), addNotice, dismissNotice);
     bridge._whatsNewDismissed?.({ version: '0.3.1' });
     expect(dismissNotice).toHaveBeenCalledWith('whats-new-0.3.1');
-    // The echo must NOT re-call dismissWhatsNew, or windows would broadcast forever.
     expect(bridge.update.dismissWhatsNew).not.toHaveBeenCalled();
   });
 });
-
-// ————————————————————————————————————————————————————————
-// Notice B — combined release-notes + subscribe path
-// ————————————————————————————————————————————————————————
 
 describe('Notice B — combined subscribe path', () => {
   test('eligible → combined notice: distinct id, whatsNew data, onShown + dismissWhatsNew at creation, no auto-dismiss', async () => {
@@ -738,14 +645,11 @@ describe('Notice B — combined subscribe path', () => {
     bridge._whatsNew?.({ version: '1.4.0', releaseUrl: 'https://example.com/r' });
 
     const notice = addNotice.mock.calls[0]?.[0] as UpdateNotice;
-    // Distinct id so the dismissWhatsNew echo can't remove this card mid-session.
     expect(notice.id).toBe('whats-new-combined-1.4.0');
     expect(notice.combinedSubscribe).toBe(true);
     expect(notice.whatsNew).toEqual({ version: '1.4.0', releaseUrl: 'https://example.com/r' });
     expect(onShown).toHaveBeenCalledWith('1.4.0');
-    // Marked seen in main at creation so a close+reopen does NOT re-nag.
     expect(bridge.update.dismissWhatsNew).toHaveBeenCalledWith('1.4.0');
-    // No auto-dismiss timer — the combined card stays until the user acts.
     await new Promise((resolve) => setTimeout(resolve, 45));
     expect(dismissNotice).not.toHaveBeenCalled();
   });
@@ -779,16 +683,10 @@ describe('Notice B — combined subscribe path', () => {
     });
     bridge._whatsNew?.({ version: '1.4.0', releaseUrl: 'https://example.com/r' });
     bridge._whatsNewDismissed?.({ version: '1.4.0' });
-    // The echo targets `whats-new-${version}`, never the combined id, so a
-    // cross-window dismiss can't kill the combined card out from under the user.
     expect(dismissNotice).toHaveBeenCalledWith('whats-new-1.4.0');
     expect(dismissNotice).not.toHaveBeenCalledWith('whats-new-combined-1.4.0');
   });
 });
-
-// ————————————————————————————————————————————————————————
-// Notice C: stuck-hint
-// ————————————————————————————————————————————————————————
 
 describe('Notice C — ok:update:stuck-hint', () => {
   test('emits notice with D12 copy + download URL action', () => {
@@ -802,7 +700,7 @@ describe('Notice C — ok:update:stuck-hint', () => {
     expect(notice.body).toBe(TOAST_C_BODY);
     expect(notice.id).toBe('update-stuck-hint');
     expect(notice.action?.label).toBe(TOAST_C_ACTION);
-    expect(notice.priority).toBe(0); // stuck-hint = highest
+    expect(notice.priority).toBe(0);
     notice.action?.onClick();
     expect(bridge.shell.openExternal).toHaveBeenCalledWith(downloadUrl);
   });
@@ -817,10 +715,6 @@ describe('Notice C — ok:update:stuck-hint', () => {
     expect(ids).toEqual(['update-stuck-hint', 'update-stuck-hint']);
   });
 });
-
-// ————————————————————————————————————————————————————————
-// Notice E: schema-incompatibility refuse-downgrade
-// ————————————————————————————————————————————————————————
 
 describe('Notice E — schema-incompatibility refuse-downgrade', () => {
   const diagnostic = {
@@ -905,10 +799,6 @@ describe('Notice E — schema-incompatibility refuse-downgrade', () => {
     expect(ids).toEqual(['schema-incompatibility-2', 'schema-incompatibility-2']);
   });
 });
-
-// ————————————————————————————————————————————————————————
-// pickActiveNotice — single-card priority selector
-// ————————————————————————————————————————————————————————
 
 describe('pickActiveNotice', () => {
   const a: UpdateNotice = { id: 'a', body: 'A', priority: 2 };

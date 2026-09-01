@@ -8,10 +8,6 @@ function snap(contents: string): ConflictSnapshot {
 }
 
 describe('ConflictHistory', () => {
-  // Re-homes the five behaviours from the deleted conflict-merge-history.dom.test.ts
-  // (originally covering the CodeMirror mergeAcceptHistory extension) in terms of
-  // the new host-owned snapshot stack.
-
   test('undo on the initial entry returns null — no-op on empty history', () => {
     const h = new ConflictHistory(snap('initial'));
     expect(h.undo()).toBeNull();
@@ -38,22 +34,22 @@ describe('ConflictHistory', () => {
 
   test('resolving every conflict then undoing brings back the last unresolved snapshot', () => {
     const h = new ConflictHistory(snap('initial'));
-    h.push(snap('partial')); // one conflict resolved, one remains
-    h.push(snap('all-done')); // all conflicts resolved
+    h.push(snap('partial'));
+    h.push(snap('all-done'));
 
     const prev = h.undo();
     expect(prev?.file.contents).toBe('partial');
-    expect(h.canUndo).toBe(true); // can still undo to initial
-    expect(h.canRedo).toBe(true); // redo available: all-done
+    expect(h.canUndo).toBe(true);
+    expect(h.canRedo).toBe(true);
   });
 
   test('undo is most-recent-first when mixing resolution types', () => {
     const h = new ConflictHistory(snap('initial'));
-    h.push(snap('after-current')); // first resolution
-    h.push(snap('after-incoming')); // second resolution (most recent)
+    h.push(snap('after-current'));
+    h.push(snap('after-incoming'));
 
     const first = h.undo();
-    expect(first?.file.contents).toBe('after-current'); // most recent undone first
+    expect(first?.file.contents).toBe('after-current');
 
     const second = h.undo();
     expect(second?.file.contents).toBe('initial');
@@ -96,27 +92,22 @@ describe('ConflictHistory', () => {
     for (let i = 0; i < 55; i++) {
       h.push(snap(`step-${i}`));
     }
-    // Can still undo (initial is preserved)
     expect(h.canUndo).toBe(true);
-    // The current entry is the last pushed
     expect(h.current.file.contents).toBe('step-54');
   });
 
   test('reset backfills the initial entry so undo returns a snapshot with fileDiff', () => {
     const h = new ConflictHistory(snap('initial'));
     h.push(snap('resolved'));
-    // Simulate Pierre synchronously computing fileDiff after the first render.
     const fullInitial: ConflictSnapshot = {
       file: { name: 'f.md', contents: 'initial' },
       // biome-ignore lint/suspicious/noExplicitAny: partial stub of Pierre's FileDiffMetadata for this test
       fileDiff: { additionLines: ['resolved\n'], deletionLines: ['initial\n'] } as any,
     };
     h.reset(fullInitial);
-    // Undo should return the enriched initial snapshot with fileDiff.
     const prev = h.undo();
     expect(prev?.fileDiff).toBeDefined();
     expect(prev?.file.contents).toBe('initial');
-    // After undoing to initial, further undo returns null (still at index 0).
     expect(h.undo()).toBeNull();
   });
 });

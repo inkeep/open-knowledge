@@ -1,11 +1,3 @@
-/**
- * Headless markdown linter — walks a content directory (or a sub-path), lints
- * every in-scope `.md`/`.mdx` document with the core engine, and optionally
- * applies fixes in place. The effective config is the project's `contentRules`
- * base with the native `.markdownlint.*` rules injected (same resolution the
- * server uses).
- */
-
 import {
   readdirSync,
   readFileSync,
@@ -34,17 +26,14 @@ import {
 } from '@inkeep/open-knowledge-server';
 
 interface FileLintResult {
-  /** Path relative to `contentDir` (as produced by `node:path`). */
   file: string;
   diagnostics: LintDiagnostic[];
-  /** True when `--fix` rewrote this file. */
   fixed: boolean;
 }
 
 export interface LintRunResult {
   contentDir: string;
   files: FileLintResult[];
-  /** Non-fatal issues (unreadable dir/file, …). */
   warnings: string[];
   fileCount: number;
   errorCount: number;
@@ -56,9 +45,7 @@ export interface LintRunResult {
 export interface RunLintOptions {
   projectDir: string;
   contentDir: string;
-  /** The project-level content-rules config (from merged `config.contentRules`). */
   baseConfig: LinterConfig;
-  /** Absolute path to a file or folder to scope the run to. Defaults to contentDir. */
   targetPath?: string;
   fix?: boolean;
 }
@@ -76,26 +63,13 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     warnings.push(problem);
   };
 
-  // Frontmatter schema files load once per run (the mapping is project-wide,
-  // resolved from projectDir; per-doc appliesTo filtering lives in the plugin);
-  // load problems surface as report warnings — the same resolution the server
-  // uses.
   const resolvedBase = composeFrontmatterSchemasConfig(projectDir, baseConfig, pushConfigProblem);
   const ran = deriveValidationRunSources(resolvedBase, { mode: 'lint' });
-  // Collected structured and summarized once at the end rather than pushed as
-  // formatted lines: a plugin that throws on every document would otherwise add
-  // one warning per file, and the `seenConfigProblems` dedup above cannot
-  // collapse them because each carries its own doc path.
   const pluginFailures: LintPluginFailure[] = [];
   const pushPluginFailure = (failure: LintPluginFailure): void => {
     pluginFailures.push(failure);
   };
 
-  // markdownlint `rules` come from the project's native `.markdownlint.*`
-  // files, resolved per doc with cli2 cascade semantics (nearest file on the
-  // doc→root walk governs wholesale; OK's tuned defaults only when no file
-  // governs) — the same resolution the server uses. Memoized per directory:
-  // every doc in a folder shares one governing file.
   const cfgByDir = new Map<string, LinterConfig>();
   const configForDoc = (rel: string): LinterConfig => {
     const dir = dirname(rel);
@@ -126,10 +100,6 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
       return;
     }
     for (const entry of entries) {
-      // Hidden segments (.ok/, .git/, .obsidian/, dotfiles) are OK state, not
-      // authored content — same skip the server audit applies. An explicitly
-      // named hidden file (`ok lint .ok/foo.md`) still lints: the file-scope
-      // branch above bypasses the walk, matching linter-CLI convention.
       if (entry.name.startsWith('.')) continue;
       const full = join(absDir, entry.name);
       const rel = relative(contentDir, full);
@@ -166,8 +136,6 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     if (fix && cfg.enabled) {
       const fixedText = fixDocument(text, cfg, rel, pushPluginFailure);
       if (fixedText !== text) {
-        // tmp + rename so an interrupted write can never leave the document
-        // half-written (mirrors the server's markdownlint-write pattern).
         const tmp = `${abs}.tmp.${process.pid}.${Date.now()}`;
         try {
           writeFileSync(tmp, fixedText, 'utf-8');
@@ -178,9 +146,7 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
         } catch (e) {
           try {
             unlinkSync(tmp);
-          } catch {
-            // tmp may not exist if the write itself failed.
-          }
+          } catch {}
           warnings.push(`could not write fix to ${rel}: ${errMsg(e)}`);
         }
       }
@@ -210,15 +176,12 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
 
 type Scope = { kind: 'dir' | 'file'; path: string };
 
-/** Resolve the scope to an absolute file or directory under `contentDir`. */
 function resolveScope(targetPath: string | undefined, contentDir: string): Scope {
   if (targetPath === undefined || targetPath === '') return { kind: 'dir', path: contentDir };
   const abs = isAbsolute(targetPath) ? targetPath : resolve(contentDir, targetPath);
   try {
     if (statSync(abs).isFile()) return { kind: 'file', path: abs };
-  } catch {
-    // Fall through — treat as a directory; the walk warns if it's unreadable.
-  }
+  } catch {}
   return { kind: 'dir', path: abs };
 }
 

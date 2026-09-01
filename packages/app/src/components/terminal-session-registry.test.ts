@@ -37,7 +37,7 @@ describe('findIdleMatchingSession', () => {
   });
 
   test('does NOT match a busy (recently-active) session', () => {
-    register('a', 'claude', 'pty-a', now - 10, true); // 10ms ago → busy
+    register('a', 'claude', 'pty-a', now - 10, true);
     expect(findIdleMatchingSession('claude', now)).toBeNull();
   });
 
@@ -67,9 +67,8 @@ describe('registry mutation', () => {
   const now = 100_000;
 
   test('updateTerminalSession patches activity so a busy session becomes idle after the quiet window', () => {
-    register('a', 'claude', 'pty-a', now, true); // just streamed → busy
+    register('a', 'claude', 'pty-a', now, true);
     expect(findIdleMatchingSession('claude', now)).toBeNull();
-    // Time passes, no new output → the same last-output stamp is now old enough.
     expect(findIdleMatchingSession('claude', now + IDLE_QUIET_MS + 1)?.id).toBe('a');
   });
 

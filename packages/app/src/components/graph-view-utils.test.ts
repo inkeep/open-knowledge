@@ -581,9 +581,7 @@ describe('reconcileGraphData — staged entrance (showcase)', () => {
     expect(bornById.get('a')).toBe(NOW);
     expect(bornById.get('b')).toBe(NOW + 140);
     expect(bornById.get('c')).toBe(NOW + 280);
-    // hub pre-existed with no bornAt → stamped now (no stagger for survivors).
     expect(bornById.get('hub')).toBe(NOW);
-    // hub>a waits for a; a>c waits for c (the later endpoint).
     expect(merged.links[0]?.bornAt).toBe(NOW + 260);
     expect(merged.links[1]?.bornAt).toBe(NOW + 280 + 260);
   });

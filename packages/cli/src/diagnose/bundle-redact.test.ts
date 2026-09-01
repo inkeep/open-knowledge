@@ -1,17 +1,3 @@
-/**
- * Unit tests for the bundle content-dir masker.
- *
- * The masker walks staged JSONL + JSON + plain files under a bundle's staging
- * dir and replaces the absolute content-dir prefix, wherever it appears, with
- * the literal `<CONTENT_DIR>` token. Doc names / titles are NOT anonymized —
- * they ship raw under the user's Detailed-diagnostics consent (credentials are
- * handled by the separate secret-pattern scrub).
- *
- * Tests use real disk fixtures (no fs mocks) since the module's job is
- * filesystem-shaped. We seed files in a tmpdir, call the masker, and assert on
- * the rewritten files.
- */
-
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -223,7 +209,6 @@ describe('redactStagedBundle — contentDir masking', () => {
     const after = readStaged(stagingDir, 'state/agent-presence.json');
     expect(after).not.toContain(contentDir);
     expect(after).toContain('<CONTENT_DIR>');
-    // Doc name in the torn fragment still ships raw.
     expect(after).toContain('notes/plan');
   });
 
@@ -262,9 +247,6 @@ describe('redactStagedBundle — contentDir masking', () => {
   });
 
   test('an empty contentDir does not insert tokens between characters', () => {
-    // Defensive guard against a degenerate config that hands the masker an
-    // empty string. Without it, split('').join('<CONTENT_DIR>') would explode
-    // every string into per-character tokens.
     const stagingDir = makeStagingDir();
     const pinoLine = JSON.stringify({ level: 30, msg: 'abc' });
     writeStaged(stagingDir, 'logs/server-current.jsonl', `${pinoLine}\n`);
@@ -319,10 +301,6 @@ describe('redactStagedBundle — process/ subdirectory', () => {
 
 describe('redactStagedBundle — cross-platform basename dispatch', () => {
   test('stdlib pin: node:path.win32.basename strips backslash-joined Windows paths to the file name', async () => {
-    // Stdlib documentation pin — the production dispatch routes state files to
-    // the JSON walker by basename, and Node's default `basename` resolves to
-    // path.win32 on Windows. Can't exercise the Windows leg from a POSIX host,
-    // so this pins the stdlib contract the dispatch relies on.
     const { posix, win32 } = await import('node:path');
     expect(win32.basename('C:\\stage\\state\\runtime.json')).toBe('runtime.json');
     expect(posix.basename('/Users/jane/stage/state/runtime.json')).toBe('runtime.json');

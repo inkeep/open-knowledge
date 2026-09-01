@@ -1,117 +1,39 @@
-/**
- * Single source of truth for OK's shipped skill bundles.
- *
- * A "bundle" is a skill OK ships under `packages/server/assets/skills/<id>/`,
- * whose `id` doubles as the source-dir name (so `resolveBundledSkillDir(id)`
- * resolves `assets/skills/<id>`). Each bundle's frontmatter `name:` is its
- * install dir name in editor host dirs.
- *
- * Kept dependency-free on purpose: it's imported by `build-skill-zip.ts` AND
- * read by the release version-sync (`scripts/sync-skill-version.sh` derives its
- * file list from `BUNDLE_IDS` via `bun`), so the bundle set is declared ONCE.
- * Adding a bundle here flows to the copier, the version-sync, and any drift
- * check — no hand-maintained parallel lists.
- */
-
-/** Which skill bundle to resolve / build. */
 export type BundleId = 'discovery' | 'project' | 'write-skill';
 
-/**
- * Frontmatter `name:` each bundle must carry — also its install dir name. The
- * `discovery` + `write-skill` bundles take distinct names so a global-scope
- * skill named `open-knowledge` can't SHADOW the rich project bundle (Anthropic
- * same-name hierarchy is enterprise > global > project). Reserved
- * `open-knowledge*` prefixes keep authored skills from shadowing built-ins.
- */
 export const BUNDLE_SKILL_NAME: Record<BundleId, string> = {
   discovery: 'open-knowledge-discovery',
   project: 'open-knowledge',
   'write-skill': 'open-knowledge-write-skill',
 };
 
-/**
- * Every install-dir name OK's built-in bundles project into (`open-knowledge`,
- * `open-knowledge-discovery`, `open-knowledge-write-skill`). These names are
- * RESERVED: an authored content skill can't take one (the write API rejects it),
- * the skills HTTP API refuses edit/rename/delete/install against them, and the
- * MCP `skills` read tool hides them from its list + read. Derived from
- * `BUNDLE_SKILL_NAME` so the reserved set can't drift from the shipped bundles.
- */
 export const INTERNAL_BUNDLE_SKILL_NAMES: ReadonlySet<string> = new Set(
   Object.values(BUNDLE_SKILL_NAME),
 );
 
-/** True when `name` is one of OK's built-in bundle skill names (`open-knowledge*`). */
 export function isInternalBundleSkillName(name: string): boolean {
   return INTERNAL_BUNDLE_SKILL_NAMES.has(name);
 }
 
-/** Canonical ordered bundle id list (= the keys of `BUNDLE_SKILL_NAME`). */
 export const BUNDLE_IDS = Object.keys(BUNDLE_SKILL_NAME) as BundleId[];
 
-/**
- * Install scope per bundle:
- *   - `user` — force-installed user-global (`~/.{host}/skills/<name>/`), so it's
- *     present in EVERY project. Reclaimed on launch by both the desktop
- *     (`reclaimUserSkillsOnLaunch`) and the CLI (`runUserSweep`).
- *   - `project` — installed into a project's editor dirs at init / reclaim.
- */
 export const BUNDLE_SCOPE: Record<BundleId, 'user' | 'project'> = {
   discovery: 'user',
   project: 'project',
   'write-skill': 'user',
 };
 
-/**
- * The user-global built-in bundles, derived from `BUNDLE_SCOPE`. The two
- * user-global reclaim paths (desktop + CLI) loop over this set so adding a
- * user-global built-in here installs it everywhere — no per-path list to drift.
- */
 export const USER_GLOBAL_BUNDLE_IDS = BUNDLE_IDS.filter((id) => BUNDLE_SCOPE[id] === 'user');
 
-/**
- * The bundle skill names that belong to the USER-GLOBAL tier
- * (`open-knowledge-discovery`, `open-knowledge-write-skill`). Derived from
- * `BUNDLE_SCOPE`, so a bundle that changes tier cannot leave a stale copy here.
- */
 const USER_GLOBAL_BUNDLE_SKILL_NAMES: ReadonlySet<string> = new Set(
   USER_GLOBAL_BUNDLE_IDS.map((id) => BUNDLE_SKILL_NAME[id]),
 );
 
-/**
- * Is `name` a user-global built-in? Such a skill is global BY DEFINITION, so a
- * same-named directory inside a PROJECT's harness root is a stray copy rather
- * than a project skill — see `scanInPlaceSkills`, which refuses to list one.
- */
 export function isUserGlobalBundleSkillName(name: string): boolean {
   return USER_GLOBAL_BUNDLE_SKILL_NAMES.has(name);
 }
 
-/**
- * The user-global bundles first-launch onboarding sets up as part of its single
- * "connect my AI tools" decision. `discovery` only: it is what lets an agent
- * recognize an OpenKnowledge project at all, so it belongs with the MCP wiring.
- * `write-skill` is an authoring convenience with no bearing on whether the tools
- * work, and onboarding neither installs nor records a decision for it — it stays
- * available from Settings and from `ok init`.
- *
- * A bundle absent here is left with NO recorded decision, which `resolveBundleEnabled`
- * reads as "uninstalled on a fresh machine, untouched where it already exists" —
- * so dropping one from onboarding never uninstalls an existing copy.
- *
- * Spelled as a literal rather than filtered out of `USER_GLOBAL_BUNDLE_IDS`: a
- * filter widens to `BundleId[]`, so renaming the `discovery` bundle would
- * silently yield an EMPTY onboarding set — first launch would quietly stop
- * offering the skill. `satisfies` turns that rename into a type error instead.
- * The subset relationship with `USER_GLOBAL_BUNDLE_IDS` is asserted in tests.
- */
 export const ONBOARDING_BUNDLE_IDS = ['discovery'] as const satisfies readonly BundleId[];
 
-/**
- * Repo-relative path of a bundle's `SKILL.md` (the file whose
- * `metadata.version` the release sync bumps). Derived from the id, which equals
- * the source-dir name.
- */
 export function bundleSkillMdPath(id: BundleId): string {
   return `packages/server/assets/skills/${id}/SKILL.md`;
 }

@@ -1,15 +1,3 @@
-/**
- * Integration tests for the map-driven Observer A Path A write surface —
- * the default Path A: an XmlFragment edit that changes only one (or a
- * contiguous range of) top-level block(s) must produce a SINGLE Y.Text
- * splice covering exactly that range — bytes outside the splice survive
- * byte-identically (the byte-granular property at the bridge layer).
- *
- * The harness mirrors `server-observers.test.ts` — synthetic `Y.Doc` (no
- * Hocuspocus), populate XmlFragment via `updateYFragment`, observe the
- * Y.Text delta to assert splice shape directly.
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
@@ -194,10 +182,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
   });
 
   test('(f) map-driven splice is the default — active with no env configuration', () => {
-    // A splice-discriminating shape: the row without a trailing pipe still
-    // canonicalizes under serialize(parse), so its bytes survive an edit in
-    // ANOTHER block only via block-splice preservation — the whole-body
-    // incremental line diff rewrites it. No env var is set here.
     expect(process.env.OK_MAP_DRIVEN_OBSERVER_A).toBeUndefined();
 
     const raw = '# Notes\n\n| a | b |\n| - | - |\n| 1 | 2\n';
@@ -217,9 +201,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
   });
 
   test('(g) fallback: an offset-less block (comment block) falls back to applyIncrementalDiff and still converges', () => {
-    // Comment blocks parse to position-less mdast nodes, so the splice is
-    // not computable and Path A must fall back to the incremental line
-    // diff — the bridge always makes progress.
     const { doc, xmlFragment, ytext } = createTestDoc();
     populateFragment(doc, xmlFragment, '<!-- note -->\n\nOriginal.\n');
     const cleanup = setupServerObservers({ doc, xmlFragment, ytext, mdManager, schema });
@@ -233,12 +214,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
   });
 
   describe('dash-count tripwire — concurrent source-form table edits are detected + spliced, never silently dropped', () => {
-    // The structural block comparison must stay data-aware: a delimiter-row
-    // padding change arrives ONLY as a data.source* difference (the cell
-    // contents are identical). A comparison that strips `data` judges the
-    // tables equal, skips the splice, and silently drops the user's edit —
-    // a P0 table-padding loss. These tests go RED if anyone re-introduces
-    // that data-strip shortcut.
     const narrowDashBody = 'before\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nafter\n';
     const wideDashBody = 'before\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter\n';
 
@@ -273,14 +248,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
   });
 
   describe('splice-path observability — applied vs fallback(reason) counters', () => {
-    // The map-driven splice is the default byte-preserving path; every drain
-    // it cannot serve silently routes through the lossier incremental-diff /
-    // merge fallbacks. These tests pin that the dispatch records applied vs
-    // fallback-with-reason, so a systemic regression (e.g. a parser bump that
-    // starts throwing) is visible in /api/metrics/reconciliation instead of
-    // looking identical to normal operation. Deltas, not absolutes — the
-    // metrics module is process-global and other tests in this file fire
-    // observers too.
     function fallbackTotal(m: ReturnType<typeof getMetrics>): number {
       return Object.values(m.mapDrivenSpliceFallback).reduce((a, b) => a + (b ?? 0), 0);
     }
@@ -378,9 +345,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
     test('a sustained parse-error fallback warns once with the error message, then stays counter-only', () => {
       const raw = '# Heading\n\nFirst.\n\nSecond.\n';
       const { doc, xmlFragment, ytext } = createTestDoc();
-      // Real manager except parseToEditorMdast — only the splice computation
-      // uses that view, so the drain itself (serialize + the incremental-diff
-      // fallback) still completes while every splice attempt throws.
       const throwingManager = new Proxy(mdManager, {
         get(target, prop) {
           if (prop === 'parseToEditorMdast') {
@@ -410,13 +374,11 @@ describe('map-driven Observer A — default Path A behavior', () => {
       populateFragment(doc, xmlFragment, raw.replace('First.', 'First EDITED TWICE.'));
       const after = getMetrics();
 
-      // Both drains landed via the incremental-diff fallback and counted...
       expect(ytext.toString()).toContain('First EDITED TWICE.');
       expect(
         (after.mapDrivenSpliceFallback['parse-error'] ?? 0) -
           (before.mapDrivenSpliceFallback['parse-error'] ?? 0),
       ).toBeGreaterThanOrEqual(2);
-      // ...but the breadcrumb fired exactly once, carrying the message.
       const spliceWarns = warnSpy.mock.calls.filter((args) =>
         String(args[1]).includes('Map-driven splice'),
       );
@@ -447,7 +409,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
 });
 
 describe('typing-burst parse economy (PRD-8273)', () => {
-  /** Append one character to the fragment's deepest last text node — a keystroke. */
   function typeChar(doc: Y.Doc, xmlFragment: Y.XmlFragment, ch: string): void {
     doc.transact(() => {
       let node: Y.XmlElement | Y.XmlText | Y.XmlHook | undefined = xmlFragment.get(
@@ -461,21 +422,6 @@ describe('typing-burst parse economy (PRD-8273)', () => {
     });
   }
 
-  /**
-   * Each keystroke drain runs `computeMapDrivenBodySplice`. Its two parses are
-   * `oldBody` (what Y.Text holds now) and `newBody` (the canonical
-   * serialization of the fragment) — and across consecutive drains those are
-   * the SAME bytes, because the splice a drain applies leaves Y.Text holding
-   * exactly the `newBody` it just parsed.
-   *
-   * The memo serves that `oldBody` side, so a drain parses once rather than
-   * twice — which is what this test pins. Without it a 15-character marker
-   * costs 30 full-document parses at any document size; with it, 15.
-   *
-   * It pins the COUNT rather than a wall-clock budget deliberately: a parse
-   * count is machine-independent in a way milliseconds are not, so this cannot
-   * go flaky on a contended runner.
-   */
   test('consecutive keystroke drains parse each body once, not once per drain', () => {
     const { manager: counted, parses } = createCountingManager();
     const { doc, xmlFragment, ytext } = createTestDoc();
@@ -496,14 +442,8 @@ describe('typing-burst parse economy (PRD-8273)', () => {
     for (const ch of 'XYZ') typeChar(doc, xmlFragment, ch);
     const burstParses = parses() - before;
 
-    // The marker must actually have landed — a stalled bridge would also
-    // report a low parse count.
     expect(ytext.toString()).toContain('alphaXYZ');
 
-    // One parse per keystroke, not two: each drain's `oldBody` is the body the
-    // PREVIOUS drain already parsed as its `newBody` (the seeding drain above
-    // primes the memo the same way), so only the newly-serialized side is real
-    // work. Three keystrokes, three parses.
     expect(burstParses).toBe(3);
 
     cleanup();

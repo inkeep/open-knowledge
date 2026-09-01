@@ -67,9 +67,6 @@ describe('RegisteredAgentIcon', () => {
   });
 
   test('inverts the registry image on dark themes so black marks stay visible', () => {
-    // A registry SVG loaded as an image is its own document, so its
-    // `currentColor` marks resolve to black — invisible on a dark background
-    // unless the dark theme lifts them.
     const { container } = render(
       <RegisteredAgentIcon
         agentId="gemini"

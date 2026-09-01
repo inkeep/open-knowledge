@@ -65,10 +65,6 @@ export default async function SplashPage({ params }: SplashPageProps) {
   const { encoded } = await params;
   const view = buildSplashViewModel(encoded);
 
-  // The two failure states need different advice. An unsupported version means
-  // the app is installed and merely old, so the in-app updater is the fastest
-  // route and gets named first; an invalid link never resolved to anything, so
-  // there is nothing to open and the sender is the only fix.
   if (view.kind === 'unsupported-version') {
     return (
       <SplashFallback

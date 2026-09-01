@@ -132,17 +132,6 @@ describe('Logger', () => {
       return segments.map((line) => JSON.parse(line) as ParsedLogRecord);
     }
 
-    /**
-     * Poll `readLogLines` until it returns `expectedCount` records or the
-     * timeout expires. `await flushFileSink()` returns when Pino's worker
-     * has been signalled but Linux overlayfs in CI sometimes needs a few
-     * extra ms for the inode's visible byte count to catch up — macOS
-     * settles in microseconds, Linux occasionally returns one record short
-     * on the first read. Polling preserves the assertion's strict shape
-     * (`toHaveLength(expectedCount)`) without papering over a real bug:
-     * if the records never appear, the final read still produces the
-     * actual short array and the assertion fails with the same diagnostic.
-     */
     async function readLogLinesWhen(
       filePath: string,
       expectedCount: number,
@@ -175,7 +164,7 @@ describe('Logger', () => {
       if (!record) throw new Error('expected one record');
       expect(record.msg).toBe('hello-from-file-sink');
       expect(record.ctx).toBe('a');
-      expect(record.level).toBe(30); // pino info level
+      expect(record.level).toBe(30);
     });
 
     it('creates parent directory lazily on first record', async () => {
@@ -194,7 +183,6 @@ describe('Logger', () => {
     });
 
     it('rotates current → prev once file size exceeds maxBytes', async () => {
-      // Small cap to force rotation after each substantial record.
       const logger = new PinoLogger('test', {
         options: { level: 'info' },
         fileSink: { projectDir: tmp, maxBytes: 80 },
@@ -202,13 +190,9 @@ describe('Logger', () => {
       const currentPath = logsCurrentPath(tmp);
       const previousPath = logsPreviousPath(tmp);
 
-      // Each record's JSON form is ~150+ bytes (includes name, pid, hostname,
-      // timestamps, msg, level) — well over the 80-byte cap.
       logger.info({}, 'first-large-record');
       await logger.flushFileSink();
 
-      // After the first write, the post-write size already exceeds 80,
-      // so current was rotated to prev.
       expect(existsSync(currentPath)).toBe(false);
       expect(existsSync(previousPath)).toBe(true);
       const prevRecords = readLogLines(previousPath);
@@ -220,8 +204,6 @@ describe('Logger', () => {
       logger.info({}, 'second-large-record');
       await logger.flushFileSink();
 
-      // The second write lands in a fresh current that also tips the
-      // post-write cap, so it rotates again — replacing prev.
       expect(existsSync(currentPath)).toBe(false);
       expect(existsSync(previousPath)).toBe(true);
       const secondPrevRecords = readLogLines(previousPath);
@@ -232,14 +214,9 @@ describe('Logger', () => {
     });
 
     it('configure(pinoConfig) reconfigures already-cached loggers in place (captured refs gain the sink)', async () => {
-      // A module-level `const log = getLogger('x')` captures the logger BEFORE
-      // bootServer wires the file sink. configure() must upgrade that SAME
-      // instance in place — not orphan it by clearing the cache — or those
-      // subsystems' diagnostics never reach bug-report bundles.
       const captured = loggerFactory.getLogger('captured-early');
       captured.info({}, 'before-configure');
       await captured.flushFileSink();
-      // No sink yet → nothing on disk.
       expect(existsSync(logsCurrentPath(tmp))).toBe(false);
 
       loggerFactory.configure({
@@ -249,7 +226,6 @@ describe('Logger', () => {
         },
       });
 
-      // Same reference, now upgraded with the file sink.
       expect(loggerFactory.getLogger('captured-early')).toBe(captured);
       captured.info({}, 'after-configure');
       await captured.flushFileSink();
@@ -259,10 +235,6 @@ describe('Logger', () => {
     });
 
     it('OK_CONSOLE_LEVEL raises the stdout stream without flooring the file sink', async () => {
-      // The interactive `ok start` path raises the console to 'warn' to keep
-      // the terminal legible, but the on-disk sink MUST keep capturing INFO
-      // diagnostics for bug-report bundles. Verify an info record still lands
-      // on disk when the console level is raised above it.
       const prev = process.env.OK_CONSOLE_LEVEL;
       process.env.OK_CONSOLE_LEVEL = 'warn';
       try {
@@ -270,9 +242,6 @@ describe('Logger', () => {
           options: { level: 'info' },
           fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
         });
-        // Instance level must be the more-verbose of (file=debug, console=warn)
-        // so the logger-level gate doesn't drop DEBUG/INFO before per-stream
-        // filtering. The file sink defaults to debug (breadcrumb capture).
         expect(logger.getPinoInstance().level).toBe('debug');
 
         logger.info({}, 'info-to-disk');
@@ -281,8 +250,6 @@ describe('Logger', () => {
 
         const records = await readLogLinesWhen(logsCurrentPath(tmp), 2);
         expect(records.map((r) => r.msg)).toEqual(['info-to-disk', 'warn-to-disk']);
-        // The INFO record is the load-bearing one — it would be lost if the
-        // console-level raise leaked onto the file-sink stream.
         expect(records[0]?.level).toBe(30);
       } finally {
         if (prev === undefined) delete process.env.OK_CONSOLE_LEVEL;
@@ -291,9 +258,6 @@ describe('Logger', () => {
     });
 
     it('DEBUG records reach the file sink by default without landing on stdout at the base level', async () => {
-      // Lifecycle breadcrumbs (agent sessions, bridge watchdog, watcher
-      // decisions) are emitted at debug — they must reach bug-report bundles
-      // (the file sink) while the terminal stays at the base level.
       const logger = new PinoLogger('test', {
         options: { level: 'info' },
         fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
@@ -305,7 +269,7 @@ describe('Logger', () => {
 
       const records = await readLogLinesWhen(logsCurrentPath(tmp), 2);
       expect(records.map((r) => r.msg)).toEqual(['debug-breadcrumb', 'info-line']);
-      expect(records[0]?.level).toBe(20); // pino debug level
+      expect(records[0]?.level).toBe(20);
     });
 
     it('OK_FILE_LEVEL overrides the file-sink level (opt-down from the debug default)', async () => {
@@ -347,17 +311,13 @@ describe('Logger', () => {
       const logsDir = join(tmp, '.ok', 'local', 'logs');
 
       logger.info({}, 'no-file-sink-here');
-      await logger.flushFileSink(); // no-op when no sink
+      await logger.flushFileSink();
 
       expect(existsSync(logsDir)).toBe(false);
       expect(existsSync(logsCurrentPath(tmp))).toBe(false);
     });
 
     it('preserves trace context in file records when an active span exists', async () => {
-      // OTel context propagation requires a registered ContextManager; the
-      // default Noop manager makes context.with() a no-op, which would
-      // route the logger.info() call through an empty active context and
-      // strip the trace fields.
       const contextManager = new AsyncLocalStorageContextManager().enable();
       context.setGlobalContextManager(contextManager);
       const provider = new BasicTracerProvider();
@@ -388,8 +348,6 @@ describe('Logger', () => {
         expect(record.trace_flags).toBe(expected.traceFlags);
       } finally {
         await provider.shutdown();
-        // Disable the global context manager so it doesn't leak into
-        // other tests. context.disable() resets to the Noop manager.
         contextManager.disable();
         context.disable();
       }
@@ -403,24 +361,17 @@ describe('Logger', () => {
     });
 
     it('the file sink rebuilds cleanly across updateOptions / addTransport churn', async () => {
-      // Defensive coverage: buildInstance() clears activeFileSink each call.
-      // After a rebuild that drops the file sink (no fileSinkOpts path),
-      // flushFileSink should still resolve.
       const logger = new PinoLogger('test', {
         options: { level: 'info' },
         fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
       });
       logger.info({}, 'first');
       await logger.flushFileSink();
-      // updateOptions triggers recreateInstance() — file sink should be
-      // re-attached since fileSinkOpts is still set.
       logger.updateOptions({ level: 'debug' });
       logger.info({}, 'second');
       await logger.flushFileSink();
 
       const records = readLogLines(logsCurrentPath(tmp));
-      // Both records landed even though the sink was rebuilt.
-      // (Order is deterministic: appender serializes through a promise chain.)
       expect(records.map((r) => r.msg)).toEqual(['first', 'second']);
     });
 
@@ -435,7 +386,6 @@ describe('Logger', () => {
       logger.info({}, 'lots-of-content-to-trigger-rotation');
       await logger.flushFileSink();
 
-      // Either current is absent (rotated) or it's under the cap.
       if (existsSync(currentPath)) {
         expect(statSync(currentPath).size).toBeLessThanOrEqual(50);
       }
@@ -443,11 +393,6 @@ describe('Logger', () => {
     });
 
     it('flushAllFileSinks drains records from every cached PinoLogger before exit', async () => {
-      // Two named loggers obtained through the factory write to the same log
-      // path, so their PinoFileSinks share one per-path rotation chain.
-      // flushAllFileSinks must drain that chain so records written in the final
-      // moments before process.exit() — from any logger — land on disk rather
-      // than being lost with the unflushed async write queue.
       loggerFactory.configure({
         pinoConfig: {
           options: { level: 'info' },
@@ -471,8 +416,6 @@ describe('Logger', () => {
     });
 
     it('flushAllFileSinks resolves when no loggers are cached or none have file sinks', async () => {
-      // Idempotency + no-op contract — shutdown calls this unconditionally;
-      // it must not throw when the file sink was never configured.
       await expect(loggerFactory.flushAllFileSinks()).resolves.toBeUndefined();
 
       loggerFactory.configure({
@@ -483,11 +426,6 @@ describe('Logger', () => {
     });
 
     it('credential-shaped log fields are masked before reaching the file sink', async () => {
-      // Pino-side defense-in-depth: a log record carrying authorization or
-      // similar credential keys must land on disk with [REDACTED] in place
-      // of the secret. Mirrors ScrubbingSpanProcessor on the span side so
-      // bug-report bundles never carry credentials regardless of which
-      // surface (span or log) the author accidentally emitted them on.
       const logger = new PinoLogger('cred-test', {
         options: { level: 'info' },
         fileSink: { projectDir: tmp, maxBytes: 1_000_000 },
@@ -507,8 +445,6 @@ describe('Logger', () => {
       );
       await logger.flushFileSink();
 
-      // Poll for both records to land — Pino's worker may need a few ms
-      // past `flushFileSink` resolution on Linux overlayfs.
       const records = await readLogLinesWhen(logsCurrentPath(tmp), 2);
       expect(records).toHaveLength(2);
       const flat = records[0];
@@ -516,26 +452,16 @@ describe('Logger', () => {
       if (!flat || !nested) throw new Error('expected two records');
       expect(flat.authorization).toBe('[REDACTED]');
       expect(flat.method).toBe('GET');
-      // Pino redact recurses one level via the `*.authorization` pattern.
       const req = nested.req as Record<string, unknown> | undefined;
       expect(req).toBeDefined();
       expect(req?.authorization).toBe('[REDACTED]');
       expect(req?.method).toBe('POST');
-      // Belt-and-braces — the raw secrets must NEVER appear in the bytes
-      // landed on disk.
       const raw = JSON.stringify(records);
       expect(raw).not.toContain('SUPER-SECRET-XYZ');
       expect(raw).not.toContain('NESTED-CRED');
     });
 
     it('deep-nested credentials (depth 2+) are masked when the per-depth wildcard set is wired', async () => {
-      // The dominant HTTP-logging shape — `{ req: { headers: { authorization } } }`
-      // — is depth 2 and slips past Pino's one-level `*.key` glob. Pino's
-      // redact engine treats only `*` as a single-segment wildcard (it has
-      // no deep wildcard), so the production boot.ts wiring enumerates one
-      // wildcard segment per depth (`*.k`, `*.*.k`, `*.*.*.k`, …). This
-      // test pins that contract: with the explicit per-depth set, records
-      // up to PINO_REDACT_MAX_DEPTH (5) land on disk fully scrubbed.
       const denylist = ['authorization', 'cookie'];
       const maxDepth = 5;
       const redactPaths: string[] = [];

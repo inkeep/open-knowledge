@@ -18,28 +18,12 @@ import { Spinner } from '@/components/ui/spinner';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';
 
-/**
- * `InstallInClaudeDesktopDialog` — concierge for installing the Open
- * Knowledge skill for **Claude Chat & Cowork** inside the **Claude Desktop
- * App**. Distinct from Claude (CLI / Code tab) which is already covered
- * by `ok init`'s user-global skill install.
- *
- * Runtime branches on `'okDesktop' in window`:
- *   - Electron: calls `window.okDesktop.skill.buildAndOpen()` — main process
- *     builds + saves to ~/Downloads + invokes `shell.openPath`. Claude
- *     Desktop's native install dialog takes over.
- *   - Web: shows the `npx @inkeep/open-knowledge cowork` command
- *     with a copy button. User runs it in their terminal.
- */
-
 const INSTALL_COMMAND = 'npx @inkeep/open-knowledge cowork';
 const DOCS_URL = 'https://openknowledge.ai/docs/integrations/claude-code';
 
 interface InstallInClaudeDesktopDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Switches the dialog title / copy to "Reinstall…" framing when the
-   *  caller knows a prior install exists. Defaults to false (Install). */
   reinstall?: boolean;
 }
 
@@ -83,14 +67,6 @@ function StepNumber({ n }: { n: number }) {
   );
 }
 
-/**
- * The Claude Desktop App upload path — shared across Electron and web
- * modes. This is the MANUAL click-sequence inside the Claude Desktop App
- * that the user has to do after we've put `openknowledge.skill` in their
- * Downloads folder. Double-clicking the `.skill` file opens the Claude
- * Desktop App but does NOT auto-install; users upload via the Customize
- * → Skills UI.
- */
 function UploadStepsSection() {
   return (
     <div className="flex flex-col gap-3">
@@ -232,7 +208,7 @@ export function InstallInClaudeDesktopDialog({
 
         <DialogBody>
           <div className="flex flex-col gap-6 py-2">
-            {/* --------- ELECTRON IDLE: pre-install walkthrough --------- */}
+            {}
             {phase.kind === 'idle' && isElectron && (
               <>
                 <div className="flex flex-col gap-2">
@@ -252,7 +228,7 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {/* --------- WEB IDLE: terminal command walkthrough --------- */}
+            {}
             {phase.kind === 'idle' && !isElectron && (
               <>
                 <div className="flex flex-col gap-2">
@@ -292,7 +268,7 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {/* --------- DOWNLOADING (Electron only) --------- */}
+            {}
             {phase.kind === 'downloading' && (
               <div className="flex items-center gap-2 text-sm">
                 <Spinner aria-hidden="true" className="h-4 w-4" />
@@ -303,7 +279,7 @@ export function InstallInClaudeDesktopDialog({
               </div>
             )}
 
-            {/* --------- HANDED-OFF (Electron) --------- */}
+            {}
             {phase.kind === 'handed-off' && isElectron && (
               <>
                 <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
@@ -321,7 +297,7 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {/* --------- HANDED-OFF (web — user ran CLI themselves) --------- */}
+            {}
             {phase.kind === 'handed-off' && !isElectron && (
               <>
                 <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
@@ -341,7 +317,7 @@ export function InstallInClaudeDesktopDialog({
               </>
             )}
 
-            {/* --------- ERROR --------- */}
+            {}
             {phase.kind === 'error' && (
               <div className="flex flex-col gap-2 text-sm">
                 <span className="text-destructive">{phase.message}</span>

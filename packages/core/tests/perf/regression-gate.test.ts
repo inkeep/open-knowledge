@@ -1,25 +1,3 @@
-/**
- * regression-gate synthetic-regression tests.
- *
- * The gate fires when
- * an artificial slowdown is injected. Rather than run the full benchmark
- * harness with an injected delay (minutes-long), we exercise the gate's
- * comparison logic directly against synthesised fresh results — the gate
- * IS the comparison logic.
- *
- * These tests are deterministic, pure-logic, sub-millisecond, and live
- * next to the gate library. They validate:
- *   1. baseline identity ⇒ PASS
- *   2. within-threshold drift (≤ floor) ⇒ PASS
- *   3. beyond-threshold drift (> floor + variance) ⇒ FAIL with a row
- *      naming the offending (blockCount, op)
- *   4. missing block count in fresh ⇒ FAIL in `missingFresh`
- *   5. extra block count in fresh ⇒ reported but not fatal
- *   6. variance-term dominance on noisy baselines
- *   7. methodology-mismatch warnings, including that an unrecorded
- *      methodology on either side stays silent rather than claiming a match
- */
-
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -126,8 +104,6 @@ describe('checkMethodologyMismatches', () => {
     expect(warnings).toHaveLength(2);
   });
 
-  // Absent means unknown, not equal: a pre-field artefact must not be reported
-  // as matching, and must not produce a spurious warning either.
   test('a baseline without recorded methodology produces no warnings', () => {
     const warnings = checkMethodologyMismatches(
       makeBaseline(),
@@ -158,8 +134,6 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
 
   test('fresh run within 10% floor ⇒ PASS (floor dominates)', () => {
     const baseline = makeBaseline();
-    // baseline parse p99 at 1K = 100ms; floor = 10ms; variance term = 2×3 = 6ms
-    // floor dominates (10 > 6). A fresh p99 of 109ms is inside the floor.
     const fresh = makeFresh();
     fresh.results[1].parseMs.p99 = 109;
     const report = evaluateRegression(baseline, fresh);
@@ -171,7 +145,6 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
 
   test('fresh run beyond 10% floor ⇒ FAIL with offending row identified', () => {
     const baseline = makeBaseline();
-    // 1K parse: floor = 10ms, variance = 6ms ⇒ allowed = 10ms. Inject 15ms slowdown.
     const fresh = makeFresh();
     fresh.results[1].parseMs.p99 = 115;
     const report = evaluateRegression(baseline, fresh);
@@ -180,7 +153,6 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
     expect(row?.regression).toBe(true);
     expect(row?.deltaMs).toBeCloseTo(15, 6);
     expect(row?.allowedDeltaMs).toBeCloseTo(10, 6);
-    // All other rows clean — failure should be scoped, not global.
     const otherRegressions = report.rows.filter(
       (r) => r.regression && !(r.blockCount === 1000 && r.op === 'parseMs'),
     );
@@ -188,9 +160,6 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
   });
 
   test('variance term dominates on noisy baseline (2σ > floor)', () => {
-    // If the baseline captured high stdev (noisy runner), 2σ > 10% floor ⇒
-    // the gate tolerates more drift. Inject baseline with stdev=10ms at p99=100ms:
-    //   floor = 10ms; 2σ = 20ms ⇒ allowed = 20ms.
     const baseline = makeBaseline({
       results: [
         {
@@ -217,19 +186,16 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
     expect(report.pass).toBe(true);
     const row = report.rows.find((r) => r.blockCount === 1000 && r.op === 'parseMs');
     expect(row?.allowedDeltaMs).toBeCloseTo(20, 6);
-    // 15ms slowdown is within 20ms allowance.
     expect(row?.regression).toBe(false);
   });
 
   test('missing block count in fresh ⇒ FAIL via missingFresh', () => {
     const baseline = makeBaseline();
     const fresh = makeFresh();
-    // drop 1000 from fresh
     fresh.results = fresh.results.filter((r) => r.blockCount !== 1000);
     const report = evaluateRegression(baseline, fresh);
     expect(report.pass).toBe(false);
     expect(report.missingFresh).toEqual([1000]);
-    // Rows only exist for matched block counts.
     const blockCountsWithRows = new Set(report.rows.map((r) => r.blockCount));
     expect(blockCountsWithRows.has(100)).toBe(true);
     expect(blockCountsWithRows.has(1000)).toBe(false);
@@ -253,9 +219,8 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
   test('regressions across multiple (blockCount, op) tuples are all reported', () => {
     const baseline = makeBaseline();
     const fresh = makeFresh();
-    // 30% slowdown at 100 parse; 40% at 1K serialize. Both must surface.
-    fresh.results[0].parseMs.p99 = 13; // allowed = max(2*0.25, 1) = 1 ⇒ Δ=3 > 1
-    fresh.results[1].serializeMs.p99 = 28; // allowed = max(2*0.8, 2) = 2 ⇒ Δ=8 > 2
+    fresh.results[0].parseMs.p99 = 13;
+    fresh.results[1].serializeMs.p99 = 28;
     const report = evaluateRegression(baseline, fresh);
     expect(report.pass).toBe(false);
     const regressed = report.rows
@@ -268,7 +233,7 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
   test('formatReport renders PASS/FAIL + per-row markers', () => {
     const baseline = makeBaseline();
     const fresh = makeFresh();
-    fresh.results[0].parseMs.p99 = 13; // injected regression
+    fresh.results[0].parseMs.p99 = 13;
     const report = evaluateRegression(baseline, fresh);
     const text = formatReport(report);
     expect(text.startsWith('perf regression gate: FAIL')).toBe(true);
@@ -277,12 +242,6 @@ describe('evaluateRegression (R4 synthetic gate)', () => {
     expect(text).toContain('parseMs');
   });
 });
-
-// ───────────────────────── Loader runtime validation ─────────────────────
-//
-// `NaN > anyFiniteNumber` evaluates to false, so a corrupted baseline would
-// silently pass the gate. `loadBaseline` / `loadFreshResults` reject
-// non-finite stats up front with a pointer at the offending key.
 
 describe('loadBaseline / loadFreshResults finite-value validation', () => {
   function writeTmp(name: string, data: unknown): string {

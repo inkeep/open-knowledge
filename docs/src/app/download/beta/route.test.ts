@@ -9,12 +9,8 @@ import {
 
 const TEST_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/download/v0.1.0-beta.1/${DMG_ASSET_NAME}`;
 
-// Mutable reference — each test sets this before calling GET so the injected
-// resolver reflects the scenario under test.
 let _redirect: BetaRedirect = { kind: 'fresh', url: TEST_DMG_URL };
 
-// Mock must be registered before route.ts is loaded so the module-scope
-// `createBetaResolver()` call in route.ts uses the injected resolver.
 vi.doMock('../../../lib/download-links.ts', () => ({
   createBetaResolver: () => () => Promise.resolve(_redirect),
   toRedirectResponse: (r: BetaRedirect): Response =>
@@ -42,7 +38,6 @@ vi.doMock('../../../lib/track.ts', () => ({
   isPrefetchRequest: (request: Request) => request.headers.get('sec-purpose') === 'prefetch',
 }));
 
-// Dynamic import ensures route.ts imports the mocked modules above.
 const { GET } = await import('./route.ts');
 
 function call(): Promise<Response> {
@@ -60,9 +55,6 @@ describe('GET /download/beta', () => {
     expect(_lastCapture?.event).toBe('dmg_downloaded');
     expect(_lastCapture?.distinctId).toBe('visitor-9');
     expect(_lastCapture?.properties?.channel).toBe('beta');
-    // The resolver serves DMG_ASSET_NAME and nothing else, so the reported
-    // platform is fixed. If beta ever gains Windows/Linux builds, this fails
-    // rather than silently attributing them to macOS.
     expect(_lastCapture?.properties?.os).toBe('macos');
     expect(_lastCapture?.properties?.arch).toBe('arm64');
     expect(_lastCapture?.properties?.format).toBe('dmg');

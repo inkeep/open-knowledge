@@ -1,12 +1,3 @@
-/**
- * `useMirrorSource` status-mapping tests with the WebSocket transport
- * faked at the `@hocuspocus/provider` boundary — the same harness shape as
- * `live-doc-pool.dom.test.tsx`. Pins the refusal discrimination (a pool
- * capacity refusal must NOT render as "source removed") and the
- * ready-state identity dedup across reconnect replays. The pure
- * tree-walking helpers are covered in `use-mirror-source.test.ts`.
- */
-
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
@@ -86,8 +77,6 @@ describe('useMirrorSource', () => {
       }
 
       const { result } = renderHook(() => useMirrorSource('one-more-doc', 'intro'));
-      // The source doc is fine — claiming it was removed would send the
-      // user to fix content that isn't broken.
       expect(result.current).toEqual({ kind: 'at-capacity' });
     } finally {
       warn.mockRestore();
@@ -115,9 +104,6 @@ describe('useMirrorSource', () => {
     expect(result.current.kind).toBe('ready');
     const before = result.current;
 
-    // Every reconnect re-fires onSynced; identical HTML must not mint a
-    // fresh status object and re-render every Mirror for a pixel-identical
-    // result.
     act(() => {
       provider.emitSynced();
     });

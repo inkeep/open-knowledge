@@ -1,24 +1,3 @@
-/**
- * Editor-area conflict swap — integration coverage for the lifecycle
- * gate propagation that drives the React conditional render in
- * EditorActivityPool's ActivityEntry.
- *
- * These tests exercise the server-observable contract beneath the React
- * conditional:
- *   - Gate set: server-side `lifecycle.status='conflict'` is observed by
- *     the connected client via Y.Doc sync (the React `useLifecycleStatus`
- *     hook reads exactly this value).
- *   - Gate clear: clearing the lifecycle key propagates back to the
- *     client; Y.Text identity + content survive the round-trip.
- *
- * The DOM-level swap behavior is covered by `DiffViewBoundary.dom.test.tsx`
- * and `use-lifecycle-status.dom.test.tsx`. The "Keep mine" dispatch shape
- * is asserted in the DiffViewBoundary DOM test (it pins the POST body).
- * A full round-trip — content lands on disk via the resolve-conflict
- * endpoint — requires a real `git merge` in progress and is covered by the
- * sync-engine boundary tests, not here.
- */
-
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -50,17 +29,6 @@ async function setupServerWithDoc(docName: string, initial: string): Promise<Tes
 }
 
 describe('editor-area swap — gate propagation', () => {
-  /**
-   * When the server sets `lifecycle.status='conflict'`, the connected
-   * client observes the change via Y.Map sync — this is the gate value the
-   * React `useLifecycleStatus` hook reads to drive the conditional render.
-   *
-   * When the server clears `lifecycle.status`, the client also sees the
-   * deletion via sync, and the underlying Y.Text reference is the same
-   * object identity (no destroy/recreate of Y.Text across the lifecycle
-   * change).
-   *
-   */
   test('lifecycle.status conflict → clear round-trip preserves Y.Text identity', async () => {
     const docName = `swap-roundtrip-${crypto.randomUUID()}`;
     const server = await setupServerWithDoc(docName, BASE_CONTENT);
@@ -72,19 +40,12 @@ describe('editor-area swap — gate propagation', () => {
     const ytextRefBefore = client.ytext;
     const lifecycle = client.doc.getMap('lifecycle');
 
-    // Drive lifecycle='conflict' via the realistic source — file-watcher
-    // detecting conflict markers on disk. case 'conflict' sets the gate.
     const filePath = join(server.contentDir, `${docName}.md`);
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
     await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
 
-    // gate is set on the client side — `useLifecycleStatus(docName)`
-    // would return 'conflict' and the UI would mount DiffViewBoundary.
     expect(lifecycle.get('status')).toBe('conflict');
 
-    // clear the gate on the server (mirrors what `case 'update'`
-    // clean/merged/noop branches do post-resolution, or what an admin
-    // recovery procedure does manually).
     const serverDoc = server.instance.hocuspocus.documents.get(docName);
     expect(serverDoc).toBeTruthy();
     serverDoc?.transact(() => {
@@ -95,10 +56,6 @@ describe('editor-area swap — gate propagation', () => {
     await pollUntil(() => lifecycle.get('status') === undefined, 5000);
     expect(lifecycle.get('status')).toBeUndefined();
 
-    // Y.Text reference is unchanged across the lifecycle round-trip. The
-    // Y.Doc never destroys/recreates; the editor remount that follows the
-    // conditional re-render binds to the SAME Y.Text (so content + scroll
-    // position + undo history survive across the swap).
     expect(client.ytext).toBe(ytextRefBefore);
     expect(client.ytext).toBe(client.doc.getText('source'));
   }, 30_000);

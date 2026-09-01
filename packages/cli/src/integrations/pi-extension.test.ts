@@ -30,8 +30,6 @@ describe('buildPiExtensionSource', () => {
 
   it('embeds BOTH platform launcher chains so one committed file serves every teammate', () => {
     const source = buildPiExtensionSource();
-    // The chains ride inside JSON.stringify'd launcher entries, so their
-    // newlines appear as the two-character escape.
     expect(source).toContain(JSON.stringify(CHAIN_V2));
     expect(source).toContain(JSON.stringify(CHAIN_WIN_V1));
     expect(source).toContain('process.platform === "win32"');
@@ -44,8 +42,6 @@ describe('buildPiExtensionSource', () => {
       const source = buildPiExtensionSource({ mode: 'dev' });
       expect(source).toContain('/repo/packages/cli/dist/cli.mjs');
       expect(isOwnPiExtensionSource(source)).toBe(true);
-      // Dev drops must NOT classify current, mirroring dev chain entries:
-      // the repair/reclaim sweeps migrate them forward to published.
       expect(isPiExtensionSourceUpToDate(source)).toBe(false);
     } finally {
       process.argv[1] = originalArgv1;
@@ -54,12 +50,7 @@ describe('buildPiExtensionSource', () => {
 
   it('generates syntactically valid TypeScript (the file Pi loads via jiti)', () => {
     const transpiler = new Bun.Transpiler({ loader: 'ts' });
-    // Throws on a syntax error — an interpolation regression (unescaped
-    // backtick / ${ in the template) fails here rather than inside Pi.
     expect(() => transpiler.transformSync(buildPiExtensionSource())).not.toThrow();
-    // Dev-mode source resolves the local dist launcher from argv[1]; the test
-    // runner's argv[1] is its own worker, so stub a CLI-shaped path (as the
-    // sibling dev-mode test does) to let repo-root inference succeed.
     const originalArgv1 = process.argv[1];
     process.argv[1] = '/repo/packages/cli/src/cli.ts';
     try {
@@ -70,8 +61,6 @@ describe('buildPiExtensionSource', () => {
   });
 
   it('registers under the ok_ prefix so OK tools never shadow Pi built-ins', () => {
-    // Pi has no MCP namespacing; an unprefixed `edit` / `write` registration
-    // would OVERRIDE Pi's built-in file tools.
     expect(buildPiExtensionSource()).toContain('const TOOL_PREFIX = "ok_"');
   });
 });
@@ -82,7 +71,6 @@ describe('pi extension recognizers', () => {
   it('isOwnPiExtensionSource: first-line strict ownership', () => {
     expect(isOwnPiExtensionSource(published)).toBe(true);
     expect(isOwnPiExtensionSource(`${PI_EXTENSION_OWNERSHIP_MARKER}-v0\nlegacy body`)).toBe(true);
-    // Marker in the body only — a foreign file mentioning it is not claimed.
     expect(isOwnPiExtensionSource(`// my extension\n${PI_EXTENSION_OWNERSHIP_MARKER}\n`)).toBe(
       false,
     );
@@ -116,11 +104,6 @@ describe('pi extension recognizers', () => {
   });
 });
 
-// Functional round-trip: run the GENERATED extension against a fake `pi` API
-// and a stub MCP server speaking real newline-delimited JSON-RPC over stdio.
-// This exercises the whole bridge — spawn, handshake, tools/list → registerTool,
-// execute → tools/call, error mapping — through a real child process, without
-// needing Pi or a built OK CLI.
 describe('generated bridge extension (functional, stub MCP server)', () => {
   let dir: string;
   const originalArgv1 = process.argv[1];
@@ -165,8 +148,6 @@ rl.on("line", (line) => {
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'ok-pi-bridge-'));
-    // Dev-mode launcher resolves `<root>/packages/cli/dist/cli.mjs` from
-    // argv[1]; point it at the stub server so the generated file spawns it.
     mkdirSync(join(dir, 'packages', 'cli', 'dist'), { recursive: true });
     writeFileSync(join(dir, 'packages', 'cli', 'dist', 'cli.mjs'), STUB_SERVER, 'utf-8');
     process.argv[1] = join(dir, 'packages', 'cli', 'src', 'cli.ts');
@@ -219,7 +200,6 @@ rl.on("line", (line) => {
       expect([...tools.keys()].sort()).toEqual(['ok_boom', 'ok_exec']);
       const exec = tools.get('ok_exec');
       expect(exec?.description).toBe('Run a command.');
-      // The MCP inputSchema passes through as plain JSON Schema parameters.
       expect(exec?.parameters).toEqual({
         type: 'object',
         properties: { command: { type: 'string' } },
@@ -230,9 +210,6 @@ rl.on("line", (line) => {
       expect(result?.content).toEqual([{ type: 'text', text: 'ran: ls' }]);
       expect(result?.details).toEqual({ echoed: 'ls' });
 
-      // MCP isError results surface as a throw — Pi's error signal. Await the
-      // rejection so it settles before the finally-block shutdown closes the
-      // client (an un-awaited assertion races the teardown under vitest).
       await expect(tools.get('ok_boom')?.execute('t2', {}, undefined)).rejects.toThrow('it broke');
     } finally {
       await handlers.get('session_shutdown')?.({}, {});

@@ -1,17 +1,3 @@
-/**
- * Bundle collector library — gathers telemetry files, logs, server state, and
- * runtime metadata into a temp staging directory, then zips it for the
- * `ok diagnose bundle` command. Designed library-shaped so the CLI wrapper
- * stays thin and a future bug-report skill can call it directly.
- *
- * Two-step contract:
- *   1. `collectBundle(opts)` — stages every artifact under a tmpdir and
- *      produces a manifest. Returns a handle whose `cleanup()` releases the
- *      tmpdir.
- *   2. `writeBundle({ collected, outputPath })` — zips the stage into the
- *      target path. Caller prints the summary + prompts y/N between calls.
- */
-
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -48,25 +34,6 @@ import { PACKAGE_VERSION } from '../constants.ts';
 import { defaultReadLanguage, type LanguageMetadata } from '../report-language.ts';
 import { isRotatedLogPath, redactStagedBundle } from './bundle-redact.ts';
 
-// ---------------------------------------------------------------------------
-// Manifest schema
-// ---------------------------------------------------------------------------
-
-// All types below are referenced through the public `CollectedBundle` shape
-// (`collected.manifest.X` / `collected.summary.X`). They stay file-local for
-// now; consumers (the deferred `/report-bug` skill) can index into the public
-// types — e.g., `CollectedBundle['manifest']['files'][number]` — without
-// needing to import each interface by name. `DesktopMetadata` is the one
-// exception: it is exported as the value type of the `readDesktopEnv` seam so
-// `collectReportBundle` callers (the desktop app) can inject host metadata.
-
-/**
- * Manifest contract version. Bumped to 2 when `redaction` dropped
- * `docNameMapSidecar` / `docNameCollisions` alongside the doc-name
- * anonymization they described: a consumer that reads either field off a v2
- * manifest gets `undefined` rather than a value, so the removal has to be
- * legible from the version rather than inferred from a missing key.
- */
 type BundleSchemaVersion = 2;
 
 export interface DesktopMetadata {
@@ -76,34 +43,18 @@ export interface DesktopMetadata {
 }
 
 interface BundleFileEntry {
-  /** Path relative to the zip root, e.g. `"telemetry/spans-current.jsonl"`. */
   path: string;
-  /** Uncompressed byte size. */
   bytes: number;
-  /**
-   * Newline count for line-delimited files (JSONL). Files where line counting
-   * doesn't apply (json, txt, lock blobs, the eventual `process/` payload)
-   * record `0`. Consumers should not infer "empty" from `lines: 0` — `bytes`
-   * is the size of record.
-   */
   lines: number;
 }
 
 interface BundleSecretScrub {
-  /** Per-file audit (zip-relative paths) — only files where a pattern matched. */
   redactions: SecretScrubEntry[];
-  /** Total lines scrubbed across all files. */
   redactedLineCount: number;
 }
 
 interface BundleRedaction {
-  /** Whether the content-dir path mask ran over the staged copies. */
   applied: boolean;
-  /**
-   * Audit of the secret-pattern scrub (the `ok bug-report` scrub applied to
-   * the staged copies). Present only when the collector ran with
-   * `scrubSecrets`.
-   */
   secretScrub?: BundleSecretScrub;
 }
 
@@ -120,15 +71,9 @@ interface BundleManifest {
   };
   host: {
     desktop: DesktopMetadata | null;
-    /**
-     * The interface language the report was filed in. `null` when the caller
-     * supplied no reader — distinguishable from a manifest predating the field,
-     * which has no key at all.
-     */
     language: LanguageMetadata | null;
   };
   contentDir: {
-    /** SHA-256 of the absolute content-dir path. 64 lowercase hex chars. */
     pathSha256: string;
     absolutePath: string;
   };
@@ -145,192 +90,53 @@ interface BundleManifest {
   files: BundleFileEntry[];
 }
 
-// ---------------------------------------------------------------------------
-// Collector input / output
-// ---------------------------------------------------------------------------
-
 export interface CollectBundleOpts {
-  /**
-   * Resolved content directory (`resolve(cwd, content.dir)`). Used for the
-   * content-path redaction scan + the manifest's `contentDir` block — NOT for
-   * locating `.ok/local/` runtime artifacts, which are anchored on
-   * `projectDir` (see below). Resolved to abs.
-   */
   contentDir: string;
-  /**
-   * Project root (where `.ok/` lives). Defaults to `contentDir`. When
-   * `content.dir` is not the project root (e.g. `content.dir: docs`), this is
-   * where ALL per-machine runtime state lives — the `telemetry.localSink`
-   * manifest config block AND the on-disk `.ok/local/` artifacts the bundle
-   * harvests (spans, logs, `server.lock`). Anchoring those reads on
-   * `contentDir` would miss them: the server writes them under
-   * `<projectDir>/.ok/local/`, never inside the content sub-folder.
-   */
   projectDir?: string;
-  /** Optional path to an existing `ok diagnose process` output dir; copied to `process/` in the bundle. */
   processDir?: string;
-  /**
-   * Mask the absolute content-dir prefix in any staged string field with the
-   * literal `<CONTENT_DIR>` token (so a shared bundle doesn't leak the user's
-   * home-directory layout). Doc names ship raw. The original on-disk files
-   * under `<contentDir>/.ok/local/{telemetry,logs}/` are untouched — the
-   * collector copies them first; the masker only sees the staged copies.
-   */
   redact?: boolean;
-  /**
-   * Apply the bug-report secret-pattern scrub to every staged text file
-   * (.jsonl/.json/.txt/.log/.lock). Staged copies only — originals on disk
-   * are untouched. Audit lands in `manifest.redaction.secretScrub`.
-   */
   scrubSecrets?: boolean;
-  /** User note staged verbatim as `note.txt` at the bundle root. */
   note?: string;
-  /**
-   * Files copied byte-for-byte under `extra/` (e.g. an opted-in crash
-   * minidump). Staged after the secret scrub — binary payloads must never be
-   * text-scrubbed.
-   */
   extraFiles?: BundleExtraFile[];
-  /**
-   * Absolute paths to user-level log files (`~/.ok/logs/*.log`) staged under
-   * `logs/` beside the project's server sink logs, at the same bundle paths the
-   * standard level uses.
-   *
-   * Load-bearing for desktop crash reports: the Electron main process captures
-   * the renderer console into the user-level log, not the project's server log
-   * (`installClientLogForwarder` short-circuits when `window.okDesktop` is
-   * present), so without these a full bundle carries no renderer signal at all.
-   *
-   * Staged BEFORE the redaction + secret scrub — unlike `extraFiles`, these are
-   * text and must be scrubbed.
-   */
   userLogFiles?: string[];
-  /**
-   * Absolute paths to user-level state files staged under
-   * `state/bug-reports/` — the per-report send-ledger sidecars, resolved by the
-   * caller (see `collectBugReportLedgerFiles`).
-   *
-   * They answer a question the logs stop being able to answer: `desktop.*.log`
-   * rotates on a seven-day budget, while a sidecar persists beside its zip, so
-   * a report filed about a send that failed last week has the ledger and no
-   * log line.
-   *
-   * Staged BEFORE the redaction + secret scrub, like `userLogFiles` and unlike
-   * `extraFiles` — these are text, and a sidecar carries the reporter's note.
-   */
   userStateFiles?: string[];
-  /** Test-injectable dependencies — every field defaults to a real-system implementation. */
   deps?: CollectBundleDeps;
 }
 
 export interface CollectBundleDeps {
-  /**
-   * Fetch the running server's `GET /api/metrics/agent-presence` response,
-   * within the 1s budget. Returns the response body string on 2xx, or `null`
-   * on any failure (network, timeout, non-2xx).
-   */
   fetchAgentPresence?: (port: number) => Promise<string | null>;
-  /**
-   * Fetch the running server's `GET /api/metrics/agent-effects` response
-   * (per-doc agent activity ring-buffer summaries), within the 1s budget.
-   * Returns the response body string on 2xx, or `null` on any failure.
-   * Best-effort like agent-presence; a `null` never affects `serverStatus`.
-   */
   fetchAgentEffects?: (port: number) => Promise<string | null>;
-  /**
-   * Fetch the running server's `GET /api/metrics/watcher-recent` response
-   * (the file-watcher's bounded recent-decisions ring), within the 1s
-   * budget. Returns the response body string on 2xx, or `null` on any
-   * failure. Best-effort like agent-effects; never affects `serverStatus`.
-   */
   fetchWatcherRecent?: (port: number) => Promise<string | null>;
-  /**
-   * Read the last 50 entries of the shadow repo log at
-   * `<contentDir>/.git/ok/`. Returns the stdout string or `null` if the
-   * shadow repo is missing or git fails.
-   */
   readShadowHead?: (contentDir: string) => string | null;
-  /**
-   * List the most recent `refs/checkpoints/*` refs of the shadow repo at
-   * `<contentDir>/.git/ok/` — the content-loss / rescue recovery snapshots.
-   * One tab-separated line per ref: ref name, creation date, commit subject
-   * (the subject is a content-free label; the commit BODY, which can carry
-   * doc names and lost content, is deliberately not read). Returns the
-   * listing string or `null` if the shadow repo is missing or git fails.
-   */
   readCheckpointRefs?: (contentDir: string) => string | null;
-  /** Returns the current timestamp. Override in tests for determinism. */
   now?: () => Date;
-  /** Returns the OK CLI's package version. */
   okVersion?: () => string;
-  /** Returns the `OK_DESKTOP_*` env block, or `null` when no desktop host is present. */
   readDesktopEnv?: () => DesktopMetadata | null;
-  /**
-   * Returns the interface language the report is being filed in. Defaults to
-   * the POSIX-environment reader, which is right for every caller that reaches
-   * this collector directly — they are all shell commands. The Electron host
-   * arrives through `collectReportBundle` instead and injects its own, because
-   * a GUI process has no `LANG` to resolve against and this default would
-   * report the fallback locale no matter what the user was looking at.
-   */
   readLanguage?: () => LanguageMetadata;
-  /** Returns runtime introspection — Node version, platform, arch. */
   readRuntime?: () => { nodeVersion: string; platform: string; arch: string };
-  /**
-   * Whether the OTLP push exporter is enabled. Tracks `OTEL_SDK_DISABLED ===
-   * 'false'` in production — exposed for tests so the gate is observable.
-   */
   isOtlpPushEnabled?: () => boolean;
-  /** Sink for collection-quality warnings (e.g. an opted-in extra file that vanished). Absent means silent. */
   logger?: BundleLogger;
 }
 
 interface BundleSummary {
-  /** Sum of `bytes` across `files[]` — pre-zip uncompressed size. */
   totalBytes: number;
-  /** Length of `files[]`. */
   fileCount: number;
-  /**
-   * Approximate number of `doc.name` attribute occurrences visible in spans
-   * — for the pre-zip y/N prompt. Counted by line-scanning the JSONLs for
-   * `"doc.name"` substring; a non-zero count tells the user how exposed the
-   * bundle is without forcing a full JSON parse. Substring collisions are
-   * vanishingly rare for the prompt's purpose.
-   */
   docNameCount: number;
-  /** True when the absolute content-dir path appears in any non-manifest staged file. */
   contentDirVisible: boolean;
-  /** Whether `--redact` was applied. Matches `manifest.redaction.applied`. */
   redacted: boolean;
 }
 
 export interface CollectedBundle {
-  /** Temp staging directory containing every artifact + `manifest.json` at the root. */
   stagingDir: string;
   manifest: BundleManifest;
   summary: BundleSummary;
-  /** Removes the staging dir. Idempotent. */
   cleanup: () => void;
 }
 
-// ---------------------------------------------------------------------------
-// Writer input
-// ---------------------------------------------------------------------------
-
 export interface WriteBundleOpts {
   collected: CollectedBundle;
-  /** Absolute path where the zip is written. Parent dir must already exist. */
   outputPath: string;
 }
-
-// ---------------------------------------------------------------------------
-// Path helpers (mirror server's `telemetry-file-sink.ts`)
-// ---------------------------------------------------------------------------
-
-// Inlined rather than imported from the server because the layout is a
-// contract — three dirs under `.ok/local/`, fixed filenames. The
-// CLI is the consumer of the spans/logs writer; coupling to the writer's
-// types would invert the dependency direction.
 
 const TELEMETRY_REL = ['.ok', 'local', 'telemetry'] as const;
 const LOGS_REL = ['.ok', 'local', 'logs'] as const;
@@ -358,10 +164,6 @@ function logsPreviousPath(projectDir: string): string {
   return join(projectDir, ...LOGS_REL, LOGS_PREVIOUS);
 }
 
-// Content-loss ring — the bridge's content-free loss-class event log. Rides the
-// full/Detailed tier only. Path layout mirrors the server's loss-capture sink;
-// inlined here for the same reason as the spans/logs layout above (the on-disk
-// `.ok/local/` layout is the contract, not the writer's types).
 function lossCaptureCurrentPath(projectDir: string): string {
   return join(projectDir, ...LOSS_CAPTURE_REL, LOSS_CURRENT);
 }
@@ -370,12 +172,6 @@ function lossCapturePreviousPath(projectDir: string): string {
   return join(projectDir, ...LOSS_CAPTURE_REL, LOSS_PREVIOUS);
 }
 
-// Exposed so a cross-package parity test can assert these inlined paths stay
-// equivalent to the server's `telemetry-file-sink.ts` / `loss-capture.ts`
-// exports — the layout is a contract, but no compiler check catches drift
-// between the two sites today (the duplication is intentional per
-// dependency-direction concerns). Every inlined path helper above belongs in
-// here: one left out is one whose rename silently stops harvesting its source.
 export const _pathHelpersForTests = {
   spansCurrentPath,
   spansPreviousPath,
@@ -384,10 +180,6 @@ export const _pathHelpersForTests = {
   lossCaptureCurrentPath,
   lossCapturePreviousPath,
 };
-
-// ---------------------------------------------------------------------------
-// Defaults — production implementations of the test-injectable deps
-// ---------------------------------------------------------------------------
 
 const AGENT_PRESENCE_TIMEOUT_MS = 1000;
 const SHADOW_GIT_LOG_LIMIT = 50;
@@ -401,9 +193,6 @@ async function defaultFetchAgentPresence(port: number): Promise<string | null> {
     if (!response.ok) return null;
     return await response.text();
   } catch {
-    // Timeout, ECONNREFUSED, DNS, JSON-parse drift — all collapse to null so
-    // a not-running server doesn't fail the bundle (bug reports are often
-    // "the server crashed"). Caller writes `server-status.txt: not-running`.
     return null;
   }
 }
@@ -416,9 +205,6 @@ async function defaultFetchAgentEffects(port: number): Promise<string | null> {
     if (!response.ok) return null;
     return await response.text();
   } catch {
-    // Same all-failures-collapse-to-null posture as agent-presence — a
-    // server without the endpoint (older version) or not running must not
-    // fail the bundle.
     return null;
   }
 }
@@ -431,21 +217,10 @@ async function defaultFetchWatcherRecent(port: number): Promise<string | null> {
     if (!response.ok) return null;
     return await response.text();
   } catch {
-    // Same all-failures-collapse-to-null posture as agent-effects.
     return null;
   }
 }
 
-/**
- * Convert the watcher-recent JSON response (`{decisions: [...]}`) into JSONL
- * (one decision per line) for staging as `state/watcher-recent.jsonl`. JSONL
- * keeps the artifact greppable and routes it through the same line-wise
- * redaction pass the telemetry/log JSONLs get. Returns `null` when the body
- * doesn't parse to the expected shape (older server, torn response) — the
- * artifact is then skipped, mirroring the other best-effort fetches. An
- * empty ring stages an empty file so "endpoint reachable, ring empty" stays
- * distinguishable from "not captured".
- */
 function watcherRecentToJsonl(body: string): string | null {
   try {
     const parsed: unknown = JSON.parse(body);
@@ -471,23 +246,12 @@ function defaultReadShadowHead(contentDir: string): string | null {
   return result.stdout ?? '';
 }
 
-/**
- * The git `for-each-ref` format for staging checkpoint refs: subject ONLY.
- * Checkpoint commit BODIES carry an `ok-checkpoint-v1` JSON line with the doc
- * name and (for the loss kinds) verbatim lost-content substrings; the subject
- * is a content-free label. Staging the body would exfiltrate the user's
- * document, so this format — not the checkpoint-kind registry's advisory
- * `bundleExposure` attribute — is the actual privacy enforcement point, guarded
- * against a body/trailers drift by a format test.
- */
 export const CHECKPOINT_REF_GIT_FORMAT =
   '%(refname)%09%(creatordate:iso-strict)%09%(contents:subject)';
 
 function defaultReadCheckpointRefs(contentDir: string): string | null {
   const shadowDir = join(contentDir, '.git', 'ok');
   if (!existsSync(shadowDir)) return null;
-  // Subject-only (see CHECKPOINT_REF_GIT_FORMAT): keeps the staged artifact safe
-  // as plain text under the same redaction rules as shadow-head.txt.
   const result = spawnSync(
     'git',
     [
@@ -509,9 +273,6 @@ export function defaultReadDesktopEnv(): DesktopMetadata | null {
   const electronVersion = process.env.OK_DESKTOP_VERSION;
   const packagedRaw = process.env.OK_DESKTOP_PACKAGED;
   const channel = process.env.OK_DESKTOP_CHANNEL;
-  // All three present → emit a complete block. Partial → null (don't pretend
-  // we know what we don't); the recipient sees `desktop: null` and infers
-  // "this bundle wasn't from the Electron host."
   if (electronVersion === undefined || packagedRaw === undefined || channel === undefined) {
     return null;
   }
@@ -534,10 +295,6 @@ function defaultIsOtlpPushEnabled(): boolean {
   return process.env.OTEL_SDK_DISABLED === 'false';
 }
 
-// ---------------------------------------------------------------------------
-// Config-derived telemetry block
-// ---------------------------------------------------------------------------
-
 interface LocalSinkBlock {
   enabled: boolean;
   spansMaxBytes: number;
@@ -554,23 +311,12 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-/**
- * Parse the raw YAML at `absPath` and extract `telemetry.localSink`. Mirrors
- * the server's `readRawSinkBlock` helper — we deliberately avoid
- * `readConfigSafely` here because it applies schema defaults, which would
- * make project-local always shadow project even when the user left the local
- * file empty. The manifest must report the same effective state as the
- * server's actual gate (resolved via `local-sink-resolver.ts`).
- */
 function readRawSinkBlock(absPath: string): RawLocalSinkBlock {
   if (!existsSync(absPath)) return {};
   let parsed: unknown;
   try {
     parsed = parseYaml(readFileSync(absPath, 'utf-8'));
   } catch (err) {
-    // Surface the parse failure so the bundle recipient can see why the
-    // manifest's telemetry block reports schema defaults — the alternative
-    // is a silent disagreement between manifest config and runtime config.
     console.warn(
       `[ok diagnose bundle] failed to parse ${absPath} for manifest config; ` +
         `manifest will report schema defaults. Reason: ${err instanceof Error ? err.message : String(err)}`,
@@ -598,14 +344,6 @@ function readMaxBytes(block: { maxBytes?: unknown } | null | undefined): number 
   return readPositiveNumber(block.maxBytes);
 }
 
-/**
- * Resolve the `telemetry.localSink` block for the manifest. Always returns a
- * fully-populated block (even when disabled) — the manifest records the
- * effective config so a recipient can correlate file presence with intent.
- * Per-leaf cascade: project-local explicit > project explicit > schema
- * default. Implementation matches `local-sink-resolver.ts` on the server side
- * so the manifest and the actual gate cannot disagree.
- */
 function resolveLocalSinkBlock(projectDir: string): LocalSinkBlock {
   const projectSink = readRawSinkBlock(resolveConfigPath('project', projectDir));
   const localSink = readRawSinkBlock(resolveConfigPath('project-local', projectDir));
@@ -617,19 +355,11 @@ function resolveLocalSinkBlock(projectDir: string): LocalSinkBlock {
   return { enabled, spansMaxBytes, logsMaxBytes };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function hashContentDirPath(absolutePath: string): string {
   return createHash('sha256').update(absolutePath).digest('hex');
 }
 
 function countLines(filePath: string): number {
-  // Count newline bytes — JSONL convention is one record per line, terminated
-  // with `\n`. A partial last line (e.g., after SIGKILL) is not counted —
-  // readers skip lines that fail to parse, so counting only terminated lines
-  // is the truthful answer.
   const buf = readFileSync(filePath);
   let count = 0;
   for (let i = 0; i < buf.length; i++) {
@@ -638,14 +368,6 @@ function countLines(filePath: string): number {
   return count;
 }
 
-/**
- * Both spellings a document path is filed under, because the number this feeds
- * is read by a user deciding whether to share the bundle. `doc.name` is the OTel
- * span attribute; `docName` is the renderer-log field, and since frontend OTel
- * is opt-in and off by default, the log spelling is the one most bundles
- * actually carry. Counting only the span attribute reported zero over a zip full
- * of document paths.
- */
 const DOC_NAME_MARKERS = ['"doc.name"', '"docName"'] as const;
 
 function countDocNameOccurrences(filePath: string): number {
@@ -668,10 +390,6 @@ function stageFileIfPresent(srcPath: string, destPath: string): boolean {
     cpSync(srcPath, destPath);
     return true;
   } catch {
-    // A source can vanish or turn unreadable between the check and the copy —
-    // crash-dump cleanup and log rotation both run on their own schedule. Report
-    // it as absent, which every caller already handles, rather than letting one
-    // artifact that went away mid-collection fail the whole bundle.
     return false;
   }
 }
@@ -701,9 +419,6 @@ function shouldCountLines(relPath: string): boolean {
   return LINE_COUNTED_EXTENSIONS.has(relPath.slice(lastDot));
 }
 
-// `.yaml`/`.yml` are here for the bug-report sidecars staged under
-// `state/bug-reports/`: they carry the reporter's own note, so they are
-// user-authored text and have to be scrubbed like any other.
 const SECRET_SCRUB_EXTENSIONS = new Set([
   '.jsonl',
   '.json',
@@ -715,9 +430,6 @@ const SECRET_SCRUB_EXTENSIONS = new Set([
 ]);
 
 function isSecretScrubbable(relPath: string): boolean {
-  // A rotated log's real extension is its counter (`.log.3` slices to `.3`), so
-  // an extension-set test alone silently skips it — and the user-level logs the
-  // full bundle now carries are exactly the ones that rotate.
   if (isRotatedLogPath(relPath)) return true;
   const lastDot = relPath.lastIndexOf('.');
   if (lastDot === -1) return false;
@@ -744,17 +456,8 @@ function relativeZipPath(stagingDir: string, absPath: string): string {
   return relative(stagingDir, absPath).split(sep).join('/');
 }
 
-// ---------------------------------------------------------------------------
-// collectBundle
-// ---------------------------------------------------------------------------
-
 export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedBundle> {
   const contentDir = resolve(opts.contentDir);
-  // Per-machine runtime state (`.ok/local/`) is anchored on the project root,
-  // not `content.dir` — `server.lock`, the telemetry span sink, and the log
-  // sink all live under `<projectDir>/.ok/local/` regardless of where
-  // `content.dir` points. Defaults to `contentDir` when the caller omits
-  // `projectDir` (the two coincide for `content.dir: '.'`).
   const projectDir = resolve(opts.projectDir ?? opts.contentDir);
   const deps = opts.deps ?? {};
   const fetchAgentPresence = deps.fetchAgentPresence ?? defaultFetchAgentPresence;
@@ -792,7 +495,6 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       );
     }
 
-    // Server lock + status + agent presence.
     const lockDir = join(projectDir, '.ok', 'local');
     const lockPath = join(lockDir, 'server.lock');
     let serverStatus: BundleServerStatus = 'not-running';
@@ -823,16 +525,10 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       } else {
         serverStatusReason = `agent-presence endpoint at :${lockPort} unreachable`;
       }
-      // Agent-effects ring-buffer summaries — best effort, never affects
-      // serverStatus (presence remains the liveness probe; an older server
-      // without this endpoint is still "running").
       const agentEffects = await fetchAgentEffects(lockPort);
       if (agentEffects !== null) {
         writeFileSync(join(stagingDir, 'state', 'agent-effects.json'), agentEffects);
       }
-      // File-watcher recent-decisions ring — the "my file didn't sync"
-      // triage artifact (which events were dispatched / skipped / dropped,
-      // and why). Best effort like agent-effects; staged as JSONL.
       const watcherRecent = await fetchWatcherRecent(lockPort);
       if (watcherRecent !== null) {
         const jsonl = watcherRecentToJsonl(watcherRecent);
@@ -842,54 +538,34 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       }
     }
 
-    // Shadow-repo head — best effort.
     const shadowHead = readShadowHead(contentDir);
     if (shadowHead !== null) {
       writeFileSync(join(stagingDir, 'state', 'shadow-head.txt'), shadowHead);
     }
 
-    // Recovery-checkpoint refs (`refs/checkpoints/*`) — best effort. The
-    // default-branch shadow log above never shows these one-shot refs, yet
-    // they are the primary artifact for the content-loss bug class: their
-    // presence, kind-bearing subjects, and timestamps tell the recipient
-    // whether (and when) the bridge detected potential loss.
     const checkpointRefs = readCheckpointRefs(contentDir);
     if (checkpointRefs !== null) {
       writeFileSync(join(stagingDir, 'state', 'checkpoint-refs.txt'), checkpointRefs);
     }
 
-    // Content-loss ring — content-free-by-schema loss-class events (which sites
-    // deferred / detected / froze / checkpointed, correlated by checkpoint sha).
-    // The "was anything silently lost, and where" triage artifact, paired with
-    // checkpoint-refs above. Present only once a producer has recorded an event.
     stageFileIfPresent(lossCaptureCurrentPath(projectDir), join(stagingDir, 'state', LOSS_CURRENT));
     stageFileIfPresent(
       lossCapturePreviousPath(projectDir),
       join(stagingDir, 'state', LOSS_PREVIOUS),
     );
 
-    // last-spawn-error.log (Electron host writes this when a spawn fails).
     stageFileIfPresent(
       join(lockDir, 'last-spawn-error.log'),
       join(stagingDir, 'state', 'last-spawn-error.log'),
     );
 
-    // last-server-exit.json — why the server process last exited (timestamp,
-    // pid, code, killing signal, and Electron's process-gone reason where the
-    // host could observe one; see SERVER_EXIT_LOG for the per-host field
-    // availability). Lets a bundle tell a crash / OS-kill from a managed
-    // shutdown, which `server-status.txt: not-running` alone cannot.
     stageFileIfPresent(join(lockDir, SERVER_EXIT_LOG), join(stagingDir, 'state', SERVER_EXIT_LOG));
 
-    // last-server-crash.json — the server's own fatal-crash record (error name/
-    // message/stack written synchronously by the crash monitor). The inside
-    // view complementing SERVER_EXIT_LOG's outside view.
     stageFileIfPresent(
       join(lockDir, SERVER_CRASH_LOG),
       join(stagingDir, 'state', SERVER_CRASH_LOG),
     );
 
-    // Runtime + desktop block.
     const runtime = readRuntime();
     const desktop = readDesktopEnv();
     const language = readLanguage();
@@ -911,22 +587,17 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       serverStatus === 'running' ? 'running\n' : `not-running (${serverStatusReason})\n`;
     writeFileSync(join(stagingDir, 'state', 'server-status.txt'), statusBody);
 
-    // process/ — only when caller hands us a pre-collected dir.
     if (opts.processDir && existsSync(opts.processDir)) {
       const processDest = join(stagingDir, 'process');
       mkdirSync(processDest, { recursive: true });
       cpSync(opts.processDir, processDest, { recursive: true });
     }
 
-    // Mask the content-dir path in the staged copies BEFORE the file inventory
-    // walk so the recorded bytes/lines reflect post-mask state. Originals on
-    // disk are not touched — only the staged copies in stagingDir.
     const redactApplied = opts.redact === true;
     if (redactApplied) {
       redactStagedBundle({ stagingDir, contentDir });
     }
 
-    // Staged before the scrub so a secret pasted into the note gets caught too.
     if (opts.note) {
       writeFileSync(join(stagingDir, 'note.txt'), opts.note);
     }
@@ -942,9 +613,6 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
         join(stagingDir, 'extra', extra.zipName ?? basename(extra.sourcePath)),
       );
       if (!staged) {
-        // Unlike the availability-gated telemetry/log sources, an extra is an
-        // artifact the user explicitly opted into sharing (e.g. a crash
-        // minidump) — its absence must be traceable, not silent.
         deps.logger?.warn(
           { sourcePath: extra.sourcePath },
           'extra file missing; omitted from bundle',
@@ -952,9 +620,6 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       }
     }
 
-    // Manifest. Config lookup uses projectDir (where `.ok/config.yml` lives)
-    // rather than contentDir — when `content.dir != '.'`, these differ and
-    // contentDir wouldn't contain the project config file.
     const localSink = resolveLocalSinkBlock(projectDir);
     const stagedFiles = walkStagedFiles(stagingDir);
     const files: BundleFileEntry[] = [];
@@ -966,13 +631,6 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       const lines = shouldCountLines(relPath) ? countLines(absPath) : 0;
       files.push({ path: relPath, bytes, lines });
       totalBytes += bytes;
-      // `logs/` as well as `telemetry/`, and NOT gated on `shouldCountLines`:
-      // that predicate admits only `.jsonl`, while everything staged under
-      // `logs/` is `.log` — including `desktop.<date>.log`, which on the
-      // desktop build is the ONLY sink these breadcrumbs reach, the web
-      // forwarder being switched off there. Scoping the scan to spans, or to
-      // line-countable files, both leave the consent prompt reporting zero over
-      // a bundle carrying a document path per activation.
       if (relPath.startsWith('telemetry/') || relPath.startsWith('logs/')) {
         docNameCount += countDocNameOccurrences(absPath);
       }
@@ -994,10 +652,6 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       },
       host: { desktop, language },
       contentDir: {
-        // pathSha256 stays as the SHA-256 of the original absolute path — it's
-        // a stable correlation identifier for the recipient. The absolutePath
-        // string itself is masked when redaction is on so the bundle doesn't
-        // leak the user's home directory layout.
         pathSha256: hashContentDirPath(contentDir),
         absolutePath: redactApplied ? '<CONTENT_DIR>' : contentDir,
       },
@@ -1012,15 +666,10 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
 
     writeFileSync(join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 
-    // contentDirVisible scan runs AFTER manifest write so it doesn't include
-    // the manifest's own `absolutePath` field — the user's prompt cares about
-    // JSONLs + state files where the path bleeds in via spans / logs / lock
-    // metadata, not the recipient-facing inventory.
     const contentDirVisible = stagedFiles.some((absPath) => {
       try {
         return readFileSync(absPath, 'utf-8').includes(contentDir);
       } catch {
-        // Binary file (cpuprofile, dmp) — skip the substring scan.
         return false;
       }
     });
@@ -1042,18 +691,10 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
 
     return { stagingDir, manifest, summary, cleanup };
   } catch (err) {
-    // The cleanup handle only exists on the returned value, so a throw during
-    // staging is the one path where nobody else can release the tmpdir — and
-    // what would be stranded there are copies of logs and telemetry that may
-    // not have been redacted yet.
     rmSync(stagingDir, { recursive: true, force: true });
     throw err;
   }
 }
-
-// ---------------------------------------------------------------------------
-// writeBundle
-// ---------------------------------------------------------------------------
 
 export async function writeBundle(opts: WriteBundleOpts): Promise<string> {
   const { collected, outputPath } = opts;

@@ -1,21 +1,3 @@
-/**
- * The user-global saved-theme store: a folder of Tinted Theming scheme files
- * under `<homedir>/.ok/themes/`, one file per theme, filename stem as identity.
- *
- * This module is the store's read path — a total, bounded enumeration. It is the
- * permissive half of the store's two-bar split: it never throws and still lists a
- * broken entry (a file that fails to parse, or whose name can't become a valid
- * id) as a warning rather than dropping it, so a theme a user placed can always
- * be seen and fixed. The strict, coded write validator is a separate surface.
- *
- * Discovery is by scan, re-run at boot and when the theme settings surface opens.
- * There is deliberately no live filesystem watcher here.
- *
- * Nothing proprietary is persisted: the scheme files are the only artifacts, so
- * this reader neither writes nor lazily creates anything — a missing folder stays
- * missing and simply reads as empty.
- */
-
 import {
   closeSync,
   constants,
@@ -48,44 +30,21 @@ import {
 
 const log = getLogger('saved-themes');
 
-/** Scheme-file extensions the store recognizes. The Tinted Theming ecosystem and
- *  OK's own serializer both emit YAML; other extensions are not theme files.
- *  Exported so the write path checks collisions and resolves deletes against the
- *  same set the scan lists — one source, no drift. */
 export const SCHEME_EXTENSIONS = ['.yaml', '.yml'] as const;
 
-/**
- * Upper bound on entries a single scan lists. The scan runs on the collaboration
- * thread, so it caps rather than enumerating an unbounded folder; a scan that
- * hits the cap reports `truncated` instead of silently cutting the list. Matches
- * the order of magnitude of the sibling artifact-list caps.
- */
 export const SAVED_THEME_SCAN_CAP = 500;
 
-/** Maximum directory entries observed during one scan, including non-themes. */
 export const SAVED_THEME_DIRECTORY_ENTRY_CAP = 2_000;
 
-/** Maximum bytes read from one user-owned scheme file. */
 export const SAVED_THEME_FILE_BYTE_LIMIT = 64 * 1024;
 
-/** A usable saved theme: a parsed scheme carrying a valid namespaced id. A member
- *  of the exported `SavedThemeEntry` union; callers narrow via `entry.ok`. */
 interface SavedThemeOk {
   ok: true;
-  /** Namespaced palette id (`SAVED_THEME_ID_PREFIX` + filename stem). */
   id: string;
-  /** Filename including extension — the stable delete/edit target. */
   filename: string;
-  /** The parsed Tinted Theming scheme (standard fields only). */
   scheme: Base16Scheme;
 }
 
-/**
- * Why a folder entry could not become a usable theme. The parse causes come
- * from the base16 parser; the id causes from filename-stem derivation. Derived
- * from the source taxonomies so a new parser or id failure mode surfaces here
- * without a manual edit.
- */
 type SavedThemeWarningCode =
   | Base16ParseError['kind']
   | SavedThemeIdError
@@ -96,17 +55,11 @@ type SavedThemeWarningCode =
   | 'file-too-large'
   | 'read-failed';
 
-/** A listed-but-unusable entry: it exists, carries a reason, and can be fixed. A
- *  member of the exported `SavedThemeEntry` union; callers narrow via `entry.ok`. */
 interface SavedThemeWarning {
   ok: false;
-  /** Filename including extension — shown so the user knows the file is there. */
   filename: string;
-  /** Present when the name yielded a valid id but the contents failed to parse. */
   id?: string;
-  /** Machine-readable reason; the UI maps it to localized, human-readable copy. */
   code: SavedThemeWarningCode;
-  /** All files claiming the same filename-stem identity. */
   conflictingFilenames?: string[];
 }
 
@@ -114,43 +67,20 @@ export type SavedThemeEntry = SavedThemeOk | SavedThemeWarning;
 
 export interface SavedThemeScanResult {
   entries: SavedThemeEntry[];
-  /** True when the folder held more scheme files than the scan listed. */
   truncated: boolean;
 }
 
 export interface ScanSavedThemesOptions {
-  /**
-   * Absolute path to the store folder. When given, it is used verbatim and
-   * `homedirOverride` is ignored — the caller has already resolved the root.
-   */
   root?: string;
-  /**
-   * Test seam: resolve the store under this home directory instead of
-   * `os.homedir()`. A parameter, never an environment variable, so parallel
-   * tests stay isolated.
-   */
   homedirOverride?: string;
-  /** Scan bound; defaults to `SAVED_THEME_SCAN_CAP`. */
   cap?: number;
-  /** Directory-entry observation bound; defaults to `SAVED_THEME_DIRECTORY_ENTRY_CAP`. */
   observationCap?: number;
 }
 
-/** Absolute path to the saved-theme store under a (possibly overridden) home. */
 export function savedThemesDir(homedirOverride?: string): string {
   return resolve(homedirOverride ?? homedir(), OK_DIR, SAVED_THEMES_DIRNAME);
 }
 
-/**
- * Enumerate the saved-theme store: one entry per scheme identity, sorted by
- * name. When the directory-observation bound is reached, `truncated` is true;
- * membership then reflects the filesystem's bounded first page and is not
- * claimed to be stable across platforms.
- *
- * Per-entry isolated: one unreadable, unparseable, or badly-named file never
- * fails enumeration or hides its siblings. A missing folder is an empty result,
- * not an error.
- */
 export function scanSavedThemes(options: ScanSavedThemesOptions = {}): SavedThemeScanResult {
   recordSavedThemeScan();
   const root = options.root ?? savedThemesDir(options.homedirOverride);
@@ -171,14 +101,9 @@ export function scanSavedThemes(options: ScanSavedThemesOptions = {}): SavedThem
     } finally {
       try {
         dir.closeSync();
-      } catch {
-        // Reading through end-of-directory may auto-close the handle.
-      }
+      } catch {}
     }
   } catch (err) {
-    // A missing store is the ordinary cold-start case: no themes yet. Any other
-    // failure (EACCES, ENOTDIR) still degrades to "no saved themes" so the picker
-    // keeps working, and earns a log so an operator can trace it.
     if (errnoCode(err) !== 'ENOENT') {
       log.warn(
         { root, reason: err instanceof Error ? err.message : String(err) },
@@ -234,9 +159,6 @@ export function scanSavedThemes(options: ScanSavedThemesOptions = {}): SavedThem
   return { entries, truncated };
 }
 
-/** A scheme candidate is a non-hidden regular file (or symlink to one) with a
- *  scheme extension. Dotfiles (`.DS_Store`, hidden schemes) and subdirectories
- *  are not themes. */
 function isSchemeCandidate(entry: Dirent): boolean {
   if (entry.name.startsWith('.')) return false;
   const lower = entry.name.toLowerCase();
@@ -249,11 +171,6 @@ function schemeStem(filename: string): string {
   return extension ? filename.slice(0, -extension.length) : parse(filename).name;
 }
 
-/**
- * Read one candidate into an entry, or `null` when it should drop silently.
- * Derivation runs first: a name that can't be an id is unusable regardless of
- * contents, and listing it (without reading) already tells the user what to fix.
- */
 export function readSavedThemeFile(root: string, filename: string): SavedThemeEntry | null {
   const derived = deriveSavedThemeId(parse(filename).name);
   if (!derived.ok) return { ok: false, filename, code: derived.code };
@@ -323,10 +240,7 @@ export function readSavedThemeFile(root: string, filename: string): SavedThemeEn
   } finally {
     try {
       closeSync(fd);
-    } catch {
-      // The read result is already determined; close failure must not make the
-      // total scanner throw and hide every other theme.
-    }
+    } catch {}
   }
 
   recordSavedThemeParseAttempt();

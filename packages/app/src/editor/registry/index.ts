@@ -48,11 +48,6 @@ function computeReactNodePropNames(props: PropDef[]): ReadonlySet<string> {
   return names;
 }
 
-/**
- * The module-level core registry — single source of truth for metadata.
- * App-level decorations (`Component`, `reactNodePropNames`) live in a
- * sibling lookup keyed by the same name.
- */
 const coreRegistry = createRegistry();
 
 interface Decoration {
@@ -63,22 +58,6 @@ interface Decoration {
 
 const decorations = new Map<string, Decoration>();
 
-/**
- * Build the React-component decoration for a descriptor.
- *
- * - `surface: 'canonical'` → look up the React component by `meta.name`.
- *   Returns null if `componentMap` doesn't have the canonical's component
- *   (e.g., during module init before `componentMap` is seeded).
- * - `surface: 'compat'` → look up the React component by `meta.rendersAs`.
- *   Compat descriptors render through the canonical's component via the
- *   render-time `translateProps` step in `JsxComponentView`. Throws if
- *   `rendersAs` doesn't resolve to a registered canonical — fail loud at
- *   module init rather than render an undefined component.
- *
- * Note: `reactNodePropNames` is computed from the descriptor's OWN `props`
- * (not the canonical's). Compat descriptors expose a subset of props; the
- * reactnode set is a subset accordingly.
- */
 function buildDecoration(meta: JsxComponentMeta): Decoration | null {
   if (meta.surface === 'compat') {
     const Component = componentMap[meta.rendersAs];
@@ -100,13 +79,6 @@ function buildDecoration(meta: JsxComponentMeta): Decoration | null {
   };
 }
 
-// Seed decorations for the wildcard + every built-in whose React component
-// ships in `componentMap`. Compat descriptors resolve via `rendersAs` and
-// throw at init if their canonical isn't registered. Any future
-// `coreRegistry.set(name, meta)` that also lands a matching entry in
-// `componentMap` will render correctly the next time `getDescriptor` is
-// called; entries without a render component fall through to the wildcard
-// via `getOrWildcard`.
 for (const [name, meta] of coreRegistry.entries()) {
   const deco = buildDecoration(meta);
   if (deco) decorations.set(name, deco);
@@ -120,25 +92,15 @@ function composeDescriptor(meta: JsxComponentMeta, deco: Decoration): JsxCompone
   };
 }
 
-/**
- * Lookup a descriptor by component name. Returns the wildcard `'*'`
- * descriptor for unregistered names (core owns the fallback semantic).
- */
 export function getDescriptor(name: string): JsxComponentDescriptor {
   const meta = coreRegistry.getOrWildcard(name);
   const deco = decorations.get(meta.name) ?? decorations.get('*');
   if (!deco) {
-    // `componentMap['*']` guarantees a wildcard decoration exists at
-    // module init. If it doesn't, `componentMap` is mis-seeded — crash
-    // loudly rather than render an undefined component.
     throw new Error(`No React component registered for ${meta.name} (and no '*' wildcard)`);
   }
   return composeDescriptor(meta, deco);
 }
 
-/**
- * All registered descriptors (excluding wildcard).
- */
 export function getRegisteredDescriptors(): JsxComponentDescriptor[] {
   const result: JsxComponentDescriptor[] = [];
   for (const [name, meta] of coreRegistry.entries()) {

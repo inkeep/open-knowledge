@@ -1,18 +1,3 @@
-/**
- * The saved-theme store's write path — the strict, coded half of the store's
- * two-bar split (`saved-themes-store.ts` is the permissive total read).
- *
- * Save refuses a name that can't become a palette id, and refuses one already
- * taken by a file in the store, before writing anything — a name collision never
- * overwrites prior work. Delete removes the one scheme file outright and retains
- * no copy anywhere (no backup dir, no trash): the reversibility a user gets is
- * the UI's time-boxed undo, not a file OK keeps behind their back.
- *
- * All operations write through the traced-fs wrappers so every disk mutation
- * lands an `fs.*` span; the store folder is created lazily on the first save
- * (the read path never creates it).
- */
-
 import { createHash } from 'node:crypto';
 import { lstatSync, opendirSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -40,23 +25,14 @@ import {
 } from './saved-themes-store.ts';
 import { recordSavedThemeDelete, recordSavedThemeSave } from './saved-themes-telemetry.ts';
 
-/** The canonical extension the save path writes. A theme is saved as `.yaml`
- *  even if a hand-dropped sibling used `.yml`; both are recognized on read and
- *  on collision/delete resolution. */
 const SAVE_EXTENSION = '.yaml';
 
-/** Locate the store root once for an operation: an explicit `root` wins,
- *  otherwise resolve it under the (possibly overridden) home directory. */
 interface SavedThemeWriteOptions {
-  /** Absolute path to the store folder, used verbatim when given. */
   root?: string;
-  /** Test seam: resolve the store under this home instead of `os.homedir()`. */
   homedirOverride?: string;
-  /** Maximum time to wait for another process writing the same store. */
   lockTimeoutMs?: number;
 }
 
-/** Retryable refusal when another process holds the user-global store mutex. */
 type SavedThemeLockTimeoutResult = { ok: false; code: 'lock-timeout' };
 
 async function withSavedThemeWriteLock<T>(
@@ -65,9 +41,6 @@ async function withSavedThemeWriteLock<T>(
   fn: () => Promise<T>,
   timeoutMs?: number,
 ): Promise<T | SavedThemeLockTimeoutResult> {
-  // The user-owned store remains scheme-files-only. Keep its hashed mutex in the
-  // user-owned OK directory so another OS user cannot preclaim the predictable
-  // name in a shared temp directory and wedge every saved-theme writer.
   const lockDir = resolve(home, OK_DIR);
   await tracedMkdir(lockDir, { recursive: true });
   const rootKey = createHash('sha256').update(resolve(root)).digest('hex').slice(0, 24);
@@ -90,13 +63,6 @@ function targetState(path: string): 'missing' | 'regular' | 'unsafe' {
   }
 }
 
-/**
- * Find every directory entry that claims a stem under a supported extension,
- * including extension-case variants. Stem matching stays exact so a malformed
- * uppercase stem can never be reached through a valid lowercase id. Only the
- * extension is case-folded because its portable filename identity is reserved.
- * An overlarge directory fails closed rather than risking a hidden collision.
- */
 function findClaimingFilenames(
   root: string,
   stem: string,
@@ -124,30 +90,18 @@ function findClaimingFilenames(
   } finally {
     try {
       dir.closeSync();
-    } catch {
-      // Reading through end-of-directory may auto-close the handle.
-    }
+    } catch {}
   }
 }
 
 export type SavedThemeSaveResult =
   | { ok: true; id: string; filename: string }
-  /** `name-taken`: the stem already names a file in the store. Otherwise one of
-   *  the id-grammar failures (`empty` / `too-long` / `invalid-chars`). */
   | { ok: false; code: 'name-taken' | SavedThemeIdError }
   | SavedThemeLockTimeoutResult;
 
-/**
- * Save a palette under `name` as a scheme file in the store. `name` is the
- * theme's identity — its filename stem and, namespaced, its palette id — so it
- * must fit the id grammar; a name that doesn't, or one already taken, is refused
- * with a distinguishing code and nothing is written. On success the file is
- * written atomically (tmp + rename) so a concurrent scan never sees a half-file.
- */
 export async function saveSavedTheme(
   params: {
     name: string;
-    /** Exact filename stem for restoring a deleted file. New saves derive it from `name`. */
     stem?: string;
     scheme: Base16Scheme;
     extension?: (typeof SCHEME_EXTENSIONS)[number];
@@ -169,15 +123,10 @@ export async function saveSavedTheme(
     root,
     home,
     async () => {
-      // Collision is by filename identity: a stem already present under EITHER
-      // recognized extension maps to the same id, so writing would shadow it.
       const claims = findClaimingFilenames(root, derived.stem);
       if (!claims.complete || claims.filenames.length > 0) return { ok: false, code: 'name-taken' };
 
       const filename = `${derived.stem}${params.extension ?? SAVE_EXTENSION}`;
-      // On a case-insensitive filesystem an invalid `Ocean.yaml` aliases the
-      // canonical `ocean.yaml` path even though its stem is not a valid claimant.
-      // Refuse that filesystem-level collision instead of overwriting the file.
       if (targetState(join(root, filename)) !== 'missing') {
         return { ok: false, code: 'name-taken' };
       }
@@ -198,11 +147,6 @@ export type SavedThemeUpdateResult =
   | { ok: false; code: 'ambiguous-id' | 'invalid-id' | 'not-found' | 'unsafe-target' }
   | SavedThemeLockTimeoutResult;
 
-/**
- * Replace the scheme file an existing saved-theme id names. The same filename
- * and extension are retained, so this is a true in-place update; a missing id
- * is refused instead of becoming an accidental create/upsert.
- */
 export async function updateSavedTheme(
   params: { id: string; scheme: Base16Scheme } & SavedThemeWriteOptions,
 ): Promise<SavedThemeUpdateResult> {
@@ -242,17 +186,9 @@ export async function updateSavedTheme(
 export type SavedThemeDeleteResult =
   | { ok: true; existed: false }
   | { ok: true; existed: true; filename: string; scheme: Base16Scheme }
-  /** The id is not a well-formed saved-theme id (a client-shape bug). */
   | { ok: false; code: 'ambiguous-id' | 'invalid-id' | 'unusable-theme' }
   | SavedThemeLockTimeoutResult;
 
-/**
- * Delete the scheme file a saved-theme id names. Idempotent: an id that names no
- * file is `{ existed: false }`, not an error. The stem recovered from the id is
- * `[a-z0-9-]+` by construction (that is what `parseSavedThemeId` guarantees), so
- * it can't traverse out of the store — no path-containment guard is needed. No
- * copy of the file is written anywhere before it is removed.
- */
 export async function deleteSavedTheme(
   params: { id: string } & SavedThemeWriteOptions,
 ): Promise<SavedThemeDeleteResult> {

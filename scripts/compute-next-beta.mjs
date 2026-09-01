@@ -1,62 +1,10 @@
 #!/usr/bin/env node
-/**
- * Compute the next beta base version (X.Y.Z) and render delta release notes
- * by reusing Changesets' canonical rendering machinery.
- *
- * Reads:
- *   - .changeset/pre.json     — initialVersions (anchor) + cycle state
- *   - .changeset/*.md         — pending changesets (frontmatter bump types + body)
- *   - gh release view <prev-beta-tag>  — previous beta's release body, from which
- *                                        we recover the embedded consumed-set marker
- *
- * Algorithm:
- *   1. Enumerate current .changeset/*.md file IDs.
- *   2. Resolve the previous beta tag on the public release repo and
- *      parse its release body for the embedded `<!-- ok-consumed-set: [...] -->`
- *      marker. Missing tag / missing marker → bootstrap (treat everything as new).
- *   3. Compute the delta: IDs in current pile NOT in prior consumed set.
- *      Empty delta → skip dispatch.
- *   4. Transiently rewrite `pre.json#changesets` to the prior consumed set so
- *      `pnpm exec changeset version` consumes ONLY the delta when it runs.
- *   5. Run `pnpm exec changeset version` — produces per-package CHANGELOG.md prepends
- *      whose top section is the canonical Changesets rendering of the delta.
- *   6. Diff each package's CHANGELOG.md (before vs after) and harvest the new
- *      top section. Union across packages, dedupe by commit hash, drop the
- *      "Updated dependencies" boilerplate.
- *   7. Render: per-bump-type grouping + footer linking to the previous beta +
- *      embedded consumed-set marker for the next cut to read.
- *   8. Read the bumped package.json#version to derive baseVersion + maxBumpType.
- *
- * Emits JSON to stdout (public-repo beta-cut workflow contract):
- *   { skip: false, baseVersion: "X.Y.Z", maxBumpType: "patch"|"minor",
- *     pendingCount: N, releaseNotes: "...markdown..." }
- * or, when no new changesets are pending:
- *   { skip: true, reason: "..." }
- *
- * The script MUTATES the working tree (pre.json + CHANGELOG.md + package.json
- * + deletes .changeset/*.md). The CALLER must `git restore .` after reading
- * stdout (the beta-cut workflow does this in an `if: always()` step).
- *
- * The -beta.N counter is intentionally NOT computed here. release.yml on
- * the public release repo resolves it within the ok-release-cadence
- * concurrency slot from existing vX.Y.Z-beta.* tags.
- *
- * Run from cwd public/open-knowledge:
- *   node scripts/compute-next-beta.mjs
- */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 
-// The fixed release group's anchor package. Its `initialVersions` entry in
-// pre.json is the version the last stable consolidation left behind, so it is
-// also what a stale-anchor check compares against the newest stable tag.
-// Exported so that check reads the same key rather than carrying a copy that
-// can drift.
 export const FIXED_GROUP_ANCHOR = '@inkeep/open-knowledge';
 const PRE_PATH = '.changeset/pre.json';
 const CHANGESET_DIR = '.changeset';
-// Repo this release runs against; derived from the workflow env so it follows
-// whatever repo the release executes on. Fallback is for local runs only.
 const PUBLIC_REPO = process.env.GITHUB_REPOSITORY || 'inkeep/open-knowledge';
 const CHANGELOG_PKGS = ['cli', 'core', 'server', 'app', 'desktop'];
 const CONSUMED_MARKER_RE = /<!--\s*ok-consumed-set:\s*(\[[^\]]*\])\s*-->/;
@@ -76,9 +24,6 @@ export function bumpSemver(version, type) {
   throw new Error(`Invalid bump type: ${type}`);
 }
 
-// The cycle's effective bump is the highest declared across all its
-// changesets, with a 'patch' floor — any release is at least a patch even
-// when a changeset declares no recognizable bump for the fixed group.
 export function maxBumpType(bumpTypes) {
   let max = 'patch';
   for (const t of bumpTypes) {
@@ -87,20 +32,11 @@ export function maxBumpType(bumpTypes) {
   return max;
 }
 
-// Base version = last stable (anchor) bumped by the cycle's max bump-type.
-// Changing this breaks the normative vectors pinned in
-// compute-next-beta.test.mjs.
 export function computeBaseVersion(anchor, bumpTypes) {
   return bumpSemver(anchor, maxBumpType(bumpTypes));
 }
 
 export function parseFrontmatterBumpType(content) {
-  // Returns the max bump type ('patch'|'minor'|'major'|null) declared in a
-  // changeset's frontmatter, e.g.:
-  //   ---
-  //   '@inkeep/open-knowledge': minor
-  //   '@inkeep/open-knowledge-app': patch
-  //   ---
   const fmMatch = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/.exec(content);
   if (!fmMatch) return null;
   let maxType = null;
@@ -174,18 +110,6 @@ function readChangelogs() {
 }
 
 export function extractDeltaSection(content) {
-  // CHANGELOG.md shape after `pnpm exec changeset version`:
-  //   # @inkeep/foo
-  //
-  //   ## NEW-VERSION
-  //   <-- new content (what we want) -->
-  //
-  //   ## PRIOR-VERSION
-  //   <-- old content -->
-  //
-  // Return everything between the first `## ` heading and the second `## `
-  // heading, EXCLUDING the new-version heading line itself (release.yml owns
-  // the displayed version on the GitHub Release).
   const lines = content.split('\n');
   let firstH2 = -1;
   let secondH2 = -1;
@@ -204,12 +128,6 @@ export function extractDeltaSection(content) {
 }
 
 export function parseSection(section) {
-  // Parse a CHANGELOG-section body into { 'Patch Changes': [{hash, body}, ...], ... }.
-  // Entries are bullets opened by `- ` at column 0; continuation lines are
-  // 2-space-indented (or blank). The Changesets renderer prefixes each direct
-  // entry with the short commit hash (`- 67028e1: foo...`). Inside an open
-  // entry, only a `### ` group heading or a new top-level `- ` bullet ends it —
-  // every other line is continuation, even at column 0 (see below).
   const groups = {};
   let currentGroup = null;
   let currentEntry = null;
@@ -231,17 +149,8 @@ export function parseSection(section) {
       currentEntry = { hash: m?.[1] ?? null, body: m?.[2] ?? line.slice(2) };
       groups[currentGroup].push(currentEntry);
     } else if (currentEntry) {
-      // Continuation of the open entry. Strip one list-indent level from the
-      // canonical 2-space form so renderNotes can re-apply it uniformly; keep a
-      // column-0 line verbatim. A column-0 non-blank line reaches here only
-      // when prettier — which `changeset version` runs over CHANGELOG.md —
-      // de-indented the second physical line of an inline code span that a
-      // changeset wrapped across a hard line break. Folding it into the entry
-      // instead of terminating on it keeps that line, and everything after it,
-      // from being dropped from the release notes.
       currentEntry.body += `\n${line.startsWith('  ') ? line.slice(2) : line}`;
     } else {
-      // A stray line before any bullet is opened: nothing to attach it to.
       commit();
     }
   }
@@ -262,11 +171,6 @@ export function renderNotes({ packageDeltas, newConsumedSet, prevBetaTag, newCou
         const trimmed = entry.body.trim();
         if (!trimmed) continue;
         if (trimmed.startsWith('Updated dependencies')) continue;
-        // Fixed-group sibling-bump bullets (`- @inkeep/<pkg>@<version>`) carry
-        // the changesets pre-mode-bump version (e.g., `-beta.6`), which is
-        // unrelated to the workflow-resolved `-beta.N` tag the release will
-        // ship as. They're boilerplate cross-references, not user-facing
-        // narrative — drop them.
         if (/^@inkeep\/[\w-]+@\d/.test(trimmed)) continue;
         if (entry.hash) {
           if (seenHashes.has(entry.hash)) continue;
@@ -332,9 +236,6 @@ function main() {
   let priorConsumed = [];
   if (prevBetaTag) {
     const recovered = recoverConsumedSet(prevBetaTag);
-    // Filter out IDs that have since vanished from the pile (e.g., a stable
-    // promotion cleared them and the cycle restarted). Without this guard
-    // Changesets would error on "unknown changeset" in the persisted list.
     if (recovered) priorConsumed = recovered.filter((id) => allIdsSet.has(id));
   }
   const priorSet = new Set(priorConsumed);
@@ -350,10 +251,6 @@ function main() {
     return;
   }
 
-  // Compute maxBumpType across the WHOLE cycle (delta + prior). baseVersion
-  // ships to the public repo and must reflect the cycle's eventual stable target — a
-  // delta-only patch on a cycle that already accumulated a minor would
-  // otherwise emit the wrong base.
   const cycleBumpTypes = allIds.map((id) =>
     parseFrontmatterBumpType(readFileSync(`${CHANGESET_DIR}/${id}.md`, 'utf8')),
   );
@@ -362,10 +259,6 @@ function main() {
 
   const changelogsBefore = readChangelogs();
 
-  // Transient pre.json mutation: tell Changesets "these IDs are already
-  // consumed in this pre-cycle." It then consumes only the delta when
-  // `pnpm exec changeset version` runs below. The mutation lives only on disk for
-  // this run — the workflow's `git restore .` cleanup discards it.
   writeFileSync(
     PRE_PATH,
     `${JSON.stringify({ ...pre, changesets: priorConsumed }, null, 2)}\n`,
@@ -405,8 +298,6 @@ function main() {
   );
 }
 
-// Allow `import { extractDeltaSection } from '...'` from tests without
-// triggering the main flow.
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();
 }

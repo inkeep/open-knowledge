@@ -4,13 +4,6 @@ import { describe, expect, test } from 'vitest';
 import { buildIngressPolicy } from '../ingress-policy.ts';
 import { admitRequestSurface } from './http-app.ts';
 
-// admitRequestSurface is the surface-wide admission prelude the mount runs
-// BEFORE dispatch for EVERY request — /mcp, /api, the static SPA shell, and
-// project content assets. Under `allowExternal` consent it validates Host with
-// the consolidated predicate (loopback + bind literals + externalUrl), so a
-// rebound / foreign Host cannot read the static shell or content while the
-// peer is admitted.
-
 function req(
   host: string | undefined,
   remoteAddress = '127.0.0.1',
@@ -68,10 +61,6 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('Gate 1: refuses forwarding headers the policy does not tolerate, before Gate 2 (403)', () => {
-    // The tripwire runs ahead of the Host gate. A pure-local server that never
-    // opted into exposure but receives X-Forwarded-* is fronted by an
-    // unexpected proxy/tunnel — refuse rather than serve it with full local
-    // trust. This pins the composed prelude to the predicate, not just Gate 2.
     const { res, status } = fakeRes();
     expect(
       admitRequestSurface(
@@ -85,9 +74,6 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('Gate 1: a consented policy with a externalUrl tolerates forwarding headers', () => {
-    // Under consent with a declared externalUrl the server sits behind a reverse
-    // proxy / tunnel on purpose, so forwarded headers are expected and
-    // tolerated; the Host still gates in Gate 2 (admitted here via externalUrl).
     const { res, status } = fakeRes();
     expect(
       admitRequestSurface(
@@ -101,11 +87,6 @@ describe('admitRequestSurface under allowExternal consent', () => {
   });
 
   test('a pure-local policy (no exposure) does NOT Host-gate the surface here', () => {
-    // Gate 2 only runs under exposure. Pure-local rebinding defense lives
-    // with the legs behind this prelude instead: the `/api` pipeline read
-    // gate, the content-serve gate in `asset-serve-middleware.ts`, and the
-    // unconditional `/mcp` gate. The SPA shell (the remaining surface) is
-    // deliberately ungated — public bundle code.
     const local = buildIngressPolicy({});
     const { res, status } = fakeRes();
     expect(admitRequestSurface(req('evil.example'), res, local, 'mcp-mount')).toBe(true);

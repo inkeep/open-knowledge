@@ -1,49 +1,21 @@
-/**
- * Origin-undoability sweep — the fail-closed registration contract for every
- * content-writing transaction origin.
- *
- * Enumerates every origin-named constant declared under packages/{server,core,
- * app}/src and requires each to be classified exactly once: as a content-write
- * origin with a ruled undoability row, or as a non-content origin with a stated
- * reason. A NEW content origin cannot ship without a row (completeness), and a
- * removed origin cannot leave a stale row behind (no-phantom) — the two checks
- * pin a bidirectional set equality between what source declares and what this
- * contract classifies.
- *
- * The undoability rows are the published contract the timeline/undo topology
- * and the conflict spec extend. Behavioral proof of each ruling lives in the
- * cross-referenced suites; this sweep guarantees the table stays complete.
- *
- * Static readFileSync scan (no server boot), sibling to
- * attribution-sweep-coverage.test.ts. api-extension.ts carries a NUL byte that
- * truncates rg/grep but not readFileSync, so the scan reads it whole.
- */
-
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-/** Where an origin's writes land on the undo topology. */
 type UndoClass =
-  | 'agent-session-um' // undoable only by the server per-session Y.Text UndoManager
-  | 'agent-undo-system' // the agent-undo write itself; excluded from its own stack
-  | 'client-editor-um' // undoable by a client editor UndoManager (the human Cmd+Z path)
-  | 'system-not-undoable' // recovery/system paired write; tracked by no UndoManager
-  | 'no-undo-manager' // user-surface write captured by no UndoManager (deliberate)
-  | 'replay-not-undoable'; // recovery replay; durable but not Cmd+Z-undoable
+  | 'agent-session-um'
+  | 'agent-undo-system'
+  | 'client-editor-um'
+  | 'system-not-undoable'
+  | 'no-undo-manager'
+  | 'replay-not-undoable';
 
 interface UndoRow {
   undo: UndoClass;
   why: string;
-  /** The behavioral suite(s) that pin this ruling. */
   contract: string;
 }
 
-/**
- * Content-writing origin CONSTANTS (mutate Y.Text('source') / Y.XmlFragment via
- * the bridge primitives), each with its ruled undoability and the suite that
- * pins it behaviorally.
- */
 const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
   AGENT_WRITE_ORIGIN: {
     undo: 'agent-session-um',
@@ -102,11 +74,6 @@ const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
   },
 };
 
-/**
- * Content-writing origins minted by a factory rather than a constant — the
- * per-session agent write + undo origins. Verified present by name below; not
- * part of the constant enumeration.
- */
 const FACTORY_ORIGIN_ROWS: Record<string, UndoRow> = {
   createSessionOrigin: {
     undo: 'agent-session-um',
@@ -120,11 +87,6 @@ const FACTORY_ORIGIN_ROWS: Record<string, UndoRow> = {
   },
 };
 
-/**
- * Origin constants reserved for future registrants but not yet declared in
- * source. The conflict spec's machine-merge landing registers here when it
- * ships; excluded from the no-phantom check because it has no source constant.
- */
 const RESERVED_UNDO_ROWS: Record<string, UndoRow> = {
   'machine-merge': {
     undo: 'system-not-undoable',
@@ -133,10 +95,6 @@ const RESERVED_UNDO_ROWS: Record<string, UndoRow> = {
   },
 };
 
-/**
- * Origin-named constants that are NOT content-writing transaction origins, each
- * with the reason it carries no undoability ruling.
- */
 const NON_CONTENT_ORIGINS: Record<string, string> = {
   OBSERVER_SYNC_ORIGIN:
     'The bridge itself — Observer A/B cross-CRDT self-skip; routing it through a UndoManager or the content sweep would loop.',
@@ -168,9 +126,7 @@ const SRC_ROOTS = [
 ];
 const AGENT_SESSIONS_PATH = join(HERE, '../../../server/src/agent-sessions.ts');
 
-/** ORIGIN as a name segment — matches FOO_ORIGIN, ORIGIN_BAR, FOO_ORIGIN_BAZ; not ORIGINAL. */
 const ORIGIN_SEGMENT = /(^|_)ORIGIN(_|$)/;
-/** `const NAME =` or `const NAME: Type =` — the type annotation is single-line. */
 const CONST_DECL = /\bconst\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=;\n]+)?=/g;
 
 function isScannedSource(fileName: string): boolean {
@@ -193,7 +149,6 @@ function walkTsFiles(dir: string, out: string[]): void {
   }
 }
 
-/** Every origin-named constant declared across the scanned source trees. */
 function enumerateOriginConstants(): string[] {
   const files: string[] = [];
   for (const root of SRC_ROOTS) walkTsFiles(root, files);
@@ -209,7 +164,6 @@ function enumerateOriginConstants(): string[] {
   return [...names].sort();
 }
 
-/** Names an origin constant is unclassified by this contract. */
 function findUnclassified(originNames: string[]): string[] {
   return originNames.filter(
     (name) => !(name in ORIGIN_UNDO_CONTRACT) && !(name in NON_CONTENT_ORIGINS),
@@ -225,7 +179,6 @@ describe('origin-undoability sweep', () => {
   const declared = enumerateOriginConstants();
 
   test('every declared origin constant carries an undoability ruling or a non-content reason', () => {
-    // Fail-loud on an empty scan: a broken walk must never pass silently.
     expect(declared.length).toBeGreaterThanOrEqual(15);
     expect(findUnclassified(declared)).toEqual([]);
   });
@@ -246,7 +199,6 @@ describe('origin-undoability sweep', () => {
     expect(findUnclassified(['__PLANTED_UNCLASSIFIED_ORIGIN__'])).toEqual([
       '__PLANTED_UNCLASSIFIED_ORIGIN__',
     ]);
-    // And a name mixed in with real ones is still isolated.
     expect(findUnclassified(['FORM_WRITE_ORIGIN', '__PLANTED_UNCLASSIFIED_ORIGIN__'])).toEqual([
       '__PLANTED_UNCLASSIFIED_ORIGIN__',
     ]);

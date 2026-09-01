@@ -1,8 +1,3 @@
-/**
- * `content-dir` check tests — exercises warn (uninit), pass (writable),
- * fail (missing dir), fail (not-a-directory), fail (not writable).
- */
-
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -1,8 +1,3 @@
-/**
- * Integration test: /api/link-graph returns frontmatter metadata (cluster, category, tags)
- * on doc nodes when present.
- */
-
 import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -152,21 +152,6 @@ function TabShortcutHint({ value }: { value: string }) {
   );
 }
 
-/**
- * Sortable wrapper for one tab div, bound to `@dnd-kit/sortable`'s
- * `useSortable` so the whole tab (not a separate drag handle) is draggable.
- * Activation is gated by the outer DndContext's PointerSensor `distance: 8`
- * so plain clicks still activate / close the tab.
- *
- * Callers should not pass a `role` prop. `useSortable`'s `attributes` inject
- * `role="button"` + `aria-roledescription="sortable"` so screen readers can
- * discover and announce reorder. `{...attributes}` is spread AFTER `{...rest}`
- * (see the render JSX below) so dnd-kit's bindings structurally win over any
- * caller-supplied `role`. Keep the convention anyway — the spread-order
- * guarantee is one refactor away from being lost. The outer sortable tab is
- * the keyboard focus target; inner activation buttons stay out of the tab
- * order so each tab is one stop.
- */
 function SortableTab({
   activateFromKeyboard,
   children,
@@ -214,7 +199,6 @@ function SortableTab({
     setNodeRef(node);
     if (typeof outerRef === 'function') outerRef(node);
     else if (outerRef && 'current' in outerRef) {
-      // React 19's RefObject<T> is { current: T } — mutable, no cast needed.
       outerRef.current = node;
     }
   }
@@ -324,12 +308,6 @@ function EditorTabContextMenu({
   );
   const closableTabIds = filterClosableTabIds(openTabs, pinnedTabIds);
   const canMoveToNewPane = canSplit && openTabs.length > 1;
-  // Pop-out is desktop-only and document-only. Two conditions, because neither
-  // alone is enough: the parsed kind rules out folder / asset / skill tabs,
-  // which carry their own id prefixes, while `target` rules out a blank "New
-  // tab" — its id has no prefix, so it parses AS a doc, but it is backed by no
-  // file and there would be nothing for the new window to show. Already inside a
-  // note window there is no tab strip, so this menu never renders there.
   const parsedTab = parseEditorTabId(tabId);
   const popOutDocName =
     parsedTab.kind === 'doc' && target && typeof window !== 'undefined' && window.okDesktop
@@ -509,16 +487,7 @@ function TabPinOrCloseButton({
   );
 }
 
-/**
- * Full-path hover disclosure for labels that may be visually truncated.
- * Anchoring to the inner button avoids dnd-kit's sortable listeners replacing
- * the tooltip trigger's pointer handlers on the outer tab.
- */
 function TabPathTooltip({ children, path }: { children: ReactNode; path: string }) {
-  // A reorder drag keeps firing pointermove over the trigger, which re-opens
-  // the tooltip mid-drag still anchored to the tab's original slot. Radix
-  // closes on pointerdown but has no notion of an in-flight drag, so the
-  // active-drag check has to come from dnd-kit.
   const { active } = useDndContext();
   if (active) return children;
   return (
@@ -531,7 +500,6 @@ function TabPathTooltip({ children, path }: { children: ReactNode; path: string 
   );
 }
 
-// The parent tab button owns the accessible conflict label; this icon is visual.
 function TabConflictBadge({ hasConflict }: { hasConflict: boolean }) {
   if (!hasConflict) return null;
   return (
@@ -578,11 +546,6 @@ function DocumentTabButton({
       <button
         type="button"
         aria-label={buttonAccessibleLabel}
-        // The label is the user's own file path, so its direction comes from the
-        // path rather than from the interface language (see `UserText`). Applied
-        // to the button because the path is split across sibling spans for
-        // truncation — one isolate around all of them keeps the fragments in the
-        // order the name was written, instead of letting the chrome reorder them.
         dir="auto"
         className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
         onClick={() => {
@@ -817,9 +780,6 @@ export function EditorTabs({
     };
   }, []);
 
-  // Make the tab canvas draggable, then carve out the scroll viewport and New
-  // tab button below. EditorHeader paints its foreground controls after this
-  // canvas so their no-drag regions remain clickable.
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const newTabIdSet = new Set(newTabIds);
 
@@ -898,11 +858,7 @@ export function EditorTabs({
     }
 
     function onKeyDown(event: globalThis.KeyboardEvent) {
-      // Every branch below needs the modifier, so bail on it first — this runs on
-      // every keystroke in the app, and the overlay probe queries the DOM.
       if (!hasTabShortcutModifier(event)) return;
-      // Capture phase on `window` outruns anything an overlay installs, so an
-      // open palette / dialog / menu cannot stop these chords from underneath.
       if (isOverlayLayerOpen()) return;
       scheduleTabShortcutHintReveal();
 
@@ -1173,11 +1129,6 @@ export function EditorTabs({
                         <button
                           type="button"
                           aria-label={accessibleLabel}
-                          // The label is the user's own file path, so its direction comes
-                          // from the path rather than the interface language (see
-                          // `UserText`). On the button because the path is split across
-                          // sibling spans for truncation — one isolate around all of them
-                          // keeps the fragments in the order the name was written.
                           dir="auto"
                           className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
                           onClick={() => activateTab(tabId)}
@@ -1215,8 +1166,6 @@ export function EditorTabs({
                   tab.kind === 'skill-file' ||
                   tab.kind === 'skill-preview'
                 ) {
-                  // Skill bundle files and marketplace previews share the asset
-                  // tab's read-only chrome.
                   let labelPath: string;
                   switch (tab.kind) {
                     case 'asset':
@@ -1293,11 +1242,6 @@ export function EditorTabs({
                         <button
                           type="button"
                           aria-label={accessibleLabel}
-                          // The label is the user's own file path, so its direction comes
-                          // from the path rather than the interface language (see
-                          // `UserText`). On the button because the path is split across
-                          // sibling spans for truncation — one isolate around all of them
-                          // keeps the fragments in the order the name was written.
                           dir="auto"
                           className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
                           onClick={() => activateTab(tabId)}
@@ -1333,13 +1277,7 @@ export function EditorTabs({
                 const docName = tab.docName;
                 const skill = editableSkillsByTabId.get(docName);
                 const metadataDocExt = pageMeta.get(docName)?.docExt;
-                // Explicit metadata wins. `''` means the editable-text docName
-                // is already the on-disk path, so it must survive nullish consumers.
                 const docExt = metadataDocExt ?? (isEditableTextDocFile(docName) ? '' : '.md');
-                // An editable `.md`/`.mdx` reference opens as an ordinary doc
-                // tab, not a `skill-file` one, so its bundle-file actions have
-                // to be resolved back from the doc name to reach parity with
-                // the same file's row in the Skills sidebar.
                 const bundleFile = skill
                   ? null
                   : skillFileForDocName(docName, editableSkills, docExt);

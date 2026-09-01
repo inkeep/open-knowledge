@@ -1,9 +1,3 @@
-/**
- * Unit tests for asset context-menu template + pop dispatch. Covers
- * platform-specific Reveal label, action dispatch wiring, and the pop
- * integration with an injected Menu ctor.
- */
-
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
 import {

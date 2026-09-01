@@ -1,19 +1,3 @@
-/**
- * Option wiring for `ok diagnose bundle`.
- *
- * The redaction switch is a Commander boolean-negation pair with two sharp
- * edges. Declaration order decides the default: a lone `--no-redact` defaults
- * `redact` to true, but declaring the positive form first suppresses that and
- * leaves it undefined. And a spelling Commander does not know is collected as
- * an unknown option, which `parse()` turns into a hard error whose "did you
- * mean" suggestion names the negated form — steering a user who asked for
- * redaction into an unredacted bundle.
- *
- * `parseOptions` is the classifier `parse()` consults for both, so the wiring
- * can be driven against the real command object without firing the action
- * handler (which would collect a bundle off the cwd).
- */
-
 import type { Command } from 'commander';
 import { describe, expect, test } from 'vitest';
 import { diagnoseCommand } from './diagnose.ts';

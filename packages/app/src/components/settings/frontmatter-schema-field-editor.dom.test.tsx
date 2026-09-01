@@ -1,16 +1,7 @@
-/**
- * DOM tests for the per-field schema editor: rows render from the resolved
- * schema in the effective lint config, edits persist one field-constraint at
- * a time through the write client, and fields carrying unmodeled keywords are
- * flagged as preserved.
- */
-
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-// Radix Select reaches for pointer-capture and scroll APIs the jsdom preload
-// doesn't expose; same shims the sibling DOM tests hoist.
 const ElementProto = Element.prototype as Element & {
   hasPointerCapture?: () => boolean;
   releasePointerCapture?: () => void;
@@ -135,8 +126,6 @@ describe('FrontmatterSchemaFieldEditor', () => {
   });
 
   test('root-level advanced keywords surface a note naming them; absent otherwise', () => {
-    // Raw JSON text, not an object literal: `then` is a JSON Schema
-    // conditional here and a literal carrying it trips the thenable lint.
     mockLintData = lintDataWithSchema(
       JSON.parse(
         '{"type":"object","additionalProperties":false,"if":{"properties":{"a":{"const":"x"}}},"then":{"required":["b"]},"properties":{"a":{"type":"string"}}}',
@@ -148,7 +137,6 @@ describe('FrontmatterSchemaFieldEditor', () => {
     expect(note.textContent).toContain('if');
     cleanup();
 
-    // The default beforeEach schema has only modeled root keys — no note.
     mockLintData = lintDataWithSchema({
       type: 'object',
       required: ['a'],
@@ -234,7 +222,6 @@ describe('FrontmatterSchemaFieldEditor', () => {
     const type = screen.getByTestId('frontmatter-field-type-owner');
     expect(type.textContent).toContain('string');
     expect(type.textContent).not.toContain('enum');
-    // The values are still shown — they just don't restate the field's type.
     expect(screen.getByText('ana')).toBeTruthy();
 
     const itemsType = screen.getByTestId('frontmatter-field-items-type-tags');
@@ -263,16 +250,10 @@ describe('FrontmatterSchemaFieldEditor', () => {
     expect(type.textContent).toContain('string');
     await userEvent.click(type);
     await userEvent.click(await screen.findByRole('option', { name: 'enum' }));
-    // A declared type must not suppress the pick: the select follows the user
-    // here, and the schema keeps the type it already had.
     expect(writes).toEqual([]);
     expect(type.textContent).toContain('enum');
   });
 
-  // The round trip, which neither leg pins alone: a pick that leaves the enum
-  // presentation must drop the intent as well. Without that, one enum pick
-  // would strand the row on `enum` for the rest of the session no matter what
-  // type the user chose next.
   test('picking a scalar after enum drops the intent, not just the values', async () => {
     mockLintData = lintDataWithSchema({
       type: 'object',
@@ -287,8 +268,6 @@ describe('FrontmatterSchemaFieldEditor', () => {
     await userEvent.click(type);
     await userEvent.click(await screen.findByRole('option', { name: 'number' }));
     expect(writes).toEqual([[FILE, 'owner', { type: 'number', enum: null }, []]]);
-    // The write client is mocked, so the row still reads the schema's declared
-    // `string` — what matters is that it stopped reading `enum`.
     expect(type.textContent).not.toContain('enum');
     expect(type.textContent).toContain('string');
   });
@@ -318,9 +297,6 @@ describe('FrontmatterSchemaFieldEditor', () => {
     expect(writes).toEqual([[FILE, 'status', { type: 'string' }, []]]);
   });
 
-  // `string` is the only target that can still hold string values. Every other
-  // type would keep a vocabulary it can never satisfy — the validator compiles
-  // `{type: 'number', enum: ['draft']}` and then rejects every value.
   test.each([
     'number',
     'boolean',
@@ -414,7 +390,6 @@ describe('FrontmatterSchemaFieldEditor', () => {
 
   test('array rows show an element-type select; enum elements present as enum', () => {
     render(<FrontmatterSchemaFieldEditor file={FILE} />);
-    // `tags` has items.enum values → the element-type select presents `enum`.
     const itemsSelect = screen.getByTestId('frontmatter-field-items-type-tags');
     expect(itemsSelect.textContent).toContain('enum');
   });
@@ -435,10 +410,8 @@ describe('FrontmatterSchemaFieldEditor', () => {
     });
     render(<FrontmatterSchemaFieldEditor file={FILE} />);
 
-    // The element sub-schema renders as rows under the `[]` path marker.
     const row = screen.getByTestId('frontmatter-field-row-ingredients.[].name');
     expect(row).toBeTruthy();
-    // No element-values pills for object elements.
     expect(screen.queryByTestId('frontmatter-field-items-enum-ingredients')).toBeNull();
 
     fireEvent.click(screen.getByTestId('frontmatter-field-required-ingredients.[].name'));

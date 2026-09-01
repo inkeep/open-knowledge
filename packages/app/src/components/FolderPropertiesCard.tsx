@@ -29,21 +29,9 @@ import { frontmatterYamlPath } from '@/lib/folder-config-paths';
 interface Props {
   folderPath: string;
   state: AsyncState<FolderConfigSnapshot>;
-  /** Called after a successful save so the parent can re-fetch. */
   onChange: () => void;
 }
 
-/**
- * Folder frontmatter editor — the folder's OWN `<folder>/.ok/frontmatter.yml`.
- * Open-shape, exactly like a doc's frontmatter: any key the user wants.
- *
- * Self-only: this metadata describes the folder and does NOT cascade into
- * child docs. Per-doc starting values belong in a template, not here.
- *
- * Renders one FrontmatterRow per key in the folder's own frontmatter, reusing
- * the same widgets file frontmatter uses (PropertyWidgets, FrontmatterRow,
- * AddPropertyRow) so editing feels identical to editing per-doc frontmatter.
- */
 export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
   const { t } = useLingui();
   const [collapsed, setCollapsed] = useState(false);
@@ -73,16 +61,10 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
     );
   }
 
-  // The folder's own frontmatter (self-only — no cascade).
   const own = state.data.frontmatterLocal ?? {};
   const filePath = frontmatterYamlPath(state.data.folder.path);
   const orderedKeys = Object.keys(own);
 
-  /**
-   * Send a single-key patch to the server. Re-renders happen via the
-   * parent's `onChange()` triggering a re-fetch. Empty-value semantics
-   * (null / '' / []) clear the key on the server side.
-   */
   async function commitKey(key: string, next: FrontmatterValue) {
     const patch: Record<string, unknown> = { [key]: next };
     const result = await saveFolderConfig(folderPath, patch);
@@ -136,16 +118,12 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
 
   async function commitAdd(valueOverride?: FrontmatterValue) {
     if (!adding) return;
-    // Enter-in-value-field carries the freshly-typed value (the draft state
-    // update from the widget's onCommit lands after this synchronous call).
     const value = valueOverride ?? adding.value;
     const trimmed = adding.name.trim();
     if (!trimmed) {
       setAdding({ ...adding, value, error: t`Name is required` });
       return;
     }
-    // Empty value would be dropped server-side by mergePatch; gate here so the
-    // user gets an explicit error rather than a silent no-op.
     if (isFrontmatterValueEmpty(value)) {
       setAdding({ ...adding, value, error: t`Value is required` });
       return;
@@ -186,7 +164,6 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
       setRename({ ...rename, error: t`"${trimmed}" already exists here` });
       return;
     }
-    // Two-step: write the new key with the old value, clear the old key.
     const value = own[rename.key];
     const result = await saveFolderConfig(folderPath, {
       [rename.key]: null,
@@ -215,13 +192,7 @@ export function FolderPropertiesCard({ folderPath, state, onChange }: Props) {
             />
             <Trans>Folder properties</Trans>
           </span>
-          {/* Stop click bubbling so single / triple click on the path
-                doesn't toggle the collapsible. Drag-to-select never fires
-                click on its own. <code> isn't focusable, so it can't receive
-                keyboard events — biome's useKeyWithClickEvents pairs onClick
-                with a keyboard handler by default; here a keyboard handler
-                would be dead code since the wrapping <button> handles all
-                keyboard activation (Enter/Space → toggle). */}
+          {}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: <code> is non-focusable; keyboard activation lives on the wrapping <button>. */}
           <code
             className="text-xs text-muted-foreground font-mono cursor-text select-text break-all"

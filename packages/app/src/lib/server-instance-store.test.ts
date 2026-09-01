@@ -30,14 +30,14 @@ describe('server-instance-store', () => {
     });
 
     setServerInstanceId('instance-a');
-    setServerInstanceId('instance-a'); // unchanged → no fire
+    setServerInstanceId('instance-a');
     expect(calls).toBe(1);
 
-    setServerInstanceId('instance-b'); // changed → fire
+    setServerInstanceId('instance-b');
     expect(calls).toBe(2);
 
     unsub();
-    setServerInstanceId('instance-c'); // no subscribers after unsub
+    setServerInstanceId('instance-c');
     expect(calls).toBe(2);
     expect(getServerInstanceId()).toBe('instance-c');
   });

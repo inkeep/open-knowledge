@@ -31,20 +31,12 @@ const payload: OkOnboardingShowPayload = {
   warnings: [],
 };
 
-/**
- * Minimal `integrations.status()` stub. The dialog reads exactly two fields:
- * `detectedEditorIds` (what is on this machine) and `editors[].state` (whether
- * OK's user-global entry is installed, which gates Copilot's project skill).
- */
 function statusBridge(
   detectedEditorIds: string[],
   opts: { pending?: boolean; editorStates?: Record<string, string> } = {},
 ) {
   const status = {
     available: true,
-    // `state` is the USER-GLOBAL entry's state, which is what gates Copilot's
-    // project skill — distinct from `detectedEditorIds` (is the tool on this
-    // machine at all). Default `installed` keeps the simple cases terse.
     editors: detectedEditorIds.map((id) => ({
       id,
       state: opts.editorStates?.[id] ?? 'installed',
@@ -94,19 +86,12 @@ function renderConsentDialog() {
   return harness;
 }
 
-/** Wait for the editor-detection probe to settle into its checkbox state. */
 async function awaitDetected() {
   await waitFor(() => {
     expect(screen.getByTestId('consent-editors-status').getAttribute('data-status')).toBe('ready');
   });
 }
 
-/**
- * The content.dir / ignore controls live inside the collapsed "Advanced
- * settings" section, which Radix unmounts while closed. Expand it before
- * interacting with those fields. (Config sharing and the AI-tools row are NOT
- * here — both sit at the top level.)
- */
 async function expandAdvanced() {
   await userEvent.click(screen.getByTestId('consent-advanced-trigger'));
 }
@@ -136,24 +121,15 @@ describe('ConsentDialogBody runtime form behavior', () => {
   test('config sharing is shown at the top level, not inside Advanced settings', async () => {
     renderConsentDialog();
 
-    // Visible without expanding Advanced, defaulting to "Only me".
     expect(screen.getByTestId('consent-sharing')).not.toBeNull();
     expect(screen.getByTestId('consent-sharing-shared')).not.toBeNull();
     expect(screen.getByTestId('consent-sharing-local-only').getAttribute('data-state')).toBe(
       'checked',
     );
-    // ...while the Advanced-only fields stay collapsed.
     expect(screen.queryByTestId('consent-content-dir')).toBeNull();
   });
 
   test('config-sharing info tooltip stays closed when the dialog first opens', async () => {
-    // Radix Dialog autofocuses the first focusable descendant on open. The
-    // file-count probe is async, so ProbePreview renders a non-focusable
-    // placeholder at mount — which would make the sharing-info TooltipTrigger
-    // the first focusable element. A Radix Tooltip opens immediately on focus
-    // (delayDuration 0), so the info popover would pop open unbidden. The
-    // dialog redirects initial focus away from the trigger; assert the tooltip
-    // content (portaled only while open) is absent on mount.
     renderConsentDialog();
 
     expect(screen.queryByText(/Setup files include/i)).toBeNull();
@@ -161,7 +137,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('selecting Shared carries through to the confirm payload', async () => {
-    // "Only me" is the default, so exercise the non-default pick.
     const { confirmCalls } = renderConsentDialog();
 
     await userEvent.click(screen.getByTestId('consent-sharing-shared'));
@@ -182,7 +157,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
     expect(screen.getByTestId('consent-editors-checkbox').getAttribute('data-state')).toBe(
       'checked',
     );
-    // ...while the Advanced-only fields stay collapsed.
     expect(screen.queryByTestId('consent-content-dir')).toBeNull();
   });
 
@@ -202,14 +176,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('a detected user-global-only tool is neither named nor submitted', async () => {
-    // Claude Desktop has no project MCP config and no project skill root, so
-    // every project writer returns `skipped-unsupported` for it. Detection
-    // still finds it, which is exactly why the filter has to be on what gets
-    // WRITTEN rather than on what was detected.
-    //
-    // Asserts on the summary, not on the per-tool `<li>` ids: those live inside
-    // `RowDisclosure`'s Radix popover, which is unmounted while collapsed, so
-    // every item id reads null here whether or not it is in the write set.
     const harness = makeStore();
     setBridge(statusBridge(['claude', 'claude-desktop']));
     render(<ConsentDialogBody payload={payload} store={harness.store} />);
@@ -227,10 +193,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('Copilot is dropped until its user-global entry exists, then included', async () => {
-    // Copilot's project skill (`.github/skills`) is refused by
-    // `isProjectSkillPrerequisiteMet` until Copilot's USER-GLOBAL OpenKnowledge
-    // entry is present, and it has no project MCP config — so before that, a
-    // setup writes nothing for it and must not say otherwise.
     const withoutEntry = makeStore();
     setBridge(statusBridge(['claude', 'copilot'], { editorStates: { copilot: 'not-installed' } }));
     render(<ConsentDialogBody payload={payload} store={withoutEntry.store} />);
@@ -257,11 +219,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('a foreign user-global entry does not satisfy the Copilot prerequisite', async () => {
-    // `foreign` means an entry sits under OpenKnowledge's server name but is
-    // not ours, so OK's MCP is not actually registered. The renderer's check is
-    // deliberately stricter than the write path's, which also passes on
-    // `foreign` — a skill installed here would point the agent at tools that
-    // are not there.
     const harness = makeStore();
     setBridge(statusBridge(['claude', 'copilot'], { editorStates: { copilot: 'foreign' } }));
     render(<ConsentDialogBody payload={payload} store={harness.store} />);
@@ -289,14 +246,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('Setup is disabled while the detection probe is in flight', async () => {
-    // Submitting mid-probe would send `editorIds: []` — a project wired to
-    // nothing while the row still reads "Checking which AI tools you have".
-    //
-    // `detectionPending` also guards on `connectEditors`, mirroring
-    // `CreateProjectDialog`. That half is unreachable from the UI: the row
-    // early-returns its status region while probing, so there is no checkbox to
-    // untick until detection settles. Kept for symmetry with the sibling copy,
-    // not asserted here, because no test can reach it.
     const harness = makeStore();
     setBridge(statusBridge([], { pending: true }));
     render(<ConsentDialogBody payload={payload} store={harness.store} />);
@@ -310,9 +259,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
   });
 
   test('an invalid default content dir force-opens Advanced settings and shows the error without expanding', () => {
-    // Regression guard for `advancedExpanded = advancedOpen || !contentDirSafe`
-    // — an invalid content dir must auto-open the section so its inline error
-    // is reachable, WITHOUT any expand interaction.
     const harness = makeStore();
     const invalidPayload = { ...payload, defaultContentDir: '../secrets' };
     render(<ConsentDialogBody payload={invalidPayload} store={harness.store} />);
@@ -351,8 +297,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
       initGit: true,
       contentDir: 'docs',
       additionalIgnores: '',
-      // No bridge in this harness, so detection settles empty. `connectEditors`
-      // stays true: the user declined nothing, there was nothing to offer.
       editorIds: [],
       connectEditors: true,
       sharing: 'local-only',
@@ -387,8 +331,6 @@ describe('ConsentDialogBody runtime form behavior', () => {
       onboarding: {
         probeContent: async () => ({ ok: true, count: 0, sample: [], truncated: false }),
       },
-      // The dialog probes editor detection on mount through the same bridge; a
-      // stub missing it is a shape the real preload never has.
       ...statusBridge([]),
     } satisfies Pick<OkDesktopBridge, 'dialog'> & {
       onboarding: Pick<OkDesktopBridge['onboarding'], 'probeContent'>;

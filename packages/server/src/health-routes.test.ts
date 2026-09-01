@@ -10,13 +10,6 @@ import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
 import { mountMcpAndApi } from './mcp-mount.ts';
 
-/**
- * /healthz + /readyz over the composed listener. The load-bearing property is
- * the admission EXEMPTION: orchestrator probes arrive with an IP Host header,
- * no Origin, and often through a proxy that adds forwarding headers — every
- * other surface refuses those, the health surface must not.
- */
-
 let tmpRoot: string;
 let booted: BootedServer;
 
@@ -83,9 +76,6 @@ describe('/readyz', () => {
     try {
       const racing = await bootCompositionRig(tmp);
       try {
-        // No `await racing.ready` — init may or may not have settled; the pin
-        // is that the surface is mounted and shaped correctly from the first
-        // instant the listener exists.
         const res = await fetch(`http://127.0.0.1:${racing.port}/readyz`);
         expect([200, 503]).toContain(res.status);
         const body = (await res.json()) as { ready: boolean };
@@ -114,10 +104,6 @@ describe('/readyz', () => {
       const draining = await bootCompositionRig(tmp);
       await draining.ready;
 
-      // No await: `readinessState = 'draining'` is the first synchronous
-      // statement of destroy(), so any probe dispatched after this call
-      // observes either 503 (listener still up) or a refused connection
-      // (listener already closed) — never a 200 that routes traffic in.
       const destroyed = draining.destroy();
       let probe: { status: number; body?: { ready: boolean; status: string } } | 'refused';
       try {
@@ -143,10 +129,6 @@ describe('/readyz', () => {
 });
 
 describe('/readyz provider states (mounted harness)', () => {
-  // bootServer only ever produces pending→ready|failed→draining transitions
-  // organically; the failed and draining response shapes are pinned here at
-  // the mount level with a canned provider so the wire contract cannot
-  // silently drift.
   const fakeLog = {
     error: () => {},
     warn: () => {},

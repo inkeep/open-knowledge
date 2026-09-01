@@ -1,15 +1,3 @@
-/**
- * RTL behavioral tests for the `<Excalidraw src="…" />` embed renderer.
- *
- * The Excalidraw module, the panzoom controller, and the live-doc pool are
- * all mocked at the module boundary, so the contract under test is the
- * live-text → parse → snapshot lifecycle, the error surface, the retry
- * affordance, the open-board affordance, and the expand lightbox. The
- * pool's own machinery (refcounts, admission gate, hard cap, watchdog) is
- * covered by `live-doc-pool.dom.test.tsx`; transport truth against a real
- * server is covered by `tests/integration/live-doc-pool.test.ts`.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -32,8 +20,6 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-// The live subscription is the pool's contract (see the integration test
-// named in the header); here it is a controllable input.
 type LiveStatus =
   | { kind: 'loading' }
   | { kind: 'ready'; text: string }
@@ -42,8 +28,6 @@ type LiveStatus =
   | { kind: 'at-capacity' };
 let liveStatus: LiveStatus = { kind: 'loading' };
 const useLiveDocText = vi.fn((_docName: string | null, _retryToken?: number) => liveStatus);
-// LIVE_DOC_POOL_MAX rides along because the snapshot-url pool derives its
-// cap from it at module load.
 vi.doMock('./live-doc-pool.ts', () => ({ useLiveDocText, LIVE_DOC_POOL_MAX: 30 }));
 
 const panzoomInstance = {
@@ -86,12 +70,8 @@ describe('ExcalidrawEmbed', () => {
     useLiveDocText.mockClear();
     createObjectURL.mockClear();
     revokeObjectURL.mockClear();
-    // jsdom ships no object-URL implementation; the embed's blob-`<img>`
-    // indirection needs one to exercise the snapshot path.
     URL.createObjectURL = createObjectURL;
     URL.revokeObjectURL = revokeObjectURL;
-    // The shared URL pool is module state; orphans from earlier renders
-    // must not accumulate toward its cap across tests.
     __resetSnapshotUrlPoolForTests();
     revokeObjectURL.mockClear();
     liveStatus = { kind: 'ready', text: BOARD_JSON };
@@ -106,9 +86,6 @@ describe('ExcalidrawEmbed', () => {
 
     await waitFor(() => expect(snapshotImg()).not.toBeNull());
     expect(useLiveDocText).toHaveBeenCalledWith('tests/board.excalidraw', 0);
-    // The live scene reaches the exporter through `restore`'s repair pass,
-    // and the export bakes in the deliberate options: transparent background
-    // (card shows through, no white plate) and the light-mode default.
     expect(restore).toHaveBeenCalledWith(
       expect.objectContaining({ elements: [{ id: 'a' }] }),
       null,
@@ -119,8 +96,6 @@ describe('ExcalidrawEmbed', () => {
       exportWithDarkMode: false,
     });
     expect(screen.getByRole('img', { name: 'Flow board' })).not.toBeNull();
-    // Containment: the exported SVG must NOT enter the live DOM — the
-    // snapshot host holds only the image indirection.
     expect(snapshotImg()?.src).toMatch(/^blob:/);
     expect(screen.getByTestId('excalidraw-embed-snapshot').querySelector('svg')).toBeNull();
   });
@@ -140,12 +115,8 @@ describe('ExcalidrawEmbed', () => {
     expect(exportToSvg.mock.calls.at(-1)?.[0]?.appState).toMatchObject({
       exportWithDarkMode: true,
     });
-    // The already-parsed scene is reused — a UI preference change must not
-    // re-enter the parse path.
     expect(restore.mock.calls.length).toBe(parsesBefore);
     expect(snapshotImg()).not.toBeNull();
-    // The replaced snapshot's blob URL is revoked once the new one commits
-    // — a live collaborative session must not leak one URL per re-export.
     await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith(firstUrl));
   });
 
@@ -175,8 +146,6 @@ describe('ExcalidrawEmbed', () => {
     expect(alert.textContent).toContain('could not be reached');
     expect(alert.textContent).toContain('tests/missing.excalidraw');
 
-    // "Try again" bumps the retry token, re-entering the pool's acquire
-    // cycle for a fresh subscription attempt.
     act(() => {
       screen.getByTestId('excalidraw-embed-retry').click();
     });
@@ -186,16 +155,11 @@ describe('ExcalidrawEmbed', () => {
   });
 
   test('a retry after an EXPORT-stage failure genuinely re-exports (no dead click)', async () => {
-    // An export failure leaves `scene` populated, so this is the case
-    // where the retry cannot rely on upstream identity changes cascading
-    // down — the handler must invalidate the derived stages itself.
     exportToSvg.mockRejectedValueOnce(new Error('export blew up'));
     renderEmbed({ src: '/tests/board.excalidraw' });
     const retry = await screen.findByTestId('excalidraw-embed-retry');
     const exportsBefore = exportToSvg.mock.calls.length;
 
-    // liveStatus is deliberately HELD CONSTANT across the click: the only
-    // re-arm signal is the retry itself.
     act(() => {
       retry.click();
     });
@@ -220,9 +184,6 @@ describe('ExcalidrawEmbed', () => {
     const exports = exportToSvg.mock.calls.length;
     const urls = createObjectURL.mock.calls.length;
 
-    // Hide unmounts effects; show re-runs every one of them with unchanged
-    // deps — the idempotency guards must absorb both cycles with zero new
-    // work (the flash-free warm-switch budget depends on it).
     rerender(view(true));
     rerender(view(false));
     rerender(view(true));
@@ -244,9 +205,6 @@ describe('ExcalidrawEmbed', () => {
 
   test('no src renders the not-configured card, which names the next step', () => {
     renderEmbed({});
-    // Distinct from "Empty board" — no board exists yet, and claiming one
-    // does would send the user looking for it. The copy names what the
-    // properties panel actually offers (a path field, not a picker).
     expect(screen.getByText(/No board selected. Enter the path/)).not.toBeNull();
     expect(screen.queryByText('Empty board')).toBeNull();
     expect(screen.queryByTestId('excalidraw-embed-open')).toBeNull();
@@ -257,11 +215,8 @@ describe('ExcalidrawEmbed', () => {
     renderEmbed({ src: '/tests/board.excalidraw' });
 
     const alert = await screen.findByRole('alert');
-    // The doc is fine — the copy must name capacity, not claim removal,
-    // and it shares Mirror's noun for the one pooled resource.
     expect(alert.textContent).toContain('Too many live references');
     expect(alert.textContent).not.toContain('could not be reached');
-    // Retrying cannot succeed until other references release; no button.
     expect(screen.queryByTestId('excalidraw-embed-retry')).toBeNull();
   });
 
@@ -270,8 +225,6 @@ describe('ExcalidrawEmbed', () => {
     const { rerender } = renderEmbed({ src: '/tests/a.excalidraw' });
     await screen.findByRole('alert');
 
-    // Board B is merely loading — board A's parse failure must not be
-    // reported against B's name during B's handshake.
     liveStatus = { kind: 'loading' };
     rerender(
       <TooltipProvider>
@@ -300,8 +253,6 @@ describe('ExcalidrawEmbed', () => {
     );
 
     await waitFor(() => expect(snapshotImg()).not.toBeNull());
-    // The banner (and its focused button) unmounted; keyboard users must
-    // land on the card rather than restarting from the top of the doc.
     const card = document.querySelector('.excalidraw-embed');
     expect(document.activeElement).toBe(card);
   });
@@ -316,7 +267,6 @@ describe('ExcalidrawEmbed', () => {
       const { rerender } = renderEmbed({ src: '/tests/board.excalidraw' });
       await waitFor(() => expect(resolvers.length).toBe(1));
 
-      // Two live updates land while the first export is still in flight.
       let parses = restore.mock.calls.length;
       for (const text of [
         JSON.stringify({ elements: [{ id: 'a' }, { id: 'b' }] }),
@@ -328,16 +278,11 @@ describe('ExcalidrawEmbed', () => {
             <ExcalidrawEmbed src="/tests/board.excalidraw" />
           </TooltipProvider>,
         );
-        // Let the parse effect settle so the busy export branch is the one
-        // that observes the fresh scene.
         await waitFor(() => expect(restore.mock.calls.length).toBe(parses + 1));
         parses += 1;
       }
       expect(resolvers.length).toBe(1);
 
-      // Completing the first export triggers exactly ONE trailing export,
-      // and it uses the newest scene — a mid-export edit must never be
-      // silently dropped (stale board forever) nor duplicated.
       act(() => {
         resolvers[0]?.(svgNode());
       });
@@ -350,7 +295,6 @@ describe('ExcalidrawEmbed', () => {
       await waitFor(() => expect(snapshotImg()).not.toBeNull());
       expect(resolvers.length).toBe(2);
     } finally {
-      // Later tests rely on the default always-resolving export.
       exportToSvg.mockImplementation(async (_opts: Record<string, unknown>) => svgNode());
     }
   });
@@ -361,11 +305,8 @@ describe('ExcalidrawEmbed', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('not a valid Excalidraw scene');
-    // The raw parser message must not be echoed into the card.
     expect(alert.textContent).not.toMatch(/Unexpected|JSON/);
 
-    // A stale scene must not be resurrected over the error card by an
-    // unrelated UI preference change.
     act(() => {
       document.documentElement.classList.add('dark');
     });
@@ -386,8 +327,6 @@ describe('ExcalidrawEmbed', () => {
     const { rerender } = renderEmbed({ src: '/tests/a.excalidraw' });
     await waitFor(() => expect(snapshotImg()).not.toBeNull());
 
-    // Board B is still syncing — the embed must show its loading state,
-    // not board A's snapshot labelled as B.
     liveStatus = { kind: 'loading' };
     rerender(
       <TooltipProvider>
@@ -416,7 +355,6 @@ describe('ExcalidrawEmbed', () => {
       onExpandOpenChange,
     });
 
-    // Not force-closed while loading — the request defers.
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(onExpandOpenChange).not.toHaveBeenCalled();
 
@@ -467,19 +405,12 @@ describe('boardDocNameFromSrc', () => {
   });
 
   test('rejects foreign origins and traversal instead of rewriting them', () => {
-    // A src that LOOKS remote must not silently become a local read.
     expect(boardDocNameFromSrc('https://cdn.example.com/x.excalidraw')).toBeNull();
-    // An encoded slash smuggles a separator past URL normalization; reject.
     expect(boardDocNameFromSrc('/%2e%2e%2f%2e%2e%2fetc/x.excalidraw')).toBeNull();
-    // A bare encoded dot-segment is resolved WITHIN the root by the URL
-    // parser itself (it cannot climb above `/`), so it stays accepted.
     expect(boardDocNameFromSrc('/a/%2e%2e/b.excalidraw')).toBe('b.excalidraw');
   });
 
   test('a resolver-rejected src gets the banner but no retry button', async () => {
-    // useLiveDocText(null) yields 'unreachable'; a retry cannot change the
-    // rejected input, so offering the button would be a guaranteed dead
-    // click on the expected first-contact failure (hand-typed src).
     liveStatus = { kind: 'unreachable' };
     renderEmbed({ src: '/notes/plain.md' });
     const alert = await screen.findByRole('alert');
@@ -488,8 +419,6 @@ describe('boardDocNameFromSrc', () => {
   });
 
   test('only .excalidraw docNames are addressable', () => {
-    // The embed must never become a live subscription to a markdown doc,
-    // a config plane, or the system doc via a crafted src.
     expect(boardDocNameFromSrc('/notes/plain.md')).toBeNull();
     expect(boardDocNameFromSrc('/notes/plain')).toBeNull();
     expect(boardDocNameFromSrc('/__config__/project')).toBeNull();
@@ -498,23 +427,16 @@ describe('boardDocNameFromSrc', () => {
   });
 
   test('rejects non-http(s)/file schemes and control characters outright', () => {
-    // blob:'s origin getter reproduces the page origin, so an
-    // origin-equality check alone would accept it and produce a nonsense
-    // docName; the scheme allowlist rejects it before origin comparison.
     expect(boardDocNameFromSrc('blob:http://localhost:5173/x.excalidraw')).toBeNull();
     expect(boardDocNameFromSrc('data:image/svg+xml,<svg/>')).toBeNull();
-    // Decoded control characters have no place in a docName.
     expect(boardDocNameFromSrc('/a%00b.excalidraw')).toBeNull();
     expect(boardDocNameFromSrc('/a%0ab.excalidraw')).toBeNull();
   });
 
   test('handles a file: document base the way client-fetch does', () => {
     const fileBase = 'file:///Users/x/app/index.html';
-    // file: origins are opaque per the URL spec, so origin equality is
-    // meaningless — same-protocol is the accept rule on that platform.
     expect(boardDocNameFromSrc('/boards/b.excalidraw', fileBase)).toBe('boards/b.excalidraw');
     expect(boardDocNameFromSrc('https://cdn.example.com/x.excalidraw', fileBase)).toBeNull();
-    // A file: src on an http page must not be accepted.
     expect(boardDocNameFromSrc('file:///etc/x.excalidraw', 'http://localhost:5173/')).toBeNull();
   });
 });

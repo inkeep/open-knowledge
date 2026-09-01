@@ -1,29 +1,3 @@
-/**
- * Regression test (cross-scope move / global-skill re-create). These
- * assertions pin the FIXED behavior; they were RED before the fix.
- *
- * Was the bug: after a global skill is DELETEd, a
- * subsequent `PUT /api/skill scope=global` of the SAME name returned 200 but
- * never wrote the global SKILL.md to disk. The delete unloads
- * the live doc (`captureAndCloseDocuments`) to stop the OLD doc resurrecting the
- * file, but the re-create then short-circuited as a no-op because the parallel
- * managed-artifact LKG cache was never evicted on delete — an identical-content
- * re-create equalled the stale LKG and never re-landed.
- *
- * The fix evicts the managed-artifact LKG on the doc-teardown spine
- * (`evictManagedArtifactLkg` in `captureAndCloseDocuments`), so a same-name
- * re-create persists. NO project skill is required to reproduce — see the
- * "re-create after delete" case below.
- *
- * The user-visible symptom was the sidebar "skill disappears after a scope move
- * until another action": the cross-scope move's compose (PUT dest, DELETE
- * source) makes the move-BACK a re-create-after-delete, so the moved skill was
- * silently lost server-side. (Two earlier CLIENT-side fixes — EditorHeader
- * handoff, sidebar accordion auto-open — were the wrong layer.)
- *
- * Hermetic global home via `configHomedirOverride`.
- */
-
 import {
   existsSync,
   lstatSync,
@@ -43,8 +17,6 @@ import { createTestServer, pollUntil, type TestServer } from '../test-harness';
 let server: TestServer;
 let tmpHome: string;
 const base = () => `http://127.0.0.1:${server.port}`;
-// Creates land at the DEFAULT skill home (existence-activated: `.agents` when
-// the tree has it — the harness seeds every editor dir — else `.claude`).
 const skillsRootIn = (b: string) =>
   existsSync(join(b, '.agents')) ? join(b, '.agents', 'skills') : join(b, '.claude', 'skills');
 const skillsRootRelIn = (b: string) =>
@@ -66,11 +38,6 @@ const putSkill = (scope: 'global' | 'project', name = NAME) =>
 const delSkill = (scope: 'global' | 'project', name = NAME) =>
   fetch(`${base()}/api/skill?name=${name}&scope=${scope}`, { method: 'DELETE' });
 
-/**
- * The LEGACY compose (PUT dest, DELETE source) exercised via the raw endpoints.
- * The current client uses the atomic `POST /api/skill/move-scope` (E2 below);
- * this stays as coverage of the underlying PUT/DELETE + LKG-eviction behavior.
- */
 async function move(from: 'global' | 'project', to: 'global' | 'project') {
   expect((await putSkill(to)).status).toBe(200);
   expect((await delSkill(from)).status).toBe(200);
@@ -83,7 +50,6 @@ const putSkillFile = (scope: 'global' | 'project', name: string, path: string, c
     body: JSON.stringify({ scope, name, path, content }),
   });
 
-/** List a skill's bundle files (paths) via GET /api/skill (mirrors fetchSkill). */
 async function bundleFilePaths(scope: 'global' | 'project', name: string): Promise<string[]> {
   const res = await fetch(`${base()}/api/skill?name=${name}&scope=${scope}`);
   const detail = (await res.json().catch(() => null)) as {
@@ -94,12 +60,6 @@ async function bundleFilePaths(scope: 'global' | 'project', name: string): Promi
     .filter((p): p is string => typeof p === 'string');
 }
 
-/**
- * The LEGACY full-bundle compose: PUT dest SKILL.md → copy every text bundle
- * file (GET-source + PUT-dest) → only THEN DELETE source. The current client
- * uses the atomic endpoint (E2), which copies the whole dir verbatim including
- * binaries; this stays as coverage of the per-file endpoints + graph rejoin.
- */
 async function moveFullBundle(from: 'global' | 'project', to: 'global' | 'project', name: string) {
   expect((await putSkill(to, name)).status).toBe(200);
   for (const path of await bundleFilePaths(from, name)) {
@@ -126,11 +86,6 @@ async function scopeOf(name: string): Promise<string | undefined> {
 
 beforeAll(async () => {
   tmpHome = mkdtempSync(join(tmpdir(), 'ok-scope-move-home-'));
-  // Adopt a harness in the throwaway home. A caller-supplied
-  // `configHomedirOverride` owns its own host set, and skill destinations
-  // resolve via `resolveDefaultSkillHomeRel`, which refuses (400
-  // `NO_USABLE_SKILL_HOME`) when the home has adopted none — OK never creates
-  // one on the user's behalf.
   mkdirSync(join(tmpHome, '.claude', 'skills'), { recursive: true });
   server = await createTestServer({ configHomedirOverride: tmpHome });
 }, HARNESS_BOOT_TIMEOUT_MS);
@@ -146,7 +101,6 @@ describe('E1: cross-scope move / global re-create', () => {
     expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(true);
     expect((await delSkill('global', N)).status).toBe(200);
     expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(false);
-    // Re-create after delete — this PUT returns 200 but currently does NOT persist.
     expect((await putSkill('global', N)).status).toBe(200);
     expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(true);
   });
@@ -160,16 +114,6 @@ describe('E1: cross-scope move / global re-create', () => {
     expect(await scopeOf(NAME)).toBe('global');
   });
 
-  /**
-   * The cross-scope move's `PUT /api/skill` only writes SKILL.md, so before the
-   * fix the source's `references/**` + `scripts/**` were lost when the source
-   * dir was deleted. The fixed compose copies the FULL bundle to the destination
-   * before deleting the source. Proves the user's scenario: a global skill with
-   * a `.md` reference (linking out) AND a script, moved to project, keeps both
-   * files AND its `.md` reference rejoins the link graph at the project path —
-   * with no test-rescan route.
-   *
-   */
   test('a cross-scope move carries references + scripts; the project .md ref rejoins the graph', async () => {
     const N = 'bundle-move-probe';
     expect((await putSkill('global', N)).status).toBe(200);
@@ -182,18 +126,14 @@ describe('E1: cross-scope move / global re-create', () => {
 
     await moveFullBundle('global', 'project', N);
 
-    // (a) both bundle files now live at the PROJECT skill path on disk…
     const projRef = join(skillsRootIn(server.contentDir), N, 'references', 'notes.md');
     const projScript = join(skillsRootIn(server.contentDir), N, 'scripts', 'run.sh');
     expect(existsSync(projRef)).toBe(true);
     expect(existsSync(projScript)).toBe(true);
     expect(readFileSync(projScript, 'utf-8')).toBe(script);
-    // (b) the source GLOBAL dir is gone.
     expect(existsSync(join(skillsRootIn(tmpHome), N))).toBe(false);
     expect(await scopeOf(N)).toBe('project');
 
-    // (c) the project `.md` reference participates in the backlink graph at its
-    //     new content-doc name (live path — no rescan).
     const target = await fetch(`${base()}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -208,7 +148,6 @@ describe('E1: cross-scope move / global re-create', () => {
   }, 20000);
 });
 
-/** The FIXED atomic cross-scope move — one server request, no client compose. */
 const moveScope = (name: string, fromScope: 'global' | 'project', toScope: 'global' | 'project') =>
   fetch(`${base()}/api/skill/move-scope`, {
     method: 'POST',
@@ -223,13 +162,6 @@ const readSkillBody = async (scope: 'global' | 'project', name: string): Promise
 };
 
 describe('E2: atomic /api/skill/move-scope', () => {
-  /**
-   * The doubling regression: the old client dance wrote the destination through
-   * the CRDT content-doc path while a stale live doc was open — the bridge MERGED
-   * old+new, so a round-trip nested a second frontmatter+body into SKILL.md
-   * ("test" → "test\n---\n...\n---\ntest"). The atomic copy with the live docs
-   * closed must round-trip byte-identically.
-   */
   test('global → project → global keeps SKILL.md body byte-identical (no doubling)', async () => {
     const N = 'atomic-trip';
     expect((await putSkill('global', N)).status).toBe(200);
@@ -241,7 +173,6 @@ describe('E2: atomic /api/skill/move-scope', () => {
     expect(await scopeOf(N)).toBe('global');
 
     expect(await readSkillBody('global', N)).toBe(before);
-    // On disk: exactly ONE frontmatter delimiter pair — no nested block.
     const md = readFileSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'), 'utf-8');
     expect(md.match(/^---$/gm)?.length).toBe(2);
   });
@@ -259,7 +190,6 @@ describe('E2: atomic /api/skill/move-scope', () => {
     const destAsset = join(skillsRootIn(server.contentDir), N, 'references', 'logo.png');
     expect(existsSync(destAsset)).toBe(true);
     expect(readFileSync(destAsset).equals(bin)).toBe(true);
-    // Source dir fully removed — no residue to re-copy on a move back.
     expect(existsSync(join(skillsRootIn(tmpHome), N))).toBe(false);
   });
 
@@ -325,7 +255,6 @@ describe('E2: atomic /api/skill/move-scope', () => {
     expect((await putSkill('global', N)).status).toBe(200);
     expect((await putSkill('project', N)).status).toBe(200);
     expect((await moveScope(N, 'global', 'project')).status).toBe(409);
-    // Both copies still exist — a refused move must not delete the source.
     expect(existsSync(join(skillsRootIn(tmpHome), N, 'SKILL.md'))).toBe(true);
     expect(existsSync(join(skillsRootIn(server.contentDir), N, 'SKILL.md'))).toBe(true);
   });

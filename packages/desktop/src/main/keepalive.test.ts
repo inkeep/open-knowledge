@@ -17,8 +17,6 @@ const FAKE_LOCK: ServerLockMetadataLike = {
   capabilities: ['http', 'ws'],
 };
 
-// The factory requires a logger (observability is the point); tests that only
-// exercise the lock-reader contract pass a no-op.
 const NOOP_LOGGER = { info() {}, warn() {}, error() {}, debug() {} };
 
 describe('createDesktopKeepaliveFactory', () => {
@@ -30,7 +28,7 @@ describe('createDesktopKeepaliveFactory', () => {
     const handle = factory({ lockDir: '/tmp/keepalive-test/.ok/local' });
     expect(typeof handle.close).toBe('function');
     expect(typeof handle.isConnected).toBe('function');
-    expect(handle.isConnected()).toBe(false); // hasn't connected yet (microtask gate)
+    expect(handle.isConnected()).toBe(false);
     handle.close();
   });
 
@@ -45,9 +43,6 @@ describe('createDesktopKeepaliveFactory', () => {
   });
 
   test('resolveWsUrl returns undefined when readServerLock returns null', async () => {
-    // We can't observe resolveWsUrl directly from the public handle, but we
-    // can validate the dep contract by passing a reader that ALWAYS returns
-    // null and confirming the factory neither throws nor opens a connection.
     let nullReads = 0;
     const factory = createDesktopKeepaliveFactory({
       readServerLock: () => {
@@ -57,8 +52,6 @@ describe('createDesktopKeepaliveFactory', () => {
       logger: NOOP_LOGGER,
     });
     const handle = factory({ lockDir: '/tmp/nope/.ok/local' });
-    // The keepalive's initial connect is queued on a microtask; give it a
-    // tick so the resolveWsUrl callback fires at least once.
     await new Promise<void>((r) => setImmediate(r));
     expect(nullReads).toBeGreaterThanOrEqual(1);
     expect(handle.isConnected()).toBe(false);
@@ -97,9 +90,6 @@ describe('resolveKeepaliveWsOrigin', () => {
   });
 
   test('a non-loopback url is refused by validation and falls back to the port', () => {
-    // The url string comes off disk — `lockApiOrigin` only honors http(s) +
-    // loopback hosts, so a tampered/foreign advertisement degrades to the
-    // legacy port dial instead of pointing the keepalive off-machine.
     expect(resolveKeepaliveWsOrigin({ ...FAKE_LOCK, url: 'http://evil.example:80' })).toBe(
       'ws://localhost:51234',
     );

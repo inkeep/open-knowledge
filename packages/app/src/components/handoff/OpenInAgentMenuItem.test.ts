@@ -1,13 +1,3 @@
-/**
- * Unit tests for `OpenInAgentMenuItem` — exercises the pure helpers that drive
- * per-row visual state.
- *
- * Repo convention (no `@testing-library/react` / `happy-dom`): full UI
- * interaction (hover, click) lands under Playwright. Here we cover:
- *   - `computeRowState` (enabled / disabled / pre-probe)
- *   - `computeRowHint` short inline status copy
- */
-
 import type { InstallState, TargetData } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { KNOWN_TARGETS } from '@/lib/handoff/targets';
@@ -29,11 +19,6 @@ describe('OpenInAgentMenuItem module surface', () => {
 
 describe('computeRowHint — short inline status hint on the trigger row', () => {
   test('Cursor on web-host with probe=true → null (no hint, treated like any other installed target)', async () => {
-    // Web-host Cursor used to short-circuit to "Desktop only" here because
-    // dispatch needed Electron IPC. With the `POST /api/spawn-cursor` fetch
-    // fallback in `cursor-two-step.ts`, web-host Cursor is now a normal row
-    // — installed-state from the server probe drives the hint exactly like
-    // every other target.
     const { computeRowHint } = await import('./OpenInAgentMenuItem');
     const hint = computeRowHint({
       target: targetById('cursor'),
@@ -85,11 +70,6 @@ describe('computeRowHint — short inline status hint on the trigger row', () =>
 });
 
 describe('computeRowState — Cursor parity with other targets (no host short-circuit)', () => {
-  // The previous "web-host Cursor → forced disabled" branch was removed when
-  // `cursor-two-step.ts` gained a fetch fallback to `POST /api/spawn-cursor`.
-  // Cursor on web is now treated identically to claude / codex: install state
-  // from the server probe drives the row, and the not-installed tooltip uses
-  // the vendor's install URL (cursor.com) like every other target.
   test('Cursor on web-host with probe=true is enabled (no override)', async () => {
     const { computeRowState } = await import('./OpenInAgentMenuItem');
     const state = computeRowState({
@@ -125,9 +105,6 @@ describe('computeRowState — Cursor parity with other targets (no host short-ci
 });
 
 describe('computeRowState — branch 1: pre-probe', () => {
-  // All four targets, both hosts: pre-probe is uniformly "disabled, no
-  // tooltip" — no host-specific short-circuit anymore. Cursor on web used
-  // to skip this branch via the now-removed `forceWebCursorDisabled` path.
   test.each([
     ['claude-cowork' as const, true],
     ['claude-code' as const, true],
@@ -246,8 +223,6 @@ describe('install-state cardinality used by the dropdown', () => {
       for (const isElectronHost of [true, false]) {
         for (const installState of installStates) {
           const state = computeRowState({ target, installState, isElectronHost });
-          // Either enabled (no tooltip) or disabled (tooltip optional:
-          // pre-probe has none, not-installed has one).
           if (state.enabled) {
             expect(state.tooltip).toBeNull();
           } else {

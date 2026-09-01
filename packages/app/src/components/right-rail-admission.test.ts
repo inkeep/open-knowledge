@@ -5,8 +5,6 @@ import {
   resolveRightRailAdmission,
 } from './right-rail-admission';
 
-// Boundary the rail can host both session columns at, derived rather than
-// transcribed so a change to the terminal's floor moves the fixtures with it.
 const BOTH_COLUMNS_FIT_PX = minimumWorkspaceWidthForRightRailPeers({
   otherRailWidthPx: 320,
   agentsMinimumWidthPx: 320,
@@ -17,8 +15,6 @@ describe('right rail admission', () => {
   test('admits both panels at the exact width that preserves the terminal floor', () => {
     const minimumWidth = BOTH_COLUMNS_FIT_PX;
 
-    // Admission weighs the terminal at its drag floor, not its preferred width:
-    // both columns coexist in far more windows than a 740px weighting allowed.
     expect(MIN_USABLE_RIGHT_TERMINAL_WIDTH_PX).toBe(324);
     expect(minimumWidth).toBe(1015);
     expect(

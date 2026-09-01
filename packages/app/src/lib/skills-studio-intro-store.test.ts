@@ -36,7 +36,6 @@ describe('skills-studio-intro-store', () => {
       },
     };
     expect(hasSeenSkillsStudioIntro(hostile)).toBe(true);
-    // And marking must not throw into the caller's render path.
     expect(() => markSkillsStudioIntroSeen(hostile)).not.toThrow();
   });
 

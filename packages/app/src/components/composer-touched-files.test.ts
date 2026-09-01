@@ -1,9 +1,3 @@
-/**
- * The context-chip rule, which has been wrong in both directions: a seeded
- * conflict instruction made every visited doc attach itself, and suppressing
- * that dropped even the file the instruction names.
- */
-
 import { describe, expect, test } from 'vitest';
 import { nextTouchedFiles } from './composer-touched-files';
 
@@ -33,8 +27,6 @@ describe('nextTouchedFiles — untouched seed', () => {
   });
 
   test('REPLACES on switch rather than accumulating', () => {
-    // Clicking through conflicted docs attached all of them: a seeded draft is
-    // non-empty, which the composer read as the user gathering context.
     let files = nextTouchedFiles([], 'notes/roadmap.md', NONE, true);
     files = nextTouchedFiles(files, 'notes/doc2.md', NONE, true);
     files = nextTouchedFiles(files, 'notes/doc3.md', NONE, true);
@@ -47,7 +39,6 @@ describe('nextTouchedFiles — untouched seed', () => {
   });
 
   test('is referentially stable when already correct', () => {
-    // The effect runs on every render; a fresh array each time would loop.
     const prev = ['notes/roadmap.md'];
     expect(nextTouchedFiles(prev, 'notes/roadmap.md', NONE, true)).toBe(prev);
   });

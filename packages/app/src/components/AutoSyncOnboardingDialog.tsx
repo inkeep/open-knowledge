@@ -1,14 +1,3 @@
-/**
- * AutoSyncOnboardingDialog — first-run prompt explaining git sync.
- *
- * Shown once per project when the sync engine reports a remote exists AND this
- * machine has not chosen a sync mode. `resolveAutoSyncOnboarding` decides
- * whether to show it and which `variant` to pass: 'full' (bidirectional, the
- * push-capable prompt) or 'pull' (one-directional, for a push-denied follower).
- * Both buttons write `autoSync.mode` through the project-local ConfigBinding so
- * the choice flows down the standard Y.Text → persistence-hook → file-watcher →
- * SyncEngine pipeline.
- */
 import { Trans, useLingui } from '@lingui/react/macro';
 import { toast } from 'sonner';
 import {
@@ -59,13 +48,7 @@ export function AutoSyncOnboardingDialog({
   }
 
   return (
-    <DialogRoot
-      open={open}
-      // Both buttons explicitly call onResolved; ignore Radix close-on-outside-
-      // click / Esc so the user doesn't accidentally clear the prompt without
-      // making a real choice.
-      onOpenChange={() => {}}
-    >
+    <DialogRoot open={open} onOpenChange={() => {}}>
       <DialogContent className="sm:max-w-lg" showCloseButton={false}>
         <DialogHeader>
           <AutoSyncEnableDialogIntro variant={variant} />

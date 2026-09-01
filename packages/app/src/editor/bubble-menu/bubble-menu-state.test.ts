@@ -1,12 +1,3 @@
-/**
- * resolveAddLinkShortcutAction — the ⌘K dual-role routing decision — against
- * real headless editors (StarterKit + the fidelity link mark, plus the real
- * mark-identity plugin where the caret branch needs it). The claim contract:
- * a non-null action is returned exactly when the matching link affordance is
- * reachable; everything else must return null so the keystroke falls through
- * to the command palette.
- */
-
 import { LinkFidelity, MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, Extension } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -49,8 +40,6 @@ function makeEditor(content: string, opts: { withIdentity?: boolean } = {}): Edi
     element: host,
     content,
     extensions: [
-      // StarterKit v3 bundles its own Link; drop it so the fidelity mark is
-      // the only `link` in the schema (and keep its stock autolink off).
       StarterKit.configure({ link: false }),
       LinkFidelity.configure({ autolink: false }),
       ...(opts.withIdentity ? [MarkIdentityForTest] : []),
@@ -121,16 +110,6 @@ describe('resolveAddLinkShortcutAction', () => {
   });
 });
 
-/**
- * Which selections the bar opens over.
- *
- * The distinction that matters is inline versus block. An inline atom carries
- * every mark this bar applies, so counting its text is what lets a wiki link or
- * a tag be selected and acted on. A block that keeps its content in attributes
- * — a mermaid diagram, a math block — carries none of them, and a bar offering
- * bold and superscript over a diagram is noise; those blocks have an Ask AI
- * button on their own chrome instead.
- */
 describe('shouldShowBubbleMenu — text held in attributes', () => {
   function makeRichEditor(md: string): Editor {
     const host = document.createElement('div');
@@ -144,7 +123,6 @@ describe('shouldShowBubbleMenu — text held in attributes', () => {
     return editor;
   }
 
-  /** Select the whole first node of `typeName`. */
   function selectNode(editor: Editor, typeName: string): void {
     let target: number | null = null;
     editor.state.doc.descendants((node, pos) => {

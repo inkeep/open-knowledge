@@ -1,11 +1,3 @@
-/**
- * The dedup guard's contract, exercised against the real `inflightLaunches`
- * Set. Every consumer suite mocks this module out and substitutes its own
- * outcome, so without this the guard, the key comparison and the `finally`
- * cleanup run nowhere: a `finally` that stopped clearing the key would wedge
- * every launch for that agent forever and leave those suites green.
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const createThread = vi.fn();
@@ -20,15 +12,12 @@ vi.mock('sonner', () => ({ toast: { error: toastError, info: vi.fn(), success: v
 
 const { launchAgentThread } = await import('@/lib/acp/launch-agent-thread');
 
-/** `inflightLaunches` is module-scope and deliberately survives everything, so
- *  each test takes its own agent id rather than trying to reset it. */
 let agentSeq = 0;
 function nextAgent(): { source: 'registry'; id: string } {
   agentSeq += 1;
   return { source: 'registry', id: `agent-${agentSeq}` };
 }
 
-/** A promise this test decides the fate of, so a launch can be held in flight. */
 function deferred<T>(): {
   promise: Promise<T>;
   resolve: (v: T) => void;
@@ -55,11 +44,9 @@ describe('launchAgentThread dedup guard', () => {
     createThread.mockReturnValueOnce(first.promise);
 
     const inFlight = launchAgentThread(agent, 'first prompt', null, null);
-    // Creation takes seconds in reality, so the collision window is wide open.
     const collided = await launchAgentThread(agent, 'second prompt', null, null);
 
     expect(collided).toBe('deduped');
-    // The point of the guard: no second agent spawned on the customer's account.
     expect(createThread).toHaveBeenCalledTimes(1);
 
     first.resolve({ threadId: 't1' });
@@ -72,7 +59,6 @@ describe('launchAgentThread dedup guard', () => {
     const first = launchAgentThread(nextAgent(), 'prompt', null, null);
     const other = launchAgentThread(nextAgent(), 'prompt', null, null);
 
-    // The guard is keyed per agent, so the second one reaches the client.
     expect(createThread).toHaveBeenCalledTimes(2);
     held.resolve({ threadId: 't1' });
     expect(await first).toBe('started');
@@ -90,8 +76,6 @@ describe('launchAgentThread dedup guard', () => {
   });
 
   test('the key is released once a launch settles — on failure too', async () => {
-    // The path that would wedge the agent permanently if `finally` regressed:
-    // a single failed launch would make every later one report a collision.
     const agent = nextAgent();
     createThread.mockRejectedValueOnce(new Error('spawn failed'));
     expect(await launchAgentThread(agent, 'prompt', null, null)).toBe('failed');

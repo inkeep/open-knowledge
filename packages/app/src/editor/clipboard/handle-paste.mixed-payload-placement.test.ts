@@ -1,20 +1,3 @@
-/**
- * Mixed-payload paste placement at a list-interior caret.
- *
- * Pasting a payload that is NOT 100% lists (heading+list, paragraph+list,
- * code block+list, lone/multiple headings, list+heading) at a caret inside a
- * list item must SPLIT the list at the caret and place the non-list blocks as
- * siblings of the list — the placement typing them at top level would produce
- * — while leading/trailing list runs in the payload splice as item siblings
- * (list continuation), mirroring the all-list sibling-splice path. Nothing may
- * be demoted into the target list item.
- *
- * Each test mounts a real TipTap editor over the core schema (real list
- * nodes, real MarkdownManager) and drives the REAL createHandlePaste
- * dispatcher, so the whole path runs: markdown-first tiebreak →
- * MarkdownManager.parse → applyJsonSlice → buildListSiblingSpliceTr.
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -62,7 +45,6 @@ function mountEditor(md: string): Editor {
 
 type PasteFlavor = 'B' | 'E' | 'D';
 
-/** Drive the dispatcher with clipboard payloads shaped to hit a specific branch. */
 function paste(
   editor: Editor,
   flavor: PasteFlavor,
@@ -87,7 +69,6 @@ function paste(
   return createHandlePaste({ mdManager })(editor.view, dt);
 }
 
-/** Doc position of the nth list item's first paragraph (0-based, doc order). */
 function itemParaRange(doc: ProseMirrorNode, n: number): { start: number; end: number } {
   let i = 0;
   let found: { start: number; end: number } | null = null;
@@ -112,7 +93,6 @@ function setCaret(editor: Editor, pos: number): void {
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, pos)));
 }
 
-/** Where did the pasted heading land? */
 function headingPlacement(doc: ProseMirrorNode): 'top-level' | 'inside-list' | 'absent' {
   let topLevel = false;
   doc.forEach((node) => {
@@ -162,9 +142,7 @@ const CARETS: Array<{ label: CaretLabel; item: number; at: 'start' | 'mid' | 'en
 interface MixedCase {
   label: string;
   payloadMd: string;
-  /** Expected serialized doc (trimEnd-compared) per caret position. */
   expected: Record<CaretLabel, string>;
-  /** Expected top-level node types replacing the original list. */
   segments: Record<CaretLabel, string[]>;
 }
 
@@ -292,9 +270,6 @@ describe('matrix: mixed payload x caret position (Branch B markdown-first)', () 
         setCaret(editor, caretPos(editor, caret.item, caret.at));
         const topLevelBefore = topLevelTypes(editor.state.doc);
         expect(paste(editor, 'B', { md: payload.payloadMd })).toBe(true);
-        // The original single top-level list is replaced by the expected
-        // segment sequence; anything after it (e.g. a trailing empty
-        // paragraph from parsing BASE) is untouched.
         expect(topLevelTypes(editor.state.doc)).toEqual([
           ...payload.segments[caret.label],
           ...topLevelBefore.slice(1),
@@ -315,9 +290,6 @@ describe('all-list control keeps the #609 sibling splice', () => {
       setCaret(editor, caretPos(editor, caret.item, caret.at));
       const topLevelBefore = topLevelTypes(editor.state.doc);
       expect(paste(editor, 'B', { md: '- one\n- two\n' })).toBe(true);
-      // Pure-list payloads splice as item siblings inside the original list;
-      // nothing escapes to doc level (exact shapes are pinned by
-      // handle-paste.list-placement.test.ts).
       expect(topLevelTypes(editor.state.doc)).toEqual(topLevelBefore);
     });
   }
@@ -331,8 +303,6 @@ describe('paste flavor variation (heading+list @ mid-item-mid)', () => {
       const editor = mountEditor(BASE);
       setCaret(editor, caretPos(editor, 1, 'mid'));
       expect(paste(editor, flavor, { md: '## Section\n\n- one\n- two\n', html: HTML })).toBe(true);
-      // B, E, and D all funnel through applyJsonSlice, so the placement fix
-      // applies uniformly across flavors.
       expect(headingPlacement(editor.state.doc)).toBe('top-level');
       expect(serialize(editor).trimEnd()).toBe(EXPECTED);
     });
@@ -342,12 +312,8 @@ describe('paste flavor variation (heading+list @ mid-item-mid)', () => {
 describe('nested caret escapes to doc level', () => {
   test('heading+list at a nested-item caret', () => {
     const editor = mountEditor('- alpha\n  - child\n- beta\n');
-    // item index 1 is the nested "child" item in doc order
     setCaret(editor, caretPos(editor, 1, 'mid'));
     expect(paste(editor, 'B', { md: '## Section\n\n- one\n' })).toBe(true);
-    // The heading escapes the whole nesting stack to doc level. The remainder
-    // of the split nested item ("ild") lifts to the top list level rather
-    // than minting an empty parent bullet.
     expect(headingPlacement(editor.state.doc)).toBe('top-level');
     expect(serialize(editor).trimEnd()).toBe(
       '- alpha\n  - ch\n\n## Section\n\n- one\n- ild\n- beta',
@@ -377,11 +343,6 @@ describe('controls', () => {
     setCaret(viaDispatcher, caretPos(viaDispatcher, 1, 'mid'));
     paste(viaDispatcher, 'B', { md: payload });
 
-    // Direct closed-slice replaceSelection is the swallow mechanism: PM's
-    // fitter legally nests the payload inside the target item because
-    // listItem admits every block type. The placement layer (not the schema)
-    // is what routes around it, so the raw mechanism still swallows while
-    // the dispatcher splits.
     const direct = mountEditor(BASE);
     setCaret(direct, caretPos(direct, 1, 'mid'));
     const node = direct.state.schema.nodeFromJSON(mdManager.parse(payload) as JSONContent);

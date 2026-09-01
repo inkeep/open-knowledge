@@ -1,45 +1,12 @@
-/**
- * perf regression gate.
- *
- * Compares a fresh benchmark run against a committed baseline and fails the
- * gate if any tracked block-count regresses beyond the configured threshold.
- *
- * THRESHOLD FORMULA (pinned):
- *   allowed_regression_ms = max(2 × p99_stdev_ms, 10% × baseline_p99_ms)
- *   fresh_p99_ms - baseline_p99_ms > allowed_regression_ms ⇒ REGRESSION
- *
- * The 10% floor dominates on low-variance runners (fast hardware, quiet
- * CI); the 2σ term dominates on noisy runners. Variance is measured at
- * calibration time across N runs and baked into `baseline.json`.
- *
- * "Variance" in the spec text is the common-parlance sense — standard
- * deviation (σ), not statistical variance (σ²). Using σ keeps units in
- * milliseconds across the whole formula.
- *
- * The module is dual-use: library functions for the synthetic-regression
- * unit test, plus a thin CLI entry (`import.meta.main`) for the tier-2
- * turbo task to invoke against a real results file.
- *
- * GATE LOCATION. This file runs in tier-2 CI only (see `turbo.json`
- * `test:perf:regression` task). The synthetic-regression unit tests next
- * to it (`regression-gate.test.ts`) are fast and pure — they CAN run in
- * tier-1 if wired, but we keep them out of `pnpm test` to honor the
- * existing tier-1 budget under `pnpm check`.
- */
-
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// ───────────────────────── Types ──────────────────────────────────────────
-
-/** Measurement conditions a run was captured under. */
 interface Methodology {
   warmupIters: number;
   measuredIters: number;
   gcBetweenRuns: boolean;
 }
 
-/** Single-op latency stats as emitted by the bench harness. */
 interface OpStats {
   mean: number;
   min: number;
@@ -49,7 +16,6 @@ interface OpStats {
   p99: number;
 }
 
-/** Per-block-count entry in a fresh benchmark run. */
 interface FreshBlockResult {
   blockCount: number;
   docSizeChars: number;
@@ -62,23 +28,11 @@ export interface FreshResults {
   schemaVersion: number;
   startedAt: string;
   finishedAt: string;
-  /**
-   * Optional as a whole: a results file written before these fields existed
-   * still loads, and the comparison treats "absent" as "unknown" rather than
-   * as "matches". The members are required, because the harness has always
-   * written all three together — a partial object would read as present to a
-   * human while behaving as absent to the mismatch check.
-   */
   methodology?: Methodology;
   runner: Record<string, unknown>;
   results: FreshBlockResult[];
 }
 
-/**
- * Per-block-count baseline entry. Each tracked op carries a p99 target
- * AND a p99 stdev measured across the calibration runs. Stdev is the
- * variance term in the threshold formula.
- */
 interface BaselineBlockEntry {
   blockCount: number;
   docSizeChars: number;
@@ -89,28 +43,17 @@ interface BaselineBlockEntry {
 
 export interface Baseline {
   schemaVersion: 1;
-  /** ISO timestamp at which the baseline was captured. */
   capturedAt: string;
-  /** Human-readable class the calibration runs landed on ("local-m-series", "gh-ubuntu-latest", etc.). */
   runnerClass: string;
-  /**
-   * Measurement conditions the committed numbers were captured under.
-   * Optional so a baseline predating the field still loads; when present the
-   * comparison warns if a fresh run does not match, because p99 deltas across
-   * differing GC or iteration policy reflect methodology, not code.
-   */
   methodology?: Methodology;
-  /** Runtime + test-runner the committed numbers were captured under. */
   toolchain?: {
     runtime?: string;
     testRunner?: string;
   };
-  /** Number of independent benchmark runs aggregated into this baseline. */
   calibrationRuns: number;
-  /** Threshold knobs pinned. */
   threshold: {
-    floorPct: number; // e.g. 0.10 — 10%
-    varianceMultiplier: number; // e.g. 2 — 2σ
+    floorPct: number;
+    varianceMultiplier: number;
   };
   results: BaselineBlockEntry[];
 }
@@ -130,26 +73,12 @@ interface OpRegressionRow {
 interface RegressionReport {
   pass: boolean;
   rows: OpRegressionRow[];
-  missingFresh: number[]; // block counts present in baseline but missing in fresh
-  extraFresh: number[]; // block counts present in fresh but not tracked in baseline
+  missingFresh: number[];
+  extraFresh: number[];
 }
-
-// ───────────────────────── Core comparison ────────────────────────────────
 
 const OP_NAMES: OpName[] = ['parseMs', 'serializeMs', 'roundTripMs'];
 
-/**
- * Compare a fresh run against the baseline.
- *
- * Semantics:
- *   - Every baseline block-count must be present in the fresh results;
- *     missing ones are treated as a failure (listed in `missingFresh`).
- *   - Extra block counts in the fresh run are reported (`extraFresh`)
- *     but not a failure — the baseline is authoritative about what is
- *     tracked.
- *   - For each (blockCount, op) pair, regression is evaluated per the
- *     THRESHOLD FORMULA at the top of this file.
- */
 export function evaluateRegression(baseline: Baseline, fresh: FreshResults): RegressionReport {
   const freshByCount = new Map<number, FreshBlockResult>();
   for (const r of fresh.results) freshByCount.set(r.blockCount, r);
@@ -192,8 +121,6 @@ export function evaluateRegression(baseline: Baseline, fresh: FreshResults): Reg
   return { pass, rows, missingFresh, extraFresh };
 }
 
-// ───────────────────────── Formatting ─────────────────────────────────────
-
 export function formatReport(report: RegressionReport): string {
   const lines: string[] = [];
   lines.push(`perf regression gate: ${report.pass ? 'PASS' : 'FAIL'}`);
@@ -217,15 +144,6 @@ export function formatReport(report: RegressionReport): string {
   return lines.join('\n');
 }
 
-/**
- * Conditions under which a fresh run is not comparable to the baseline, as
- * human-readable warnings. Returns an empty array when the two agree or when
- * either side predates the recorded fields — absent means unknown, not equal.
- *
- * Kept here rather than in the orchestrator so the contract is testable: these
- * warnings are the only thing standing between a methodology change and a
- * silently meaningless comparison.
- */
 export function checkMethodologyMismatches(baseline: Baseline, fresh: FreshResults): string[] {
   const warnings: string[] = [];
   const b = baseline.methodology;
@@ -249,14 +167,6 @@ export function checkMethodologyMismatches(baseline: Baseline, fresh: FreshResul
   return warnings;
 }
 
-// ───────────────────────── IO helpers ─────────────────────────────────────
-
-/**
- * Assert every tracked numeric field is finite. Guards against a corrupt
- * baseline (missing key, `NaN`, `Infinity`) silently passing the gate:
- * `NaN`-arithmetic propagates, and `x > NaN` is always false — without
- * this check a bogus baseline would let any fresh result through.
- */
 function assertFiniteStats(
   ctx: string,
   blockCount: number,
@@ -320,14 +230,6 @@ export function loadFreshResults(path: string): FreshResults {
   return raw as FreshResults;
 }
 
-// ───────────────────────── CLI ────────────────────────────────────────────
-
-/**
- * CLI entry. Usage:
- *   tsx packages/core/tests/perf/regression-gate.ts <baseline> <fresh>
- *
- * Exits 0 on PASS, 1 on FAIL. Prints a human-readable report to stdout.
- */
 async function main(): Promise<void> {
   const [, , baselineArg, freshArg] = process.argv;
   if (!baselineArg || !freshArg) {

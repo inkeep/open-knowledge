@@ -49,9 +49,6 @@ describe('AcpTerminalSet', () => {
     expect(created.command).toBe(process.execPath);
   });
 
-  // A terminal is a peer of the agent's own child processes: an agent that
-  // routes its shell through `terminal/create` rather than spawning in-process
-  // must still look hosted, or an `ok mcp` started there hands the user a URL.
   test('a created terminal carries the hosted-agent marker', async () => {
     const events: ThreadEvent[] = [];
     const set = makeSet(events);
@@ -75,10 +72,6 @@ describe('AcpTerminalSet', () => {
     expect(set.output(terminalId).output).toBe('1:kept');
   });
 
-  // A GUI-launched server's PATH can't name a version manager's bin dir, so a
-  // command the agent runs here would fail for a reason that has nothing to do
-  // with the command. The thread manager hands the set the login shell's PATH;
-  // this is where it has to land.
   test('appends the login-shell PATH to a command env', async () => {
     const events: ThreadEvent[] = [];
     const set = makeSet(events, '/opt/only-in-the-login-shell');
@@ -86,15 +79,9 @@ describe('AcpTerminalSet', () => {
     await set.waitForExit(terminalId);
     const path = set.output(terminalId).output;
     expect(path).toContain('/opt/only-in-the-login-shell');
-    // Appended, never prepended: everything that already resolved keeps
-    // resolving to the same binary.
     expect(path.endsWith('/opt/only-in-the-login-shell')).toBe(true);
   });
 
-  // An agent that states a PATH has stated a spawn-env contract — the same
-  // rule the agent launch chain applies to a manifest PATH overlay.
-  // Skipped on Windows: an overlay spelling `PATH` sits alongside the
-  // inherited `Path`, and which one the OS honors is not ours to assert.
   test.skipIf(process.platform === 'win32')(
     'a PATH the agent supplied wins over the login-shell PATH',
     async () => {
@@ -139,8 +126,6 @@ describe('AcpTerminalSet', () => {
   test('front-truncation lands on a character boundary (multi-byte safe)', async () => {
     const events: ThreadEvent[] = [];
     const set = makeSet(events);
-    // 3-byte characters against a limit that is not a multiple of 3 forces a
-    // mid-character cut the trimmer must repair.
     const { terminalId } = set.create({
       ...node("process.stdout.write('\\u3042'.repeat(200))"),
       outputByteLimit: 100,
@@ -158,7 +143,6 @@ describe('AcpTerminalSet', () => {
     const { terminalId } = set.create(
       node("process.stdout.write('started'); setInterval(() => {}, 1000)"),
     );
-    // Wait for the process to prove it is alive before killing it.
     const deadline = Date.now() + 5_000;
     while (!set.output(terminalId).output.includes('started')) {
       if (Date.now() > deadline) throw new Error('command never produced output');
@@ -167,7 +151,6 @@ describe('AcpTerminalSet', () => {
     await set.kill(terminalId);
     const status = await set.waitForExit(terminalId);
     expect(status.exitCode === null || status.exitCode !== 0).toBe(true);
-    // Killed but not released: output must remain retrievable.
     expect(set.output(terminalId).output).toContain('started');
     await set.release(terminalId);
     expect(() => set.output(terminalId)).toThrow('unknown terminal');
@@ -178,7 +161,6 @@ describe('AcpTerminalSet', () => {
     const set = makeSet(events);
     const { terminalId } = set.create(node('process.exit(0)'));
     await set.waitForExit(terminalId);
-    // Second wait after exit settles immediately from the recorded status.
     const again = await set.waitForExit(terminalId);
     expect(again.exitCode).toBe(0);
   });
@@ -195,8 +177,6 @@ describe('AcpTerminalSet', () => {
   test('pauses transcript emission past the cap and replays the tail on exit', async () => {
     const events: ThreadEvent[] = [];
     const set = makeSet(events);
-    // Spew well past the 256 KiB transcript cap, then end with a marker that
-    // only the exit-time tail replay can carry into the transcript.
     const { terminalId } = set.create(
       node(
         "for (let i = 0; i < 40; i++) process.stdout.write('x'.repeat(8192)); process.stdout.write('FINAL-MARKER');",
@@ -207,7 +187,6 @@ describe('AcpTerminalSet', () => {
       (e): e is Extract<ThreadEvent, { kind: 'terminal_output' }> => e.kind === 'terminal_output',
     );
     const transcriptBytes = chunks.reduce((n, c) => n + Buffer.byteLength(c.chunk, 'utf8'), 0);
-    // Live budget (256 KiB) + one bounded tail replay (16 KiB + marker line).
     expect(transcriptBytes).toBeLessThan(300 * 1024);
     expect(chunks[chunks.length - 1]?.chunk).toContain('FINAL-MARKER');
     expect(chunks.some((c) => c.chunk.includes('[output truncated'))).toBe(true);
@@ -216,8 +195,6 @@ describe('AcpTerminalSet', () => {
   test('the exit-time tail replay never repeats bytes the live stream carried', async () => {
     const events: ThreadEvent[] = [];
     const set = makeSet(events);
-    // Exactly fill the 256 KiB live budget with x's, then one small unique
-    // suffix that trips the pause — the replay must carry ONLY the suffix.
     const { terminalId } = set.create(
       node(
         "for (let i = 0; i < 32; i++) process.stdout.write('x'.repeat(8192)); setTimeout(() => { process.stdout.write('UNIQUE-SUFFIX'); }, 50);",
@@ -229,7 +206,6 @@ describe('AcpTerminalSet', () => {
     );
     const joined = chunks.map((c) => c.chunk).join('');
     expect(joined.split('UNIQUE-SUFFIX')).toHaveLength(2);
-    // No 16 KiB duplication block: total ≈ live budget + marker + suffix.
     expect(Buffer.byteLength(joined, 'utf8')).toBeLessThan(256 * 1024 + 200);
   });
 
@@ -241,7 +217,6 @@ describe('AcpTerminalSet', () => {
       ids.push(set.create(node('process.exit(0)')).terminalId);
     }
     expect(() => set.create(node('process.exit(0)'))).toThrow('terminal limit');
-    // Releasing frees a slot.
     await set.waitForExit(ids[0]);
     await set.release(ids[0]);
     expect(() => set.create(node('process.exit(0)'))).not.toThrow();

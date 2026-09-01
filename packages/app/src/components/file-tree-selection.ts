@@ -82,7 +82,6 @@ export function resolveFileTreeSelection(
       };
     case 'asset':
     case 'skill-file':
-    // The Skills hub + pre-install skill preview have no file-tree selection.
     case 'skills':
     case 'skill-preview':
       return {
@@ -108,21 +107,12 @@ export function resolveFileTreeSelectionAction(
     return { kind: 'document', path: documentDocName };
   }
   if (entry && isAssetEntry(entry)) {
-    // Mermaid files (`.mmd`/`.mermaid`), Excalidraw canvases (`.excalidraw`),
-    // and editable text files (`.ts` / `.json` / `.html` / …) are served as
-    // assets but open as editable CRDT docs, not the read-only asset viewer.
-    // Their docName IS the asset path (extension retained), so route the
-    // selection as a document — the doc-open path takes it through
-    // EditorActivityPool where the per-extension editor branches live.
     if (
       entry.mediaKind === 'mermaid' ||
       entry.mediaKind === 'excalidraw' ||
       (isEditableTextDocFile(entry.path) &&
         !isDocumentOverOpenByteLimit(entry.size, TEXT_DOC_OPEN_BYTE_LIMIT))
     ) {
-      // Oversized text files stay on the read-only asset viewer — the
-      // verbatim load path has no large-doc defer, so seeding a multi-MB
-      // file into Y.Text from a tree click would stall the doc open.
       return { kind: 'document', path: entry.path };
     }
     return {
@@ -146,8 +136,6 @@ export function resolveFileTreeSelectionAction(
     return { kind: 'folder', path: appPath };
   }
 
-  // Inline rename can briefly select the not-yet-created destination path.
-  // Dropping that transient file selection avoids opening an empty CRDT doc.
   if (!entries.some((item) => isDocumentEntry(item) && item.docName === appPath)) {
     return { kind: 'none' };
   }
@@ -155,25 +143,6 @@ export function resolveFileTreeSelectionAction(
   return { kind: 'document', path: appPath };
 }
 
-/**
- * The editor tab id a tree row opens into, or null when the row opens no tab.
- *
- * Replays the click path's resolution rather than deriving from the row path,
- * so a double-click promotion targets exactly the tab the click created. Both
- * steps matter, because neither mapping is the obvious one:
- *
- *   1. `resolveFileTreeSelectionAction` — a `.mmd` or editable text file is an
- *      asset ENTRY that opens as a DOCUMENT tab, and a markdown row's tab drops
- *      the extension.
- *   2. `okContentNavigationTarget` — a revealed `.ok/**` row is rerouted again:
- *      a template opens `__template__/<name>`, and any other non-page `.ok` doc
- *      opens a read-only asset tab. Skipping this step yields a tab id no pane
- *      owns, making the double-click a silent no-op on exactly those rows
- *      whenever "Show .ok folders" is on.
- *
- * Folders return null. Their overview is reached by a gesture (expand /
- * collapse) that a double-click just performs twice.
- */
 export function previewTabIdForTreePath(
   treePath: string | undefined,
   entries: readonly FileEntry[],

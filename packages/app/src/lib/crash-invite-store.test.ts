@@ -47,9 +47,6 @@ describe('createCrashInviteStore — install', () => {
 
   test('no-ops without throwing when the bridge omits the bugReport surface', () => {
     const store = createCrashInviteStore();
-    // A partial bridge (test/preview mock, or a renderer paired with a main
-    // process predating the bug-report IPC) has no `bugReport` — install runs
-    // at module-init outside any error boundary, so it must no-op, not throw.
     const partialBridge = {} as unknown as OkDesktopBridge;
     let result: (() => void) | undefined;
     expect(() => {

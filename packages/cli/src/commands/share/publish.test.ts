@@ -1,15 +1,3 @@
-/**
- * Unit + integration tests for the publish flow.
- *
- * The orchestrator (`runPublishFlow`) is dependency-injected (octokit,
- * `ensureOkScaffold`, `gitFactory`) so all five branches of the error
- * taxonomy are reachable without GitHub or a real git binary. A final
- * integration test runs the full orchestrator against a tempdir + a fake
- * Octokit that responds with a "remote" pointer at a second tempdir
- * initialized as a bare repo — that way `git push` succeeds end-to-end
- * with no network calls.
- */
-
 import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,8 +6,6 @@ import type { Octokit } from '@octokit/rest';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { classifyOctokitError, runPublishFlow, sharePublishCommand } from './publish.ts';
-
-// ─── Octokit fake factory ─────────────────────────────────────────────────────
 
 interface FakeOctokitOptions {
   authLogin?: string;
@@ -30,7 +16,6 @@ interface FakeOctokitOptions {
   createOrgRepo?:
     | { clone_url: string; default_branch?: string }
     | { __throw: { status?: number; message?: string; response?: unknown } };
-  /** Fixture for the `repos.get` idempotency probe after a 422 create-repo failure. */
   getRepo?: { clone_url: string; default_branch?: string } | { __throw: { status?: number } };
 }
 
@@ -101,8 +86,6 @@ function makeFakeOctokit(opts: FakeOctokitOptions = {}): Octokit {
     // biome-ignore lint/suspicious/noExplicitAny: test-only fake; only the touched surface matters.
   } as any;
 }
-
-// ─── classifyOctokitError ────────────────────────────────────────────────────
 
 describe('classifyOctokitError', () => {
   test('422 with "name already exists" → name-conflict', () => {
@@ -183,8 +166,6 @@ describe('classifyOctokitError', () => {
   });
 });
 
-// ─── runPublishFlow — error branches with mocked git ──────────────────────────
-
 describe('runPublishFlow (error branches)', () => {
   let tmpDir: string;
   beforeEach(() => {
@@ -220,11 +201,6 @@ describe('runPublishFlow (error branches)', () => {
       ownerKind: 'org',
       deps: {
         ensureOkScaffold: () => {},
-        // `git init` runs BEFORE `createGitHubRepo` in the orchestrator, so
-        // the factory must return a usable git stub. The only methods
-        // touched on this error path are `.init()` (no-op) — `.addRemote`
-        // and `.raw` never fire because Octokit throws first. Each is
-        // shaped as a thennable so simple-git's typings line up.
         gitFactory: () =>
           ({
             init: async () => {},
@@ -243,16 +219,8 @@ describe('runPublishFlow (error branches)', () => {
   });
 
   test('idempotent retry: 422 + existing-repo-at-owner proceeds to push (e2e)', async () => {
-    // Simulate the retry-after-push-failure path: createForAuthenticatedUser
-    // throws 422 (repo already exists from the partial first attempt), then
-    // `repos.get` returns the existing repo and the orchestrator continues
-    // to addRemote + commit + push instead of returning name-conflict.
     const bareRepo = mkdtempSync(join(tmpdir(), 'ok-share-publish-retry-bare-'));
     execSync('git init --bare', { cwd: bareRepo, stdio: 'ignore' });
-    // Pre-init the project repo + set local gitconfig identity so this test
-    // is deterministic regardless of the host's global config. (The child
-    // env now merges process.env via `buildCloneEnv`, so env-based identity
-    // also works — the dedicated env-identity regression test covers that.)
     execSync('git init', { cwd: tmpDir, stdio: 'ignore' });
     execSync('git config user.name Test', { cwd: tmpDir });
     execSync('git config user.email test@example.com', { cwd: tmpDir });
@@ -295,7 +263,6 @@ describe('runPublishFlow (error branches)', () => {
             response: { data: { errors: [{ field: 'name', message: 'name already exists' }] } },
           },
         },
-        // No `getRepo` fixture → fake throws 404 → tryFetchExistingRepo returns null.
       }),
       token: 'tok',
       projectDir: tmpDir,
@@ -323,8 +290,6 @@ describe('runPublishFlow (error branches)', () => {
   });
 });
 
-// ─── runPublishFlow — end-to-end against bare-repo "remote" ──────────────────
-
 describe('runPublishFlow (e2e against bare repo)', () => {
   let workspace: string;
   let projectDir: string;
@@ -336,15 +301,7 @@ describe('runPublishFlow (e2e against bare repo)', () => {
     mkdirSync(projectDir, { recursive: true });
     mkdirSync(bareRepo, { recursive: true });
     execSync('git init --bare', { cwd: bareRepo, stdio: 'ignore' });
-    // Seed the project with a single markdown file so the initial commit
-    // has real content (matches the real Publish flow's expectations).
     writeFileSync(join(projectDir, 'README.md'), '# Hello\n', 'utf-8');
-    // Pre-init the project repo + set local gitconfig identity so these
-    // tests are deterministic regardless of the host's global config. (The
-    // child env now merges process.env via `buildCloneEnv`; the dedicated
-    // env-identity regression test proves env-only identity works.) The
-    // publish flow's `existsSync('.git')` check skips its own `git init`
-    // when we've already initialised the repo.
     execSync('git init', { cwd: projectDir, stdio: 'ignore' });
     execSync('git config user.name Test', { cwd: projectDir });
     execSync('git config user.email test@example.com', { cwd: projectDir });
@@ -354,27 +311,18 @@ describe('runPublishFlow (e2e against bare repo)', () => {
   });
 
   test('happy path: init → create → addRemote → commit → push to bare repo', async () => {
-    // The fake Octokit returns the file:// URL of the bare repo as
-    // `clone_url`. simple-git pushes against that URL natively.
     const bareUrl = `file://${bareRepo}`;
     const result = await runPublishFlow({
       octokit: makeFakeOctokit({
         authLogin: 'alice',
         createUserRepo: { clone_url: bareUrl, default_branch: 'main' },
       }),
-      // The token doesn't matter for a file:// push — the URL splice is
-      // a no-op against a non-https URL. Pass anything non-empty.
       token: 'irrelevant',
       projectDir,
       body: { owner: 'alice', name: 'demo', visibility: 'private' },
       ownerKind: 'user',
-      // Skip the real `initContent` so the test doesn't need the @inkeep/
-      // open-knowledge-core dist build. The flow still mkdirs the project
-      // path because beforeEach already created it.
       deps: {
         ensureOkScaffold: (dir) => {
-          // Drop a stub .ok/.gitignore to mirror initContent's effect for
-          // staging. The orchestrator stages this with `git add .`.
           mkdirSync(join(dir, '.ok'), { recursive: true });
           writeFileSync(join(dir, '.ok', '.gitignore'), 'local/\n', 'utf-8');
         },
@@ -389,34 +337,24 @@ describe('runPublishFlow (e2e against bare repo)', () => {
         defaultBranch: 'main',
       },
     });
-    // The bare repo received the push — verify by inspecting the refs.
     const refs = execSync('git --git-dir=. show-ref', {
       cwd: bareRepo,
       encoding: 'utf-8',
     });
     expect(refs).toContain('refs/heads/main');
-    // The project's local origin remote is the clean URL (no token).
     const git = simpleGit(projectDir);
     const remotes = await git.getRemotes(true);
     const origin = remotes.find((r) => r.name === 'origin');
     expect(origin?.refs?.push).toBe(bareUrl);
-    // Initial commit message landed.
     const log = execSync('git log --format=%s', { cwd: projectDir, encoding: 'utf-8' });
     expect(log).toContain('Initial commit');
-    // The `.ok/.gitignore` was staged + committed.
     const tree = execSync('git ls-tree -r HEAD --name-only', {
       cwd: projectDir,
       encoding: 'utf-8',
     });
     expect(tree).toContain('.ok/.gitignore');
-    // Sanity: README went up too.
     expect(tree).toContain('README.md');
     expect(readFileSync(join(projectDir, 'README.md'), 'utf-8')).toBe('# Hello\n');
-    // POST-PUSH REF SYNC — the local `refs/remotes/origin/<default>` ref
-    // must exist after publish so the Share button's local-only
-    // branch-on-origin check succeeds on the very next click.
-    // Without this, the publish→share fall-through always toasts
-    // "Push <branch> to GitHub before sharing." on first attempt.
     const remoteRefSha = execSync('git rev-parse refs/remotes/origin/main', {
       cwd: projectDir,
       encoding: 'utf-8',
@@ -429,27 +367,11 @@ describe('runPublishFlow (e2e against bare repo)', () => {
   });
 
   test('identity from process.env GIT_AUTHOR_* alone reaches the commit child', async () => {
-    // Regression for the Windows half-publish: `makeGit` used to pass
-    // `.env({ GIT_TERMINAL_PROMPT: '0' })`, which REPLACES the child env —
-    // stripping the GIT_AUTHOR_*/GIT_COMMITTER_* fallback the command sets
-    // for machines with no git identity configured. The initial commit then
-    // died with "Please tell me who you are" AFTER the GitHub repo was
-    // created, leaving a half-published project. This test removes every
-    // config-file identity source (HOME/XDG redirected to an empty dir; no
-    // repo-local config) and provides identity ONLY via process.env — it
-    // fails with `init-failed` under the old replace semantics.
     const emptyHome = join(workspace, 'empty-home');
     mkdirSync(emptyHome, { recursive: true });
-    // beforeEach seeds repo-local identity for the other e2e tests — remove
-    // it so process.env is provably the ONLY identity source here.
     execSync('git config --unset user.name', { cwd: projectDir });
     execSync('git config --unset user.email', { cwd: projectDir });
     const saved: Record<string, string | undefined> = {};
-    // HOME/USERPROFILE/XDG redirection isolates the user-global config
-    // (identity must come from the env vars alone). GIT_CONFIG_GLOBAL is
-    // deliberately NOT used — simple-git gates it behind
-    // `allowUnsafeConfigPaths`, which the production options (shared with
-    // `ok clone`) do not enable.
     const overrides: Record<string, string> = {
       HOME: emptyHome,
       USERPROFILE: emptyHome,
@@ -492,19 +414,11 @@ describe('runPublishFlow (e2e against bare repo)', () => {
   });
 });
 
-/**
- * `initContent` refuses `$HOME`, but `runPublishFlow`'s contract is "never
- * throw on a documented failure mode", so its catch would flatten the refusal
- * into `init-failed` and erase the message that says what to do about it. The
- * command wrapper checks first so `--project-dir ~` reads like `ok init` at
- * home.
- */
 describe('share publish — refuses --project-dir $HOME', () => {
   test('prints the actionable refusal and exits 64, not a generic init-failed', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-publish-home-'));
     const savedExitCode = process.exitCode;
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    // Never reached: the guard sits ahead of token resolution and Octokit.
     const tokenStore = async () => ({}) as never;
     try {
       vi.stubEnv('HOME', home);

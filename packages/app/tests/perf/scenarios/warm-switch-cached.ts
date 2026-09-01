@@ -1,24 +1,3 @@
-/**
- * V2 warm-switch-cached scenario.
- *
- * Measures warm-switch wall-clock P95 between two cached (Activity-evicted
- * but editor-cached) docs. Target: < 200 ms prod P95.
- *
- * Workflow (this scenario exercises the wired
- * V2 cache via EditorActivityPool):
- *   1. Cold-load docA (small), then docB (small) — both get cache entries.
- *   2. Navigate to 2 other docs to push docA out of the Activity mount
- *      list (ACTIVITY_MOUNT_LIMIT=3). docA stays editor-cached; its
- *      provider is disconnected.
- *   3. Navigate back to docA — measure wall-clock until the cached
- *      Editor's DOM is reparented + focused + scrollTop restored.
- *
- * Until the V2 cache is wired into EditorActivityPool, running this
- * scenario measures the pre-V2 behavior (equivalent to existing
- * warm-switch.ts). The scenario file is the contract for
- * post-integration measurement.
- */
-
 import { markerFor } from '../lib/doc-markers.ts';
 import { installLongtaskObserver } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
@@ -65,7 +44,6 @@ export default defineScenario({
 
     await installLongtaskObserver(page);
 
-    // Step 1: warm up docA + docB
     await page.goto(`${opts.target}/#/${encodeURIComponent(DOC_A)}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
@@ -89,7 +67,6 @@ export default defineScenario({
       return;
     }
 
-    // Step 2: force Activity-mount eviction of docA
     for (const other of EVICT_DOCS) {
       await page.goto(`${opts.target}/#/${encodeURIComponent(other)}`, {
         waitUntil: 'domcontentloaded',
@@ -102,7 +79,6 @@ export default defineScenario({
       }
     }
 
-    // Step 3: navigate back to docA — V2 cache should reparent, not rebuild.
     const t0 = Date.now();
     await page.goto(`${opts.target}/#/${encodeURIComponent(DOC_A)}`, {
       waitUntil: 'domcontentloaded',

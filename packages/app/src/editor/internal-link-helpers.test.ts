@@ -10,12 +10,6 @@ import {
 
 const originalWindow = globalThis.window;
 
-/**
- * Covers the prop-panel destination click wiring shared by
- * InternalLinkPropPanel + WikiLinkPropPanel. The regression surface is the
- * preventDefault dedup (so the JS nav and the native <a href> don't both
- * fire) and the same-tab-only close.
- */
 describe('handleChipLinkClick', () => {
   function makeEvent(overrides: Partial<{ metaKey: boolean; ctrlKey: boolean }> = {}) {
     return {
@@ -65,14 +59,6 @@ describe('handleChipLinkClick', () => {
   });
 });
 
-/**
- * The asset-link activation routing shared by `internal-link.ts` +
- * `wiki-link-embed.ts`. Regression surface: bare click must navigate to the
- * in-app asset preview (sidebar parity) rather than OS-delegate, while
- * Cmd/Ctrl/middle-click keeps the OS-delegation escape hatch. Deps are
- * injected so the branching is asserted without touching `window` /
- * `dispatchAssetClick`'s real Electron+web fallback.
- */
 describe('activateAssetLink', () => {
   const params = {
     url: './report.html',
@@ -109,12 +95,6 @@ describe('activateAssetLink', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  // The cases above inject both deps to isolate the branching. This one
-  // exercises the REAL default `navigate` (the module-private
-  // `navigateToAssetPreview`) against a stubbed `window`, so a future change
-  // that wires the default to the wrong helper — e.g. doc hash nav instead
-  // of the `#/__asset__/…` asset hash — fails here at unit tier rather than
-  // only at the E2E. `window` stub mirrors `documents-events.test.ts`.
   afterEach(() => {
     Object.defineProperty(globalThis, 'window', {
       configurable: true,
@@ -138,15 +118,6 @@ describe('activateAssetLink', () => {
   });
 });
 
-/**
- * External-link routing for the source-mode markdown-link path
- * (`md-link-source.ts` → `navigateToMarkdownTarget`). Mirrors the WYSIWYG
- * `internal-link.external-open.test.ts` contract: on desktop the external
- * branch routes through the bridge (`okDesktop.shell.openExternal`), on web it
- * falls back to `window.open`, and an unsafe scheme is refused (the branch was
- * migrated off `openHashHrefInNewTab`, whose internal scheme gate is replaced
- * by an explicit `isSafeNavigationUrl` guard).
- */
 describe('navigateToMarkdownTarget — external routing', () => {
   afterEach(() => {
     Object.defineProperty(globalThis, 'window', {
@@ -220,24 +191,10 @@ describe('toInternalHashHref', () => {
   });
 });
 
-/**
- * The link-edit popover's URL field writes whatever it holds verbatim as the
- * href (`setLink({ href: url.trim() })`), and its suggestion picker seeds that
- * field from `buildCurrentRelativeMarkdownHref`. The field is a URL field —
- * seeded from the raw href when editing an existing link, and accepting
- * external URLs unchanged — so the builder's escaped output is the correct
- * thing to show there. Decoding for display would need a re-encode on apply,
- * which cannot tell an author's literal `%20` from a display-decoded space.
- * The user-facing FRIENDLY path is a separate surface: the prop panel shows
- * `classifyMarkdownHref(...).docName`, which is already decoded.
- */
 describe('buildCurrentRelativeMarkdownHref — popover field round-trip', () => {
   it('emits an href that classifies straight back to the picked doc', () => {
     const href = buildCurrentRelativeMarkdownHref('notes/Agent Memory', null, '#/notes/index');
     expect(href).toBe('./Agent%20Memory.md');
-    // Applied verbatim by the popover, and read back by every resolution
-    // surface as the doc the user picked — not as a doc literally named
-    // `Agent%20Memory`.
     expect(classifyMarkdownHref(href, 'notes/index')).toEqual({
       kind: 'doc',
       docName: 'notes/Agent Memory',
@@ -246,8 +203,6 @@ describe('buildCurrentRelativeMarkdownHref — popover field round-trip', () => 
   });
 
   it('shows the decoded name on the friendly display surface', () => {
-    // The prop panel's `displayHref` is built from the classified docName, so
-    // the escaped bytes never reach the reader there.
     const classified = classifyMarkdownHref('./Agent%20Memory.md', 'notes/index');
     expect(classified?.kind === 'doc' && classified.docName).toBe('notes/Agent Memory');
   });

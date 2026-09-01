@@ -1,14 +1,3 @@
-/**
- * `BugReportSendToast` layout + subscription tests.
- *
- * The component is driven by a real `createBugReportSendManager` over a
- * scripted bridge rather than by hand-built operation objects: the manager's
- * published shape is the contract under test, and a hand-built object would
- * keep passing after that shape drifted.
- *
- * Substrate: jsdom via `pnpm run test:dom`.
- */
-
 import type { OkBugReportListRow, OkBugReportSendResult } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -31,7 +20,7 @@ const ROW: OkBugReportListRow = {
   createdAt: '2026-07-10T00:00:00.000Z',
   bundleLevel: 'standard',
   state: 'generated',
-  zipBytes: 7130316, // renders as "6.8 MB"
+  zipBytes: 7130316,
   zipDeleted: false,
   zipExists: true,
   systemWide: false,
@@ -48,7 +37,6 @@ const FAILED_RESULT: OkBugReportSendResult = {
   fallback: { mailtoUrl: MAILTO, zipPath: ZIP_PATH },
 };
 
-/** Resolvers for every `send` the scripted bridge has been asked to make. */
 let pendingSends: Array<(result: OkBugReportSendResult) => void> = [];
 
 function startOperation(): BugReportSendManager {
@@ -70,11 +58,6 @@ async function settleWith(result: OkBugReportSendResult): Promise<void> {
   });
 }
 
-/**
- * `satisfies` rather than an annotated return type: it holds the doubles to the
- * real action contract (a prop added to the interface fails here) while leaving
- * the inferred mock types intact for the call assertions.
- */
 function makeActions() {
   return {
     dismiss: vi.fn(),
@@ -98,8 +81,6 @@ function renderToast(manager: BugReportSendManager, actions: ReturnType<typeof m
 
 afterEach(async () => {
   cleanup();
-  // Any operation still 'sending' owns a live easing interval; settling it is
-  // what clears that interval, so leave none behind for the next test file.
   const stragglers = pendingSends;
   pendingSends = [];
   for (const resolve of stragglers) resolve(FAILED_RESULT);
@@ -117,8 +98,6 @@ describe('while the send is in flight', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar.getAttribute('aria-valuenow')).toBeNull();
     expect(bar.getAttribute('data-state')).toBe('indeterminate');
-    // The bar's accessible name comes from the visible title rather than a
-    // second invented string.
     expect(bar.getAttribute('aria-labelledby')).toBeTruthy();
 
     await settleWith(FAILED_RESULT);
@@ -129,8 +108,6 @@ describe('while the send is in flight', () => {
     const actions = makeActions();
     renderToast(manager, actions);
 
-    // The corner button is the only dismiss affordance: a partial revert that
-    // brought the labelled one back alongside it would otherwise pass.
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -160,18 +137,12 @@ describe('when the send succeeds', () => {
     await settleWith({ ok: true, reference: 'OK-1234-ABCD' });
     renderToast(manager, actions);
 
-    // Labelled, and labelled *next to* the value: an unlabelled identifier
-    // reads as a ticket the reporter should go open, rather than the handle
-    // they quote back to support. A label parked elsewhere in the toast would
-    // not do that job, so assert the row, not just the presence of the word.
     const reference = screen.getByText('OK-1234-ABCD');
     expect(reference.parentElement?.textContent).toContain('Reference');
 
     await userEvent.click(screen.getByRole('button', { name: 'Copy reference' }));
     expect(actions.writeToClipboard).toHaveBeenCalledWith('OK-1234-ABCD');
 
-    // Retention reclaims the zip on a confirmed send, so there is no file left
-    // to reveal.
     expect(screen.queryByRole('button', { name: 'Reveal in Finder' })).toBeNull();
     expect(actions.revealInFileManager).not.toHaveBeenCalled();
   });
@@ -276,15 +247,6 @@ describe('when the operation is unknown', () => {
   });
 });
 
-/**
- * Pinned per outcome rather than on one representative status: the sonner gate
- * that makes `ToastCard` supply its own close button (see that component's
- * docblock) is per-body, but the wiring below is per-layout.
- *
- * The tab assertion guards the source order specifically. The button is
- * absolutely positioned, so moving it back below the content column is
- * visually free and would silently put every action button ahead of Close.
- */
 describe('every outcome can be closed', () => {
   const outcomes: ReadonlyArray<
     readonly [label: string, settle: (() => Promise<void>) | undefined, marker: string]
@@ -320,8 +282,6 @@ describe('every outcome can be closed', () => {
     if (settle !== undefined) await settle();
     renderToast(manager, actions);
 
-    // Guards the case where a layout renamed its copy and the assertion below
-    // would otherwise pass against whichever layout happened to render.
     expect(screen.getByText(marker)).toBeTruthy();
 
     expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();

@@ -39,11 +39,6 @@ import {
   resolveConflictTheirs,
 } from './resolve-conflict-dispatch';
 
-/**
- * How long to keep deferring the conflict-content fetch while no conflict entry
- * exists. Covers the CC1 `sync-status` catch-up window (~100ms observed) with
- * room to spare; past it, the conflict is gone rather than late.
- */
 const CONFLICT_ENTRY_GRACE_MS = 2_000;
 
 interface DiffViewBoundaryProps {
@@ -57,11 +52,6 @@ interface ConflictSides {
   base: string;
   ours: string;
   theirs: string;
-  /**
-   * Stage-presence discriminator derived server-side. `'both-modified'` is
-   * the classical merge conflict; `'delete-modify'` (DU) has no stage 2
-   * (local deleted); `'modify-delete'` (UD) has no stage 3 (remote deleted).
-   */
   kind: ConflictKind;
 }
 
@@ -76,12 +66,7 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
         const payload = (await res.json()) as { detail?: unknown; title?: unknown };
         if (typeof payload.detail === 'string') detail = payload.detail;
         else if (typeof payload.title === 'string') detail = payload.title;
-      } catch {
-        // ignore body parse error — surface bare HTTP status
-      }
-      // Structured warn — pairs with the swap-in/swap-out events so
-      // server-side log correlation has a complete trace of editor-area
-      // lifecycle when the user reports "blank conflict pane".
+      } catch {}
       console.warn(
         JSON.stringify({
           event: 'conflict-content-fetch-failed',
@@ -93,22 +78,12 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
       return null;
     }
     const data = (await res.json()) as Partial<ConflictSides>;
-    // Default to `'both-modified'` for stale-cache resilience only — the
-    // current server always populates `kind`; this fallback exists for
-    // mid-rollout clients hitting an older server response.
     const kind: ConflictKind =
       data.kind === 'delete-modify' ||
       data.kind === 'modify-delete' ||
       data.kind === 'both-modified'
         ? data.kind
         : 'both-modified';
-    // `kind !== data.kind` exactly when the fallback fired — the server
-    // always sends a recognized discriminator, so reaching here means a
-    // version-skewed/older server (or a proxy that stripped the field).
-    // The fallback shape is safe (renders the diff, no destructive
-    // affordance), but a DU/UD conflict would silently render the wrong
-    // UI; emit a structured trace so a "wrong conflict pane" report
-    // correlates with the swap-in/out + fetch-failed events.
     if (data.kind !== kind) {
       console.warn(
         JSON.stringify({
@@ -139,35 +114,11 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
 
 export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
   const { t } = useLingui();
-  // `.mdx` docs are conflict-trackable too — `SUPPORTED_DOC_EXTENSIONS`
-  // covers both. The HTTP file-path (conflict-content fetch + resolve
-  // dispatch) must use the on-disk extension; the docName is extension-less.
-  // The conflicts list (`useConflicts()`) is the only client-side source of
-  // the on-disk path, so look it up there. Two propagation paths race:
-  // the per-doc lifecycle Y.Map (mounts this component) propagates faster
-  // than the CC1 `sync-status` signal that triggers `useConflicts()` to
-  // re-fetch `/api/sync/conflicts`. Without deferring, an `.mdx` doc in a
-  // newly-detected conflict would fire a wrong-extension `.md` request
-  // and flash the error fallback before the conflicts list catches up.
-  // `error` is destructured, not dropped: `useConflicts` returns an EMPTY list
-  // on a failed fetch, so discarding it makes "we could not ask" identical to
-  // "nothing is conflicted" — and the grace timer below then reports the
-  // conflict resolved, tearing down a mounted view and its undo stack.
   const { conflicts, loading: conflictsLoading, error: conflictsError } = useConflicts();
   const conflictEntry = conflicts.find((entry) => filePathToDocName(entry.file) === docName);
   const filePath = conflictEntry?.file ?? `${docName}.md`;
   const [sides, setSides] = useState<ConflictSides | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
-  // An absent conflict entry is ambiguous: it means "the CC1 signal has not
-  // caught up yet" for the ~100ms after this boundary swaps in, and it means
-  // "there is no longer a conflict" once one has been resolved. Waiting is
-  // right for the first and wrong for the second, and nothing in the entry
-  // itself distinguishes them — so bound the wait instead of guessing.
-  //
-  // This covers the resolve-while-open case AND the harder one: the resolve
-  // writes the file, the watcher reloads the doc, and this boundary REMOUNTS
-  // with no entry to find. A latch on "did we render a conflict before" misses
-  // that, because a remounted boundary never did.
   const [waitedForEntry, setWaitedForEntry] = useState(false);
   useEffect(() => {
     if (conflictEntry !== undefined || conflictsLoading || conflictsError !== null) {
@@ -177,21 +128,11 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     const timer = setTimeout(() => setWaitedForEntry(true), CONFLICT_ENTRY_GRACE_MS);
     return () => clearTimeout(timer);
   }, [conflictEntry, conflictsLoading, conflictsError]);
-  // Guards the DU/UD resolve buttons against double-fire / cross-strategy
-  // clicks while a dispatch is in flight — these run `git rm` + a commit,
-  // so a second click (or clicking the sibling strategy) mid-request races
-  // the working tree. The both-modified DiffView has its own interaction
-  // model; only the bare-button branches need this gate.
   const [isResolving, setIsResolving] = useState(false);
-  // The DU/UD branches render their own resolution footers (outside
-  // DiffView's conflictMode footer), so they publish the footer height the
-  // floating Ask AI composer anchors above — same contract as the
-  // both-modified footer inside DiffView. See use-conflict-footer-height.ts.
   const duUdFooterRef = useConflictFooterHeightVar(
     sides?.kind === 'delete-modify' || sides?.kind === 'modify-delete',
   );
 
-  // Structured log: swap-in on mount, swap-out on unmount.
   useEffect(() => {
     console.warn(JSON.stringify({ event: 'editor-area-swap-to-diffview', 'doc.name': docName }));
     return () => {
@@ -201,20 +142,6 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     };
   }, [docName]);
 
-  // Fetch ours/theirs from the server (git index — `:2:` and `:3:`).
-  //
-  // Defer the fetch until the conflicts list provides this doc's entry.
-  // Per-doc check (`conflictEntry === undefined`), not list-level
-  // (`conflicts.length === 0`): in a multi-conflict merge where other
-  // entries have loaded but this doc's hasn't, list-level wouldn't defer
-  // and the effect would fire with the hardcoded `.md` fallback —
-  // wrong for `.mdx` docs. The deferral self-heals on the next CC1
-  // `sync-status` signal; if the entry never arrives the user sees
-  // the loading spinner and the documented recovery procedure applies.
-  // Identity of the CONFLICT, not just the file. A resolved-then-re-detected
-  // file keeps its path, so a path-only dependency leaves the fetched sides
-  // frozen on the previous conflict until something forces a remount — the
-  // document updates around a diff that no longer matches it.
   const conflictSignature =
     conflictEntry === undefined
       ? null
@@ -227,9 +154,6 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
 
   const deferFetch = conflictsLoading || conflictEntry === undefined;
   useEffect(() => {
-    // Reading the signature here is load-bearing, not decoration: a dependency
-    // that never appears in the body is stripped by the exhaustive-deps
-    // autofix, which silently restores the stale-sides bug.
     if (deferFetch || conflictSignature === null) return;
     let cancelled = false;
     setSides(null);
@@ -260,9 +184,6 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     setIsResolving(true);
     const result = await dispatch(filePath);
     if (!result.ok) {
-      // Re-enable for retry. On success the conflict clears and this
-      // boundary unmounts, so we intentionally leave the buttons disabled
-      // in that window rather than set state on an unmounting tree.
       setIsResolving(false);
       toast.error(t`Couldn't resolve the conflict for ${filePath}.`, {
         description: result.detail,
@@ -278,15 +199,6 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     );
   }
 
-  // A conflict we were showing is no longer tracked, so it was resolved —
-  // here, or by an agent, or in another window. The doc's `lifecycle.status`
-  // is what swaps this boundary in, and it is cleared on a separate server
-  // path that does not fire for every resolve variant, so this boundary can
-  // outlive its conflict. Say so instead of deferring the fetch forever and
-  // showing a spinner that never resolves.
-  // An unreachable conflicts list is not an absent conflict. Say which one it
-  // is rather than asserting the work is done: the file still carries markers,
-  // the doc is still flagged, and the editor is still swapped out.
   if (conflictsError !== null && conflictEntry === undefined) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
@@ -321,20 +233,8 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     );
   }
 
-  // Stage-presence-aware render branching. The `kind` discriminator carries
-  // from the server's `/api/sync/conflict-content` response — see
-  // `SyncConflictContentSuccessSchema`. The two missing-stage shapes (DU,
-  // UD) need an explicit affordance the unified `DiffView` cannot honestly
-  // surface; the both-modified path is unchanged.
   if (sides.kind === 'delete-modify') {
     return (
-      // Content / footer layout — no top header. The explanatory text
-      // moved into the footer next to the buttons (inline compact label)
-      // so context lives adjacent to the decision and the parent's
-      // `pt-14` doesn't push a top banner down. `min-h-0` on the content
-      // row is load-bearing — without it, `flex-1` won't shrink below
-      // the editor's intrinsic height and the page scrolls instead of
-      // the inner editor.
       <div className="flex h-full flex-col bg-background">
         <div className="min-h-0 flex-1">
           <ConflictFilePreview filename={filePath} content={sides.theirs} />
@@ -356,11 +256,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
               disabled={isResolving}
               onClick={() => void handleResolveStrategy(resolveConflictDelete)}
             >
-              {/* Describes the END-STATE (the file remains deleted), not
-                  an action verb. "Keep deletion" was ambiguous — it could
-                  read as "perform a deletion" on first glance. Destructive
-                  button, so clarity-of-outcome matters. Companion CTA is
-                  "Restore with remote changes" — symmetric outcome-language. */}
+              {}
               <Trans>Keep file deleted</Trans>
             </Button>
             <Button
@@ -379,9 +275,6 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
 
   if (sides.kind === 'modify-delete') {
     return (
-      // Symmetric to the DU branch. Inline compact label in the
-      // footer; content preview is the user's local file (`ours`) — what
-      // they'd lose if they accept the upstream deletion.
       <div className="flex h-full flex-col bg-background">
         <div className="min-h-0 flex-1">
           <ConflictFilePreview filename={filePath} content={sides.ours} />
@@ -425,9 +318,6 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
       ours={sides.ours}
       base={sides.base}
       theirs={sides.theirs}
-      // Passed by reference, NOT wrapped in `void`: ConflictView's Apply latch
-      // awaits whatever this returns, so discarding the promise released the
-      // latch on the next microtask instead of after the commit.
       onResolve={handleResolve}
     />
   );

@@ -74,9 +74,6 @@ describe('desktop self-uninstall helpers', () => {
     expect(selectDesktopUninstallProjectsByIndex(candidates, [1])).toEqual([candidates[1]]);
     expect(selectDesktopUninstallProjectsByIndex(candidates, [])).toEqual([]);
 
-    // Everything a hostile renderer could try in place of an index: values that
-    // reach past the list, values that are not indexes at all, and paths the
-    // renderer would like to have deleted. None of it survives.
     expect(
       selectDesktopUninstallProjectsByIndex(candidates, [
         3,
@@ -93,7 +90,6 @@ describe('desktop self-uninstall helpers', () => {
     expect(selectDesktopUninstallProjectsByIndex(candidates, '/etc/passwd')).toEqual([]);
     expect(selectDesktopUninstallProjectsByIndex(candidates, undefined)).toEqual([]);
 
-    // Duplicates collapse and order follows main's list, not the renderer's.
     expect(selectDesktopUninstallProjectsByIndex(candidates, [2, 0, 2])).toEqual([
       candidates[0],
       candidates[2],
@@ -166,7 +162,6 @@ describe('desktop self-uninstall helpers', () => {
     expect(notice.log).toContain('✗ Remove .claude/skills/pack/');
     expect(notice.footnote).toContain('/Users/alice/Library/Logs/OpenKnowledge/uninstall.log');
 
-    // Unreadable log → the raw error + a path-only hint, no log block.
     const noLog = desktopUninstallFailureNotice({
       error: 'cleanup process exited with code 1',
       logPath: '/log',
@@ -184,7 +179,6 @@ describe('desktop self-uninstall helpers', () => {
     expect(confirm.paragraphs.join(' ')).not.toContain('Trash');
 
     const done = desktopUninstallCompletionNotice({ projectCount: 0 });
-    // A scannable checklist — two done items plus the one remaining action.
     expect((done.checklist ?? []).map((item) => item.label)).toEqual([
       'Kept your content',
       'Removed OpenKnowledge files',
@@ -192,13 +186,11 @@ describe('desktop self-uninstall helpers', () => {
     ]);
     expect(done.checklist?.[0]?.done).toBe(true);
     expect(done.checklist?.[1]?.done).toBe(true);
-    expect(done.checklist?.[2]?.done).toBe(false); // the one pending action
+    expect(done.checklist?.[2]?.done).toBe(false);
     expect(done.confirmLabel).toBe('Reveal in Finder');
-    // The log is a link, not a raw path; the path never enters the spec/HTML.
     expect(done.logRevealLabel).toBe('Cleanup log');
     expect(done.footnote).toBeUndefined();
     expect(done.paragraphs).toEqual([]);
-    // Projects were off by default — no project count in the removed-item detail.
     expect(done.checklist?.[1]?.detail).not.toContain('project');
     expect(desktopUninstallCompletionNotice({ projectCount: 2 }).checklist?.[1]?.detail).toContain(
       '2 projects',
@@ -264,7 +256,6 @@ describe('desktop self-uninstall helpers', () => {
       error: 'cleanup process exited after signal SIGKILL',
       exitCode: null,
     });
-    // A synchronous spawn throw settles too (no hung uninstall flow).
     await expect(
       runDesktopUninstallCleanup(input, {
         spawn: () => {
@@ -277,9 +268,6 @@ describe('desktop self-uninstall helpers', () => {
 
 describe('resolveDesktopUninstallUiPreviewMode', () => {
   test('always returns null in a packaged build, even for a valid mode', () => {
-    // The isPackaged guard is the safety gate that keeps the non-destructive
-    // preview scaffolding from ever short-circuiting the real cleanup path in a
-    // shipped app. An inversion here would let a packaged build enter preview.
     for (const raw of ['success', 'failure', 'renderer', 'picker', 'survey', 'notice', '1']) {
       expect(resolveDesktopUninstallUiPreviewMode(raw, true)).toBeNull();
     }

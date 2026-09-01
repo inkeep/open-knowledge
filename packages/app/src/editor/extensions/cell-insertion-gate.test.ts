@@ -1,19 +1,3 @@
-/**
- * Cell-insertion gate — refuses a block jsxComponent inside a GFM table cell at
- * the owned insertion routes (command tier, real paste dispatcher, PM-native
- * drop, and the nested table-wrapping-a-component shape), exempts CRDT-origin
- * transactions, and leaves edits inside an existing (un-owned-surface)
- * component-in-cell untouched.
- *
- * Real ProseMirror EditorViews over jsdom globals (installDomGlobals from the
- * shared walk-currency harness) with the real core schema (jsxComponent +
- * table), the real MarkdownManager, and the real createHandlePaste dispatcher,
- * so every route runs its production code path into the gate's
- * filterTransaction. A filtered transaction is a silent no-op: the paste
- * dispatcher still claims the event (returns true) rather than falling through
- * to a branch that would re-insert the refused content elsewhere.
- */
-
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { Fragment, type Node as ProseMirrorNode, Slice } from '@tiptap/pm/model';
@@ -24,31 +8,22 @@ import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vite
 import { installDomGlobals } from '../walk-currency-test-harness';
 import { CellInsertionGate } from './cell-insertion-gate';
 
-// The paste dispatcher pulls the degrade-path toast (sonner) into its import
-// graph; stub it so module load stays inert in the jsdom env. The gate's no-op
-// path never degrades, so the stub is never invoked.
 vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
 
 const mdManager = new MarkdownManager({ extensions: coreExtensions });
 
-// Bind the dispatcher after the sonner mock is registered so its transitive
-// sonner import resolves to the stub (the mock facade only rewrites imports
-// resolved after the doMock call).
 let createHandlePaste: typeof import('../clipboard/handle-paste').createHandlePaste;
 
-/** A ClipboardEvent whose clipboardData serves the given MIME map. */
 function fakeDT(data: Record<string, string>): ClipboardEvent {
   return {
     clipboardData: { types: Object.keys(data), getData: (k: string) => data[k] ?? '' },
   } as unknown as ClipboardEvent;
 }
 
-/** Run the real WYSIWYG paste dispatcher against a mounted editor's view. */
 function pasteInto(editor: Editor, data: Record<string, string>): boolean {
   return createHandlePaste({ mdManager })(editor.view, fakeDT(data));
 }
 
-/** A 2x2 GFM table: header row (a,b), one data row (c,d). */
 const TABLE_MD = '| a | b |\n| - | - |\n| c | d |\n';
 
 const CELL_NODES = new Set(['tableCell', 'tableHeader']);
@@ -82,7 +57,6 @@ function mountGateEditor(content?: string | JSONContent): Editor {
   return editor;
 }
 
-/** Gate-less mount — fixture control proving a refused step is otherwise valid. */
 function mountEditor(content?: string | JSONContent): Editor {
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -91,7 +65,6 @@ function mountEditor(content?: string | JSONContent): Editor {
   return editor;
 }
 
-/** A fresh block-component JSON (Callout wrapping one paragraph). */
 function componentJSON(): JSONContent {
   return {
     type: 'jsxComponent',
@@ -100,7 +73,6 @@ function componentJSON(): JSONContent {
   };
 }
 
-/** Caret position inside the first data cell's paragraph text. */
 function firstDataCellCaret(editor: Editor): number {
   let cellPos = -1;
   editor.state.doc.descendants((node, pos) => {
@@ -111,12 +83,11 @@ function firstDataCellCaret(editor: Editor): number {
     return true;
   });
   if (cellPos < 0) throw new Error('seed table has no tableCell');
-  const caret = cellPos + 2; // cell open +1 → paragraph, +2 → paragraph text
+  const caret = cellPos + 2;
   expect(editor.state.doc.resolve(caret).parent.type.name).toBe('paragraph');
   return caret;
 }
 
-/** Whether any jsxComponent in `doc` has a table-cell ancestor. */
 function hasComponentInCell(doc: ProseMirrorNode): boolean {
   let found = false;
   doc.descendants((node, pos) => {
@@ -144,7 +115,6 @@ function countJsxComponents(doc: ProseMirrorNode): number {
   return count;
 }
 
-/** Table JSON whose first data cell already holds a component (un-owned state). */
 function tableJsonWithComponentInCell(): JSONContent {
   const json = mdManager.parse(TABLE_MD) as JSONContent;
   const inject = (node: JSONContent): boolean => {
@@ -222,9 +192,6 @@ describe('cell-insertion gate — permitted transactions', () => {
   });
 
   test('a component-into-cell transaction carrying ySync meta is applied, not filtered', () => {
-    // The exact insertContent transaction route 1 blocks, tagged as if it
-    // arrived from the y-sync plugin (remote peer / y-undo replay). The gate
-    // must let it through or this client's PM view desyncs from the Y.Doc.
     const editor = mountGateEditor(mdManager.parse(TABLE_MD) as JSONContent);
 
     editor
@@ -253,7 +220,7 @@ describe('cell-insertion gate — permitted transactions', () => {
       }
       return true;
     });
-    const interiorCaret = componentPos + 2; // component open +1 → paragraph, +2 → text
+    const interiorCaret = componentPos + 2;
 
     editor.chain().setTextSelection(interiorCaret).insertContent('Z').run();
 
@@ -264,11 +231,6 @@ describe('cell-insertion gate — permitted transactions', () => {
 });
 
 describe('cell-insertion gate — paste route refuses component-into-cell', () => {
-  // An OK→OK copy of one block component carries both text/plain (canonical
-  // markdown) and text/html (PM slice), so the dispatcher's markdown-first
-  // tiebreak parses it through MarkdownManager into a jsxComponent. The
-  // blank-line-wrapped form is what parses to a block (flow) element; the
-  // inline `<Callout>note</Callout>` form parses to a paragraph instead.
   const COMPONENT_CLIPBOARD = {
     'text/plain': '<Callout>\n\nnote\n\n</Callout>\n',
     'text/html':
@@ -278,16 +240,10 @@ describe('cell-insertion gate — paste route refuses component-into-cell', () =
   test('pasting a block component with the caret in a cell claims the event and leaves the doc unchanged', () => {
     const editor = mountGateEditor(mdManager.parse(TABLE_MD) as JSONContent);
     editor.commands.setTextSelection(firstDataCellCaret(editor));
-    // Baseline captured after the caret lands: placing a selection after a
-    // trailing table appends the schema's required trailing paragraph in its
-    // own transaction, and that normalization is not what this test measures.
     const before = editor.state.doc;
 
     const handled = pasteInto(editor, COMPONENT_CLIPBOARD);
 
-    // The dispatcher claims the paste (true) so no later branch re-inserts the
-    // content; the gate filtered the applyJsonSlice dispatch, so the doc — and
-    // the component count anywhere in it — is untouched.
     expect(handled).toBe(true);
     expect(editor.state.doc.eq(before)).toBe(true);
     expect(countJsxComponents(editor.state.doc)).toBe(0);
@@ -298,17 +254,11 @@ describe('cell-insertion gate — paste route refuses component-into-cell', () =
     editor.commands.setTextSelection(firstDataCellCaret(editor));
     const before = editor.state.doc;
 
-    // Markdown-shaped payload (heading + list around the component) so the
-    // markdown-first tiebreak parses it into blocks rather than falling to
-    // the verbatim plain-text branch.
     const handled = pasteInto(editor, {
       'text/plain': '# heading before\n\n<Callout>\n\nnote\n\n</Callout>\n\n- item after\n',
       'text/html': '<div data-pm-slice="0 0 paragraph"><p>mixed</p></div>',
     });
 
-    // Refusal is whole-transaction: no partial delivery of the blocks around
-    // the component — silently delivering a subset would fabricate a state
-    // the user never authored.
     expect(handled).toBe(true);
     expect(editor.state.doc.eq(before)).toBe(true);
     expect(editor.state.doc.textContent).not.toContain('heading before');
@@ -333,8 +283,6 @@ describe('cell-insertion gate — paste route refuses component-into-cell', () =
 
     const handled = pasteInto(editor, { 'text/plain': '**bold**\n\nsecond paragraph' });
 
-    // No component in the payload → the gate does not fire; content inserts as
-    // before (the shipped in-cell flatten happens later, on serialize).
     expect(handled).toBe(true);
     expect(editor.state.doc.eq(before)).toBe(false);
     expect(editor.state.doc.textContent).toContain('bold');
@@ -355,7 +303,6 @@ describe('cell-insertion gate — drop and nested-table routes', () => {
     expect(countJsxComponents(before)).toBe(1);
     expect(hasComponentInCell(before)).toBe(false);
 
-    // Locate the trailing top-level component (doc children are siblings).
     const comps: Array<{ node: ProseMirrorNode; from: number }> = [];
     before.forEach((node, offset) => {
       if (node.type.name === 'jsxComponent') comps.push({ node, from: offset });
@@ -364,15 +311,10 @@ describe('cell-insertion gate — drop and nested-table routes', () => {
     if (!moved) throw new Error('seed lost its top-level component');
     const cellCaret = firstDataCellCaret(editor);
 
-    // Model PM's internal move as one transaction: delete the source, then
-    // dropPoint + replaceRange the component into the cell — the primitive the
-    // drop dispatcher's Branch-C `return false` hands off to PM.
     const slice = new Slice(Fragment.from(moved.node), 0, 0);
     const tr = editor.state.tr.delete(moved.from, moved.from + moved.node.nodeSize);
     const dropPos = dropPoint(tr.doc, tr.mapping.map(cellCaret), slice);
     if (dropPos == null) throw new Error('dropPoint found no position for the component');
-    // Guard the fixture: the resolved drop must sit inside a cell, else a
-    // non-cell landing would make the "refused" assertion vacuous.
     const $drop = tr.doc.resolve(dropPos);
     let dropInCell = false;
     for (let depth = $drop.depth; depth > 0; depth--) {
@@ -382,8 +324,6 @@ describe('cell-insertion gate — drop and nested-table routes', () => {
     tr.replaceRange(dropPos, dropPos, slice);
     editor.view.dispatch(tr);
 
-    // The whole move is refused: nothing landed in a cell and the component is
-    // still exactly where it started.
     expect(editor.state.doc.eq(before)).toBe(true);
     expect(hasComponentInCell(editor.state.doc)).toBe(false);
     expect(countJsxComponents(editor.state.doc)).toBe(1);
@@ -401,11 +341,6 @@ describe('cell-insertion gate — drop and nested-table routes', () => {
   });
 
   test('wrapping an existing component into a fresh table cell is refused (ReplaceAroundStep)', () => {
-    // No user affordance performs this wrap today (the only table-creation
-    // command inserts a new empty table), but the gate is route-agnostic: a
-    // future command or extension issuing the wrap step must hit the same
-    // refusal. Built as a raw ReplaceAroundStep so the step class itself is
-    // exercised, not just ReplaceStep insertions.
     const seed: JSONContent = { type: 'doc', content: [componentJSON()] };
     const buildWrapStep = (doc: ProseMirrorNode) => {
       const schema = doc.type.schema;
@@ -434,9 +369,6 @@ describe('cell-insertion gate — drop and nested-table routes', () => {
       );
     };
 
-    // Fixture guard: without the gate, the identical step applies cleanly and
-    // produces the component-in-cell state — so the refusal below is the
-    // gate's doing, not step invalidity.
     const control = mountEditor(seed);
     const controlTr = control.state.tr.step(buildWrapStep(control.state.doc));
     control.view.dispatch(controlTr);

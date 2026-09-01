@@ -71,7 +71,7 @@ function toDiagnostic(error: LintError, lines: string[], severity: RuleSeverity)
 }
 
 function fixInfoToEdit(fixInfo: FixInfo, diagnosticLine: number, lines: string[]): LintTextEdit {
-  const lineNumber = fixInfo.lineNumber ?? diagnosticLine; // 1-based
+  const lineNumber = fixInfo.lineNumber ?? diagnosticLine;
   const line = lineNumber - 1;
   if (fixInfo.deleteCount === -1) {
     if (lineNumber < lines.length) {

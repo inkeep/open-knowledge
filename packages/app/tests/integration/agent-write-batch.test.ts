@@ -1,21 +1,3 @@
-/**
- * `POST /api/agent-write-batch` behavior suite.
- *
- * Pins the batch contract end-to-end against a real server:
- *   1. Mixed create/update batches land per-entry (array order, duplicate
- *      docNames compose like sequential writes) with every write attributed
- *      to the batch agent, and the batch never forces a shadow commit of its
- *      own — the L2 debounce coalesces the whole batch (plus adjacent
- *      single-call writes) into ONE commit, drained by `/api/history`.
- *   2. Reserved (system/config) doc names reject per entry; siblings land.
- *   3. Broken-link validation sees sibling batch docs regardless of entry
- *      order (intra-batch links resolve) and still reports genuinely dead
- *      links.
- *   4. Per-entry summaries echo (with the shared truncation shape).
- *   5. Undo after a batch write flows through the normal per-session path.
- *   6. The request-id envelope conventions hold for the new route.
- */
-
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,15 +47,6 @@ async function postBatch(
   });
 }
 
-/**
- * WIP refs belonging to SESSION writers (agent / principal) only.
- *
- * `refs/wip/` also carries classified service writers, notably `git-upstream`,
- * which exists as soon as the project repo has history to import. Counting
- * those conflates "these writes produced a shadow commit" with "the repo has
- * commits at all", which is not what the assertions below mean. Mirrors the
- * production filter in `shadow-repo-stats.ts`, including its ref parsing.
- */
 function listWipRefs(contentDir: string): string[] {
   const shadowDir = resolveShadowDir(contentDir);
   const raw = execFileSync('git', ['for-each-ref', '--format=%(refname)', 'refs/wip/'], {
@@ -85,7 +58,6 @@ function listWipRefs(contentDir: string): string[] {
     .split('\n')
     .filter(Boolean)
     .filter((refname) => {
-      // refs/wip/<branch>/<writerId> — writerId may itself contain slashes.
       const writerId = refname.split('/').slice(3).join('/');
       if (!writerId) return false;
       const { classification } = parseWriterId(writerId);
@@ -113,7 +85,6 @@ describe('agent-write-batch', () => {
       docs: [
         { docName: 'batch/alpha', markdown: '# Alpha\n', position: 'replace' },
         { docName: 'batch/beta', markdown: '# Beta\n', position: 'replace' },
-        // Duplicate docName: applies after the first alpha entry, in order.
         { docName: 'batch/alpha', markdown: 'Second paragraph.\n', position: 'append' },
       ],
     });
@@ -129,17 +100,13 @@ describe('agent-write-batch', () => {
       'batch/alpha',
     ]);
 
-    // Per-doc L1 stores were awaited before the response: disk truth now.
     const alpha = readFileSync(join(server.contentDir, 'batch/alpha.md'), 'utf-8');
     expect(alpha).toContain('# Alpha');
     expect(alpha).toContain('Second paragraph.');
     expect(readFileSync(join(server.contentDir, 'batch/beta.md'), 'utf-8')).toContain('# Beta');
 
-    // The batch armed the L2 debounce but never forced a commit of its own.
     expect(listWipRefs(server.contentDir)).toEqual([]);
 
-    // /api/history drains the pending commit; the whole batch coalesced into
-    // ONE shadow commit on the batch writer's wip ref, attributed to it.
     const hist = (await (
       await fetch(`${server.baseUrl}/api/history?docName=${encodeURIComponent('batch/alpha')}`)
     ).json()) as TimelineResponse;
@@ -192,7 +159,6 @@ describe('agent-write-batch', () => {
     const res = await postBatch(server.port, {
       agentId: 'batch-links',
       docs: [
-        // Links to a sibling written LATER in the same batch — must resolve.
         {
           docName: 'batch-links/a',
           markdown: '# A\n\n[to b](./b.md)\n',

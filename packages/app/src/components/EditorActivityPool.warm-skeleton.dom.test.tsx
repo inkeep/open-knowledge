@@ -1,24 +1,3 @@
-/**
- * RTL mount tests for the WarmContentFallback contract: DOM geometry,
- * aria-hidden, and the peek + post-mount clear path that production uses.
- *
- * WarmContentFallback is not exported — tests pin its rendered shape via a
- * local replica that mirrors its JSX exactly. Any structural divergence
- * between the replica and the real component will be caught here (shape
- * change in production silently passes; replica tracks the agreed DOM
- * contract, not the private implementation).
- *
- * Rename-snapshot integration: a thin WarmFallbackHost wrapper mirrors
- * ActivityEntry's `useState(() => peekRenameSnapshot(docName))` capture
- * plus the post-mount `clearRenameSnapshot` (which in production fires
- * from TiptapEditor's `editor.on('create')` hook — see editor-cache.ts
- * JSDoc on peekRenameSnapshot). The peek-then-clear split is the
- * StrictMode-safe pattern: lazy-init `useState` runs twice in dev and
- * must return the same value across the double-invoke.
- *
- * Runs under `bun run test:dom` (jsdom substrate).
- */
-
 import { isMarkdownDocFile } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import { Suspense, useEffect, useLayoutEffect, useState } from 'react';
@@ -34,11 +13,6 @@ import {
 } from '@/editor/editor-cache';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
-// ---------------------------------------------------------------------------
-// Replica of WarmContentFallback's agreed DOM contract
-// ---------------------------------------------------------------------------
-
-/** Mirrors WarmContentFallback exactly — tests pin the DOM contract, not the private symbol. */
 function WarmContentFallbackReplica({ html }: { html: string }) {
   return (
     <div className="tiptap-editor h-full pointer-events-none" aria-hidden="true">
@@ -51,25 +25,10 @@ function WarmContentFallbackReplica({ html }: { html: string }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Thin host that mirrors ActivityEntry's consume-on-init + scroll-apply pattern
-// ---------------------------------------------------------------------------
-
 function WarmFallbackHost({ docName }: { docName: string }) {
-  // Peek (no delete) — StrictMode dev double-invokes the lazy initializer; both
-  // must return the same value to avoid flashing the warm fallback empty.
   const [warmSnapshot] = useState(() => peekRenameSnapshot(docName));
-  // Mirrors the warm-snapshot producer's `isMarkdownDocFile` gate
-  // (`captureRenameSnapshots` in editor-cache.ts): warm markdown HTML only
-  // renders over the markdown dual editor, never over a doc-class surface.
-  // The consumer (ActivityEntry) additionally gates on conflict state, which
-  // this replica does not model.
   const warmHtml = isMarkdownDocFile(docName) ? (warmSnapshot?.html ?? null) : null;
 
-  // Mirrors ActivityEntry's useLayoutEffect — applies scrollTop to the active
-  // editor scroll container. The DOM contract: gated to scrollTop > 0, finds
-  // the container via data-testid, sets scrollTop directly. Container must
-  // be installed by the test before the host mounts.
   useLayoutEffect(() => {
     if (!warmSnapshot || warmSnapshot.scrollTop <= 0) return;
     const scrollEl = document.querySelector<HTMLDivElement>(
@@ -79,11 +38,6 @@ function WarmFallbackHost({ docName }: { docName: string }) {
     scrollEl.scrollTop = warmSnapshot.scrollTop;
   }, [warmSnapshot]);
 
-  // Mirrors TiptapEditor's post-`'create'` clear — in production this fires
-  // once per editor instance after StrictMode settles. In this DOM harness
-  // there is no editor; we approximate by clearing on mount, gated by a
-  // ref to remain StrictMode-safe (mount 1 effect clears + cleanup, mount 2
-  // effect is a no-op because the store entry was already drained).
   useEffect(() => {
     clearRenameSnapshot(docName);
   }, [docName]);
@@ -102,10 +56,6 @@ describe('doc-class gating (mirrors ActivityEntry isDualEditor)', () => {
     expect(screen.queryByText('stale markdown')).toBeNull();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('WarmContentFallback DOM geometry', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -153,7 +103,6 @@ describe('WarmContentFallback DOM geometry', () => {
 
   test('outer div is not interactive (aria-hidden hides from a11y tree)', () => {
     render(<WarmContentFallbackReplica html="<p>hello</p>" />);
-    // aria-hidden="true" means the element is not in the a11y tree
     const hiddenEl = document.querySelector('[aria-hidden="true"]');
     expect(hiddenEl).toBeTruthy();
   });
@@ -200,13 +149,11 @@ describe('rename-snapshot store → warm-fallback selection contract', () => {
   test('consume is one-shot: second render for same docName sees no snapshot', () => {
     storeRenameSnapshot('notes/baz.md', baseSnap('<p>once only</p>'));
 
-    // First render consumes the snapshot
     const { unmount } = render(<WarmFallbackHost docName="notes/baz.md" />);
     expect(document.querySelector('.tiptap-editor')).toBeTruthy();
     unmount();
     cleanup();
 
-    // Second render: snapshot gone → cold skeleton
     render(
       <Suspense fallback={null}>
         <WarmFallbackHost docName="notes/baz.md" />
@@ -219,18 +166,10 @@ describe('rename-snapshot store → warm-fallback selection contract', () => {
   test('snapshot for different docName does not bleed across', () => {
     storeRenameSnapshot('notes/other.md', baseSnap('<p>other</p>'));
     render(<WarmFallbackHost docName="notes/mine.md" />);
-    // 'notes/mine.md' has no snapshot → cold
     expect(screen.getByTestId('cold-skeleton')).toBeTruthy();
-    // 'notes/other.md' snapshot still in store (unconsumed)
     expect(__consumeRenameSnapshot('notes/other.md')?.html).toBe('<p>other</p>');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Scroll-application contract: warm-fallback consumer writes scrollTop to the
-// active editor scroll container (the data-testid="editor-scroll-container"
-// pin). DOM-tier tests because scrollTop write needs a real element.
-// ---------------------------------------------------------------------------
 
 describe('warm-fallback scroll restoration', () => {
   let scrollContainer: HTMLDivElement;
@@ -239,15 +178,10 @@ describe('warm-fallback scroll restoration', () => {
 
   beforeEach(() => {
     __resetRenameSnapshotStore();
-    // Install the scroll container the host's useLayoutEffect targets via
-    // querySelector. Production: this is mounted by ScrollPreservingContainer
-    // (EditorActivityPool.tsx). For DOM tests we mount a minimal stand-in
-    // with the same data-testid contract.
     scrollContainer = document.createElement('div');
     scrollContainer.setAttribute('data-testid', 'editor-scroll-container');
     scrollContainer.style.height = '500px';
     scrollContainer.style.overflowY = 'auto';
-    // Force scrollHeight > clientHeight so scrollTop is settable in jsdom.
     const inner = document.createElement('div');
     inner.style.height = '5000px';
     scrollContainer.appendChild(inner);
@@ -293,11 +227,6 @@ describe('warm-fallback scroll restoration', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// captureRenameSnapshots: scrollTop capture from the active scroll container
-// (DOM-tier because querySelector + setting scrollTop need real DOM).
-// ---------------------------------------------------------------------------
-
 describe('captureRenameSnapshots — scrollTop capture (DOM)', () => {
   let scrollContainer: HTMLDivElement;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -327,24 +256,6 @@ describe('captureRenameSnapshots — scrollTop capture (DOM)', () => {
 
   test('captures scrollTop from [data-testid="editor-scroll-container"]', () => {
     scrollContainer.scrollTop = 333;
-    // The capture helper needs a live tiptap cache entry to capture from.
-    // Stub the relevant editor-cache surface via storeRenameSnapshot-then-capture
-    // is the wrong shape (capture reads peekTiptap). For this test we exercise
-    // the scroll-side of the contract: directly verify that AT THE MOMENT OF
-    // CAPTURE the helper's DOM read returns the right value, mediated by
-    // storing then asserting via the public surface. To do that without the
-    // tiptap-cache machinery, we directly assert the helper's read path
-    // by manually invoking the underlying primitive — which here is the
-    // observable side effect of `captureRenameSnapshots` when there's an
-    // editor in the cache. The unit-tier file (editor-cache.test.ts) covers
-    // capture's editor-side behavior; this DOM test covers the scroll DOM
-    // read isolated from editor wiring.
-    //
-    // Minimal exercise: store a snapshot manually with the scrollTop we just
-    // set on the live DOM, then re-consume — this validates the round-trip.
-    // The capture helper's behavior (scrollTop = readActiveScrollTop()) is
-    // covered by the unit tests for the no-DOM case; this DOM test covers
-    // the integration where the DOM IS present.
     storeRenameSnapshot('notes/scrolled.md', {
       html: '<p>x</p>',
       scrollTop: scrollContainer.scrollTop,
@@ -357,7 +268,6 @@ describe('captureRenameSnapshots — scrollTop capture (DOM)', () => {
   test('captureRenameSnapshots with empty rename list is a no-op', () => {
     scrollContainer.scrollTop = 100;
     expect(() => captureRenameSnapshots([])).not.toThrow();
-    // No snapshot stored under any key
     expect(__consumeRenameSnapshot('whatever')).toBeNull();
   });
 });

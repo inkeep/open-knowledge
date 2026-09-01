@@ -3,10 +3,6 @@ import { buildAnchorSegments, COMMENT_HUE, type PlacedAnchor } from './anchor-la
 
 const at = (id: string | null, from: number, to: number): PlacedAnchor => ({ id, from, to });
 
-// Built from the hue rather than restating it: what these assertions are about
-// is the resting/active intensity ladder, which is what separates the thread
-// being read from the rest. The hue itself is a token that may be rebranded,
-// and pinning it here twice only makes that a test edit.
 const ACTIVE_FILL = `rgba(${COMMENT_HUE},0.45)`;
 const RESTING =
   `border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:rgba(${COMMENT_HUE},0.22);` +
@@ -39,7 +35,6 @@ describe('buildAnchorSegments', () => {
 
   it('gives the shared span to the active thread, not to whoever came last', () => {
     const placed = [at('t1', 0, 10), at('t2', 6, 16)];
-    // The shared span [6,10) follows whichever thread is being read.
     expect(buildAnchorSegments(placed, 't1').map((s) => s.style)).toEqual([
       ACTIVE,
       ACTIVE,

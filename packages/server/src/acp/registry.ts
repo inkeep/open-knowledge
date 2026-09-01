@@ -1,20 +1,3 @@
-/**
- * ACP agent catalog — the registry-driven "support every agent" mechanism.
- *
- * Consumes the Agent Client Protocol registry's aggregated catalog
- * (https://agentclientprotocol.com — Apache-2.0 data; each agent keeps its
- * own license, surfaced in the manifest's `license` field). The catalog is
- * cached two ways: in-memory with a TTL for the common path, and on disk
- * under `.ok/local/` so a server booted offline still lists agents it has
- * seen before. Registry data never ships in OK artifacts — it is fetched at
- * runtime, keeping proprietary agents entirely out of our distribution.
- *
- * Custom (unlisted) agents come from `.ok/local/acp-agents.json` — a
- * machine-local, never-committed file so a teammate's clone can't inject a
- * spawnable command into this machine (same locality reasoning as
- * `server.lock`).
- */
-
 import { readFile } from 'node:fs/promises';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
@@ -23,12 +6,6 @@ import type { PinoLogger } from '../logger.ts';
 
 const ACP_REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json';
 
-/**
- * Featured defaults surfaced above the "browse all" fold, in display order.
- * Ids are pinned to the live registry catalog (verified 2026-07-02).
- * OpenClaw is not in the registry yet — it remains reachable via a custom
- * agent entry until its manifest lands.
- */
 export const FEATURED_AGENT_IDS: readonly string[] = [
   'claude-acp',
   'codex-acp',
@@ -38,32 +15,6 @@ export const FEATURED_AGENT_IDS: readonly string[] = [
   'opencode',
 ];
 
-/**
- * Registry agents that reach OK's tools through the wiring OK installs for
- * their editor (`ok init` / the Desktop consent flow), keyed to that editor
- * id. For most, the wiring is an MCP config entry their harness loads on its
- * own, which is why the thread manager stands down from injecting a
- * same-name duplicate. Pi is the other shape: it has no MCP client at all,
- * and its wiring is a whole managed extension FILE in the project — the
- * thread manager provisions that instead of injecting anything.
- *
- * Agent ids pinned to the live registry catalog like `FEATURED_AGENT_IDS`;
- * agents absent here (gemini, github-copilot-cli, custom entries) have no
- * OK-managed config surface, so the thread manager always injects for them.
- *
- * Cursor is deliberately absent despite having one. It treats a configured
- * server as offered rather than loaded: config-declared MCP servers sit behind
- * a separate approval step (`cursor-agent mcp list` reports an unapproved
- * entry as "not loaded (needs approval)"), so the entry's presence says
- * nothing about whether the agent will have the tools, and standing down
- * strands the user with no tools and no error. Tracking the approval instead
- * would mean reproducing two undocumented Cursor internals — the per-project
- * directory slug and the hash keying each approval entry — either of which can
- * drift silently back into that same failure. Injecting sidesteps the gate and
- * is safe even for an already-approved entry: Cursor merges config-declared
- * and injected servers by name, and the injected one wins the tie. The editor
- * wiring itself stays — it still serves the user's own non-ACP Cursor use.
- */
 export const ACP_AGENT_EDITOR_IDS: { readonly [agentId: string]: EditorId | undefined } = {
   'claude-acp': 'claude',
   'codex-acp': 'codex',
@@ -71,14 +22,8 @@ export const ACP_AGENT_EDITOR_IDS: { readonly [agentId: string]: EditorId | unde
   'pi-acp': 'pi',
 };
 
-/** One platform target inside a manifest's `binary` distribution. */
 export interface RegistryBinaryTarget {
   archive: string;
-  /**
-   * Lowercase hex SHA-256 of the archive. Verified after download when
-   * present; a manifest without one installs with a loud warning (binary
-   * distributions are opaque executables, so publishers should ship this).
-   */
   sha256?: string;
   cmd: string;
   args?: string[];
@@ -97,7 +42,6 @@ interface RegistryDistribution {
   binary?: Record<string, RegistryBinaryTarget>;
 }
 
-/** Agent manifest as served by the registry CDN (`FORMAT.md` schema). */
 export interface RegistryAgent {
   id: string;
   name: string;
@@ -111,7 +55,6 @@ export interface RegistryAgent {
   distribution: RegistryDistribution;
 }
 
-/** Machine-local custom agent entry (`.ok/local/acp-agents.json`). */
 export interface CustomAgentEntry {
   id: string;
   name: string;
@@ -123,7 +66,6 @@ export interface CustomAgentEntry {
 export interface CatalogResult {
   agents: RegistryAgent[];
   fetchedAt: number;
-  /** True when served from the disk fallback because the CDN was unreachable. */
   stale: boolean;
 }
 
@@ -131,10 +73,6 @@ const CUSTOM_AGENTS_FILE = 'acp-agents.json';
 const REGISTRY_CACHE_FILE = 'acp-registry-cache.json';
 const DEFAULT_TTL_MS = 60 * 60 * 1000;
 
-/**
- * The registry's platform key for this host (`<os>-<arch>` in the manifest's
- * vocabulary), or null on platforms the registry doesn't enumerate.
- */
 export function registryPlatformKey(): string | null {
   const os = platform();
   const cpu = arch();
@@ -145,22 +83,8 @@ export function registryPlatformKey(): string | null {
   return `${osKey}-${cpuKey}`;
 }
 
-/**
- * Registry ids whose brands are intentionally all-lowercase (verified against
- * each vendor's own site, 2026-08-05) — the one class of name the lowercase
- * backstop below must leave alone.
- */
 const LOWERCASE_BRAND_AGENT_IDS: ReadonlySet<string> = new Set(['goose', 'fast-agent', 'crow-cli']);
 
-/**
- * Display names are publisher-authored registry data, mutable under us and
- * occasionally shipped fully lowercase (a `cursor` manifest did exactly that).
- * Branded capitalization ("GitHub Copilot", "VT Code", "siGit Code") must pass
- * through verbatim — blanket title-casing would corrupt it — so the backstop
- * title-cases only names containing no uppercase at all, minus the
- * intentionally-lowercase brands above. Runs at catalog ingest so every
- * consumer (catalog endpoint, thread metas, presence) sees one spelling.
- */
 export function normalizeAgentDisplayName(id: string, name: string): string {
   const trimmed = name.trim();
   if (trimmed.length === 0) return id;
@@ -208,11 +132,9 @@ export class AcpRegistry {
   private inflight: Promise<CatalogResult> | null = null;
 
   constructor(opts: {
-    /** Absolute path to `<projectDir>/.ok/local`. */
     localDir: string;
     log: PinoLogger;
     ttlMs?: number;
-    /** Test seam. */
     fetchImpl?: typeof fetch;
   }) {
     this.localDir = opts.localDir;
@@ -221,7 +143,6 @@ export class AcpRegistry {
     this.fetchImpl = opts.fetchImpl ?? fetch;
   }
 
-  /** Fresh-enough memory copy, else network, else disk fallback. */
   async getCatalog(): Promise<CatalogResult> {
     if (
       this.memory !== null &&
@@ -252,8 +173,6 @@ export class AcpRegistry {
       const agents = parseCatalogJson(text);
       if (agents === null) throw new Error('registry payload did not parse as a catalog');
       this.memory = { agents, fetchedAt: Date.now(), stale: false };
-      // Best-effort disk mirror for offline boots. Import lazily so the
-      // traced-fs module (and its telemetry deps) never load on read paths.
       try {
         const { tracedMkdir, tracedWriteFile } = await import('../fs-traced.ts');
         await tracedMkdir(this.localDir, { recursive: true });
@@ -269,8 +188,6 @@ export class AcpRegistry {
         this.memory = fallback;
         return fallback;
       }
-      // Keep any previous in-memory copy usable past its TTL rather than
-      // failing the catalog entirely.
       if (this.memory !== null) {
         this.log.warn({ err }, '[acp-registry] CDN unreachable — serving stale memory copy');
         this.memory = { ...this.memory, stale: true };
@@ -292,10 +209,6 @@ export class AcpRegistry {
   }
 }
 
-/**
- * Read machine-local custom agents. Malformed entries are dropped (warn),
- * never fatal — a hand-edited file must not take the whole catalog down.
- */
 export async function loadCustomAgents(
   localDir: string,
   log: PinoLogger,

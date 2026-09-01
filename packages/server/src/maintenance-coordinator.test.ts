@@ -46,10 +46,6 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-// Seed N distinct, REACHABLE loose objects fast: write N files, `git add` them
-// (creates N blobs), write-tree + commit-tree, and point a WIP ref at the
-// commit. All N blobs + the tree + the commit are reachable, so `git gc` packs
-// them (vs. unreachable loose objects, which gc leaves loose within the grace).
 async function seedReachableLooseObjects(n: number): Promise<void> {
   const sg = shadowGit(shadow);
   for (let i = 0; i < n; i++) {
@@ -77,16 +73,6 @@ async function seedReachableLooseObjects(n: number): Promise<void> {
   rmSync(idx, { force: true });
 }
 
-// `git gc --auto` does not count every loose object. It estimates the total by
-// sampling ONE fanout directory (objects/17) and only packs when that single
-// directory holds more than gc.auto/256 entries (3+ at gc.auto=512).
-// Content-addressed seed objects spread uniformly over all 256 fanout dirs, so
-// the sampled dir can land under that bar and gc legitimately declines to pack
-// even with 1500 loose objects in the repo. These payloads are precomputed to
-// hash into objects/17 (blob sha1 prefix "17"), so writing them pins the
-// sampled dir over the threshold and gc packs every run. They are deliberately
-// unreachable: the estimate counts them, while the packing assertions only
-// need the reachable seed blobs to move into a packfile.
 const GC_AUTO_SAMPLE_PAYLOADS = [
   'gc auto fanout sample object 188\n',
   'gc auto fanout sample object 460\n',
@@ -109,10 +95,6 @@ async function seedGcAutoSampleObjects(): Promise<void> {
   }
 }
 
-// Spy on the private compound-maintenance entry point that every trigger
-// (noteFlushCommit / onSessionClose / boot) invokes. Trigger-wiring tests assert
-// "the trigger fired maintenance" at this seam — the gc/consolidate/reap legs run
-// under it without re-acquiring the gate, so spying a single leg would miss it.
 type WithScheduledMaintenance = { runScheduledMaintenance(trigger: string): Promise<void> };
 function spyScheduledMaintenance(coord: MaintenanceCoordinator) {
   return vi.spyOn(coord as unknown as WithScheduledMaintenance, 'runScheduledMaintenance');
@@ -120,7 +102,7 @@ function spyScheduledMaintenance(coord: MaintenanceCoordinator) {
 
 describe('configureShadowGc (PRD-6972 D8)', () => {
   test('writes gc.auto / autoDetach / commit-graph config (idempotent)', async () => {
-    await configureShadowGc(shadow); // initShadowRepo already ran it; idempotent re-run
+    await configureShadowGc(shadow);
     const sg = shadowGit(shadow);
     expect((await sg.raw('config', 'gc.auto')).trim()).toBe('512');
     expect((await sg.raw('config', 'gc.autoDetach')).trim()).toBe('false');
@@ -131,8 +113,8 @@ describe('configureShadowGc (PRD-6972 D8)', () => {
 
 describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
   test('packs a >512-loose-object repo: loose drops, packfile appears', async () => {
-    await seedReachableLooseObjects(1500); // well over the gc.auto=512 estimate
-    await seedGcAutoSampleObjects(); // pin gc --auto's fanout sample over threshold
+    await seedReachableLooseObjects(1500);
+    await seedGcAutoSampleObjects();
     const before = await countShadowObjects(shadow);
     expect(before.looseObjects).toBeGreaterThan(512);
     expect(before.packfiles).toBe(0);
@@ -147,14 +129,11 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
     expect(after.looseObjects).toBeLessThan(before.looseObjects);
   }, 60_000);
 
-  // A1 (STOP_IF gate): git gc --auto must be safe against the shadow layout
-  // (core.bare unset, core.worktree set) WITH concurrent commits.
   test('A1: gc is safe against the shadow layout with a concurrent commit', async () => {
     await seedReachableLooseObjects(1500);
-    await seedGcAutoSampleObjects(); // force gc to actually pack, else the gc-vs-commit race isn't exercised
+    await seedGcAutoSampleObjects();
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
 
-    // gc and a fresh WIP commit race.
     writeFileSync(resolve(contentDir, 'intro.md'), '# concurrent edit\n');
     const [gcResult, concurrentSha] = await Promise.all([
       coord.runGc('test'),
@@ -163,24 +142,18 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
 
     expect(gcResult.ran).toBe(true);
 
-    // The repo is structurally valid after the race (no corruption).
     const sg = shadowGit(shadow);
     const fsck = await sg.raw('fsck', '--full', '--strict');
     expect(fsck).not.toContain('error');
     expect(fsck).not.toContain('missing');
 
-    // The concurrent commit survived and is reachable.
     const head = (await sg.raw('rev-parse', 'refs/wip/main/human-ada')).trim();
     expect(head).toBe(concurrentSha);
   }, 60_000);
 
-  // A1 amplification: object creation stays active across gc's ENTIRE window
-  // (a stream of commits, not one). Pre-fix this raced `git add`'s loose-object
-  // writes against gc's object-dir deletion at high probability; post-fix the
-  // shadow op gate serializes the stream against the exclusive gc leg.
   test('A2: gc is safe against a sustained stream of concurrent commits', async () => {
     await seedReachableLooseObjects(1500);
-    await seedGcAutoSampleObjects(); // force gc to actually pack, else the gc-vs-commit race isn't exercised
+    await seedGcAutoSampleObjects();
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
 
     const shas: string[] = [];
@@ -201,15 +174,12 @@ describe('MaintenanceCoordinator.runGc (PRD-6972 FR4)', () => {
     expect(fsck).not.toContain('error');
     expect(fsck).not.toContain('missing');
 
-    // Every commit in the stream survived; the ref lands on the last one.
     const head = (await sg.raw('rev-parse', 'refs/wip/main/human-ada')).trim();
     expect(shas).toHaveLength(20);
     expect(head).toBe(shas[shas.length - 1]);
   }, 60_000);
 
   test('detects + surfaces a gc.log latch', async () => {
-    // Simulate a prior gc failure: a recent gc.log makes `git gc --auto` decline
-    // to run and leaves the latch in place.
     writeFileSync(resolve(shadow.gitDir, 'gc.log'), 'warning: prior gc failed\n');
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
     const result = await coord.runGc('test');
@@ -253,18 +223,15 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
   test('noteFlushCommit fires gc every FLUSH_GC_INTERVAL commits, then resets', async () => {
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
     const spy = spyScheduledMaintenance(coord).mockResolvedValue(undefined);
-    // noteFlushCommit fires runScheduledMaintenance fire-and-forget, so drain
-    // microtasks before asserting maintenance was reached.
     const drain = () => new Promise((r) => setTimeout(r, 0));
 
     for (let i = 0; i < FLUSH_GC_INTERVAL - 1; i++) coord.noteFlushCommit();
     await drain();
     expect(spy).toHaveBeenCalledTimes(0);
-    coord.noteFlushCommit(); // the FLUSH_GC_INTERVAL-th
+    coord.noteFlushCommit();
     await drain();
     expect(spy).toHaveBeenCalledTimes(1);
 
-    // Counter reset — the next interval is needed to fire again.
     for (let i = 0; i < FLUSH_GC_INTERVAL - 1; i++) coord.noteFlushCommit();
     await drain();
     expect(spy).toHaveBeenCalledTimes(1);
@@ -296,16 +263,11 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
 
   test('runReap no-ops when projectGitDir is not configured', async () => {
     const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
-    // No projectGitDir → reap disabled; must not throw and must not run gc.
     await coord.runReap('test');
     expect(coord.isRunning).toBe(false);
   });
 
   test('runBootMaintenance settles only after the whole maintenance run', async () => {
-    // The settlement IS the shutdown-drain guarantee: destroy() awaits this
-    // promise before content-dir teardown, so settling while work continued
-    // in the background (the old capped behavior) would let a maintenance git
-    // subprocess race the removal of `.git/ok`.
     vi.useFakeTimers();
     try {
       const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
@@ -349,8 +311,6 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
       getShadow: () => shadow,
       projectGitDir: resolve(projectRoot, '.git'),
     });
-    // Hold the FIRST leg (consolidation) open, destroy while it runs, then
-    // release — the reap and gc legs must not start.
     let releaseConsolidate: () => void = () => {};
     const consolidateSpy = vi
       .spyOn(

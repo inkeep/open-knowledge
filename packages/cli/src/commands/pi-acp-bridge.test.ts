@@ -34,15 +34,6 @@ function write(path: string, text: string): void {
   writeFileSync(path, text, 'utf-8');
 }
 
-/**
- * Dev-mode sources resolve the local dist launcher from `argv[1]`, which under
- * the test runner points at its own worker. Stub a CLI-shaped path so repo-root
- * inference succeeds (same shim the pi-extension suite uses).
- */
-/**
- * Awaits the callback before restoring argv — an async body would otherwise
- * see the restored value the moment it hit its first await.
- */
 async function withDevArgv<T>(fn: () => Promise<T>): Promise<T> {
   const original = process.argv[1];
   process.argv[1] = '/repo/packages/cli/src/cli.ts';
@@ -53,7 +44,6 @@ async function withDevArgv<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Freeze both artifacts' mtimes so a "no write happened" claim is checkable. */
 function freezeMtime(path: string): number {
   const stamp = new Date(Date.now() - 60_000);
   utimesSync(path, stamp, stamp);
@@ -222,8 +212,6 @@ describe('ensurePiBridge', () => {
     const cwd = tmp();
     const home = tmp();
     write(bridgePathIn(cwd), buildPiExtensionSource({ mode: 'published' }));
-    // No argv shim: the dev launcher path cannot be inferred under the test
-    // runner, and this surface must report rather than throw at its caller.
     expect(await ensurePiBridge(cwd, { mode: 'dev' }, home)).toMatchObject({
       ok: false,
       bridge: 'failed',
@@ -254,8 +242,6 @@ describe('ensurePiBridge', () => {
       buildPiExtensionSource({ mode: 'published' }),
     );
 
-    // A byte-current PUBLISHED file is stale for a dev install and vice versa:
-    // the version sentinel alone cannot answer "already correct".
     await withDevArgv(async () => {
       expect((await ensurePiBridge(cwd, { mode: 'dev' }, home)).bridge).toBe('refreshed');
       expect(readFileSync(bridgePathIn(cwd), 'utf-8')).toBe(
@@ -324,7 +310,6 @@ describe('ensurePiBridge', () => {
     });
     expect(result.error).toBeTruthy();
     expect(readFileSync(trustPathIn(home), 'utf-8')).toBe('{not json');
-    // The bridge half still landed — the caller can report a partial result.
     expect(isOwnPiExtensionSource(readFileSync(bridgePathIn(cwd), 'utf-8'))).toBe(true);
   });
 
@@ -343,11 +328,6 @@ describe('ensurePiBridge', () => {
   });
 });
 
-/**
- * Trust is folder-scoped: one entry authorizes every extension in
- * `<cwd>/.pi/extensions`, so both halves of its lifecycle have to reckon with
- * what else lives there.
- */
 describe('folder-scoped trust', () => {
   test('the probe names the other extensions the trust grant would cover', async () => {
     const cwd = tmp();
@@ -355,10 +335,8 @@ describe('folder-scoped trust', () => {
     mkdirSync(dirname(bridgePathIn(cwd)), { recursive: true });
     write(join(dirname(bridgePathIn(cwd)), 'zeta.ts'), '// someone else');
     write(join(dirname(bridgePathIn(cwd)), 'alpha.ts'), '// someone else');
-    // Not an extension Pi would load, so not something to warn about.
     write(join(dirname(bridgePathIn(cwd)), 'notes.md'), 'hi');
     await ensurePiBridge(cwd, { mode: 'published' }, home);
-    // Sorted, and OK's own managed file is never listed as somebody else's.
     expect(probePiBridgeState(cwd, home).otherExtensions).toEqual(['alpha.ts', 'zeta.ts']);
   });
 
@@ -378,7 +356,6 @@ describe('folder-scoped trust', () => {
     await ensurePiBridge(cwd, { mode: 'published' }, home);
     write(join(dirname(bridgePathIn(cwd)), 'theirs.ts'), '// someone else');
     rmSync(bridgePathIn(cwd), { force: true });
-    // Revoking here would silently stop Pi loading a file OK never wrote.
     expect(removePiTrustEntry(cwd, home).action).toBe('kept-shared');
     expect(probePiBridgeState(cwd, home).trust).toBe('trusted');
   });
@@ -391,8 +368,6 @@ describe('folder-scoped trust', () => {
     rmSync(bridgePathIn(cwd), { force: true });
     chmodSync(extDir, 0o000);
     try {
-      // An inconclusive check must not license a revocation — something we
-      // can't see could still depend on the grant.
       expect(removePiTrustEntry(cwd, home).action).toBe('kept-unverified');
       expect(probePiBridgeState(cwd, home).trust).toBe('trusted');
     } finally {
@@ -404,7 +379,6 @@ describe('folder-scoped trust', () => {
     const cwd = tmp();
     const home = tmp();
     await ensurePiBridge(cwd, { mode: 'published' }, home);
-    // Nothing left there to depend on the grant, so revoking is safe.
     rmSync(dirname(bridgePathIn(cwd)), { recursive: true, force: true });
     expect(removePiTrustEntry(cwd, home).action).toBe('removed');
   });

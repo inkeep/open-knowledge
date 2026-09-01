@@ -1,9 +1,3 @@
-/**
- * The reporter's job is to send ONE event per genuine install. Most of these
- * tests are about when it must stay silent — the launch reclaim runs on every
- * desktop start, so a reporter that fires per call would turn an install count
- * into a launch count.
- */
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +8,6 @@ function freshHome(): string {
   return mkdtempSync(join(tmpdir(), 'ok-install-report-'));
 }
 
-/** Records every URL it is called with; always succeeds. */
 function recordingFetch(): { calls: string[]; impl: typeof fetch } {
   const calls: string[] = [];
   const impl = (async (url: string) => {
@@ -51,7 +44,6 @@ describe('reportSkillInstall', () => {
     expect(url.searchParams.get('v')).toBe('9.9.9');
   });
 
-  // The rule that makes the number mean "installs" rather than "launches".
   test('reports a given skill only once per machine', async () => {
     const home = freshHome();
     const { calls, impl } = recordingFetch();
@@ -72,10 +64,6 @@ describe('reportSkillInstall', () => {
     expect(new URL(calls[1] as string).searchParams.get('skills')).toBe('b');
   });
 
-  // The ledger entry is claimed BEFORE the send and never un-claimed. Nothing
-  // awaits this call, so a process exiting mid-flight would otherwise leave the
-  // entry unwritten and re-report the same install next run — inflating a
-  // public count. A dropped send costs one uncounted install instead.
   test('a failed send is not retried on the next run', async () => {
     const home = freshHome();
     const failing = (async () => {
@@ -93,12 +81,8 @@ describe('reportSkillInstall', () => {
     expect(calls).toEqual([]);
   });
 
-  // If the claim cannot be written there is nothing on disk to suppress the
-  // next run, so sending anyway would produce the duplicate the claim-first
-  // ordering exists to prevent.
   test('does not send when the ledger claim cannot be written', async () => {
     const home = freshHome();
-    // A directory where the state file belongs: every write to it fails.
     mkdirSync(join(home, '.ok', 'skill-state.yml'), { recursive: true });
     const { calls, impl } = recordingFetch();
     const reported = await reportSkillInstall(
@@ -121,22 +105,15 @@ describe('reportSkillInstall', () => {
     ).resolves.toEqual(['x']);
   });
 
-  // A rejected report (unknown-skill 4xx while a fresh listing indexes, a
-  // collector 5xx) is DELIVERED but not counted. Unlike a dropped send, that
-  // outcome is unambiguous, so the claim is released and a later run reports it
-  // again — otherwise the installs a rename is measured by are discarded during
-  // the exact window the collector is meeting every new name for the first time.
   test('a non-2xx collector response releases the claim so a later run retries', async () => {
     const home = freshHome();
     const rejecting = (async () => ({ ok: false, status: 404 })) as unknown as typeof fetch;
-    // Nothing was counted, so nothing is reported back to the caller.
     await expect(
       reportSkillInstall(
         { source: 'o/r', skills: ['x'] },
         { home, ...ENABLED, fetchImpl: rejecting },
       ),
     ).resolves.toEqual([]);
-    // The claim is gone, so the next run sends it again.
     const { calls, impl } = recordingFetch();
     await expect(
       reportSkillInstall({ source: 'o/r', skills: ['x'] }, { home, ...ENABLED, fetchImpl: impl }),
@@ -144,10 +121,6 @@ describe('reportSkillInstall', () => {
     expect(calls).toHaveLength(1);
   });
 
-  // The counterpart contract: an AMBIGUOUS failure keeps its claim. A dropped
-  // request may have reached the collector and had only its response lost, so
-  // retrying could inflate someone's public install count. Under-count once
-  // rather than double-count.
   test('a dropped send keeps its claim and is never retried', async () => {
     const home = freshHome();
     const dropping = (async () => {
@@ -165,10 +138,6 @@ describe('reportSkillInstall', () => {
     expect(calls).toEqual([]);
   });
 
-  // The collector is a serverless function behind an edge: a 5xx or 429 can be
-  // synthesized AFTER the origin recorded the event, so it is ambiguous exactly
-  // like a dropped send. Only an application-level rejection proves nothing was
-  // counted and is therefore safe to retry.
   test('a 503 keeps its claim; a 404 releases it', async () => {
     const statusFetch = (status: number) =>
       (async () => ({ ok: false, status })) as unknown as typeof fetch;
@@ -200,9 +169,6 @@ describe('reportSkillInstall', () => {
 });
 
 describe('reportSkillInstall — scope', () => {
-  // THE privacy assertion. The changeset promises the project path "is used only
-  // as a local key and is never sent". Nothing else stops a future edit to the
-  // params builder from shipping a user's home-directory path to the collector.
   test('the project path never reaches the request', async () => {
     const { calls, impl } = recordingFetch();
     await reportSkillInstall(
@@ -245,9 +211,6 @@ describe('reportSkillInstall — scope', () => {
     expect(other.calls).toHaveLength(1);
   });
 
-  // Machine-wide and project-scoped keys must not collide: the built-in bundles
-  // are reported unscoped, and a project install of the same name is a separate
-  // event, not a duplicate of it.
   test('a scoped key is independent of the unscoped one', async () => {
     const home = freshHome();
     await reportSkillInstall(
@@ -282,10 +245,6 @@ describe('reportSkillInstall — stays silent', () => {
     expect(calls).toEqual([]);
   });
 
-  // A private repo's name, and a local path, are the user's information. The
-  // upstream CLI gates its own event on a repo-privacy probe for the same
-  // reason; refusing anything that isn't a plain `owner/repo` is the blunt
-  // version of that and errs toward saying nothing.
   test.each([
     ['a local absolute path', '/Users/someone/private-skills'],
     ['a relative path', './local'],
@@ -302,12 +261,6 @@ describe('reportSkillInstall — stays silent', () => {
     expect(calls).toEqual([]);
   });
 
-  // An internal hostname is not a marketplace publisher, and the NAME itself is
-  // the sensitive part — it describes a network the collector has no business
-  // knowing about.
-  // Reserved TLD position only. A private label in the MIDDLE
-  // (`foo.corp.example.com`) is an ordinary public name and stays reportable —
-  // widening to "contains" would refuse legitimate publishers.
   test.each([
     ['skills.corp'],
     ['wiki.internal'],
@@ -324,8 +277,6 @@ describe('reportSkillInstall — stays silent', () => {
     expect(calls).toEqual([]);
   });
 
-  // A website catalog is the other shape skills.sh indexes (`open.feishu.cn`),
-  // so it reports — the dot is what separates it from a bare local dir name.
   test('but a website-catalog hostname IS reported', async () => {
     const { calls, impl } = recordingFetch();
     await reportSkillInstall(

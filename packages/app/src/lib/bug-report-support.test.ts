@@ -1,12 +1,3 @@
-/**
- * Unit tests for the pure helpers in the shared bug-report module.
- *
- * `zipBasename` is the load-bearing one: the renderer keys a send operation by
- * it, and Electron main independently keys the same report by `path.basename`
- * of the same zip path. The two derivations have to agree on both separators
- * for a renderer operation to name the report main is actually sending.
- */
-
 import { isBlankNoteContent } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { bugReportNoteTitle, supportMailtoUrl, zipBasename } from './bug-report-support.ts';
@@ -37,10 +28,6 @@ describe('supportMailtoUrl', () => {
   });
 });
 
-/**
- * One corpus, two jobs: each row is its own named derivation case, and the
- * idempotence test replays the whole set. A case added here is covered by both.
- */
 const NOTE_TITLE_CASES: ReadonlyArray<{
   name: string;
   note: string | undefined;
@@ -223,12 +210,6 @@ describe('bugReportNoteTitle', () => {
 });
 
 describe('main and the renderer agree on what does not count', () => {
-  // The two processes decide this separately: main asks whether a note is worth
-  // persisting, the renderer whether one yields a title. A character either
-  // side stopped recognizing would leave a sidecar claiming a note the row
-  // refuses to title, and a retry would put it on the wire as the reporter's
-  // words. Boundaries included deliberately — the ends of a range are what a
-  // careless narrowing drops first.
   test.each([
     ['\u0000', 'NUL'],
     ['\u001F', 'C0 upper boundary'],

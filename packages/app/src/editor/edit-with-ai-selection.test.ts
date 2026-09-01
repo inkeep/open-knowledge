@@ -1,12 +1,3 @@
-/**
- * Unit tests for the "Edit with AI" selection serializers.
- *
- * The WYSIWYG path is exercised with a minimal `doc > paragraph > text`
- * schema against the real
- * shared `MarkdownManager` — `doc` / `paragraph` / `text` are universal node
- * names, so the real serialize pipeline handles the synthetic slice.
- */
-
 import { Schema } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 import { describe, expect, test } from 'vitest';

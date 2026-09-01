@@ -1,13 +1,3 @@
-/**
- * Kill-semantics tests for `spawnAcpAgent` + `terminateAgentTree` — the
- * process-tree death guarantee behind thread close and server shutdown.
- *
- * The stubborn fixture simulates the npx shape that motivated group-kill: a
- * SIGTERM-ignoring wrapper whose SIGTERM-ignoring child is the "real" agent.
- * Killing only the direct child orphans the grandchild (verified on macOS:
- * SIGKILL to npx reparents its bin to PID 1, still running).
- */
-
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -56,7 +46,6 @@ describe('mergedEnv PATH augmentation', () => {
   test('an explicit overlay PATH is used verbatim — augmentation repairs only the inherited base', () => {
     const key = 'PATH' in process.env ? 'PATH' : 'Path';
     const out = mergedEnv({ [key]: '/sentinel/only' });
-    // An overlay PATH is a spawn-env contract: it wins verbatim, never appended-to.
     expect(out[key]).toBe('/sentinel/only');
   });
 
@@ -73,14 +62,6 @@ describe('mergedEnv PATH augmentation', () => {
   });
 
   test('drops inherited `npm_config_overrides` while preserving user-set npm env', () => {
-    // The bug: pnpm dev exports `npm_config_overrides` with pnpm's flat
-    // `parent>child` key shape. A nested `npx exec` re-enters npm,
-    // arborist rejects the flat key, and launch dies with
-    // `Override without name`. Only that one env var breaks — user-set
-    // npm env (`npm_config_userconfig`, nerf-darted auth tokens like
-    // `npm_config_//<registry>/:_authToken`) and pnpm broadcasts that
-    // merely warn (`registry`, `strict_peer_dependencies`) must reach
-    // the spawned agent unchanged.
     const priors = {
       npm_config_overrides: process.env.npm_config_overrides,
       npm_config_userconfig: process.env.npm_config_userconfig,
@@ -110,11 +91,6 @@ describe('mergedEnv PATH augmentation', () => {
   });
 
   test('managed-runtime overlay wins over a pnpm-broadcast `npm_config_cache` base', () => {
-    // `rewriteLaunchToManagedRuntime` sets `npm_config_cache` on the
-    // returned env to point at the runtime's private cache. In the real
-    // failure scenario pnpm's own `npm_config_cache` is already in
-    // `process.env` — seed it so the assertion pins that path instead of
-    // collapsing into a re-test of the pre-existing overlay-wins merge.
     const prior = process.env.npm_config_cache;
     process.env.npm_config_cache = '/pnpm/broadcast/cache';
     try {
@@ -234,9 +210,7 @@ afterEach(() => {
   for (const pid of strayPids) {
     try {
       process.kill(pid, 'SIGKILL');
-    } catch {
-      // Already gone — the desired state.
-    }
+    } catch {}
   }
   strayPids = [];
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
@@ -573,9 +547,6 @@ describe('ensureBinaryInstalled', () => {
     expect(existsSync(join(cacheDir, 'test-agent', '1.0.0'))).toBe(false);
   });
 
-  // A manifest whose cmd can never resolve inside the verified archive fails
-  // identically on every attempt — without the marker, every launch of a
-  // broken agent re-streamed the full archive just to fail the same way.
   test('a deterministic manifest failure is remembered and fails fast without re-downloading', async () => {
     const source = tmp();
     const cacheDir = tmp();
@@ -610,8 +581,6 @@ describe('ensureBinaryInstalled', () => {
     });
     expect(fetched).toBe(0);
 
-    // A corrected manifest mismatches the marker, so the install retries —
-    // and a successful attempt clears the marker.
     const installed = await ensureBinaryInstalled(
       'test-agent',
       '1.0.0',
@@ -674,9 +643,6 @@ describe('ensureBinaryInstalled', () => {
     expect(readdirSync(agentDir).some((name) => name.startsWith('.install-'))).toBe(false);
   });
 
-  // Once the install completes via any other path, later launches take the
-  // fast path and never re-enter the commit lock — the sweep is the only
-  // thing left that can collect a lockfile a crashed holder left behind.
   test('the fast path sweeps a stale lockfile orphaned by a crashed commit', async () => {
     const source = tmp();
     const cacheDir = tmp();
@@ -711,15 +677,9 @@ describe('hosted-agent marker', () => {
     expect(withHostedAgentMarker({ [OK_HOSTED_AGENT_ENV]: '0' })[OK_HOSTED_AGENT_ENV]).toBe('1');
   });
 
-  // The marker only earns its keep if it survives into the spawned process —
-  // that is the hop `ok mcp` reads it across. Assert on a real spawn rather
-  // than on the helper's return value.
   test('a really-spawned agent receives it in its environment', async () => {
     const dir = tmp();
     const script = join(dir, 'echo-marker.js');
-    // Write-then-rename: a plain writeFileSync makes the path observable the
-    // instant it is created, so a waiter polling on existence can read it back
-    // empty before the bytes land. The rename publishes it already complete.
     writeFileSync(
       script,
       [
@@ -736,8 +696,6 @@ describe('hosted-agent marker', () => {
 });
 
 describe('spawnAcpAgent — cwd isolation for npx launches', () => {
-  // The spawned script writes its own `process.cwd()` to a file we can read
-  // back — that is the ground truth for what cwd the child ended up in.
   function makeEchoCwdScript(dir: string): string {
     const script = join(dir, 'echo-cwd.js');
     writeFileSync(
@@ -752,11 +710,6 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
   }
 
   test('npx-kind spawns run from an OK-owned isolated cwd, not the record cwd', async () => {
-    // A pnpm-format `overrides` block in an ancestor package.json of the
-    // record cwd trips npm's arborist during `npx exec` — the exact bug
-    // this fix exists for. Isolating the spawn cwd sidesteps the
-    // walk-up entirely; the ACP handshake still tells the agent which
-    // workspace it is on.
     const dir = tmp();
     const script = makeEchoCwdScript(dir);
     const launch: ResolvedLaunch = {
@@ -770,32 +723,22 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
     if (child.pid !== undefined) strayPids.push(child.pid);
     await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
     const observed = readFileSync(`${script}.out`, 'utf8');
-    // The isolated cwd is an OK-owned dir under the user's home, not the
-    // record cwd we passed in. `~/.ok/acp-npx-cwd` — same shape as the
-    // sibling `~/.ok/acp-agents/` binary cache.
     expect(observed).not.toBe(dir);
     expect(observed.endsWith('/.ok/acp-npx-cwd')).toBe(true);
   });
 
   test('the isolated cwd carries a private marker package.json so arborist walk terminates there', () => {
-    // Without a marker, npm's `loadLocalPrefix` walks up from ~/.ok/acp-npx-cwd
-    // through ~/.ok → $HOME — and a $HOME package.json with pnpm-format flat
-    // overrides would reopen the same `Override without name` failure. The
-    // marker is `private: true` and carries no `overrides` field of its own,
-    // so its OWN parse can't fail.
     const dir =
       spawnAcpAgent(
         { cmd: 'node', args: ['-e', ''], env: plainEnv(), kind: 'npx', pathFromOverlay: false },
         tmp(),
       ).spawnargs === undefined
-        ? '' // unreachable, keeps ts happy
+        ? ''
         : '';
-    // Direct-read the marker OK just wrote as a side effect of the spawn above.
     const markerPath = join(process.env.HOME ?? homedir(), '.ok', 'acp-npx-cwd', 'package.json');
     const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
     expect(marker.private).toBe(true);
     expect(marker.overrides).toBeUndefined();
-    // Silence the unused-var lint if strict.
     void dir;
   });
 
@@ -817,7 +760,6 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
     if (child.pid !== undefined) strayPids.push(child.pid);
     await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
     const observed = readFileSync(`${script}.out`, 'utf8');
-    // realpath equivalence (macOS /var/folders/... vs /private/var/folders/...).
     expect(observed.endsWith(dir) || dir.endsWith(observed)).toBe(true);
   });
 });
@@ -826,7 +768,6 @@ describe('preflightLaunch', () => {
   const catchErr = (p: Promise<unknown>): Promise<unknown> => p.then(() => null).catch((e) => e);
 
   test('a path-qualified command that exists resolves', async () => {
-    // process.execPath is an absolute, executable path → no PATH search.
     await expect(
       preflightLaunch({
         cmd: process.execPath,
@@ -839,7 +780,6 @@ describe('preflightLaunch', () => {
   });
 
   test('a missing npx surfaces an actionable Node.js hint', async () => {
-    // Empty PATH guarantees `npx` cannot resolve on any platform.
     const err = await catchErr(
       preflightLaunch({
         cmd: 'npx',
@@ -900,13 +840,7 @@ describe('preflightLaunch', () => {
   });
 });
 
-/**
- * The gap preflight structurally cannot see: an interpreter that resolves and
- * is executable, yet dies the moment it runs (a Homebrew `node`
- * whose `icu4c` was upgraded out from under it aborts under dyld).
- */
 describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
-  /** A fake `npx` on PATH that behaves however `body` says. */
   const fakeNpx = (body: string): ResolvedLaunch => {
     const dir = tmp();
     writeFileSync(join(dir, 'npx'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
@@ -929,8 +863,6 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
     expect(detail).toContain('cannot find module');
   });
 
-  // The reported shape: the dyld failure aborts the process, so there is no
-  // exit code at all — only a signal and the linker's message on stderr.
   test('a crash reports the signal with the linker message', async () => {
     const detail = await probeInterpreterHealth(
       fakeNpx('echo "dyld[1]: Library not loaded: libicui18n.74.dylib" >&2\nkill -ABRT $$'),
@@ -954,19 +886,9 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
     expect(detail).not.toBeNull();
   });
 
-  // A slow `--version` is not the crash this guards, and blocking every launch
-  // on it would be the worse regression — so a hang reads as healthy-enough.
   test('a hung probe times out as healthy and does not leak the process', async () => {
     const dir = tmp();
     const beat = join(dir, 'heartbeat');
-    // A GRANDchild (the fixture shell backgrounds it), so it outlives a kill
-    // aimed at the direct child alone and dies only with the process group.
-    //
-    // It proves it stopped by ceasing to write, rather than by disappearing
-    // from a process check: an orphan reparents to init, and where init doesn't
-    // reap (a container's PID 1), a dead process lingers as a zombie that
-    // `kill(pid, 0)` still reports as alive. Verified on Linux — the group kill
-    // does land there; the process-existence check is what lies.
     writeFileSync(
       join(dir, 'npx'),
       `#!/bin/sh\n(while : ; do echo tick >> ${beat}; /bin/sleep 0.05; done) &\nwait\n`,
@@ -980,13 +902,8 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
       pathFromOverlay: true,
     };
     expect(await probeInterpreterHealth(launch, 500)).toBeNull();
-    // It was running: otherwise this test would pass against a fixture that
-    // never started, proving nothing about the kill.
     await waitFor(() => existsSync(beat), 5_000, 'the grandchild to start ticking');
 
-    // The kill is deliberately not awaited — the verdict must not wait on it —
-    // so allow a moment for the group signal to land, then require a quiet
-    // window with no new ticks.
     const beats = (): number => readFileSync(beat, 'utf8').length;
     let stopped = false;
     const deadline = Date.now() + 5_000;
@@ -1075,7 +992,6 @@ describe('brokenInterpreterHint', () => {
     );
     expect(hint).toContain('Node.js');
     expect(hint).toContain('icu4c');
-    // "not found" would send the user after an install they already have.
     expect(hint).not.toContain('was not found');
   });
 
@@ -1085,8 +1001,6 @@ describe('brokenInterpreterHint', () => {
       'exit code 1',
     );
     expect(hint).toContain('uv');
-    // The Homebrew/icu4c story belongs to Node. Matching on the display name
-    // alone missed this: the offending clause spells it `node` in backticks.
     expect(hint).not.toContain('Node.js');
     expect(hint).not.toContain('node');
     expect(hint).not.toContain('icu4c');
@@ -1104,17 +1018,11 @@ describe('brokenInterpreterHint', () => {
       'SIGABRT',
     );
     expect(hint).toContain('SIGABRT');
-    // The remedy is no longer homework: OK already replaced the copy, so what
-    // is left to say is what could still be stopping it.
     expect(hint).not.toContain('delete that directory');
-    // The user did not install this one, so "reinstall or repair" is advice
-    // they cannot act on — and their system Node may be blameless.
     expect(hint).not.toContain('Reinstall or repair');
     expect(hint).not.toContain('icu4c');
   });
 
-  // Symmetry with the sibling hint's two-branch coverage: testing one branch
-  // is how the Node-specific advice reached uv users in the first place.
   test('the managed-runtime hints name uv for a uvx runtime', () => {
     const uvx = {
       cmd: '/home/u/.ok/runtimes/uv/uvx',
@@ -1133,9 +1041,6 @@ describe('brokenInterpreterHint', () => {
     }
   });
 
-  // A quarantine that failed means nothing was re-downloaded. Reusing the
-  // fresh-copy wording here would send the user hunting for a machine-level
-  // cause when the actual blocker is another agent holding the tree open.
   test('the un-replaceable hint does not claim a fresh copy was tried', () => {
     const hint = undeletableManagedRuntimeHint(
       {
@@ -1151,8 +1056,6 @@ describe('brokenInterpreterHint', () => {
     expect(hint).not.toContain('downloaded a fresh copy');
   });
 
-  // Declining the repair must not reach for the stock decline hint, which says
-  // the interpreter isn't installed — OK's copy is installed, just damaged.
   test('the declined-repair hint says damaged, not missing', () => {
     const hint = declinedRepairHint({
       cmd: '/home/u/.ok/runtimes/node/bin/npx',
@@ -1173,14 +1076,10 @@ describe('windows cmd wrapping (spawn on Windows)', () => {
   });
 
   test('resolveWindowsCommand picks the .cmd/.exe, never a bare extensionless file', () => {
-    // Mirror the C:\Program Files\nodejs layout: an extensionless `npx` shell
-    // script next to `npx.cmd`. PATHEXT resolution must pick npx.cmd.
     const dir = tmp();
-    writeFileSync(join(dir, 'npx'), '#!/bin/sh\n'); // git-bash script, not exec'able on Windows
+    writeFileSync(join(dir, 'npx'), '#!/bin/sh\n');
     writeFileSync(join(dir, 'npx.cmd'), '@echo off\n');
     const resolved = resolveWindowsCommand('npx', dir);
-    // Never the extensionless script. On Windows it resolves to npx.cmd; on a
-    // case-sensitive FS with no PATHEXT it returns the input unchanged.
     expect(resolved).not.toBe(join(dir, 'npx'));
     if (resolved !== 'npx') expect(/\.cmd$/i.test(resolved)).toBe(true);
   });
@@ -1213,8 +1112,6 @@ describe('windows cmd wrapping (spawn on Windows)', () => {
     const { cmd, args } = windowsCmdWrap('C:\\Program Files\\nodejs\\npx.cmd', ['-y', 'pkg']);
     expect(cmd.toLowerCase()).toContain('cmd');
     expect(args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
-    // The command line is wrapped in an outer pair of quotes (cmd /s strips
-    // the first + last quote), with the spaced launcher path quoted inside.
     expect(args[3]).toBe('""C:\\Program Files\\nodejs\\npx.cmd" -y pkg"');
   });
 
@@ -1236,7 +1133,6 @@ describe('terminateAgentTree', () => {
     const dead = await terminateAgentTree(child, { graceMs: 3_000 });
     expect(dead).toBe(true);
     expect(child.pid !== undefined && isAlive(child.pid)).toBe(false);
-    // Graceful path: killed by the group SIGTERM, not the escalation.
     expect(child.signalCode).toBe('SIGTERM');
   });
 
@@ -1270,8 +1166,6 @@ describe('terminateAgentTree', () => {
     const dead = await terminateAgentTree(child, { graceMs: 250 });
     expect(dead).toBe(true);
     expect(child.pid !== undefined && isAlive(child.pid)).toBe(false);
-    // The load-bearing assertion: the grandchild died with the group. A
-    // direct-child SIGKILL would leave it running (the npx orphan bug).
     await waitFor(() => !isAlive(kidPid), 2_000, 'grandchild death');
   });
 });

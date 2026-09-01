@@ -168,8 +168,6 @@ describe('createCollaborationHost', () => {
     expect(host.handleUpgrade(forwardedRequest as never, raw as never, Buffer.alloc(0))).toBe(true);
     expect(raw.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
-    // The tripwire hint names the consent surface (OK_ALLOW_EXTERNAL +
-    // OK_EXTERNAL_URL, or the server.* config equivalents).
     expect(log.warn).toHaveBeenCalledWith(
       { url: '/collab', host: 'localhost' },
       '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
@@ -182,8 +180,6 @@ describe('createCollaborationHost', () => {
     const host = createCollaborationHost({
       hocuspocus,
       log,
-      // A tunneled exposure shape: declared public origin + consent on a
-      // loopback bind.
       ingressPolicy: buildIngressPolicy({
         serverRuntime: {
           port: undefined,
@@ -217,10 +213,6 @@ describe('createCollaborationHost', () => {
   });
 
   test('under allowExternal consent, plain /collab validates Host (foreign refused, admitted names pass)', () => {
-    // Before, plain /collab was gated only under the old remote-access flow, so
-    // consented exposure (allowExternal) left it ungated and any Host reached
-    // full CRDT read/write. It now runs the consolidated admit gate — loopback
-    // + bind literals + externalUrl — under consent too.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -239,7 +231,6 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Foreign Host (DNS-rebinding shape) is refused even under consent.
     const foreign = createSocket();
     expect(
       host.handleUpgrade(request('/collab', 'evil.example'), foreign as never, Buffer.alloc(0)),
@@ -247,7 +238,6 @@ describe('createCollaborationHost', () => {
     expect(foreign.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
 
-    // The bind-address literal is an admitted Host (direct-IP access).
     const bindLiteralWs = new EventEmitter();
     callbackUpgrade(host, bindLiteralWs);
     const bindLiteral = createSocket();
@@ -260,7 +250,6 @@ describe('createCollaborationHost', () => {
     ).toBe(true);
     expect(bindLiteral.destroy).not.toHaveBeenCalled();
 
-    // Loopback still works alongside the exposure.
     const loopbackWs = new EventEmitter();
     callbackUpgrade(host, loopbackWs);
     const loopback = createSocket();
@@ -272,12 +261,6 @@ describe('createCollaborationHost', () => {
   });
 
   test('under allowExternal consent, plain /collab refuses a foreign Origin (CSWSH defense)', () => {
-    // CWE-1275: WS upgrades bypass CORS, so a page on a foreign origin can open
-    // wss://<externalUrl>/collab — the Host passes (externalUrl) and, under consent,
-    // so does the relaxed peer gate. A present-but-foreign Origin is the only
-    // signal separating that cross-site hijack from a first-party client, so it
-    // MUST be refused here exactly as /collab/thread refuses it. A missing
-    // Origin (native / server-to-server client) is admitted.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -296,7 +279,6 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Attack: the externalUrl Host is admitted, but the foreign Origin is not.
     const attacker = createSocket();
     expect(
       host.handleUpgrade(
@@ -308,7 +290,6 @@ describe('createCollaborationHost', () => {
     expect(attacker.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
 
-    // A first-party page on the externalUrl origin is admitted.
     const firstPartyWs = new EventEmitter();
     callbackUpgrade(host, firstPartyWs);
     const sameOrigin = createSocket();
@@ -321,7 +302,6 @@ describe('createCollaborationHost', () => {
     ).toBe(true);
     expect(sameOrigin.destroy).not.toHaveBeenCalled();
 
-    // A native / server-to-server client carrying no Origin is admitted.
     const nativeWs = new EventEmitter();
     callbackUpgrade(host, nativeWs);
     const noOrigin = createSocket();
@@ -333,12 +313,6 @@ describe('createCollaborationHost', () => {
   });
 
   test('a PURE-LOCAL /collab (no consent) still refuses a foreign Origin (localhost CSWSH)', () => {
-    // Localhost is reachable from any origin and WS bypasses CORS, so a foreign
-    // page can open ws://127.0.0.1:<port>/collab against a loopback-only server
-    // (peer + Host both loopback). The Origin check is UNCONDITIONAL — it fires
-    // even with no consent — so this cross-site hijack is refused. The peer+Host
-    // admit gate stays exposure-only (pure-local keeps its historical posture on
-    // that axis); only the Origin/CSWSH axis is always on.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -358,7 +332,6 @@ describe('createCollaborationHost', () => {
     expect(attacker.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
 
-    // The first-party app (a loopback Origin) is admitted.
     const appWs = new EventEmitter();
     callbackUpgrade(host, appWs);
     const app = createSocket();
@@ -371,7 +344,6 @@ describe('createCollaborationHost', () => {
     ).toBe(true);
     expect(app.destroy).not.toHaveBeenCalled();
 
-    // A no-Origin client stays admitted on a pure-local server.
     const nativeWs = new EventEmitter();
     callbackUpgrade(host, nativeWs);
     const native = createSocket();
@@ -383,10 +355,6 @@ describe('createCollaborationHost', () => {
   });
 
   test('under allowExternal consent, /collab/keepalive refuses a foreign Origin (CSWSH)', () => {
-    // The keepalive channel gates on admitted() in every mode but historically
-    // skipped Origin — the same hole as plain /collab, lower value (agent
-    // presence + keepalive sockets, no CRDT). Under consent a foreign-origin
-    // page passes peer + Host, so the Origin check is the CSWSH defense here too.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -406,7 +374,6 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Attack: externalUrl Host is admitted, but the foreign Origin is refused.
     const attacker = createSocket();
     host.handleUpgrade(
       request(
@@ -419,7 +386,6 @@ describe('createCollaborationHost', () => {
     );
     expect(attacker.destroy).toHaveBeenCalledOnce();
 
-    // A native MCP client carrying no Origin is admitted.
     const nativeWs = new EventEmitter();
     callbackUpgrade(host, nativeWs);
     const native = createSocket();
@@ -435,8 +401,6 @@ describe('createCollaborationHost', () => {
   });
 
   test('under allowExternal consent, /collab/thread refuses a foreign Origin (CSWSH)', () => {
-    // Completes the CSWSH matrix: /collab and /collab/keepalive have consent-mode
-    // foreign-Origin tests; thread management is lower value but the same class.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -456,7 +420,6 @@ describe('createCollaborationHost', () => {
       }),
     });
 
-    // Attack: the externalUrl Host is admitted, but the foreign Origin is refused.
     const attacker = createSocket();
     host.handleUpgrade(
       request('/collab/thread', 'kb.example.com', 'https://evil.example'),
@@ -466,7 +429,6 @@ describe('createCollaborationHost', () => {
     expect(attacker.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
 
-    // A first-party thread on the externalUrl origin is admitted (message wired).
     const threadWs = new EventEmitter() as EventEmitter & { close: () => void; send: () => void };
     threadWs.close = () => {};
     threadWs.send = () => {};

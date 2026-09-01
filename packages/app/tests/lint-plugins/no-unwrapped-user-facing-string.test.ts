@@ -24,16 +24,11 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
-// __dirname → packages/app/tests/lint-plugins/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/no-unwrapped-user-facing-string.fixture.tsx';
 const PLUGIN_REL = './biome-plugins/no-unwrapped-user-facing-string.grit';
 
 function checkFixture(): string {
-  // `--max-diagnostics` is load-bearing, not tuning: biome's default cap is 20
-  // and the fixture already carries more than that between this rule's own
-  // hits and the a11y / suppression diagnostics its declarations attract. At
-  // the default, the counts below would silently measure the cap.
   const result = spawnSync(
     'pnpm',
     ['exec', 'biome', 'check', '--max-diagnostics=200', FIXTURE_REL],
@@ -42,11 +37,7 @@ function checkFixture(): string {
       encoding: 'utf-8',
     },
   );
-  // Surface a spawn failure explicitly: without this, `status` is null on a
-  // `pnpm exec` spawn error and the `not.toBe(0)` below passes vacuously,
-  // masking the failure as "0 diagnostics".
   expect(result.error).toBeUndefined();
-  // biome check exits non-zero when any diagnostic (incl. plugin) fires.
   expect(result.status).not.toBe(0);
   return `${result.stdout}\n${result.stderr}`;
 }
@@ -72,20 +63,13 @@ describe('no-unwrapped-user-facing-string GritQL plugin', () => {
 
   test('the diagnostic names the fix and links this rule section of the docs', () => {
     const output = checkFixture();
-    // Fix-noun: the action a reader applies to make the message go away.
     expect(output).toContain('Wrap it with the Lingui');
-    // Docs URL — generic URL regex + anchor substring. The anchor check keeps
-    // the regex from being vacuously satisfied by an unrelated URL biome might
-    // surface elsewhere.
     expect(output).toMatch(/https?:\/\/[^\s]+/);
     expect(output).toContain('biome-plugins/README.md#no-unwrapped-user-facing-stringgrit');
   });
 
   test('plugin is registered as an override scoped to the product surface (not workspace-wide)', () => {
     const config = readBiomeConfig(REPO_ROOT);
-    // NOT at root plugins[] — a workspace-wide promotion would fire on docs,
-    // scripts, and every package that legitimately ships English-only strings
-    // (the CLI command surface above all), turning `pnpm lint` red.
     const rootPlugins: string[] = config.plugins ?? [];
     expect(rootPlugins).not.toContain(PLUGIN_REL);
 
@@ -93,10 +77,7 @@ describe('no-unwrapped-user-facing-string GritQL plugin', () => {
     const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
     expect(entry).toBeDefined();
     const includes = entry?.includes ?? [];
-    // The fixture must be in scope so the firing tests above can trigger the rule.
     expect(includes).toContain(FIXTURE_REL);
-    // `.ts` as well as `.tsx`: the toast branch's dominant shape is a plain
-    // `lib/` helper. Dropping either extension would silently halve the scope.
     for (const included of [
       'packages/app/src/**/*.ts',
       'packages/app/src/**/*.tsx',
@@ -107,13 +88,9 @@ describe('no-unwrapped-user-facing-string GritQL plugin', () => {
     ]) {
       expect(includes).toContain(included);
     }
-    // Assert the negative set too, so a removed exclusion is caught here rather
-    // than as a wall of diagnostics on the next unrelated lint run.
     for (const excluded of [
       '!packages/app/src/editor/**',
       '!packages/app/src/components/ui/**',
-      // Electron main. `lingui extract` reads packages/app/src only, so the
-      // object-property branch would demand a fix that does not exist there.
       '!packages/desktop/src/main/**',
       '!**/*.test.ts',
       '!**/*.test.tsx',

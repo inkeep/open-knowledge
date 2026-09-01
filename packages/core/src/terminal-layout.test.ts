@@ -17,9 +17,6 @@ describe('terminal right-panel width contract', () => {
   });
 
   test('the drag floor sits at parity with the other rail columns', () => {
-    // Agents floor 320px, document pane 300px. The terminal is allowed to be
-    // narrower than its preferred width so the rail stays balanceable; a floor
-    // heavier than both peers combined is what made it unresizable.
     expect(MIN_TERMINAL_RIGHT_WIDTH).toBe(324);
     expect(MIN_TERMINAL_RIGHT_WIDTH).toBeLessThan(PREFERRED_TERMINAL_RIGHT_WIDTH);
   });
@@ -30,8 +27,6 @@ describe('terminal right-panel width contract', () => {
   });
 
   test('a width the user dragged narrow survives normalization', () => {
-    // The regression this guards: clamping every stored width up to the
-    // preferred width silently undid any narrow terminal on reload.
     expect(normalizeTerminalRightWidth(420)).toBe(420);
     expect(normalizeTerminalRightWidth(MIN_TERMINAL_RIGHT_WIDTH)).toBe(MIN_TERMINAL_RIGHT_WIDTH);
   });

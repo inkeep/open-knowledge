@@ -1,12 +1,3 @@
-/**
- * Socket-free unit coverage for the `?showAll=true` NDJSON generator walk.
- * Exercises `streamShowAllEntries` directly against temp fixtures —
- * no bound HTTP server — to prove the push-to-yield refactor preserved the
- * buffered walk's output byte-for-byte, the entry cap still stops the stream,
- * abort-on-disconnect bails the generator, and partial consumption never
- * materializes the whole tree.
- */
-
 import {
   chmodSync,
   mkdirSync,
@@ -81,8 +72,6 @@ describe('streamShowAllEntries — buffered-walk equivalence (PRD-6856)', () => 
 
     const streamed = await drain(streamShowAllEntries(streamOptsFor(dir, CAP)));
 
-    // The buffered wrapper pushes in yield order, so the two must match
-    // element-for-element with no reordering.
     expect(streamed.entries).toEqual(buffered);
     expect(streamed.truncated).toBe(false);
     expect(streamed.entries.length).toBeGreaterThan(0);
@@ -139,17 +128,11 @@ describe('streamShowAllEntries — abort + laziness', () => {
     const first = await gen.next();
     expect(first.done).toBe(false);
     expect(first.value).toBeDefined();
-    // Close the generator early — a lazy generator must accept `.return()`
-    // without having walked the remaining 499 files.
     const ret = await gen.return({ truncated: false });
     expect(ret.done).toBe(true);
   });
 
   test('abort between queued directories is honored when the remaining dirs are empty', async () => {
-    // Empty directories never reach the per-entry abort check — under the
-    // level-order queue they are dequeued and readdir'd one after another, so
-    // the abort gate must also fire at the queue boundary or a disconnected
-    // client's walk keeps issuing readdir across the queued breadth.
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-stream-abort-')));
     for (const sub of ['a', 'b', 'c']) {
       mkdirSync(join(dir, sub));
@@ -160,9 +143,6 @@ describe('streamShowAllEntries — abort + laziness', () => {
       ...streamOptsFor(dir, 50_000),
       signal: controller.signal,
     });
-    // Drain the root level (three folder yields), then abort while the
-    // generator is suspended — resumption lands in the outer queue loop with
-    // only empty directories left to process.
     await gen.next();
     await gen.next();
     const third = await gen.next();
@@ -174,7 +154,6 @@ describe('streamShowAllEntries — abort + laziness', () => {
   });
 });
 
-/** Tree-position path for any entry kind (docName is extension-less). */
 function entryPath(e: DocumentListEntry): string {
   return e.kind === 'document' ? e.docName : e.path;
 }
@@ -270,12 +249,6 @@ describe('streamShowAllEntries — .okignore', () => {
 });
 
 describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
-  // Root with several subtrees, each individually larger than the cap. Under
-  // a depth-first walk the cap was spent inside whichever subtree readdir
-  // happened to enumerate first, silently dropping later root-level siblings —
-  // and readdir order is filesystem-dependent, so WHICH siblings survived was
-  // arbitrary. Level-order emission makes the top level complete whenever
-  // cap >= top-level entry count, for every readdir permutation.
   function makeStarvationFixture(): { dir: string; rootFolders: string[]; rootDocs: string[] } {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-bfs-')));
     const rootFolders: string[] = [];
@@ -298,9 +271,6 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
 
   test('cap hit inside a deep subtree never starves root-level entries', async () => {
     const { dir, rootFolders, rootDocs } = makeStarvationFixture();
-    // 10 root entries; every subtree alone (1 folder + 20 leaves) exceeds the
-    // cap, so a depth-first walk runs out of budget inside the first-enumerated
-    // subtree no matter what order readdir returns.
     const CAP = 15;
     const { entries, truncated } = await drain(streamShowAllEntries(streamOptsFor(dir, CAP)));
 
@@ -325,13 +295,9 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
     const { entries, truncated } = await drain(streamShowAllEntries(streamOptsFor(dir, 50_000)));
     expect(truncated).toBe(false);
 
-    // Depth histogram is readdir-order-independent: 3 root entries (root.md,
-    // a/, b/), then 4 at depth 2 (a/one, a/note.txt, a/sub, b/two), then 1 at
-    // depth 3 (a/sub/deep). Any depth-first interleaving breaks the grouping.
     const depths = entries.map((e) => entryPath(e).split('/').length);
     expect(depths).toEqual([1, 1, 1, 2, 2, 2, 2, 3]);
 
-    // Parent folders emit before any of their children.
     const paths = entries.map(entryPath);
     for (const path of paths) {
       const segments = path.split('/');
@@ -417,24 +383,13 @@ describe('streamShowAllEntries — level-order emission (PRD-6858)', () => {
 });
 
 describe('streamShowAllEntries — cap accounting boundary quirks', () => {
-  // The per-entry cap check runs BEFORE the exclusion gates: once `emitted`
-  // reaches the cap, the next dequeued entry trips `truncated` even when that
-  // entry would have been excluded anyway. Nothing admitted is dropped, but
-  // the verdict still says truncated. Deliberate semantics — checking
-  // exclusion first would mean classifying (readdir/stat) past the budget the
-  // cap exists to bound. Pinned so a refactor can't silently flip it without
-  // a spec decision.
-
   test('an excludable entry past the cap still reports truncated (cap checked before exclusion)', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-quirk-')));
     const CAP = 4;
-    // Exactly CAP admitted entries at the root: 3 files + the `sub` folder.
     mkdirSync(join(dir, 'sub'));
     for (let i = 0; i < CAP - 1; i++) {
       writeFileSync(join(dir, `f-${i}.md`), `# f ${i}\n`);
     }
-    // `sub` holds ONLY an ALWAYS_SKIP_DIRS floor dir — no admitted entry
-    // remains anywhere, yet its dequeue trips the cap check first.
     mkdirSync(join(dir, 'sub', 'node_modules'));
 
     const { entries, truncated } = await drain(streamShowAllEntries(streamOptsFor(dir, CAP)));
@@ -459,10 +414,6 @@ describe('streamShowAllEntries — cap accounting boundary quirks', () => {
 });
 
 describe('streamShowAllEntries — unreadable directory mid-queue', () => {
-  // Under the BFS rewrite a readdir failure scopes to one queue entry
-  // (`continue` on the dequeued dir) instead of one recursion frame; net
-  // effect must stay "skip the broken dir, keep walking". chmod 000 is
-  // meaningless when running as root, so skip there.
   const runningAsRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 
   test.skipIf(runningAsRoot)(
@@ -483,21 +434,12 @@ describe('streamShowAllEntries — unreadable directory mid-queue', () => {
         );
 
         const paths = entries.map(entryPath);
-        // The unreadable dir's contents never emit, and the failure neither
-        // blanks the sibling subtree nor corrupts the truncation verdict.
-        // (Which guard catches it is platform-dependent: macOS realpath(3)
-        // refuses a 0o000 dir before readdir ever runs, so the row drops at
-        // the realpath catch; Linux resolves realpath fine and skips at the
-        // readdir catch instead, leaving the row visible. Both are
-        // skip-with-warn, never walk-abort.)
         expect(paths).not.toContain('locked/hidden');
         expect(paths).toContain('root');
         expect(paths).toContain('open');
         expect(paths).toContain('open/visible');
         expect(truncated).toBe(false);
 
-        // The skip is diagnosable: the walk warn carries the offending path,
-        // whichever guard (realpath/readdir) fired.
         const lockedWarn = warnSpy.mock.calls.find(
           (call) =>
             typeof call[1] === 'string' &&
@@ -514,13 +456,6 @@ describe('streamShowAllEntries — unreadable directory mid-queue', () => {
 });
 
 describe('streamShowAllEntries — .base/.canvas mediaKind', () => {
-  // Guards the api-extension.ts guard fix so the FileTree (showAll) click
-  // path sees mediaKind:'text' for these extensions and reaches the
-  // TextViewer rather than the chooser. /api/asset is separately tested
-  // via the ASSET_EXTENSIONS membership check — the 415 comes from
-  // `!ASSET_EXTENSIONS.has(ext)`, so the absence proof below is the
-  // correct proxy for the 415 assertion.
-
   test('.base and .canvas entries report mediaKind text in showAll output', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-mediakind-')));
     writeFileSync(join(dir, 'note.md'), '# Note\n');
@@ -539,8 +474,6 @@ describe('streamShowAllEntries — .base/.canvas mediaKind', () => {
   });
 
   test('.base and .canvas are absent from ASSET_EXTENSIONS (serve allowlist unchanged)', () => {
-    // The TEXT_VIEWER_FALLBACK_EXTENSIONS design keeps /api/asset returning 415
-    // for these types — they are served only via the ungated /api/asset-text path.
     expect(ASSET_EXTENSIONS.has('base')).toBe(false);
     expect(ASSET_EXTENSIONS.has('canvas')).toBe(false);
   });
@@ -554,7 +487,6 @@ describe('streamShowAllEntries — symlinked directories', () => {
     writeFileSync(join(canonical, 'note-one.md'), '# one\n');
     mkdirSync(join(canonical, 'nested'));
     writeFileSync(join(canonical, 'nested', 'deep.md'), '# deep\n');
-    // Two symlinks to the same in-scope directory (the aliased-folder case).
     symlinkSync(canonical, join(dir, 'alias-A'));
     symlinkSync(canonical, join(dir, 'alias-B'));
     return dir;
@@ -576,8 +508,6 @@ describe('streamShowAllEntries — symlinked directories', () => {
       expect(f?.hasChildren).toBe(true);
     }
     const paths = pathsOf(entries);
-    // Canonical subtree is materialized once; the symlinks are NOT recursed into
-    // (no alias-*/ descendants in the full walk — the symlink-farm guard).
     expect(paths).toContain('canonical-folder/note-one');
     expect(paths).toContain('canonical-folder/nested/deep');
     expect(paths.some((p) => p.startsWith('alias-A/'))).toBe(false);
@@ -614,8 +544,6 @@ describe('streamShowAllEntries — symlinked directories', () => {
     symlinkSync(join(dir, 'B'), join(dir, 'A', 'to-b'));
     symlinkSync(join(dir, 'A'), join(dir, 'B', 'to-a'));
     const { entries, truncated } = await drain(streamShowAllEntries(streamOptsFor(dir, 50_000)));
-    // The cross-links surface as symlink folders but are never enqueued, so the
-    // walk terminates rather than looping A -> B -> A ...
     const toB = entries.find((e) => e.kind === 'folder' && e.path === 'A/to-b');
     expect(toB?.isSymlink).toBe(true);
     expect(truncated).toBe(false);
@@ -623,8 +551,6 @@ describe('streamShowAllEntries — symlinked directories', () => {
 });
 
 describe('streamShowAllEntries — showOk reveal', () => {
-  // Root `.ok` (config, templates, skills, worktrees, local), a nested
-  // per-folder `.ok`, and a floor dir that must stay pruned under every flag.
   function makeOkFixture(): string {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-showall-showok-')));
     writeFileSync(join(dir, 'note.md'), '# note\n');
@@ -665,8 +591,6 @@ describe('streamShowAllEntries — showOk reveal', () => {
     expect(paths.some((p) => p.startsWith('.ok/local'))).toBe(false);
     expect(paths.some((p) => p.startsWith('node_modules'))).toBe(false);
 
-    // Markdown under `.ok` classifies as document, non-markdown as asset —
-    // the same kind dispatch the rest of the walk uses.
     const daily = entries.find((e) => e.kind === 'document' && e.docName === '.ok/templates/daily');
     expect(daily).toBeDefined();
     const config = entries.find((e) => e.kind === 'asset' && e.path === '.ok/config.yml');

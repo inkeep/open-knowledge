@@ -4,9 +4,6 @@ import type { Config } from './schema.ts';
 import { ConfigSchema } from './schema.ts';
 
 function makeConfig(partial: Record<string, unknown>): Config {
-  // `looseObject` lets us inject extra keys at any depth — tests poke at
-  // both registered scoped fields (appearance.theme, content.dir,
-  // autoSync.enabled) and unregistered free-form keys.
   return ConfigSchema.parse(partial);
 }
 
@@ -79,12 +76,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'user' (appearance.language) ignores a project-layer language entirely", () => {
-    // The interface language is a personal preference; a repository must not
-    // be able to decide what language its collaborators read the chrome in.
-    // This also pins the leaf's registration landing on the enum rather than
-    // on the `.optional()` wrapper — an unregistered leaf has no scope, so it
-    // would silently fall through to default precedence and the project value
-    // below would win.
     const user = makeConfig({ appearance: {} });
     const project = makeConfig({ appearance: { language: 'es' } });
     const projectLocal = makeConfig({ appearance: { language: 'zh-Hans' } });
@@ -94,8 +85,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'user' (appearance.language) keeps the 'system' sentinel the user stored", () => {
-    // A concrete language in a lower layer must not overwrite 'system' —
-    // that would convert a preference that follows the OS into a frozen one.
     const user = makeConfig({ appearance: { language: 'system' } });
     const project = makeConfig({ appearance: { language: 'es' } });
     const projectLocal = makeConfig({ appearance: { language: 'zh-Hans' } });
@@ -123,9 +112,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project' (content.dir) returns project, ignoring project-local", () => {
-    // `content.dir` is a `scope: 'project'` leaf. The project-over-project-local
-    // short-circuit applies — pinning here so the scope: 'project'
-    // branch in mergeLayered doesn't lose coverage.
     const user = makeConfig({ content: { dir: './user' } });
     const project = makeConfig({ content: { dir: './project' } });
     const projectLocal = makeConfig({ content: { dir: './local' } });
@@ -133,13 +119,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     const merged = mergeLayered(user, project, projectLocal);
     expect(merged.content?.dir).toBe('./project');
   });
-
-  // Sibling test "scope: 'project' falls back to user when project
-  // undefined" was deleted alongside `preview.baseUrl`. The current
-  // `scope: 'project'` fields carry Zod defaults, so the "project undefined"
-  // branch of the short-circuit can't be cleanly exercised through them.
-  // Restore an equivalent test here if a project-strict field without a
-  // default is reintroduced.
 
   test("scope: 'project-local' (autoSync.enabled) returns project-local, ignoring project + user", () => {
     const user = makeConfig({ autoSync: { enabled: false } });
@@ -151,10 +130,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project-local' = false short-circuits even when project = true", () => {
-    // Inverse of the previous test — pins that `false` is a real value (not
-    // treated as absent / falsy fallthrough). Without this, `??` semantics
-    // could silently degrade to `||` and a user explicitly opting out of
-    // auto-sync on this machine would inherit project: true on next read.
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: { enabled: false } });
@@ -164,10 +139,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project-local' with null local no longer inherits the committed project value", () => {
-    // POSTURE FLIP (project-local skips the committed layer): a project-local
-    // leaf cleared to `null` on this machine falls through to USER, then the
-    // schema default (autoSync.enabled → null) — NEVER the committed project
-    // value. A per-machine key must not inherit a cloned value, null or absent.
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: { enabled: null } });
@@ -186,8 +157,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project-local' unset locally ignores the committed project value", () => {
-    // POSTURE FLIP: an unset project-local leaf skips the committed project
-    // layer and resolves to the schema default (null), not the committed value.
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
     const projectLocal = makeConfig({ autoSync: {} });
@@ -224,11 +193,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test('a clone without the project-local layer resolves terminal.enabled to null (grant never inherited)', () => {
-    // Simulates a fresh clone/checkout: the gitignored .ok/local/ layer is
-    // absent, and terminal.enabled can never sit in the committed project file
-    // or the user file (the write gate rejects it at any other scope). With no
-    // project-local layer the resolution must fall to the schema default null,
-    // never silently inheriting a teammate's consent.
     const user = makeConfig({});
     const project = makeConfig({});
 
@@ -237,9 +201,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project-local' (server.bind) ignores a committed project value; the project-local layer wins", () => {
-    // server.bind is per-machine: a committed bind (one machine exposing the
-    // server) must never reach a teammate's local run — only this machine's
-    // gitignored project-local layer sets it. Same posture as allowExternal.
     const user = makeConfig({});
     const project = makeConfig({ server: { bind: ['0.0.0.0'] } });
     const projectLocal = makeConfig({ server: { bind: ['192.168.1.5'] } });
@@ -249,10 +210,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test('a clone with a committed non-loopback bind but no project-local layer falls to the loopback default', () => {
-    // The exact footgun: a repo commits `server.bind: [0.0.0.0]` so one box
-    // serves remotely; every teammate who clones and runs locally must still
-    // bind loopback (and boot), never inherit the committed non-loopback value
-    // (which would trip the exposure interlock they never consented to).
     const user = makeConfig({});
     const project = makeConfig({ server: { bind: ['0.0.0.0'] } });
     const projectLocal = makeConfig({});
@@ -262,10 +219,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test('RAW-layer path: a committed bind is skipped; a user-global bind is honored as a personal default', () => {
-    // The loader's inputs are RAW (un-parsed) partials. A committed project
-    // `bind` surfaces no `bind` from the merge (→ the final parse fills the
-    // loopback default), while a user-global bind still wins as a cross-project
-    // personal default (the project-local fallback is user, never project).
     const committed = mergeLayered({}, { server: { bind: ['0.0.0.0'] } }, {});
     expect((committed.server as { bind?: string[] } | undefined)?.bind).toBeUndefined();
 
@@ -278,13 +231,6 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
   });
 
   test("scope: 'project-local' (server.allowExternal) ignores a committed project value", () => {
-    // Exposure consent has the terminal.enabled posture: a committed
-    // `allowExternal: true` must never grant consent on a cloner's machine —
-    // only this machine's gitignored project-local layer can. The project-local
-    // scope rule skips the committed project layer structurally, so the leaf
-    // resolves through user to the schema default `false` (here the parsed
-    // layers make user's default a defined `false`; on the loader's raw path an
-    // unset leaf reaches the same default at the final parse).
     const user = makeConfig({});
     const project = makeConfig({ server: { allowExternal: true } });
     const projectLocal = makeConfig({});
@@ -316,9 +262,6 @@ describe('mergeLayered — backward compat for two-layer call sites', () => {
   });
 
   test('mergeLayered(user, project) ignores a committed project-local-scope value', () => {
-    // POSTURE FLIP: the two-layer path also skips the committed project layer
-    // for project-local leaves, so a committed value never wins — it falls to
-    // user, then the schema default (null).
     const user = makeConfig({});
     const project = makeConfig({ autoSync: { enabled: true } });
 
@@ -327,14 +270,6 @@ describe('mergeLayered — backward compat for two-layer call sites', () => {
   });
 
   test('a committed allowExternal:true never passes through, even via the two-layer merge', () => {
-    // POSTURE FLIP of the former "two-layer is unsafe" tripwire. The
-    // project-local scope rule now skips the committed project layer
-    // unconditionally, so a committed `server.allowExternal: true` can never
-    // arm consent — with or without a project-local layer. The old safety
-    // depended on a parsed project-local layer supplying a DEFINED `false`;
-    // the structural skip replaces it and also holds on the RAW-layer path the
-    // loader uses (an unset local leaf is `undefined` → falls to the user
-    // layer's default `false`).
     const user = makeConfig({});
     const project = makeConfig({ server: { allowExternal: true } });
 
@@ -343,11 +278,6 @@ describe('mergeLayered — backward compat for two-layer call sites', () => {
   });
 
   test('RAW-layer path: a committed allowExternal is skipped, an unset local leaf falls to the schema default', () => {
-    // The loader's actual inputs are RAW (un-parsed) partials, not
-    // ConfigSchema.parse output. Pin that on that path a committed project
-    // `allowExternal: true` with an empty project-local layer surfaces no
-    // `allowExternal` from the merge (→ the final parse fills the default
-    // false), while a user-global value is still honored as a personal default.
     const committedLeak = mergeLayered({}, { server: { allowExternal: true } }, {});
     expect(
       (committedLeak.server as { allowExternal?: boolean } | undefined)?.allowExternal,

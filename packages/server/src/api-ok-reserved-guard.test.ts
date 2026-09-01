@@ -8,18 +8,6 @@ import { createApiExtension } from './api-extension.test-helper.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
 
-/**
- * Reserved project-state guard across the generic mutation handlers
- * (create-page, create-folder, duplicate-path, rename-path, delete-path,
- * trash-cleanup): any request naming a `.ok` or `.git` path segment at ANY
- * depth must 400 with `urn:ok:error:reserved-doc-name` and leave disk
- * untouched. Nested `<folder>/.ok/` is a first-class OK shape (folder
- * metadata + templates), and on case-insensitive filesystems `.OK/x`
- * addresses `.ok/x`, so top-level-only or case-sensitive checks are not a
- * boundary. Skills and templates mutate only through their own validating
- * handlers, never through these generic file ops.
- */
-
 function makeReq(url: string, method: string, body: unknown): IncomingMessage {
   const raw = body === undefined ? '' : JSON.stringify(body);
   const readable = Readable.from(Buffer.from(raw)) as unknown as IncomingMessage;

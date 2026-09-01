@@ -1,24 +1,3 @@
-/**
- * RTL mount test for the userSynced state-wiring integration.
- *
- * Pins the behavioral contract that the source-string guards in
- * `config-provider.test.tsx` cannot reach: the binding's `subscribeSynced`
- * callback actually flips React state, the mount-time `hasSynced()` seed
- * lands in the rendered context value, and the false→true transition
- * propagates to consumers. A refactor preserving the literal source text
- * (e.g. the subscription callback fails to call `setUserState`, or the
- * `prev?.binding === userScoped.binding` identity guard silently no-ops)
- * could ship a regression — Settings would render an empty body on every
- * open with no error, because `userBinding={userSynced ? userBinding : null}`
- * would stay false forever.
- *
- * Sibling to `config-provider.dom.test.tsx`, which only exercises the
- * `collabUrl: null` cold-start path. That file's module-level mocks
- * intentionally stay shallow; full provider/binding mocking lives here so
- * the two test files don't fight each other (Bun's `--isolate` flag in
- * `test:dom` keeps the mock graphs independent per file).
- */
-
 import type { ConfigBinding, OkignoreBinding, WriteScope } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -26,8 +5,6 @@ import { dynamicActivate } from './activate-locale';
 import { i18n } from './i18n';
 import { __resetServerInstanceStoreForTests, setServerInstanceId } from './server-instance-store';
 
-// One captured listener per binding scope so the test can fire the synced
-// transition manually. Reset per-test via the helper below.
 type SyncedListener = () => void;
 type ScopeKey = WriteScope;
 type FakeConfig = { scope: ScopeKey; appearance?: { theme?: 'light' | 'dark' | 'system' } };
@@ -131,10 +108,6 @@ vi.doMock('@/hooks/use-language-bridge', () => ({
   },
 }));
 
-// `next-themes` is a real dependency; `useTheme()` returns `{ setTheme }`
-// inside ConfigProvider's effect. Provide a no-op shim so the effect's
-// `setTheme(themeValue)` call inside the merged-config bridge does not
-// throw when run outside a `ThemeProvider`.
 vi.doMock('next-themes', () => ({
   useTheme: () => ({
     setTheme: (theme: string) => {
@@ -143,12 +116,6 @@ vi.doMock('next-themes', () => ({
   }),
 }));
 
-// `HocuspocusProvider` opens a real WebSocket on construction; the
-// network is not available under the Tier-3 substrate (and even if it
-// were, the network-side `'synced'` event is exactly the timing we want
-// to control deterministically). The fake captures the okignore
-// 'synced' handler so test cases can drive it directly; ConfigBinding
-// 'synced' wiring is captured via the bindConfigDoc mock below.
 vi.doMock('@hocuspocus/provider', () => {
   class FakeHocuspocusProvider {
     private readonly record: ProviderRecord;
@@ -180,10 +147,6 @@ vi.doMock('@/lib/auth-token', () => ({
   },
 }));
 
-// `bindConfigDoc` and `bindOkignoreDoc` are the seams ConfigProvider
-// calls to produce the binding objects it then subscribes to. The fakes
-// return ConfigBindings whose `subscribeSynced` listener is captured per
-// scope so the test can trigger the false→true transition by hand.
 vi.doMock('@inkeep/open-knowledge-core', () => ({
   bindConfigDoc: (_provider: unknown, scope: WriteScope) =>
     makeFakeConfigBinding(scope, scope === 'user' ? userHasSyncedSeed : false),
@@ -204,11 +167,6 @@ vi.doMock('@inkeep/open-knowledge-core', () => ({
   localeDirection: (locale: string) => (locale === 'ar' || locale === 'ur' ? 'rtl' : 'ltr'),
   SUPPORTED_LOCALES: ['en', 'es'],
   AUTO_DETECTABLE_LOCALES: ['en', 'es'],
-  // `@/lib/color-themes` (pulled in transitively via config-provider and
-  // SettingsDialogBody) now re-exports the theme registry from core, so the
-  // wholesale core mock must stub every re-exported symbol or color-themes'
-  // re-exports fail to resolve (a hard named-import error for `colorThemeMode`,
-  // which SettingsDialogBody imports statically).
   colorThemeMode: (
     id?: string,
     themes?: readonly { id: string; kind: 'light' | 'dark' | 'system' }[],
@@ -243,9 +201,6 @@ vi.doMock('@inkeep/open-knowledge-core', () => ({
   isDarkTheme: (id?: string) => Boolean(id) && id !== 'default' && id !== 'custom',
   resolveThemePlugin: (id?: string) => ({ id: id ?? 'default', label: 'Default', kind: 'system' }),
   THEME_PLUGINS: [],
-  // The base-theme tokens `defaultThemeTokens` composes for the Default tile's
-  // preview. Values are placeholders — no assertion here reads them; they only
-  // need to cover the token names the preview looks up.
   CHROME_BG_LIGHT: '#fafafa',
   CHROME_BG_DARK: '#171717',
   PREVIEW_THEME_TOKENS: [
@@ -258,10 +213,6 @@ vi.doMock('@inkeep/open-knowledge-core', () => ({
   ],
 }));
 
-// Module-level toggle for the second case (mount-time pre-synced seed).
-// Vitest module mocks resolve once at import time, but the factory closes
-// over this variable so each test can flip the value via the helper
-// before the dynamic import below.
 let userHasSyncedSeed = false;
 
 const { ConfigProvider, useConfigContext } = await import('./config-provider');
@@ -344,18 +295,11 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
       </ConfigProvider>,
     );
 
-    // Pre-sync: the binding's `hasSynced()` returned false at mount time
-    // (the default seed), so the initial context value carries userSynced
-    // = false. Pinned here to prove the cold-start window is observable
-    // through the public Context surface — not just through the source.
     expect(screen.getByTestId('user-synced').textContent).toBe('false');
 
     const userEntry = captures.get('user');
     expect(userEntry?.syncedListener).not.toBeNull();
 
-    // Fire the synced transition the way the real binding would after
-    // the Hocuspocus provider's first 'synced' event. `act(...)` wraps
-    // the listener call so React commits the setState before assertion.
     act(() => {
       userEntry?.syncedListener?.();
     });
@@ -383,10 +327,6 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
   });
 
   test('userSynced reads true on first render when the binding has already synced at mount time', () => {
-    // Mount-time seed via the `hasSynced()` short-circuit in
-    // `ConfigProvider`'s `setUserState` initializer. Mirrors the
-    // StrictMode double-invocation case where the binding was already
-    // synced before the effect ran.
     userHasSyncedSeed = true;
 
     render(
@@ -578,8 +518,6 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     await waitFor(() => {
       expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'light']);
     });
-    // The DOM gate remains closed, preserving the prepaint cache after the list
-    // failure; only the native show gate is released.
     expect(setThemeCalls).toEqual([]);
     expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(document.documentElement.getAttribute('data-color-theme')).toBe('saved-offline');

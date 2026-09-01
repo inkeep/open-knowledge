@@ -17,19 +17,16 @@ const HOME = '/home/tester';
 describe('userGlobalSkillBundleTargets', () => {
   test('targets the central store + every per-host dir for each user-global bundle', () => {
     const targets = userGlobalSkillBundleTargets(HOME);
-    // One central + N host dirs per user-global bundle.
     const expectedCount = USER_GLOBAL_BUNDLE_IDS.length * (1 + USER_SKILL_HOSTS.length);
     expect(targets.length).toBe(expectedCount);
 
     for (const bundleId of USER_GLOBAL_BUNDLE_IDS) {
       const name = BUNDLE_SKILL_NAME[bundleId];
-      // Central store.
       expect(targets).toContainEqual({
         path: join(HOME, '.agents', 'skills', name),
         bundleId,
         scope: 'central',
       });
-      // Each per-host dir.
       for (const host of USER_SKILL_HOSTS) {
         expect(targets).toContainEqual({
           path: join(HOME, host.skillsRoot, name),
@@ -56,7 +53,6 @@ describe('userGlobalSkillBundleTargets', () => {
   test('never targets the shared ~/.agents/skills root itself', () => {
     const paths = userGlobalSkillBundleTargets(HOME).map((t) => t.path);
     expect(paths).not.toContain(join(HOME, '.agents', 'skills'));
-    // Every central target is a NAMED subdir of the shared store.
     for (const t of userGlobalSkillBundleTargets(HOME).filter((x) => x.scope === 'central')) {
       expect(t.path.startsWith(`${join(HOME, '.agents', 'skills')}/`)).toBe(true);
     }
@@ -81,9 +77,7 @@ describe('legacy fan-out sweep', () => {
     const home = tmpHome();
     const zencoder = plantSkill(home, '.zencoder', 'open-knowledge-discovery');
     const terramind = plantSkill(home, '.terramind', 'open-knowledge-write-skill');
-    // Nested agent home, written exactly as the fan-out produced it.
     const tabnine = plantSkill(home, join('.tabnine', 'agent'), 'open-knowledge-discovery');
-    // Pre-split name, from an even older install.
     const rovodev = plantSkill(home, '.rovodev', 'open-knowledge');
 
     const removed = sweep(home);
@@ -100,7 +94,6 @@ describe('legacy fan-out sweep', () => {
 
     sweep(home);
 
-    // The whole tree goes: nothing else was ever in it.
     expect(existsSync(join(home, '.zencoder'))).toBe(false);
   });
 
@@ -120,21 +113,18 @@ describe('legacy fan-out sweep', () => {
     sweep(home);
 
     expect(existsSync(join(home, '.config', 'goose'))).toBe(false);
-    // `.config` is a shared XDG root — inert or not, OK must never delete it.
     expect(existsSync(join(home, '.config'))).toBe(true);
   });
 
   test("keeps an agent home that still holds anything of the tool's own", () => {
     const home = tmpHome();
     plantSkill(home, '.zencoder', 'open-knowledge-discovery');
-    // The user actually uses zencoder.
     writeFileSync(join(home, '.zencoder', 'config.json'), '{}', 'utf-8');
 
     sweep(home);
 
     expect(existsSync(join(home, '.zencoder'))).toBe(true);
     expect(existsSync(join(home, '.zencoder', 'config.json'))).toBe(true);
-    // Only OK's own dir went; the now-empty `skills/` stays because its parent did.
     expect(existsSync(join(home, '.zencoder', 'skills', 'open-knowledge-discovery'))).toBe(false);
   });
 
@@ -172,7 +162,6 @@ describe('legacy fan-out sweep', () => {
 
     const plan = planLegacyFanoutSweep(home);
 
-    // Planning is pure — the user has to be able to read this and say no.
     expect(existsSync(skill)).toBe(true);
     expect(plan.skillDirs).toEqual([skill]);
     expect(plan.emptyDirs).toEqual([join(home, '.zencoder', 'skills'), join(home, '.zencoder')]);
@@ -195,23 +184,16 @@ describe('legacy fan-out sweep', () => {
     const home = tmpHome();
     plantSkill(home, '.zencoder', 'open-knowledge-discovery');
     const plan = planLegacyFanoutSweep(home);
-    // User installs the tool for real in the gap.
     writeFileSync(join(home, '.zencoder', 'config.json'), '{}', 'utf-8');
 
     applyLegacyFanoutSweep(home, plan);
 
-    // rmdir refuses a non-empty dir — the race can't destroy their data.
     expect(existsSync(join(home, '.zencoder', 'config.json'))).toBe(true);
     expect(existsSync(join(home, '.zencoder'))).toBe(true);
   });
 
-  // An earlier build of this cleanup removed the skill dirs but never pruned,
-  // so real machines exist where the skills are already gone and only empty
-  // `~/.<host>/skills/` trees remain. Gating the walk on "we deleted a skill
-  // just now" made those unreachable forever — the exact state this covers.
   test('prunes empty leftovers even when the skill dir is already gone', () => {
     const home = tmpHome();
-    // No open-knowledge* dir anywhere: just the husks a leaf-only sweep leaves.
     mkdirSync(join(home, '.zencoder', 'skills'), { recursive: true });
     mkdirSync(join(home, '.terramind', 'skills'), { recursive: true });
 
@@ -251,12 +233,6 @@ describe('legacy fan-out sweep', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Adversarial: the cleanup runs `rm -rf` inside a user's home directory, so
-// every one of these is a "could this delete the wrong thing" case. Each was a
-// real hole found by attacking the first implementation.
-// ---------------------------------------------------------------------------
-
 describe('legacy fan-out sweep — refuses unsafe inputs', () => {
   function tmpHome(): string {
     return mkdtempSync(join(tmpdir(), 'ok-legacy-guard-'));
@@ -268,9 +244,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     return dir;
   }
 
-  // `join('', '.zencoder', …)` is RELATIVE — an empty or relative home silently
-  // retargets the whole sweep at the process cwd, which for a CLI is the user's
-  // project. Throwing beats returning nothing: it surfaces the caller's bug.
   test.each([
     '',
     '.',
@@ -297,9 +270,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     }
   });
 
-  // Agent hosts commonly symlink `skills/` at the shared `~/.agents/skills`
-  // hub, so following one could delete a live install — or, if it points at a
-  // user directory, their files.
   test('a symlinked agent home is skipped entirely', () => {
     const box = tmpHome();
     const target = join(box, 'precious');
@@ -333,9 +303,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     expect(existsSync(join(docs, 'open-knowledge-discovery', 'notes.md'))).toBe(true);
   });
 
-  // `applyLegacyFanoutSweep` is exported and takes plain strings, so trusting
-  // its input would let any future caller — or a bug mutating a plan between
-  // the prompt and the delete — recursively remove an arbitrary directory.
   test('a skill dir swapped for a symlink between plan and apply is not followed', () => {
     const home = tmpHome();
     const precious = join(home, 'Documents');
@@ -344,7 +311,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     const skill = plantSkill(home, '.zencoder');
 
     const plan = planLegacyFanoutSweep(home);
-    // Attacker (or a racing tool) replaces the planned dir with a link.
     rmSync(skill, { recursive: true, force: true });
     symlinkSync(precious, skill);
 
@@ -357,7 +323,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     const home = tmpHome();
     const skill = plantSkill(home, '.zencoder');
     const plan = planLegacyFanoutSweep(home);
-    // No longer an OK bundle: no SKILL.md, and not empty.
     rmSync(join(skill, 'SKILL.md'));
     writeFileSync(join(skill, 'someone-elses-data.txt'), 'mine\n', 'utf-8');
 
@@ -366,10 +331,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     expect(existsSync(join(skill, 'someone-elses-data.txt'))).toBe(true);
   });
 
-  // Found by an independent safety review. `rmdir` refuses a symlink LEAF, but
-  // it still resolves a symlinked ANCESTOR, so a link swapped in after planning
-  // had it delete a directory at the link target. Only ever an empty one — but
-  // "empty" is not ours to assume about somewhere else on disk.
   test('an ancestor swapped for a symlink between plan and apply is not followed', () => {
     const home = tmpHome();
     const elsewhere = join(home, 'elsewhere');
@@ -377,7 +338,6 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     plantSkill(home, '.zencoder');
 
     const plan = planLegacyFanoutSweep(home);
-    // The whole agent home becomes a link to a tree with an empty `skills/`.
     rmSync(join(home, '.zencoder'), { recursive: true, force: true });
     symlinkSync(elsewhere, join(home, '.zencoder'));
 
@@ -409,15 +369,12 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     expect(() =>
       applyLegacyFanoutSweep(home, { ...plan, emptyDirs: [...plan.emptyDirs, victim] }),
     ).toThrow(/outside the known legacy set/);
-    // Refusal happens up front — even the legitimate part is untouched.
     expect(existsSync(victim)).toBe(true);
     expect(existsSync(legit)).toBe(true);
   });
 });
 
 describe('legacy fan-out host table — static integrity', () => {
-  // The table drives deletion, so a typo in it is the highest-severity bug
-  // available here. These are pure checks on the data, no filesystem involved.
   const HOME = sep === '/' ? '/home/tester' : 'C:\\Users\\tester';
 
   test('every planned path is inside home and never home itself', () => {
@@ -445,15 +402,12 @@ describe('legacy fan-out host table — static integrity', () => {
     const plan = planLegacyFanoutSweep(home);
     expect(plan.emptyDirs).not.toContain(join(home, '.config'));
     expect(plan.emptyDirs).toContain(join(home, '.config', 'goose'));
-    // …and the shared root really does survive an apply.
     applyLegacyFanoutSweep(home, plan);
     expect(existsSync(join(home, '.config'))).toBe(true);
     expect(existsSync(join(home, '.config', 'goose'))).toBe(false);
   });
 
   test('no legacy host escapes home via .. and every pruneRoot is an ancestor', () => {
-    // Derived from behaviour rather than the private table: plant each host,
-    // then assert the deepest planned dir per entry is still under home.
     const home = mkdtempSync(join(tmpdir(), 'ok-legacy-esc-'));
     const dir = join(home, '.zencoder', 'skills', 'open-knowledge-discovery');
     mkdirSync(dir, { recursive: true });
@@ -468,9 +422,6 @@ describe('legacy fan-out host table — static integrity', () => {
 });
 
 describe('userGlobalSkillBundleTargets / removeUserGlobalSkillBundle — home guard', () => {
-  // `os.homedir()` returns $HOME verbatim, so a broken environment made this
-  // teardown (the `--no-skills` / opt-out path) delete relative to the process
-  // cwd. Predates the legacy sweep, so it was missed when that was hardened.
   test.each(['', '.', 'relative/home'])('a non-absolute home (%j) throws', (bogus) => {
     expect(() => userGlobalSkillBundleTargets(bogus)).toThrow(/absolute home/);
     expect(() => removeUserGlobalSkillBundle(bogus, 'discovery')).toThrow(/absolute home/);

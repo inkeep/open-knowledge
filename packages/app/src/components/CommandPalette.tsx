@@ -1,14 +1,4 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-/**
- * CommandPalette — workspace omnibar opened by Cmd+K / Ctrl+K, or by
- * Cmd+P / Ctrl+P. The P chord is unconditional; the K chord yields to
- * link-authoring when the visual editor has a selection.
- *
- * The palette is available on both web and Electron hosts. Workspace
- * navigation (files, folders, create commands, graph, open-in-agent) is
- * shared across hosts; desktop project commands appear when the Electron
- * bridge is available.
- */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
@@ -113,26 +103,12 @@ import { useInstalledAgents } from './handoff/useInstalledAgents';
 import { basenameOf } from './project-switcher-recents';
 import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-controls';
 
-// Lazy so the report-history list + its bridge wiring stay out of the main
-// chunk until the user opens the ⌘K "Bug report history" entry (desktop-only).
 const BugReportHistoryDialog = lazy(() => import('@/components/BugReportHistoryDialog'));
 
 const COMMAND_PALETTE_SEARCH_TIMEOUT_MS = 3000;
-// Re-poll cadence while the server reports the search index is still warming
-// (`ready:false`). Short, since a warming response returns immediately (the
-// server does not block on the build) and the index builds in well under a
-// second on typical workspaces.
 const COMMAND_PALETTE_SEARCH_WARMING_POLL_MS = 600;
-// Cap on warming re-polls so a wedged server can't poll forever. ~12s at the
-// cadence above — far beyond a normal cold start, which flips ready in ~1s.
 const COMMAND_PALETTE_SEARCH_MAX_WARMING_POLLS = 20;
 
-/**
- * CommandPalette-scoped wrapper around the shared `runWithToast` helper. Same
- * surface ProjectSwitcher uses — consistent launcher UX (every rejection
- * surfaces as a sonner toast). Exported for unit-testing with a mockable
- * `toastApi` indirection; the default uses sonner's module-level `toast`.
- */
 export const runWithToast = (
   fn: () => Promise<void>,
   fallback: string,
@@ -168,12 +144,6 @@ export function NavigationItem({
   entry: WorkspaceEntry | WorkspaceSearchEntry | OmnibarRecentEntry;
   query?: string;
   onSelect: () => void;
-  /**
-   * Inert + dimmed (cmdk skips it for selection, mouse clicks no-op via
-   * `data-disabled:pointer-events-none`). Used for stale semantic results so a
-   * highlighted-then-clicked stale row can't open while ↵ re-fires — keyboard
-   * and pointer stay in agreement until the held set is current again.
-   */
   disabled?: boolean;
 }) {
   const title =
@@ -214,29 +184,6 @@ export function NavigationItem({
   );
 }
 
-/**
- * One-line search-hint affordance. Rendered at the bottom
- * of the palette's result region.
- *
- * - `mode === 'name-only'` — there are results, but every one is a name /
- *   path / folder match. The hint reminds the user the omnibar matches
- *   names + paths, not body text. Content search lives behind opening the
- *   file and using the in-page find (⌘F).
- * - `mode === 'truncated'` — corpus hit the configured cap; some files
- *   couldn't be indexed. The hint warns that a missing file may be a cap
- *   artifact, not a typo. Phrased for a non-technical persona — the
- *   underlying env-var name stays in the operator-facing warn log + the
- *   `ok.search.corpus_truncated_total` counter, not the UI string.
- * - `mode === 'empty'` — no results for a non-empty query. The hint notes
- *   that hidden / ignored files aren't reachable through search.
- * - `mode === 'content'` / `'idle'` — render nothing. Composing the
- *   hint-mode classifier inline with the affordance keeps "absent when
- *   content hits are present" (the invariant) auditable from one site.
- *
- * Suppressed entirely in exclusive modes (tag picker, semantic by-meaning)
- * — those modes have their own empty states + UX. Same for inside the
- * tag-list / tag-docs sub-modes of paletteMode.
- */
 function SearchHint({
   mode,
   inExclusiveMode,
@@ -249,13 +196,6 @@ function SearchHint({
   if (inExclusiveMode) return null;
   if (paletteModeKind !== 'normal') return null;
   if (mode === 'idle' || mode === 'content') return null;
-  // Rendered OUTSIDE `<CommandList>` by the caller — cmdk's CommandList
-  // sets `role="listbox"`, whose ARIA contract restricts children to
-  // `option` and `group`. A `role="note"` child there is out-of-spec and
-  // makes screen-reader behavior on arrow-key navigation undefined. We
-  // mark this region `aria-live="polite"` so the hint is announced when
-  // it changes after results settle, not interleaved with option
-  // navigation.
   return (
     <div
       aria-live="polite"
@@ -297,22 +237,6 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   );
 }
 
-/**
- * Pure decision for which population to render in the search results
- * slot of the open command palette. Factored out so the stale-while-
- * revalidate contract is unit-pinnable independent of the React tree.
- *
- * Contract:
- *   - Prior `searchResults` stay visible whenever non-empty, regardless
- *     of `searchStatus`. Load-bearing — without it the visible list
- *     flashes through the local-corpus fallback on every keystroke.
- *   - When the API resolved with zero matches (`status === 'success'`),
- *     show empty. The local title corpus uses a different algorithm
- *     than `/api/search`, so routing through it would mislead.
- *   - Otherwise (empty + non-success: first keystroke before any API
- *     answer has landed, or recovery after error / tag-mode exit),
- *     surface the local-corpus fallback so the user sees something.
- */
 export function computeVisibleSearchResults({
   searchResults,
   fallbackSearchResults,
@@ -329,8 +253,6 @@ export function computeVisibleSearchResults({
 
 export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPaletteProps) {
   const { t } = useLingui();
-  // No-project single-file session: hide project-scoped commands (Settings,
-  // Switch Project) that have no meaning without a project.
   const singleFile = useSingleFileMode();
   const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
@@ -339,22 +261,8 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     'idle',
   );
-  // Mirrors the server's `truncated` flag on the most recent /api/search build.
-  // Drives the `'truncated'` hint mode so a user sees the cap signal when the
-  // name-only file tier hit `OK_SEARCH_MAX_ENTRIES`.
   const [searchTruncated, setSearchTruncated] = useState(false);
-  // Server cold-start: `/api/search` answered `ready:false` (index still
-  // building). Drives the same "Preparing search" status as the page-list
-  // cold-load gate, and the poll below re-fires until the index is ready. This
-  // covers the post-page-list corpus-build window (and is defense-in-depth for
-  // the seed window the `pagesLoading` gate already handles).
   const [searchIndexWarming, setSearchIndexWarming] = useState(false);
-  // Semantic ("by meaning") mode — a deliberate-submit search, exclusive of the
-  // lexical palette. `isSemanticMode` mirrors the tag-mode short-circuit but is
-  // component state, not a query prefix (the raw query text is what gets
-  // embedded, so a prefix would poison the vector query). Results are sticky
-  // across edits (decision logic in `command-palette-semantic`); `semanticStatus`
-  // drives the spinner / retry affordance.
   const [isSemanticMode, setIsSemanticMode] = useState(false);
   const [semanticResults, setSemanticResults] = useState<WorkspaceSearchEntry[]>([]);
   const [semanticFiredQuery, setSemanticFiredQuery] = useState<string | null>(null);
@@ -366,28 +274,13 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [createDialogKind, setCreateDialogKind] = useState<'file' | 'folder' | null>(null);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  // The origin IS the open state, matching what `ReportBugMenuTrigger` and
-  // `NavigatorApp` already do at their multi-route mounts. Two routes reach this
-  // one compose dialog and they disagree about `launcherBorne`, so a separate
-  // boolean would need a safe default — and the safe default here is the wrong
-  // one: a third route that forgot the setter would inherit launcher-borne and
-  // silently skip the pointer marker, which is the bug this route exists to fix.
-  // Null-is-closed makes open-without-an-origin unrepresentable instead.
   const [reportBugOrigin, setReportBugOrigin] = useState<OkMenuActionOrigin | null>(null);
 
   const [reportBugHistoryOpen, setReportBugHistoryOpen] = useState(false);
-  // Defer mounting the (lazy) history dialog until it is first opened, so its
-  // chunk + the `bugReport.list()` fetch don't run on every palette open.
   const [historyEverOpened, setHistoryEverOpened] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { createBlank: createBlankSkill } = useCreateBlankSkill();
-  // Non-throwing: the palette must still render where no DocumentProvider is
-  // mounted, and the row simply becomes a no-op there.
   const openBlobRunner = useOpenBlobRunner();
-  // Tag-mode state. Loaded lazily on first `tag:` keystroke; cached for
-  // the lifetime of the palette session (cleared on close in the open-
-  // toggle effect). Loading flag drives the `tag-list` placeholder UI;
-  // `tagListStatus` tracks failure so we can show a recovery hint.
   const [tagsList, setTagsList] = useState<TagSummaryEntry[]>([]);
   const [tagsListStatus, setTagsListStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     'idle',
@@ -396,21 +289,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [tagDocsStatus, setTagDocsStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
     'idle',
   );
-  // Single-fetch-per-session gate for the tags list. Lives in a ref
-  // (not state) so it doesn't trigger re-renders and therefore doesn't
-  // belong in the fetch effect's dep array — avoiding a
-  // cleanup-cancels-fetch race that leaves "Loading tags…" hanging
-  // forever. Reset on palette close in the open-toggle effect so a
-  // fresh open re-fetches.
   const tagsListFetchedRef = useRef(false);
   const listRef = useRef<HTMLDivElement>(null);
-  // Input ref so filter-pill clicks can restore focus to the search
-  // input — without it, clicking a pill moves focus to the button and
-  // the user has to click back into the input before typing the tag
-  // name. Same UX expectation users have from Slack's filter pills.
   const inputRef = useRef<HTMLInputElement>(null);
-  // In-flight semantic fire: abort + timeout handles so a re-fire (or a close)
-  // cancels the prior request cleanly without clobbering newer state.
   const semanticAbortRef = useRef<AbortController | null>(null);
   const semanticTimerRef = useRef<number | null>(null);
   const { activeDocName, activeTarget } = useDocumentContext();
@@ -425,37 +306,21 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const workspace = useWorkspace();
   const { states: installStates, refresh: refreshInstallStates } = useInstalledAgents();
   const { dispatch: dispatchHandoff } = useHandoffDispatch();
-  // Capability gate for the "By meaning" pill: only when the project has semantic
-  // search enabled AND an API key is resolvable. Probed only while the palette is
-  // open. When unavailable the pill is absent and the palette is byte-identical
-  // to its pre-semantic shape.
   const { status: semanticCapability, refresh: refreshSemanticStatus } = useSemanticSearchStatus({
     enabled: open,
   });
   const semanticCapable =
     (semanticCapability?.enabled ?? false) && (semanticCapability?.keyPresent ?? false);
-  // Coverage: pages with at least one cached chunk vector. The first "by meaning"
-  // search lazily kicks off the background embed pass, so the corpus can be
-  // partially (or not yet) indexed — surfaced so the user knows results may be
-  // incomplete. `embedded < total` (with pages present) = not fully indexed.
   const semanticIndexedCount = semanticCapability?.embedded ?? 0;
   const semanticTotalCount = semanticCapability?.total ?? 0;
   const semanticIndexing =
     semanticCapable && semanticTotalCount > 0 && semanticIndexedCount < semanticTotalCount;
-  // While indexing is incomplete in semantic mode, poll coverage so the banner
-  // ticks up live: the first by-meaning search kicks off the background embed,
-  // and no `files` push fires as it progresses (the hook's only other trigger).
-  // Bounded — stops the moment indexing completes or the palette/mode closes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshSemanticStatus is behaviorally stable; re-arm only on the gating booleans.
   useEffect(() => {
     if (!open || !isSemanticMode || !semanticIndexing) return;
     const id = window.setInterval(() => refreshSemanticStatus(), 2500);
     return () => window.clearInterval(id);
   }, [open, isSemanticMode, semanticIndexing]);
-  // Shared input construction — identical shape across the three surfaces so
-  // the single-dispatch contract holds. `null` when no active doc or when
-  // workspace metadata has not resolved yet (web host only — Electron
-  // resolves synchronously via `window.okDesktop`).
   const handoffInput = buildHandoffInput({ docName: activeDocName, workspace });
 
   const workspaceEntries = buildWorkspaceEntries(
@@ -471,9 +336,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const visibleRecents = filterOmnibarRecents(recentNavigation, validRecentKeys);
   const currentPath = bridge?.config.projectPath ?? null;
   const switchableProjects = bridge ? projectRecents.filter((row) => row.path !== currentPath) : [];
-  // Cached worktree model for the current project (shared with ProjectSwitcher,
-  // one git spawn total). Excludes the current window's own worktree — no value
-  // in switching to yourself. `null` off-desktop / until the first fetch lands.
   const worktreeModel = useWorktrees();
   const switchableWorktrees =
     bridge && worktreeModel
@@ -485,22 +347,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       ? []
       : searchWorkspaceEntries(workspaceEntries, trimmedDeferredQuery, 8);
 
-  // Global palette opener — Cmd+K / Ctrl+K and Cmd+P / Ctrl+P. Attached once
-  // per bridge instance; React Compiler handles the no-stale-closure-on-
-  // re-render concern via reactivity.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const isTrigger = matchesKeyboardShortcut(e, 'command-palette');
       if (!isTrigger) return;
-      // preventDefault before the overlay gate, not after: ⌘P is the browser's
-      // Print accelerator on the web host, so the chord has to be suppressed
-      // even when we then decline to open (see keyboard-shortcuts.ts). Ordering
-      // it after the gate leaked the Print dialog whenever another layer was up.
       e.preventDefault();
-      // Asymmetric gate, because ⌘K is a toggle: while the palette is up it IS
-      // the top layer and the chord has to keep dismissing it, but while it is
-      // closed any other open layer owns the keyboard and the palette must not
-      // stack on top of it.
       if (!open && isOverlayLayerOpen()) return;
       onOpenChange(!open);
     }
@@ -525,16 +376,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       return;
     }
     setQuery('');
-    // Clear tag caches when the palette closes — tag list mutates on
-    // every save (every doc edit can add/remove tags), so a stale list
-    // surviving across opens would offer dead suggestions.
     setTagsList([]);
     setTagsListStatus('idle');
     tagsListFetchedRef.current = false;
     setTagDocs([]);
     setTagDocsStatus('idle');
-    // Exit semantic mode + drop the sticky result set on close so a fresh open
-    // starts lexical; abort any in-flight fire.
     setIsSemanticMode(false);
     semanticAbortRef.current?.abort();
     semanticAbortRef.current = null;
@@ -547,39 +393,19 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     setSemanticStatus('idle');
   }, [open, bridge, refreshInstallStates, t]);
 
-  // Reset scroll on every query change. Stale-while-revalidate keeps the
-  // prior list mounted across the fetch, so without this the CommandList
-  // would retain its scrollTop into the next query — confusing when the
-  // top matches are now below the viewport. `void query` signals the
-  // dependency to the linter; the actual trigger is the value change.
   useEffect(() => {
     void query;
     if (listRef.current) listRef.current.scrollTop = 0;
   }, [query]);
 
-  // Compute tag-palette mode from the current query. Pure derivation —
-  // re-runs on every render (cheap; no setState). The known-tag-name
-  // set drives the discriminator between `tag-list` (unknown / partial
-  // tag) and `tag-docs` (exact known tag).
   const knownTagNames = new Set(tagsList.map((tag) => tag.name));
-  // Semantic mode bypasses tag parsing: it is exclusive and NOT a query prefix,
-  // so a `tag:` the user happens to type stays part of the semantic query rather
-  // than flipping the palette into tag-mode.
   const paletteMode = isSemanticMode
     ? ({ kind: 'normal', query: deferredQuery } as const)
     : parseTagPaletteQuery(deferredQuery, knownTagNames);
   const isTagMode = paletteMode.kind !== 'normal';
-  // Either exclusive mode (tag or semantic) suppresses the normal lexical palette
-  // — recents, command rows, and the per-keystroke full-text search list.
   const inExclusiveMode = isTagMode || isSemanticMode;
-  // Named locals for the tag-mode `<Trans>` / `t` placeholders — Lingui
-  // can't derive a name from a member expression.
   const tagListQuery = paletteMode.kind === 'tag-list' ? paletteMode.query : '';
   const tagDocsName = paletteMode.kind === 'tag-docs' ? paletteMode.tagName : '';
-  // Semantic mode render + Enter-action decision (pure; see
-  // `command-palette-semantic`). Uses the LIVE query, not the debounced one — the
-  // mode never auto-searches, so there is no debounce to respect and the submit
-  // row should track typing.
   const semanticQueryText = query.trim();
   const semanticView = isSemanticMode
     ? computeSemanticModeView({
@@ -589,21 +415,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         resultCount: semanticResults.length,
       })
     : null;
-  // Named locals for the Lingui placeholders below — Lingui can't derive a name
-  // from a member expression.
   const semanticSubmitQuery = semanticView?.submit?.query ?? '';
   const semanticResultsLabel = semanticView?.results.forQuery ?? '';
 
-  // Fetch tag list lazily on first `tag:` keystroke. Cached for the
-  // session via `tagsListFetchedRef` (a ref, not state — the gate
-  // doesn't drive the UI, only `tagsListStatus` does). Including
-  // `tagsListStatus` in the dep array would cause a cleanup-cancels-
-  // fetch race: `setTagsListStatus('loading')` re-renders, the dep
-  // change re-runs the effect, the cleanup sets `cancelled = true`,
-  // the in-flight promise resolves but bails on the cancelled flag,
-  // state never updates → "Loading tags…" hangs forever. The ref-
-  // based gate keeps the fetch single-shot per session without
-  // triggering that race.
   useEffect(() => {
     if (!open || !isTagMode) return;
     if (tagsListFetchedRef.current) return;
@@ -627,16 +441,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     };
   }, [open, isTagMode]);
 
-  // Fetch tag-doc membership when an exact tag name is recognised.
-  // Re-runs on tag-name change; previous results clear immediately so
-  // stale docs don't briefly flash from the prior tag.
-  //
-  // Same dep-array discipline as the tags-list effect: `tagDocsStatus`
-  // is INTENTIONALLY excluded to avoid the cleanup-cancels-fetch race.
-  // The early-clear path (`if (!open || tagDocsTarget === null)`)
-  // calls the setters unconditionally — they're no-ops if already at
-  // the target value, and skipping them entirely would leave stale
-  // docs visible after exiting tag mode.
   const tagDocsTarget = paletteMode.kind === 'tag-docs' ? paletteMode.tagName : null;
   useEffect(() => {
     if (!open || tagDocsTarget === null) {
@@ -665,14 +469,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   }, [open, tagDocsTarget]);
 
   useEffect(() => {
-    // Tag and semantic modes short-circuit the per-keystroke workspace-search
-    // fetch — tag mode reads `/api/tags*`; semantic mode fires only on submit.
-    //
-    // `pagesLoading` gates the body fetch during cold start: before the page
-    // list has landed, `/api/search` can lose the race with the client timeout
-    // below and the palette falsely shows "Search failed." `loading` is a
-    // cold-load-only signal (not re-raised on background refetch), so once it
-    // flips false this effect re-runs and the fetch fires for the live query.
     if (!open || !trimmedDeferredQuery || inExclusiveMode || pagesLoading) {
       setSearchResults([]);
       setSearchStatus('idle');
@@ -689,8 +485,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     let retryTimer: number | undefined;
     setSearchStatus('loading');
 
-    // Bounded so a wedged server can't poll forever. Returns false at the cap so
-    // the caller settles instead of scheduling another attempt.
     const scheduleWarmingRetry = (): boolean => {
       if (cancelled || warmingPolls >= COMMAND_PALETTE_SEARCH_MAX_WARMING_POLLS) return false;
       warmingPolls += 1;
@@ -698,10 +492,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       return true;
     };
 
-    // A timeout or transient error WHILE warming keeps polling — the index is
-    // known to be coming, so falling to "Search failed." would re-introduce the
-    // exact false failure this fix removes. Outside warming (a genuine slow or
-    // failed query) it settles to the error state as before.
     const settleErrorOrRetry = () => {
       if (cancelled) return;
       if (everWarming && scheduleWarmingRetry()) return;
@@ -711,12 +501,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       setSearchIndexWarming(false);
     };
 
-    // One fetch attempt, with its own AbortController so a retry after a
-    // timeout-driven abort starts from a fresh signal. On `ready:false` (server
-    // index still warming) the empty result is not authoritative, so we re-poll
-    // (recursion, not a dep-driven re-run, keeps the deps array exactly the
-    // inputs the effect reads). Stale-while-revalidate holds: prior
-    // `searchResults` stay visible across the fetch; only a terminal state clears.
     function run() {
       const controller = new AbortController();
       activeController = controller;
@@ -730,8 +514,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           window.clearTimeout(timeoutTimer);
           if (cancelled) return;
           if (!ready) {
-            // Surface "Preparing search" once, then re-poll. Guard the writes so
-            // a steady warming poll does not re-render every cycle.
             if (!everWarming) {
               everWarming = true;
               setSearchResults([]);
@@ -739,8 +521,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               setSearchIndexWarming(true);
               setSearchStatus('success');
             }
-            // Cap reached: stop polling and drop the warming UI so the user can
-            // retype to retry rather than spin forever on a wedged server.
             if (!scheduleWarmingRetry()) setSearchIndexWarming(false);
             return;
           }
@@ -752,10 +532,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         .catch((error: unknown) => {
           window.clearTimeout(timeoutTimer);
           if (cancelled) return;
-          // Skip ALL aborts: a cleanup abort is caught by `cancelled` above, and
-          // a timeout abort was already handled by the timeout callback (which
-          // called settleErrorOrRetry). Re-handling here would double-schedule
-          // the retry — orphaning a timer and double-counting warmingPolls.
           if (error instanceof Error && error.name === 'AbortError') return;
           settleErrorOrRetry();
         });
@@ -772,17 +548,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
 
   const runAction = (fn: () => Promise<void> | void, fallback = t`Command failed.`) => {
     onOpenChange(false);
-    // Normalize `fn` to `() => Promise<void>` so the shared helper's
-    // signature lines up; sync callbacks get wrapped into a resolved promise.
     void runWithToast(async () => {
       await fn();
     }, fallback);
   };
 
-  // Remove a single recent (VS Code Open Recent per-row remove). Unlike
-  // `runAction`, this keeps the palette OPEN so the user can prune several in a
-  // row; the bridge call also clears the entry's session / window-bounds /
-  // last-opened keys, and we optimistically drop the row here.
   const onRemoveRecent = (path: string) => {
     if (!bridge) return;
     void runWithToast(async () => {
@@ -791,10 +561,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     }, t`Failed to remove project.`);
   };
 
-  // Open a worktree from the palette. An existing
-  // worktree opens its window directly; a branch without one is created on
-  // demand, then opened — mirroring the ProjectSwitcher submenu. `refresh` after
-  // a create so the topology (this new worktree) shows up next time.
   const openWorktreeEntry = (entry: WorktreeSelectorEntry) => {
     if (!bridge) return;
     const existingPath = entry.worktreePath;
@@ -837,11 +603,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     navigateToDocHash(entry.path);
   }
 
-  // Tag mode replaces the entire palette body — normal commands /
-  // search / recents hide while the user is filtering by tag. The
-  // dropdown switches to either a tag picker (when the suffix is
-  // unknown / empty) or a doc list (when the suffix is an exact
-  // known tag).
   const showRecentNavigation =
     !inExclusiveMode && trimmedDeferredQuery === '' && visibleRecents.length > 0;
   const visibleSearchResults = computeVisibleSearchResults({
@@ -850,17 +611,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     searchStatus,
   });
   const showNavigation = !inExclusiveMode && visibleSearchResults.length > 0;
-  // Cold start: the page list is still loading (`pagesLoading`) or the server
-  // reported its search index is still warming (`searchIndexWarming`). Show a
-  // distinct "preparing" status instead of the misleading "Search failed." /
-  // "No matching commands." empty state, and let the poll re-fire.
   const showSearchPreparing =
     !inExclusiveMode &&
     trimmedDeferredQuery !== '' &&
     (pagesLoading || searchIndexWarming) &&
     !showNavigation;
-  // Exclude the warming case so a warming re-poll shows only "Preparing search",
-  // not a flash of "Searching" between poll cycles.
   const showSearchLoading =
     !inExclusiveMode &&
     trimmedDeferredQuery !== '' &&
@@ -902,24 +657,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const showTagDocsEmpty =
     paletteMode.kind === 'tag-docs' && tagDocsStatus === 'success' && tagDocs.length === 0;
 
-  // The palette's fixed command rows render from the PALETTE_COMMANDS registry;
-  // this context carries the availability inputs plus the dispatch seams
-  // (menu-action bus, toast-wrapped bridge calls, dialog launchers) each
-  // descriptor needs. Populations that are query/state-driven (search, tags,
-  // semantic, recents, worktrees, the Open-with-AI group) stay bespoke below.
   const viewMenuState = useViewMenuState();
   const runMenuAction = (action: OkMenuAction) => {
     onOpenChange(false);
-    // The palette is itself the launcher: it closes on dispatch and is still
-    // animating out as the action lands, so anything that screenshots on the
-    // action must wait for it rather than photograph it.
     emitLocalMenuAction(action, { launcherBorne: true });
   };
-  // Route through the shared opener (scheme gate + caught bridge rejection)
-  // rather than an inline bridge/window.open fork. Always pass the `okDesktop`
-  // key (the prop bridge, or an explicit `undefined`) so the open path is a pure
-  // function of the prop: a null bridge takes the web `window.open` fallback and
-  // never reaches through to the ambient `window.okDesktop` global.
   const openExternalUrl = (url: string) => {
     onOpenChange(false);
     openExternalUrlViaHost(
@@ -953,16 +695,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     ? []
     : PALETTE_COMMANDS.flatMap((cmd) => {
         if (!cmd.available(paletteCtx)) return [];
-        // The search-only tier keeps the empty-open state lean; `always` rows
-        // are still query-filtered once the user types.
         if (cmd.visibility === 'search-only' && trimmedDeferredQuery === '') return [];
         const label = cmd.label(paletteCtx);
         return matchesCommandQuery(label, deferredQuery, cmd.keywords) ? [{ cmd, label }] : [];
       });
   const hasVisibleFixedCommand = visibleFixedCommands.length > 0;
-  // A function (not an eagerly-built record) so a heading's i18n lookup only
-  // runs for groups that actually render — matching the pre-registry inline
-  // `heading={t`…`}` evaluation.
   const commandGroupHeading = (group: PaletteCommandGroup): string => {
     switch (group) {
       case 'commands':
@@ -1037,10 +774,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
 
   function enterSemanticMode() {
     setIsSemanticMode(true);
-    // Carry whatever the user already typed into the embed input — a query typed
-    // before clicking the pill should search, not vanish. Only a 'tag:' prefix is
-    // dropped (that filter syntax isn't meaningful to embed). Focus so they can
-    // keep typing.
     if (query.startsWith(TAG_QUERY_PREFIX)) setQuery(query.slice(TAG_QUERY_PREFIX.length));
     resetSemanticState();
     inputRef.current?.focus();
@@ -1053,16 +786,9 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     inputRef.current?.focus();
   }
 
-  // Fire ONE semantic search for `raw` — deliberate-submit only, never per
-  // keystroke. Sticky: a timeout/failure or a superseding re-fire keeps the prior
-  // results; only a success replaces them. Mirrors the lexical effect's timeout +
-  // abort discipline.
   function fireSemanticSearch(raw: string) {
     const q = raw.trim();
     if (!q) return;
-    // Same cold-load gate as the lexical effect: while the page list is still
-    // loading, a deliberate submit would race the timeout below into a false
-    // failure. The submit affordance stays, so ↵ runs the search once ready.
     if (pagesLoading) return;
     semanticAbortRef.current?.abort();
     if (semanticTimerRef.current !== null) window.clearTimeout(semanticTimerRef.current);
@@ -1073,7 +799,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     const timeout = window.setTimeout(() => {
       timedOut = true;
       controller.abort();
-      // Keep any prior sticky results; surface the retry affordance.
       setSemanticStatus('error');
     }, COMMAND_PALETTE_SEARCH_TIMEOUT_MS);
     semanticTimerRef.current = timeout;
@@ -1090,30 +815,18 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       })
       .catch((error: unknown) => {
         clearThisFire(timeout, controller);
-        // A newer fire (or a mode exit) aborted this one — let newer state win.
         if (error instanceof Error && error.name === 'AbortError' && !timedOut) return;
-        // Debug-level: a timeout or network failure on a non-critical search.
-        // The UI surfaces the retry row; this is for diagnosis without alarming.
         console.debug('[semantic-search] fire failed', { timedOut, error });
         setSemanticStatus('error');
       });
   }
 
-  // Clear this fire's timer and release the in-flight refs — but only if they
-  // still point at THIS fire, so a newer fire that already replaced them isn't
-  // clobbered. Keeps the refs' "non-null = a search is in flight" invariant true,
-  // which resetSemanticState() and the open-toggle effect both rely on.
   function clearThisFire(timeout: number, controller: AbortController) {
     window.clearTimeout(timeout);
     if (semanticTimerRef.current === timeout) semanticTimerRef.current = null;
     if (semanticAbortRef.current === controller) semanticAbortRef.current = null;
   }
 
-  // Enter in semantic mode is deterministic: while a deliberate fire is the
-  // action (a dirty query or a retry) it fires and never opens a row; once the
-  // held results are current (no submit row) it falls through to cmdk, which
-  // opens the highlighted hit. Handled at the input so it preempts cmdk's own
-  // Enter (events bubble input → cmdk root).
   function onSemanticInputKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (!isSemanticMode || e.key !== 'Enter') return;
     if (semanticView?.submit) {
@@ -1121,16 +834,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       e.stopPropagation();
       fireSemanticSearch(semanticView.submit.query);
     } else if (semanticStatus === 'loading') {
-      // Don't navigate away on a stray Enter while a search is in flight.
       e.preventDefault();
       e.stopPropagation();
     }
   }
 
-  // Escape exits semantic mode first (restoring the lexical palette), protecting
-  // the sticky result set from an accidental close; a second Escape — now
-  // lexical — is not intercepted and closes the dialog. Diverges from tag-mode,
-  // which closes on the first Escape.
   function onPaletteEscapeKeyDown(e: KeyboardEvent) {
     if (!isSemanticMode) return;
     e.preventDefault();
@@ -1147,14 +855,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         className="sm:max-w-2xl"
         commandProps={{
           shouldFilter: false,
-          // cmdk's vim bindings map Ctrl+P and Ctrl+K to "select previous
-          // item" inside every Command root. Both collide with our openers on
-          // Windows/Linux, where the palette chords ARE Ctrl+P / Ctrl+K, so a
-          // second press would move the highlight as well as toggle. Off, so
-          // the chord means exactly one thing on every platform. One boolean
-          // gates all four vim chords, so this also drops Ctrl+N / Ctrl+J
-          // (select next), which collided with nothing — cmdk offers no
-          // narrower opt-out.
           vimBindings: false,
           className:
             '[&_[cmdk-input-wrapper]_svg]:h-4 [&_[cmdk-input-wrapper]_svg]:w-4 [&_[cmdk-item]_svg]:h-4 [&_[cmdk-item]_svg]:w-4',
@@ -1170,24 +870,16 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             isSemanticMode ? t`Search by meaning` : t`Search files, folders, or commands`
           }
         />
-        {/* Filter-pills row — Slack-style. Always visible so the
-            available filters are discoverable without typing a magic
-            prefix. Active pills highlight when their filter is in
-            effect; clicking a highlighted pill exits the filter. */}
+        {}
         <div className="flex flex-wrap gap-1.5 border-b px-3 py-2">
           <button
             type="button"
             onClick={() => {
-              // Leaving semantic mode for tag mode: drop the sticky set first.
               if (isSemanticMode) {
                 setIsSemanticMode(false);
                 resetSemanticState();
               }
               setQuery(isTagMode ? '' : TAG_QUERY_PREFIX);
-              // Restore focus to the input so the user can keep
-              // typing after toggling the filter — clicking the
-              // button steals focus, and Slack's pills snap focus
-              // back so this matches the same muscle memory.
               inputRef.current?.focus();
             }}
             data-testid="command-palette-filter-tag"
@@ -1205,9 +897,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               <Trans>By tag</Trans>
             </span>
           </button>
-          {/* Shown only when semantic search is set up for this project (enabled
-              + key). Enters an exclusive "by meaning" mode — a deliberate-submit
-              vector search, distinct from the per-keystroke lexical filters. */}
+          {}
           {semanticCapable ? (
             <button
               type="button"
@@ -1232,10 +922,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         <CommandList ref={listRef} className="subtle-scrollbar">
           {isSemanticMode && semanticView ? (
             <>
-              {/* Coverage banner — the first by-meaning search lazily kicks off the
-                  background embed, so the corpus may be partly (or not yet) indexed.
-                  Surface it so the user knows results may be incomplete; the count
-                  ticks up via the poll above. */}
+              {}
               {semanticIndexing ? (
                 <div
                   className="flex items-center gap-2 px-3 py-2 text-muted-foreground text-xs"
@@ -1251,9 +938,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 </div>
               ) : null}
 
-              {/* Submit / retry row — the action ↵ performs while the query is
-                  dirty or after an error. Rendered first so it is the default
-                  highlight; the input's keydown makes ↵ deterministic regardless. */}
+              {}
               {semanticView.submit ? (
                 <CommandGroup>
                   <CommandItem
@@ -1307,9 +992,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 </CommandEmpty>
               ) : null}
 
-              {/* Held (sticky) results in the server's fusion order — no omnibar
-                  fuzzy/recency re-ranking. Dimmed + labeled with the query they
-                  were fetched for while the typed query has moved past them. */}
+              {}
               {semanticView.results.show ? (
                 <CommandGroup
                   heading={
@@ -1422,8 +1105,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
               ) : null}
               {tagDocs.map((doc) => {
                 const title = doc.title || doc.docName.split('/').pop() || doc.docName;
-                // Child tags under the queried prefix (rollup hits) — bound to
-                // a local so the `<Trans>` placeholder extracts as `{viaTags}`.
                 const viaTags = doc.matchingTags
                   .filter((tag) => tag !== paletteMode.tagName)
                   .map((tag) => `#${tag}`)
@@ -1446,9 +1127,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                         {doc.docName}
                       </UserText>
                       {doc.matchingTags.length > 0 &&
-                      // Only show the tag chip when the matching tag
-                      // is a child of the queried prefix (rollup hit) —
-                      // not when it's literally the queried tag itself.
                       doc.matchingTags.some((tag) => tag !== paletteMode.tagName) ? (
                         <span className="truncate text-muted-foreground text-[11px]">
                           <Trans>via {viaTags}</Trans>
@@ -1488,29 +1166,12 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 const installState = installStates[target.id];
                 const enabled = installState.installed === true && handoffInput !== null;
                 const displayName = target.displayName;
-                // The Command palette has no tooltip affordance on disabled
-                // rows; the dropdown surface (EditorHeader) carries the full
-                // tooltip UX with install affordances. Here we surface
-                // install/detection status only; no-active-doc rows are hidden
-                // before this group renders.
                 const hint =
                   installState.installed === null
                     ? t`Detecting`
                     : installState.installed === false
                       ? t`Not installed`
                       : null;
-                // Status hint for disabled rows is rendered as a plain <span>
-                // rather than <CommandShortcut>. CommandShortcut is cmdk's
-                // right-aligned affordance semantically reserved for keyboard
-                // shortcuts (Open Folder / Switch Project). Overloading it with status copy
-                // ("Not installed", "Desktop only") conflated the shortcut
-                // affordance with disabled-state messaging; the plain span is
-                // the same visual placement without the semantic overload.
-                // `aria-label` composes the hint into the accessible name so
-                // AT users hear "Open with AI Codex, Not installed" rather than
-                // the bare "Open with AI Codex" that matches an enabled row.
-                // "<app> Desktop" everywhere these targets are named, so the
-                // palette row reads as the same thing the launcher menus list.
                 const accessibleLabel = hint
                   ? t`Open with AI ${displayName} Desktop, ${hint}`
                   : t`Open with AI ${displayName} Desktop`;
@@ -1555,10 +1216,6 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                 .slice(0, 10)
                 .map((row) => {
                   const isWorktree = row.isLinkedWorktree === true;
-                  // Match RecentProjectsMenu's icon scheme: a worktree reads as
-                  // a branch; every project uses the same plain folder. The
-                  // base-project note names the repo a worktree belongs to
-                  // (e.g. "worktree of pnw-fishing").
                   const RowIcon = isWorktree ? GitBranch : Folder;
                   const worktreeOf =
                     isWorktree && row.mainRoot !== undefined ? basenameOf(row.mainRoot) : null;
@@ -1658,12 +1315,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           ) : null}
         </CommandList>
 
-        {/* Search-hint affordance, rendered OUTSIDE `<CommandList>` (which
-            cmdk gives `role="listbox"`; only option/group children are
-            valid there) but still INSIDE `CommandDialog` so it shares the
-            dialog's framing. Absent when at least one server hit carries a
-            body snippet. The empty-query branch (`'idle'`) renders nothing
-            so the Recents view is unaffected. */}
+        {}
         <SearchHint
           mode={classifyOmnibarSearchHint(trimmedDeferredQuery, visibleSearchResults, {
             truncated: searchTruncated,
@@ -1690,8 +1342,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
         initialDir={initialCreateDir}
       />
       <SeedDialog open={seedDialogOpen} onOpenChange={setSeedDialogOpen} />
-      {/* Desktop-only — the registry gates the launching "New project" command
-          on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
+      {}
       {bridge ? (
         <CreateProjectDialog
           open={createProjectOpen}
@@ -1699,8 +1350,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           bridge={bridge}
         />
       ) : null}
-      {/* Desktop-only — the registry gates the launching "Report a bug" command
-          on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
+      {}
       {bridge ? (
         <ReportBugDialog
           open={reportBugOrigin !== null}
@@ -1710,25 +1360,20 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           launcherBorne={reportBugOrigin?.launcherBorne === true}
         />
       ) : null}
-      {/* Desktop-only — the registry gates the launching "Bug report history"
-          command on the same bridge presence. Lazy + deferred until first
-          opened. The empty-state CTA hands off to the compose dialog. */}
+      {}
       {bridge && historyEverOpened ? (
         <Suspense fallback={null}>
           <BugReportHistoryDialog
             open={reportBugHistoryOpen}
             onOpenChange={setReportBugHistoryOpen}
             onReportABug={() => {
-              // Launcher-free: the user read a list and clicked, so the palette
-              // is long gone and there is nothing for the capture to wait on.
               setReportBugHistoryOpen(false);
               setReportBugOrigin({ launcherBorne: false });
             }}
           />
         </Suspense>
       ) : null}
-      {/* Host-agnostic — the feedback form POSTs to the hosted intake route, so
-          the "Send feedback" command (and this dialog) exist on web too. */}
+      {}
       <FeedbackFormDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}

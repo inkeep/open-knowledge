@@ -1,10 +1,3 @@
-/**
- * Device-flow runner — covers the JSON-shape parser, terminal-event tracking,
- * synthesized-complete-on-clean-exit fallback, and timeout/error reporting.
- *
- * Fixture subprocesses spawned via `process.execPath -e <script>` so the tests
- * don't require the project CLI on PATH.
- */
 import { describe, expect, test } from 'vitest';
 import { runDeviceFlowSubprocess } from './auth-flow.ts';
 import type { AuthEvent } from './types.ts';
@@ -93,8 +86,6 @@ describe('runDeviceFlowSubprocess', () => {
   test('CLI-emitted error event is forwarded as-is and counts as terminal', async () => {
     const events: AuthEvent[] = [];
     const ctrl = runDeviceFlowSubprocess({
-      // Exit code 0 — but the CLI emitted 'error', so the runner MUST NOT
-      // synthesize a second complete event on top.
       cliArgs: fixtureCli(`
         console.log(JSON.stringify({type:'error', message:'bad code'}));
         process.exit(0);
@@ -130,7 +121,6 @@ describe('runDeviceFlowSubprocess', () => {
       onEvent: (e) => events.push(e),
     });
     await ctrl.done;
-    // First line dropped (missing verification_uri + expires_in); second forwarded.
     expect(events.map((e) => e.type)).toEqual(['complete']);
   });
 
@@ -155,9 +145,6 @@ describe('runDeviceFlowSubprocess', () => {
     });
     setTimeout(() => ctrl.cancel(), 50);
     await ctrl.done;
-    // Cancel via SIGTERM yields code:null, which the runner currently
-    // surfaces as an error event ("auth login exited with code -1"). Asserts
-    // current behavior; reconsider if cancel should silence the error.
     expect(events.length).toBe(1);
     expect(events[0].type).toBe('error');
   });

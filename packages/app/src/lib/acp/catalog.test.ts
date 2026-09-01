@@ -3,7 +3,6 @@ import { type CatalogAgent, detectedHarnessAgents, harnessPresenceRank } from '.
 
 type HarnessCli = NonNullable<CatalogAgent['harness']>['cli'];
 
-/** Mirrors the server's agent-id → CLI mapping so fixtures name a real pair. */
 const HARNESS_CLI: Record<string, HarnessCli> = {
   'claude-acp': 'claude',
   'codex-acp': 'codex',
@@ -41,9 +40,6 @@ describe('detectedHarnessAgents', () => {
   });
 
   test('existing credentials detect an agent whose CLI is not on PATH', () => {
-    // The Codex Desktop case: the adapter brings its own runtime and the login
-    // is already in the shared store, so a missing `codex` binary must not hide
-    // an agent that would start and authenticate on the first try.
     expect(
       detectedHarnessAgents([agent('codex-acp', 'not-found', true, 'present')]).map((e) => e.id),
     ).toEqual(['codex-acp']);

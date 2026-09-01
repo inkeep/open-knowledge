@@ -3,29 +3,12 @@ import { base16ToTokens } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { cn } from '@/lib/utils';
 
-/**
- * A miniature of the app painted from a scheme, so editing a slot shows the
- * surfaces it drives rather than an abstract swatch.
- *
- * Every element declares the slot it comes from; passing `highlightSlot` rings
- * the matching ones. That pairing is the whole point — "base09" means nothing
- * on its own, but seeing the numbers in a code block light up explains it in
- * one glance.
- *
- * Colors are applied as inline literals resolved through `base16ToTokens`, not
- * as `var(--…)`. The preview has to be able to show a scheme that ISN'T the
- * active one (you edit Custom while Dracula is applied), and a cascaded `var()`
- * would inherit whatever is live on `<html>` instead.
- */
-
 interface ThemePreviewCanvasProps {
   scheme: Base16Scheme;
-  /** Slot to emphasise — set while a slot input is hovered or focused. */
   highlightSlot?: Base16Slot | null;
   className?: string;
 }
 
-/** Wraps a preview element so it can be rung when its slot is highlighted. */
 function Lit({
   slot,
   active,
@@ -47,8 +30,6 @@ function Lit({
       className={cn('rounded-[2px] transition-shadow', on && 'ring-2 ring-offset-1', className)}
       style={{
         ...style,
-        // Ring color tracks the previewed scheme's foreground so it reads on
-        // both light and dark schemes without a second palette.
         ...(on ? { boxShadow: '0 0 0 2px currentColor' } : null),
       }}
     >
@@ -73,7 +54,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
       )}
       style={{ backgroundColor: p.base00, color: p.base05, borderColor: p.base02 }}
     >
-      {/* Chrome row — sidebar surface + the accent the primary button uses. */}
+      {}
       <div
         className="flex items-center gap-1.5 px-2 py-1.5"
         style={{ backgroundColor: p.base01, borderBottom: `1px solid ${p.base02}` }}
@@ -92,7 +73,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
       </div>
 
       <div className="flex">
-        {/* Sidebar — base01 surface, base02 selection, base04 secondary text. */}
+        {}
         <div
           className="w-[26%] shrink-0 space-y-[3px] p-1.5"
           style={{ backgroundColor: p.base01, borderRight: `1px solid ${p.base02}` }}
@@ -113,7 +94,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
           </Lit>
         </div>
 
-        {/* Editor body. */}
+        {}
         <div className="min-w-0 flex-1 space-y-1.5 p-2">
           <Lit slot="base0D" active={hl} className="block font-semibold">
             <span style={{ color: tok['syntax-func'] }}>{t`Release plan`}</span>
@@ -129,7 +110,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             <span style={{ color: p.base05 }}>.</span>
           </div>
 
-          {/* Callout — one of fifteen accents a theme now drives. */}
+          {}
           <Lit
             slot="base0A"
             active={hl}
@@ -144,7 +125,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             </span>
           </Lit>
 
-          {/* Fenced code — the syntax slots, the ones hardest to read abstractly. */}
+          {}
           <div
             className="rounded px-1.5 py-1 font-mono"
             style={{ backgroundColor: tok['syntax-bg'] }}
@@ -173,7 +154,7 @@ export function ThemePreviewCanvas({ scheme, highlightSlot, className }: ThemePr
             </div>
           </div>
 
-          {/* Terminal strip — base16's accent slots ARE the ANSI palette. */}
+          {}
           <div
             className="flex items-center gap-1 rounded px-1.5 py-1 font-mono"
             style={{ backgroundColor: p.base00, border: `1px solid ${p.base02}` }}

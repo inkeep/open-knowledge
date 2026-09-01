@@ -1,19 +1,3 @@
-/**
- * Agent writes ride the L2 commit debounce instead of forcing a shadow commit
- * per write, and `/api/history` drains any pending commit before reading so
- * the debounce never costs read-your-writes.
- *
- * Pins the two halves of the contract:
- *   1. Coalescing — successive agent writes inside one debounce window produce
- *      NO shadow commit on their own (the per-write forced flush is gone).
- *   2. Read-your-writes — a `/api/history` read issued right after a write
- *      lists that write, because the handler flushes the pending commit first.
- *
- * Uses a deliberately huge `commitDebounceMs` so the debounce timer cannot
- * fire during the test — any commit observed before the history read would be
- * a regression back to per-write flushing.
- */
-
 import { execFileSync } from 'node:child_process';
 import { parseWriterId, resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -30,15 +14,6 @@ afterEach(async () => {
   server = undefined;
 });
 
-/**
- * WIP refs belonging to SESSION writers (agent / principal) only.
- *
- * `refs/wip/` also carries classified service writers, notably `git-upstream`,
- * which exists as soon as the project repo has history to import. Counting
- * those conflates "these writes produced a shadow commit" with "the repo has
- * commits at all", which is not what the assertions below mean. Mirrors the
- * production filter in `shadow-repo-stats.ts`, including its ref parsing.
- */
 function listWipRefs(contentDir: string): string[] {
   const shadowDir = resolveShadowDir(contentDir);
   const raw = execFileSync('git', ['for-each-ref', '--format=%(refname)', 'refs/wip/'], {
@@ -50,7 +25,6 @@ function listWipRefs(contentDir: string): string[] {
     .split('\n')
     .filter(Boolean)
     .filter((refname) => {
-      // refs/wip/<branch>/<writerId> — writerId may itself contain slashes.
       const writerId = refname.split('/').slice(3).join('/');
       if (!writerId) return false;
       const { classification } = parseWriterId(writerId);
@@ -75,12 +49,8 @@ describe('agent-write L2 commit coalescing', () => {
       agentName: 'Coalesce Writer',
     });
 
-    // Both writes are on disk (the handler awaits the L1 store), but neither
-    // forced an L2 shadow commit: the wip namespace is still empty.
     expect(listWipRefs(server.contentDir)).toEqual([]);
 
-    // A history read right after the writes must still list them — the
-    // handler drains the pending commit before querying.
     const res = await fetch(
       `${server.baseUrl}/api/history?docName=${encodeURIComponent('coalesce-a')}`,
     );
@@ -89,9 +59,6 @@ describe('agent-write L2 commit coalescing', () => {
     expect(body.entries.length).toBeGreaterThanOrEqual(1);
     expect(body.entries.some((e) => e.type === 'wip')).toBe(true);
 
-    // The read's flush drained BOTH pending writes into one coalesced drain:
-    // the second doc is queryable without any further write or flush, and the
-    // writer advanced a single wip ref.
     const resB = await fetch(
       `${server.baseUrl}/api/history?docName=${encodeURIComponent('coalesce-b')}`,
     );

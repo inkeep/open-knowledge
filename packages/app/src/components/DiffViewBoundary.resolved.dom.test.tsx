@@ -1,19 +1,3 @@
-/**
- * Pins the bounded conflict-entry deferral in `DiffViewBoundary`.
- *
- * An absent conflict entry is ambiguous. For ~100ms after this boundary swaps
- * in it means "the CC1 signal has not caught up"; after a resolution it means
- * "there is no conflict any more". Nothing in the entry distinguishes them, so
- * the wait is bounded rather than guessed.
- *
- * The case that forces a bound rather than a latch: resolving writes the file,
- * the watcher reloads the doc, and this boundary REMOUNTS with no entry to
- * find. "Have we shown a conflict before" is false on a fresh mount, so a latch
- * would leave it waiting forever — which is the hang this exists to prevent.
- *
- * Substrate: jsdom.
- */
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -40,7 +24,6 @@ vi.doMock('@/hooks/use-conflicts', () => ({
 
 const { DiffViewBoundary } = await import('./DiffViewBoundary');
 
-/** Comfortably past CONFLICT_ENTRY_GRACE_MS (2s), so the timer has matured. */
 const CONFLICT_GRACE_OVERSHOOT_MS = 5_000;
 
 const ENTRY = { file: 'notes/roadmap.md', detectedAt: '2026-08-25T00:00:00.000Z' };
@@ -64,9 +47,6 @@ beforeEach(() => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.startsWith('/api/sync/resolve-conflict')) {
       resolvePosts.push(url);
-      // Held open so a second click lands while the first is still in flight —
-      // the window the Apply latch exists for. Server-side this is `git add`
-      // plus a commit, so a latch released before it settles is no latch.
       return new Promise<Response>((resolveFetch) => {
         releaseResolve = () =>
           resolveFetch(
@@ -85,8 +65,6 @@ beforeEach(() => {
             file: 'notes/roadmap.md',
             kind: 'both-modified',
             base: '# Roadmap\n\n- Ship date: October 14\n',
-            // Diverges from base as well as from theirs — with ours === base, diff3
-            // auto-merges and the view renders with no conflict regions at all.
             ours: '# Roadmap\n\n- Ship date: October 21\n',
             theirs: '# Roadmap\n\n- Ship date: Q4\n',
           }),
@@ -105,8 +83,6 @@ afterEach(() => {
 
 describe('DiffViewBoundary — conflict resolved while open', () => {
   test('keeps waiting inside the CC1 catch-up window', async () => {
-    // lifecycle.status propagates over CRDT faster than the signal that
-    // refreshes the conflicts list. An absent entry here means "not yet".
     vi.useFakeTimers();
     conflictsState = { conflicts: [], loading: false, error: null };
     render(<DiffViewBoundary docName="notes/roadmap" provider={makeProvider('# Roadmap\n')} />);
@@ -120,9 +96,6 @@ describe('DiffViewBoundary — conflict resolved while open', () => {
   });
 
   test('reports resolution on a FRESH mount once the entry never arrives', async () => {
-    // The hard case: resolving writes the file, the watcher reloads the doc and
-    // this boundary REMOUNTS with no entry to find. A latch on "did we show a
-    // conflict before" is false here, so only a bounded wait catches it.
     vi.useFakeTimers();
     conflictsState = { conflicts: [], loading: false, error: null };
     render(<DiffViewBoundary docName="notes/roadmap" provider={makeProvider('# Roadmap\n')} />);
@@ -157,9 +130,6 @@ describe('DiffViewBoundary — conflict resolved while open', () => {
   });
 
   test('re-fetches when the same file gets a NEW conflict', async () => {
-    // A resolved-then-re-detected file keeps its path. Keying the fetch on the
-    // path alone leaves the diff frozen on the previous conflict while the rest
-    // of the app moves on, so the sides must follow the conflict's identity.
     conflictsState = { conflicts: [ENTRY], loading: false, error: null };
     const { rerender } = render(
       <DiffViewBoundary docName="notes/roadmap" provider={makeProvider('# Roadmap\n')} />,
@@ -168,7 +138,6 @@ describe('DiffViewBoundary — conflict resolved while open', () => {
       expect(contentFetches.length).toBe(1);
     });
 
-    // Same file, new detection — what re-arming a conflict produces.
     conflictsState = {
       conflicts: [{ ...ENTRY, detectedAt: '2026-08-25T09:00:00.000Z' }],
       loading: false,
@@ -182,12 +151,6 @@ describe('DiffViewBoundary — conflict resolved while open', () => {
   });
 
   test('a failed conflicts fetch is not reported as a resolution', async () => {
-    // `useConflicts` returns an EMPTY list on a failed fetch. Dropping its
-    // `error` made "we could not ask" identical to "nothing is conflicted", so
-    // the grace timer matured and told the user the work was done — while the
-    // file still carried markers and the editor stayed swapped out. Worse, the
-    // panel returns before <ConflictView>, so a mounted view and its whole undo
-    // stack are discarded.
     vi.useFakeTimers();
     conflictsState = {
       conflicts: [],
@@ -206,11 +169,6 @@ describe('DiffViewBoundary — conflict resolved while open', () => {
   });
 
   test('Apply reaches the endpoint once, through the real boundary wiring', async () => {
-    // The latch lives in ConflictView but the promise it awaits is supplied
-    // HERE. A previous revision passed `(content) => void handleResolve(content)`,
-    // so the latch awaited `undefined` and released on the next microtask
-    // rather than after the commit. Testing that through ConflictView alone
-    // cannot see it — the wrapper is not in the path. This drives the boundary.
     conflictsState = { conflicts: [ENTRY], loading: false, error: null };
     render(<DiffViewBoundary docName="notes/roadmap" provider={makeProvider('# Roadmap\n')} />);
 
@@ -222,7 +180,6 @@ describe('DiffViewBoundary — conflict resolved while open', () => {
     const apply = await screen.findByRole('button', { name: 'Apply changes' });
     apply.click();
     await act(async () => {});
-    // Still in flight: the endpoint has not answered.
     apply.click();
     await act(async () => {});
 

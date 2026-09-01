@@ -1,94 +1,35 @@
-/**
- * Shared subprocess runner for local-op flows.
- *
- * Spawns a CLI subprocess, parses NDJSON lines from stdout, and forwards
- * each parsed event to the caller via `onLine`. The caller decides whether
- * the event is terminal (`complete` / `error`) and translates non-NDJSON
- * lines as needed.
- *
- * Lifetime: the returned controller's `cancel()` sends SIGTERM. The runner
- * resolves with `{ code, stderr }` once the child's stdio has closed,
- * regardless of cancellation.
- *
- * KNOWN GAP (deferred, deliberately — the Wave 2 settled-latch adoption
- * stopped at the HTTP handlers): settlement here still depends on the child
- * cooperating — the timeout sends SIGTERM without being a settle branch, so
- * a signal-resistant or wedged child leaves `done` pending. That failure class reaches every consumer of this chokepoint: the
- * six HTTP local-op endpoints routed through it, plus
- * `local-ops/auth-query.ts` (`runAuthStatusSubprocess` /
- * `runAuthReposSubprocess`) and the desktop IPC surface
- * (`packages/desktop/src/main/index.ts`) that calls them — a surface the
- * HTTP-side fixes do not cover.
- * `auth-query.ts` also carries its own duplicate `DEFAULT_TIMEOUT_MS =
- * 30_000`; fold it into the same follow-up.
- */
-
 import { spawn } from 'node:child_process';
 import { delimiter as PATH_DELIMITER } from 'node:path';
 import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
 
-/** A parsed JSON line plus the raw line (for HTTP NDJSON pass-through). */
 interface ParsedLine {
-  /** Raw NDJSON line (no trailing newline). */
   raw: string;
-  /** Parsed JSON value when the line was valid JSON; null otherwise. */
   parsed: Record<string, unknown> | null;
 }
 
 interface SubprocessRunOptions {
-  /** Command + base argv prefix, e.g. ['open-knowledge'] or [process.execPath, scriptPath]. */
   cliArgs: readonly string[];
-  /** Args appended after `cliArgs` (e.g. ['auth', 'login', '--json']). */
   trailingArgs: readonly string[];
-  /** Optional cwd override. */
   cwd?: string;
-  /**
-   * Directories to prepend to the child's `PATH`. When set, the child resolves
-   * commands against these dirs before the inherited PATH — used to point a
-   * spawned `<cli> clone` at the git binary the caller's preflight validated
-   * (closes the check/use binding divergence). Empty/absent leaves the
-   * inherited environment untouched.
-   */
   extraPathDirs?: readonly string[];
-  /** Wall-clock timeout. SIGTERMs the child when reached. */
   timeoutMs: number;
-  /** Called once per stdout line (non-empty after newline split + trailing flush). */
   onLine: (line: ParsedLine) => void;
-  /** Optional stderr observer (receives raw chunks). */
   onStderr?: (chunk: Buffer) => void;
-  /**
-   * When set, the child is spawned with a piped stdin and this string is written
-   * to it (then closed) — the non-interactive channel for `auth pat
-   * --token-stdin`, so the token never appears in argv or the environment.
-   * Absent leaves stdin ignored (the default for every other flow).
-   */
   stdinData?: string;
 }
 
 interface SubprocessRunResult {
-  /** Process exit code; null on signal. */
   code: number | null;
-  /** Captured stderr (utf-8). */
   stderr: string;
-  /** True when the wall-clock timeout fired. */
   timedOut: boolean;
-  /** True when `cancel()` was called by the caller. */
   cancelled: boolean;
 }
 
 interface SubprocessController {
-  /** Promise that resolves once the child's stdio has closed (success or otherwise). */
   done: Promise<SubprocessRunResult>;
-  /** SIGTERM the child. Idempotent. */
   cancel(): void;
 }
 
-/**
- * Spawn a CLI subprocess and stream its NDJSON output via `onLine`.
- *
- * Caller terminates the stream by inspecting parsed events; this runner
- * doesn't know which `type` is terminal — callers (auth vs clone) own that.
- */
 export function runSubprocess(opts: SubprocessRunOptions): SubprocessController {
   const [cmd, ...baseArgs] = opts.cliArgs;
   if (!cmd) {
@@ -129,8 +70,6 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
   );
 
   if (opts.stdinData !== undefined && child.stdin) {
-    // The child may exit before draining stdin (e.g. an unknown flag) — swallow
-    // the resulting EPIPE rather than crashing the parent.
     child.stdin.on('error', () => {});
     child.stdin.write(opts.stdinData);
     child.stdin.end();
@@ -153,8 +92,6 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
     opts.onLine({ raw, parsed });
   };
 
-  // stdout/stderr are always piped (stdio[1]/[2] are 'pipe'); the optional
-  // chaining only satisfies the type widened by the conditional stdin mode.
   child.stdout?.on('data', (chunk: Buffer) => {
     stdoutBuffer += chunk.toString('utf-8');
     const lines = stdoutBuffer.split('\n');
@@ -170,7 +107,6 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
   const done = new Promise<SubprocessRunResult>((resolve) => {
     child.on('close', (code) => {
       clearTimeout(killTimer);
-      // Flush any trailing partial line that lacks a newline terminator.
       if (stdoutBuffer.trim()) flushLine(stdoutBuffer);
       stdoutBuffer = '';
       resolve({
@@ -200,9 +136,7 @@ export function runSubprocess(opts: SubprocessRunOptions): SubprocessController 
       if (!child.killed) {
         try {
           child.kill('SIGTERM');
-        } catch {
-          // Already exited — nothing to do.
-        }
+        } catch {}
       }
     },
   };

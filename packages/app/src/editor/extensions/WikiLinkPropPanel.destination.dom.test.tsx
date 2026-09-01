@@ -1,18 +1,3 @@
-/**
- * What destination the wiki-link prop panel reports, and how it labels it.
- *
- * The panel and the chip must agree: whatever the chip navigates to on click is
- * what the panel's destination link points at. They resolve independently, so a
- * document whose filename carries a dot (`notes/acp.daemon`, written
- * `[[acp.daemon]]`) is the case where a syntactic doc-vs-asset split shows up as
- * the panel reading "Asset" and offering an asset href for a document sitting
- * one folder over.
- *
- * The Radix-Popover-based `InteractionPropPanel` is mocked to a passthrough so
- * the panel body renders inline. `usePageList` is mocked at the data boundary
- * with a real corpus — the panel's own resolution runs for real.
- */
-
 import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
@@ -21,7 +6,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { buildPagesByBasenameIndex, buildPagesBySlugIndex } from '../page-list-cache';
 import { toWikiLinkSlug } from './wiki-link-helpers';
 
-/** Dotted document, dot-free control in the same folder, and a real asset. */
 const PAGES = new Set(['index', 'notes/acp.daemon', 'notes/roadmap']);
 const ASSET_PATHS = new Set(['files/meeting.pdf']);
 
@@ -54,10 +38,6 @@ vi.doMock('../../components/PageListContext', () => ({
 
 afterEach(cleanup);
 
-/**
- * Minimal editor + getPos stub. The panel reads node attrs and `editor.view.dom`
- * at render; state mutations only run in callbacks this test never fires.
- */
 function makeEditor(target: string): Editor {
   const node = { attrs: { target, alias: null, anchor: null }, nodeSize: 1 };
   return {

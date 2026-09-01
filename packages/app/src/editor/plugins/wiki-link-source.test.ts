@@ -12,16 +12,6 @@ import {
 
 beforeEach(() => resetLinkValidationPolicyForTest());
 
-/**
- * Unit tests for the wikilink broken-detection primitives.
- *
- * The plugin itself runs inside a ViewPlugin closure that needs a live CM6
- * EditorView (DOM-bound), so full behavior is covered by Playwright. These
- * tests focus on the pure helpers — `buildPageNameSet` (normalization) and
- * `extractWikilinkTarget` (parsing) — which are where target-matching
- * false-positives / false-negatives would come from.
- */
-
 describe('buildPageNameSet', () => {
   test('empty input → empty set', () => {
     expect(buildPageNameSet([]).size).toBe(0);
@@ -53,7 +43,6 @@ describe('buildPageNameSet', () => {
     const s = buildPageNameSet([{ docName: 'ReadMe', title: 'The README' }]);
     expect(s.has('readme')).toBe(true);
     expect(s.has('the readme')).toBe(true);
-    // Should not contain the original-case strings
     expect(s.has('ReadMe')).toBe(false);
     expect(s.has('The README')).toBe(false);
   });
@@ -103,7 +92,6 @@ describe('extractWikilinkTarget', () => {
   });
 
   test('strips both (alias first — whichever delimiter comes first wins)', () => {
-    // The split regex is /[#|]/ — splits on whichever appears first.
     expect(extractWikilinkTarget('SomePage|display#anchor')).toBe('somepage');
   });
 
@@ -155,7 +143,7 @@ describe('end-to-end target matching', () => {
     expect(pageSet.has(extractWikilinkTarget('EXISTING-PAGE'))).toBe(true);
     expect(pageSet.has(extractWikilinkTarget('existing-page#anchor'))).toBe(true);
     expect(pageSet.has(extractWikilinkTarget('existing-page|alias'))).toBe(true);
-    expect(pageSet.has(extractWikilinkTarget('Existing'))).toBe(true); // title-match
+    expect(pageSet.has(extractWikilinkTarget('Existing'))).toBe(true);
   });
 
   test('broken wikilink → target not in set', () => {
@@ -175,11 +163,6 @@ describe('end-to-end target matching', () => {
   });
 
   test('folder rows keep seeding the known-target set: full path AND basename', () => {
-    // The plugin fetches its page list WITH folders solely for this set (the
-    // completion source strips them): a folder holding no markdown children
-    // arrives only as a kind:'folder' row, and a bare-basename wikilink to a
-    // folder resolves only through the row's title. Losing either form
-    // redlines links in source mode that the WYSIWYG chip resolves.
     const targetSet = buildKnownWikilinkTargetSet([
       { kind: 'folder', docName: 'specs/foo', title: 'foo' },
     ]);
@@ -189,8 +172,6 @@ describe('end-to-end target matching', () => {
   });
 
   test('empty target (bare #anchor in wikilink) matches nothing', () => {
-    // The plugin's check `target && !pageSet.has(target)` treats empty target
-    // as a no-op (never emits broken-mark); verified here by the truthy check.
     const target = extractWikilinkTarget('#anchor-only');
     expect(target).toBe('');
     expect(Boolean(target)).toBe(false);

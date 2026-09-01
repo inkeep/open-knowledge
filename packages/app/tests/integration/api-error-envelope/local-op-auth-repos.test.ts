@@ -1,11 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleLocalOpAuthRepos`
- *
- * Pre-stream errors emit `application/problem+json`; mid-stream errors emit
- * a typed `{ type: 'error', problem: ProblemDetails }` event. ENOENT on the
- * spawn deterministically triggers the mid-stream path.
- */
-
 import { ProblemDetailsSchema, StreamingProblemEventSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

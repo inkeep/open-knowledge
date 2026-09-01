@@ -1,20 +1,3 @@
-/**
- * Class guard for the claim-then-hide shape.
- *
- * The markdown pipeline runs a chain of promoters that turn literal source
- * runs into live constructs on every re-derivation. That is the authoring
- * feature, and it is fine as long as the construct still SHOWS the claimed
- * text. It stops being fine when the resulting PM binding hides its own
- * content: the run then leaves the editing surface while the bytes stay
- * perfect, and the author has no way to reach the text from the WYSIWYG.
- *
- * Two complementary checks. The schema sweep is the general one — it probes
- * every mark and node the editor can hold, so a future extension that
- * reaches for `display: none` fails here rather than in a user's document.
- * The typed sweep is the specific one, running the promoters that keep their
- * claimed run as text through a real editor and the production re-derivation.
- */
-
 import { MarkdownManager, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup } from '@testing-library/react';
 import { Editor, getSchema, type JSONContent } from '@tiptap/core';
@@ -64,7 +47,6 @@ function visibleText(root: HTMLElement): string {
   return out;
 }
 
-/** The rendered attrs a type stamps, or null when the probe can't build one. */
 function renderedAttrs(spec: unknown): Record<string, unknown> | null {
   if (!Array.isArray(spec)) return null;
   const attrs = spec[1];
@@ -84,8 +66,6 @@ describe('no editor mark or node hides its own content', () => {
       try {
         attrs = renderedAttrs(markType.spec.toDOM?.(markType.create(), true));
       } catch {
-        // A type whose renderer needs richer context than a bare instance
-        // can't be probed; it is not evidence of hiding either way.
         continue;
       }
       const style = attrs?.style;
@@ -113,11 +93,6 @@ describe('no editor mark or node hides its own content', () => {
 });
 
 describe('promoters that keep their claimed run as text keep it visible', () => {
-  // Each entry is a literal a user can type as prose, plus the substring the
-  // editing surface must still show once the promoter has claimed it. Widget
-  // constructs (JSX components, math atoms) are deliberately absent: they
-  // replace the run with a rendered element rather than hiding text, which is
-  // a different question from this guard's.
   const CASES = [
     { promoter: 'comment (percent)', typed: 'before %%mid%% after', visible: 'mid' },
     { promoter: 'comment (html)', typed: 'before <!-- mid --> after', visible: 'mid' },

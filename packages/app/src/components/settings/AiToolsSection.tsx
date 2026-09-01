@@ -1,21 +1,3 @@
-/**
- * Settings → User → AI tools & CLI — the persistent, stateful sibling of the
- * first-launch "Let's get set up" consent dialog
- * (`McpConsentDialogBody.tsx`). Two component groups (shell-PATH shim,
- * per-editor MCP entries): checkboxes that reflect LIVE installed state and
- * apply on click (check = install, uncheck = uninstall), each with an info
- * tooltip disclosing the file + entry it touches. One component mutates at a
- * time (main serializes; the UI disables the group while a toggle is in
- * flight).
- *
- * User-global Agent Skills used to be a third group here. PRD-7975 moved them
- * to Settings → Skills Studio (`BuiltInSkillsSection`), where someone looking
- * for a skill actually looks; this page keeps the connections.
- *
- * Desktop-only — the sidebar item is gated on the Electron preload bridge, and
- * this component renders a fallback if mounted without it.
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { EDITOR_SETUP_DOC_SLUG } from '@inkeep/open-knowledge-core';
@@ -35,18 +17,12 @@ import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type ComponentRef = OkIntegrationsSetRequest['component'];
 
-/** Stable per-row key for the in-flight marker. */
 function componentKey(component: ComponentRef): string {
   if (component.kind === 'editor') return `editor:${component.id}`;
   if (component.kind === 'skill') return `skill:${component.id}`;
   return 'path';
 }
 
-/**
- * Per-row disclosure tooltip: exactly which file/entry (or folders) the
- * checkbox touches. Rendered as a sibling of the row's Label — a button
- * inside the label would sit in its activation path.
- */
 function RowInfoTooltip({ testId, children }: { testId: string; children: ReactNode }) {
   const { t } = useLingui();
   return (
@@ -62,8 +38,7 @@ function RowInfoTooltip({ testId, children }: { testId: string; children: ReactN
           <Info className="size-3.5" />
         </Button>
       </TooltipTrigger>
-      {/* The base TooltipContent is a flex ROW (inline-flex items-center) —
-          without the single-column wrapper, sibling <p>s render side by side. */}
+      {}
       <TooltipContent side="left" className="max-w-sm text-left">
         <div className="flex min-w-0 flex-col gap-1">{children}</div>
       </TooltipContent>
@@ -95,9 +70,6 @@ export function AiToolsSection() {
     };
   }, [bridge]);
 
-  // No `finally` — the React Compiler can't lower TryStatement finalizers
-  // (BuildHIR::lowerStatement Todo); the catch swallows, so the trailing
-  // setPending(null) runs on both paths.
   async function applyToggle(component: ComponentRef, enabled: boolean): Promise<void> {
     if (!bridge) return;
     setPending(componentKey(component));
@@ -113,8 +85,6 @@ export function AiToolsSection() {
     setPending(null);
   }
 
-  // Yours first, the rest folded — the ranking contract lives in
-  // `foldEditorsByPrimary`, shared with the project-scope section.
   const { shownEditors, hiddenCount } = foldEditorsByPrimary(status?.editors ?? [], showAllEditors);
 
   const header = (
@@ -174,8 +144,7 @@ export function AiToolsSection() {
               Terminal
             </Trans>
           </span>
-          {/* Row hover lives on the container so the info-button strip grays
-              with the rest of the row instead of reading as its own column. */}
+          {}
           <div className="flex items-start overflow-hidden rounded-md border border-border bg-card/50 hover:bg-accent">
             <Label
               htmlFor="ai-tools-path"
@@ -234,11 +203,6 @@ export function AiToolsSection() {
           {shownEditors.map((editor) => {
             const checked = editor.state === 'installed' || editor.state === 'foreign';
             const disabled = busy || editor.state === 'unmanageable';
-            // Every never-configured tool gets the setup-guide link, detected or
-            // not. A row offering to configure a tool must not also assert the
-            // user has it: those two claims on one row contradict each other, and
-            // the row is the weakest place to stake presence. `detected` orders
-            // the list below; it never speaks here.
             const showSetupLink = editor.state === 'not-installed';
             const setupUrl = `https://openknowledge.ai/docs/integrations/${EDITOR_SETUP_DOC_SLUG[editor.id]}`;
             const statusLabel =
@@ -288,8 +252,7 @@ export function AiToolsSection() {
                     )}
                   </span>
                 </Label>
-                {/* Sibling of the Label, not a descendant — an anchor must never
-                    sit inside a label's activation path. */}
+                {}
                 {showSetupLink && (
                   <a
                     href={setupUrl}

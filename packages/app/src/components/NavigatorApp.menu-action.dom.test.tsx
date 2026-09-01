@@ -1,19 +1,3 @@
-/**
- * DOM mount tests for NavigatorApp's menu-action subscription — the
- * launcher-window mirror of the editor-window App-root triggers
- * (`CreateProjectMenuTrigger`, `ReportBugMenuTrigger`). Both windows must
- * react when main fires a menu action since the menu dispatches to whichever
- * window is focused.
- *
- * Pins the user-visible contract: NavigatorApp's CreateProjectDialog opens
- * only after the `new-project` action fires, `report-bug` opens the
- * system-wide ReportBugDialog, and unrelated menu actions are ignored. The
- * subscription is captured via a fake bridge and invoked directly — the same
- * path main's `sendMenuActionToFocused(...)` drives over IPC.
- *
- * Invocation: `bun run test:dom` from `packages/app/`.
- */
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -24,25 +8,16 @@ import {
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
 
-// `next-themes` is consumed at the top of NavigatorApp; provide a stable
-// stub so the test mount doesn't require a ThemeProvider.
 vi.doMock('next-themes', () => ({
   useTheme: () => ({ theme: 'system' }),
 }));
 
-// `useThemeBridge` drives the cold-launch show-gate via real IPC calls
-// (setThemeSource / signalThemeApplied). Stub to a no-op so the bridge stub
-// doesn't need those methods.
 vi.doMock('@/hooks/use-theme-bridge', () => ({
   useThemeBridge: () => {},
 }));
 
 const { NavigatorApp } = await import('./NavigatorApp');
 
-// Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. The
-// broadly-needed constructors (MutationObserver) live in the shared
-// tests/dom/jsdom-preload.ts; NodeFilter (react-focus-scope) and
-// ResizeObserver (react-use-size) are hoisted locally per sibling DOM tests.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -74,15 +49,9 @@ type MenuActionLike =
 
 interface NavigatorBridgeStub {
   bridge: OkDesktopBridge;
-  /** Invoke the most recently subscribed onMenuAction callback. */
   fire(action: MenuActionLike): void;
 }
 
-/**
- * Fake bridge exposing the surface NavigatorApp touches at mount + the
- * CreateProjectDialog open path. `onMenuAction` captures the subscribed
- * callback; `fire(...)` invokes it the way main's menu dispatch would.
- */
 function makeNavigatorBridge(): NavigatorBridgeStub {
   const bridge = {
     config: {
@@ -95,7 +64,6 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
     onMenuAction: () => () => {},
     onRecentRemovedMissing: () => () => {},
     integrations: {
-      // CreateProjectDialog seeds its editor checkboxes off this on open.
       status: async () => ({
         available: false,
         editors: [],
@@ -142,8 +110,6 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
   return {
     bridge,
     fire: (action) => {
-      // Wrap in act so the resulting setOpen state flush is applied before
-      // assertions run (mirrors fireEvent's internal act wrapping).
       act(() => emitLocalMenuAction(action));
     },
   };
@@ -154,9 +120,6 @@ describe('NavigatorApp new-project menu-action subscription', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // CreateProjectDialog's defaultProjectsRoot catch arm logs via
-    // console.warn on unhappy paths; NavigatorApp's listRecent catch logs
-    // via console.error. Suppress both to keep output clean.
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -176,8 +139,6 @@ describe('NavigatorApp new-project menu-action subscription', () => {
       </TooltipProvider>,
     );
 
-    // Let listRecent's microtask settle so any post-mount render-cascade
-    // finishes before we assert the dialog's absence.
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByTestId('create-project-dialog') !== null).toBe(false);
   });
@@ -190,7 +151,6 @@ describe('NavigatorApp new-project menu-action subscription', () => {
       </TooltipProvider>,
     );
 
-    // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
 
     stub.fire('new-project');
@@ -211,13 +171,11 @@ describe('NavigatorApp new-project menu-action subscription', () => {
       </TooltipProvider>,
     );
 
-    // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
 
     stub.fire('new-doc');
     stub.fire('toggle-sidebar');
 
-    // Give any erroneous open a chance to render before asserting absence.
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId('create-project-dialog') !== null).toBe(false);
   });
@@ -230,7 +188,6 @@ describe('NavigatorApp new-project menu-action subscription', () => {
       </TooltipProvider>,
     );
 
-    // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -242,16 +199,10 @@ describe('NavigatorApp new-project menu-action subscription', () => {
       },
       { timeout: ASYNC_TIMEOUT_MS },
     );
-    // The Navigator has no project, so the compose summary must carry the
-    // system-wide labeling rather than the project-scoped line.
     expect(screen.getByText(/No project is open/)).not.toBeNull();
   });
 
   test('closing the report leaves it reopenable', async () => {
-    // The open state here IS the dispatch's origin, so the close path has to
-    // null it rather than flip a boolean back. Get that polarity wrong and the
-    // report opens exactly once per window lifetime — and on the Navigator this
-    // is the only report surface the window has.
     const stub = makeNavigatorBridge();
     render(
       <TooltipProvider>
@@ -275,9 +226,6 @@ describe('NavigatorApp new-project menu-action subscription', () => {
   });
 
   test('send-feedback menu action opens the feedback form', async () => {
-    // The Help menu fires to whichever window is focused, so the Navigator
-    // owns this path whenever it is the focused window — the editor-window
-    // FeedbackMenuTrigger never runs here.
     const stub = makeNavigatorBridge();
     render(
       <TooltipProvider>
@@ -309,7 +257,6 @@ describe('NavigatorApp new-project menu-action subscription', () => {
       </TooltipProvider>,
     );
 
-    // Let listRecent's microtask settle so the subscription useEffect runs.
     await new Promise((r) => setTimeout(r, 0));
 
     stub.fire('close-active-tab-or-window');

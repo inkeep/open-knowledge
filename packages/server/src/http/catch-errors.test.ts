@@ -1,10 +1,3 @@
-/**
- * `catchErrors(...)` boundary behavior: typed 500 emission with `cause`,
- * variadic pass-through composition with `withValidation`, and the STOP-rule
- * guarantee that `BridgeMergeContentLossError` is NEVER swallowed (its single
- * sanctioned catch site is Observer A Path B in `server-observers.ts`).
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { BridgeMergeContentLossError } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
@@ -118,8 +111,6 @@ describe('catchErrors', () => {
   });
 
   test('STOP rule: name-matched content-loss error from a foreign class identity also passes through', async () => {
-    // Two loaded copies of core would break `instanceof`; the wrapper's
-    // name-based companion check must keep the pass-through guarantee.
     const { res, writeHeadCalls } = makeMockRes();
     const foreign = new Error('bridge loss (foreign identity)');
     foreign.name = 'BridgeMergeContentLossError';
@@ -142,7 +133,6 @@ describe('catchErrors', () => {
       { handler: 'test-handler' },
     );
     await wrapped(req, res);
-    // errorResponse's internal triple-guard owns this case: no second head.
     expect(writeHeadCalls).toHaveLength(0);
   });
 });

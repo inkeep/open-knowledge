@@ -1,24 +1,3 @@
-/**
- * ActivityModeContent — the DocPanel's `'agent'` mode content.
- *
- * Replaces the standalone `AgentActivityPanel` Sheet.
- * Embedded inside `DocPanel`, so this component no longer provides its own
- * container chrome — it's rendered directly as the body of the `'agent'`
- * mode branch. No Sheet, no width hook, no resize handle.
- *
- * Responsibilities:
- *   - Fetches per-agent activity via `useActivityPanel(connectionId)`.
- *   - Dispatches `POST /api/agent-undo` (`'last'` / `'file'` scope) with
- *     user-visible success / error toasts.
- *   - Filename-click navigates the main editor without flipping mode
- *     (doc-nav does not reset the scoped agent).
- *   - Renders every state branch: loading / error / no-agent-selected /
- *     empty / session-ended / populated.
- *
- * Test contract: the inner `ActivityModeBody` is factored out so it can
- * be unit-tested via `renderToString` without any portal / context /
- * fetch dependencies. The outer wrapper owns the hook + callbacks.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { t } from '@lingui/core/macro';
@@ -40,15 +19,10 @@ import { AgentIcon } from './icons/AgentIcon';
 import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
-// ---------------------------------------------------------------
-// HTTP: undo dispatch
-// ---------------------------------------------------------------
-
 async function postAgentUndo(body: {
   connectionId: string;
   docName: string;
   scope: 'last' | 'file' | 'count';
-  /** Required when scope is `'count'` — the number of newest edits to drop. */
   count?: number;
   agentName?: string;
 }): Promise<void> {
@@ -57,8 +31,6 @@ async function postAgentUndo(body: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...body,
-      // The attribution-sweep contract requires every mutating POST to carry
-      // an agentId — the server derives `writerId = "agent-${agentId}"`.
       agentId: body.connectionId,
     }),
   });
@@ -67,18 +39,10 @@ async function postAgentUndo(body: {
   }
 }
 
-// ---------------------------------------------------------------
-// `window.location.hash` helper
-// ---------------------------------------------------------------
-
 function navigateToDoc(docName: string): void {
   if (typeof window === 'undefined') return;
   window.location.hash = hashFromDocName(docName);
 }
-
-// ---------------------------------------------------------------
-// Sub-views
-// ---------------------------------------------------------------
 
 function LoadingState(): React.JSX.Element {
   return (
@@ -129,7 +93,6 @@ function EmptyState(): React.JSX.Element {
   );
 }
 
-/** Visible hint when mode is `'agent'` but no agent is scoped. */
 function NoAgentSelectedState({
   onExit,
   showBackButton,
@@ -184,12 +147,6 @@ function BackToDocumentButton({ onClick }: { onClick: () => void }): React.JSX.E
 }
 
 function SessionEndedBanner({ lastTs }: { lastTs: number | null }): React.JSX.Element {
-  // `Date.now()` is impure — calling it in render violates React Compiler's
-  // purity contract. Hoist behind a lazy-init useState so it's captured
-  // exactly once at mount. The displayed value only needs "when session
-  // ended" minute precision, so we skip the setInterval tick used by
-  // ActivityPanelFileRow (the session isn't going to un-end; a paint-once
-  // "2m ago" that drifts slightly while the user lingers is acceptable).
   const [mountedAt] = useState<number>(() => Date.now());
   const ago = lastTs ? formatAgo(mountedAt - lastTs) : null;
   return (
@@ -239,10 +196,6 @@ function AgentAvatar({
     </span>
   );
 }
-
-// ---------------------------------------------------------------
-// Body — pure presentational (testable via renderToString)
-// ---------------------------------------------------------------
 
 interface ActivityModeBodyProps {
   data: ReturnType<typeof useActivityPanel>['data'];
@@ -318,14 +271,7 @@ function ActivityModeBody({
           <EmptyState />
         ) : (
           <>
-            {/*
-              Only show "Session ended" when a session actually existed
-              (lastTs !== null). Read-only agents — those that connect via
-              the keepalive WS bootstrap and never invoke a write tool —
-              have no session to "end"; the GC-explanation copy is
-              actively misleading for them. The empty state ("No edits yet")
-              is sufficient and accurate.
-            */}
+            {}
             {!data.sessionAlive && lastTs !== null ? <SessionEndedBanner lastTs={lastTs} /> : null}
             {data.files.length === 0 ? (
               <EmptyState />
@@ -349,10 +295,6 @@ function ActivityModeBody({
   );
 }
 
-// ---------------------------------------------------------------
-// Outer component — owns hook + callbacks
-// ---------------------------------------------------------------
-
 export function ActivityModeContent({
   showBackButton = true,
 }: {
@@ -364,11 +306,6 @@ export function ActivityModeContent({
   const { pageMeta } = usePageList();
   const { data, status, error, reload } = useActivityPanel(docPanelAgentId);
 
-  // Keep an open diff pane's version ceiling in sync with live activity — the
-  // panel re-fetches on the CC1 `session-activity` signal, so pushing the fresh
-  // edit count into the store lets a new burst extend the pane's version range
-  // (and follow "now") without reopening. Placed before the early return below
-  // so hook order stays stable. No-op unless a diff for the open file is up.
   useEffect(() => {
     if (!data || docPanelAgentId === null) return;
     for (const file of data.files) {
@@ -376,10 +313,6 @@ export function ActivityModeContent({
     }
   }, [data, docPanelAgentId]);
 
-  // When mode is `'agent'` but no agent is scoped (edge case: user flipped
-  // mode without ever clicking an avatar), render a discoverable hint rather
-  // than silently showing an empty panel. Back-arrow still reachable so the
-  // user is never wedged in this state.
   if (docPanelAgentId === null) {
     return <NoAgentSelectedState onExit={closeActivityPanel} showBackButton={showBackButton} />;
   }
@@ -392,14 +325,8 @@ export function ActivityModeContent({
     navigateToDoc(docName);
   };
 
-  // Show a file version in the main pane. `keptCount` selects the version
-  // (0 = original, file.bursts.length = now). Drives the pane from the file
-  // row's undo slider, its header icons, and burst-row clicks. EditorArea
-  // navigates the editor to the file's doc and paints the pane once nav settles.
   const onSetVersion = (file: FileData, keptCount: number): void => {
     if (!data?.agent || docPanelAgentId === null) return;
-    // The two full-pane diffs share one overlay slot — close the timeline diff
-    // so they can't both paint.
     closeTimelineDiff();
     const max = file.bursts.length;
     openAgentDiff({
@@ -413,9 +340,6 @@ export function ActivityModeContent({
     });
   };
 
-  // Scoped undo from the file-row timeline: drop the `dropCount` newest edits.
-  // The timeline already surfaced the range (and the doomed-edit preview), so
-  // this just commits it and re-fetches ground truth.
   const onUndoDrop = async (docName: string, dropCount: number): Promise<void> => {
     if (dropCount <= 0) return;
     try {
@@ -435,7 +359,6 @@ export function ActivityModeContent({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       toast.error(t`Undo failed: ${message}`);
-      // Non-fatal — re-fetch to recover ground truth.
       reload();
     }
   };

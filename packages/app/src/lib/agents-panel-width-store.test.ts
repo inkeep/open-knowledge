@@ -95,19 +95,10 @@ describe('writeAgentsPanelWidth', () => {
   });
 });
 
-// The migration contract is the KEY VALUE, not the constant name: this column
-// used to hold the right-docked terminal, so reusing `ok-terminal-width-v1` is
-// what carries a user's sized width over to the agents panel. Every other test
-// references the constant, which would survive a value rename silently — and the
-// terminal/agents naming mismatch makes that rename a natural impulse.
 test('the storage key keeps its legacy terminal-width value (migration contract)', () => {
   expect(AGENTS_PANEL_WIDTH_KEY).toBe('ok-terminal-width-v1');
 });
 
-// The synchronous-init contract has to survive a storage-restricted host: on
-// file://, Safari private mode, and sandboxed iframes `localStorage` is a getter
-// that THROWS on access, so `typeof localStorage` alone is not a safe probe. Both
-// guards were untested — a gap inherited from the store this one replaced.
 describe('getInitialAgentsPanelWidth on a storage-restricted host', () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   afterEach(() => {

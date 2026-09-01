@@ -1,13 +1,3 @@
-/**
- * Whole-document sweeps that the per-mechanism suites cannot express.
- *
- * Three questions, each answered against the final settled state rather than a
- * single assertion inside one mechanism\'s arm: does the document contain any
- * span neither the user nor the agent authored (the merge-resurrection class);
- * do the churned interleavings converge to a byte fixed point with every
- * mechanism enabled at once; and is checkpointed content ever re-inserted into
- * the live document without an explicit restore.
- */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -58,7 +48,6 @@ describe('QA-007: abrupt-insertion sweep — no content exists that no one autho
   test('after a completed force-resolve mechanism run, every line in final Y.Text is present in the authored ledger; zero unauthored spans', () => {
     const rig = createBridgeRaceRig({ docName: 'qa007-sweep.md' });
     const before = getMetrics().deriveTimingDeferForceResolved;
-    // Authored-input ledger: every byte a user/agent/seed actually wrote.
     const authored: string[] = [GEN1, '\nTrailing.\n', PENDING_LINE, STALE_LINE];
     try {
       stageUnpropagatedKeystroke(rig);
@@ -68,16 +57,8 @@ describe('QA-007: abrupt-insertion sweep — no content exists that no one autho
         sourceWrite(rig, t);
         if (getMetrics().deriveTimingDeferForceResolved > before) break;
       }
-      // PRECONDITION — the mechanism this test is titled for actually ran. The
-      // loop exits by `break`, so without this the suite would pass having
-      // exhausted every iteration with the force-resolve never firing; the
-      // checkpoint-restore sweep below asserts the same counter for the same
-      // reason.
       expect(getMetrics().deriveTimingDeferForceResolved).toBe(before + 1);
 
-      // Normalized authored union (documented canonicalization tolerance: the
-      // bridge collapses blank-line runs, e.g. '## H\nP' -> '## H\n\nP'; compare
-      // per-line trimmed against the concatenated union rather than blanket-fuzzy).
       const union = authored.join('\n');
       const finalYtext = rig.ytext.toString();
       const finalFragMd = rig.serializeFragment();
@@ -90,18 +71,11 @@ describe('QA-007: abrupt-insertion sweep — no content exists that no one autho
         linesScanned++;
         if (!union.includes(line)) unauthored.push(line);
       }
-      // NON-VACUITY — `unauthored` collects only non-blank lines, so a wiped
-      // document yields [] and satisfies the sweep. Total content loss is not a
-      // pass: the scan must have had real lines to judge, on BOTH surfaces.
       expect(finalYtext.trim().length).toBeGreaterThan(0);
       expect(finalFragMd.trim().length).toBeGreaterThan(0);
       expect(linesScanned).toBeGreaterThanOrEqual(2 * authored.length);
 
-      expect(unauthored).toEqual([]); // Path-B resurrection class = a line in NEITHER set
-      // Occurrence-count oracle, both bounds. `toBeLessThanOrEqual(1)` is
-      // satisfied by 0 — i.e. by the content having been deleted outright — so
-      // the surviving-exactly-once form is the one that discriminates a
-      // duplication from a loss.
+      expect(unauthored).toEqual([]);
       expect(count(finalYtext, 'Intro paragraph.')).toBe(1);
       expect(count(finalYtext, 'Trailing.')).toBe(1);
       expect(count(finalFragMd, 'Intro paragraph.')).toBe(1);
@@ -123,35 +97,23 @@ describe('QA-008: x211 churned composition — all mechanisms ON simultaneously'
     let backstopTrips = 0;
     const rig = createBridgeRaceRig({
       docName: 'qa008-composition.md',
-      // NO overrides that disable mechanisms -> all default-ON (deferGuard,
-      // lossDetector, fixedPointBackstop, preDrain).
       setupOverrides: { onReDeriveBackstop: () => backstopTrips++ },
     });
     const backstopBefore = getMetrics().reDeriveBackstopTripped;
     try {
-      // A churned table respell that is k=1 stable (canonical pipe-dash) — a
-      // LEGITIMATE duplication-recovery shape, not an oscillation. Drive many
-      // churned interleavings; the stack must converge.
       for (let i = 0; i < 20; i++) {
         rig.churnedFragmentEdit(`| a | b${i} |\n|---|---|\n| 1 | 2 |\n`);
       }
-      // Settle to a byte fixed point.
       const settled = rig.settle(4);
       const lastByteChanged = settled.slice(-2).some((e) => e.byteChanged);
 
-      // Byte fixed point reached: the final forced rounds emit no byte change.
       expect(lastByteChanged).toBe(false);
-      // Legitimate churn/recovery must NOT be frozen by the backstop.
       expect(backstopTrips).toBe(0);
       expect(getMetrics().reDeriveBackstopTripped).toBe(backstopBefore);
 
-      // Occurrence counts === authored: exactly one table row `b19` survives,
-      // no doubled table subtree.
       const yt = rig.ytext.toString();
       expect(count(yt, '| a | b19 |')).toBe(1);
       expect(count(yt, '| 1 | 2 |')).toBe(1);
-      // Bridge coherence: re-derived fragment agrees (a doubled fragment would
-      // re-trip on the next drain).
       const frag = rig.serializeFragment();
       expect(count(frag, 'b19')).toBe(1);
       console.log(
@@ -208,13 +170,9 @@ describe('QA-009: restore is NEVER automatic — checkpoint content stays out of
       }
       expect(getMetrics().deriveTimingDeferForceResolved).toBe(before + 1);
 
-      // The checkpointed content left the LIVE doc and was NOT silently
-      // re-inserted: recovery is restore-only, never automatic.
       expect(count(rig.serializeFragment(), PENDING_LINE)).toBe(0);
       expect(count(rig.ytext.toString(), PENDING_LINE)).toBe(0);
 
-      // The content is reachable ONLY through the timeline (checkpoint refs),
-      // never the Y.Doc: a defer-exhaustion-loss row carrying the pending line.
       await vi.waitFor(async () => {
         const hist = await getDocumentHistory(shadow, { docName: 'qa009' }, CONTENT_ROOT);
         const cp = hist.entries.find((e) => e.checkpoint?.kind === 'defer-exhaustion-loss');
@@ -222,10 +180,9 @@ describe('QA-009: restore is NEVER automatic — checkpoint content stays out of
         const blob = (
           await shadowGit(shadow).raw('show', `${cp?.sha}:${CONTENT_ROOT}/qa009`)
         ).toString();
-        expect(blob).toContain(PENDING_LINE); // restore-reachable payload
+        expect(blob).toContain(PENDING_LINE);
       });
 
-      // No further drain re-inserts it: keep running the loop, live doc stays clean.
       rig.settle(6);
       expect(count(rig.serializeFragment(), PENDING_LINE)).toBe(0);
       expect(count(rig.ytext.toString(), PENDING_LINE)).toBe(0);

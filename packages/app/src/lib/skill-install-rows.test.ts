@@ -6,7 +6,6 @@ import {
   type SkillInstallMenuSkill,
 } from './skill-install-rows';
 
-/** A listed skill with only the fields the derivation reads set. */
 function entry(over: Partial<SkillsListEntry> & Pick<SkillsListEntry, 'name'>): SkillsListEntry {
   return {
     scope: 'project',
@@ -54,8 +53,6 @@ describe('host rows', () => {
       allSkills: [entry({ name: 'other', path: '.agents/skills/other/SKILL.md' })],
     });
     expect(withHub.rows).toContain('agents');
-    // The hub sorts LAST, under the concrete host rows: it is a vendor-neutral
-    // fallback, not where most installs go.
     expect(withHub.rows.at(-1)).toBe('agents');
   });
 
@@ -64,7 +61,6 @@ describe('host rows', () => {
   });
 
   it('gives an alias-covered host NO row of its own', () => {
-    // Checking it could only write through the alias, so the row would lie.
     const r = derive({ ...base, hostAliases: { cursor: '.claude/skills' } });
     expect(r.rows).not.toContain('cursor');
     expect(r.rows).toContain('claude');
@@ -90,7 +86,6 @@ describe('source disclosure', () => {
   });
 
   it('gives a non-standard folder its own source row and NO host badge', () => {
-    // Two source marks in one menu is the bug this split prevents.
     const r = derive({ ...base, path: '.ok/skills/trip-log/SKILL.md' });
     expect(r.sourceRow).toBe('.ok/skills/trip-log');
     expect(r.sourceHost).toBeUndefined();
@@ -117,7 +112,6 @@ describe('expectedMode', () => {
   });
 
   it('takes the majority of the OTHER locations, ignoring the source', () => {
-    // claude is the source; codex+cursor are copies, so a NEW location copies.
     const copies = derive({ ...base, hosts: ['claude', 'codex', 'cursor'] });
     expect(copies.expectedMode).toBe('copy');
 
@@ -139,7 +133,6 @@ describe('expectedMode', () => {
   });
 
   it('ignores conflicted and alias-covered hosts in the vote', () => {
-    // A conflicted slot holds a DIFFERENT skill, so its form is not evidence.
     const r = derive({
       ...base,
       hosts: ['claude', 'codex', 'cursor'],
@@ -279,8 +272,6 @@ describe('pluginCoverageOf', () => {
 
 describe('pluginCoverageOf — plugin identity', () => {
   it('a skill that IS a plugin skill covers its provider', () => {
-    // Served in place from a directory marketplace: the provider harness loads
-    // it via the plugin even though no cache path exists anywhere.
     expect(
       pluginCoverageOf({
         scope: 'project',
@@ -293,8 +284,6 @@ describe('pluginCoverageOf — plugin identity', () => {
 
 describe('global-scope vocabulary', () => {
   it('a global skill offers the user-only hosts a global install can write', () => {
-    // Antigravity reads ~/.gemini/skills — the fan-out writes it and the
-    // enumerator counts it, so the menu must be able to show and uncheck it.
     const rows = derive({
       scope: 'global',
       name: 'open-knowledge-discovery',
@@ -313,11 +302,6 @@ describe('global-scope vocabulary', () => {
 
 describe('the .agents hub gate', () => {
   it('is offered when the server says a reader is installed, with nothing under .agents yet', () => {
-    // The case the whole feature exists for, and the one adoption-only could not
-    // reach: a fresh project, LM Studio installed, no skill under `.agents/`.
-    // Before `hubOffered` this returned no hub row, so the documented "choose
-    // .agents" was not an available action and there was no non-circular way to
-    // make the first placement.
     const rows = derive({
       ...base,
       hosts: ['claude'],
@@ -338,8 +322,6 @@ describe('the .agents hub gate', () => {
   });
 
   it('stays offered on adoption alone, even when no reader is installed', () => {
-    // The pre-existing rule is preserved, not replaced: a project already using
-    // the hub keeps its row regardless of what is installed on this machine.
     const rows = derive({
       ...base,
       hosts: ['agents'],
@@ -350,9 +332,6 @@ describe('the .agents hub gate', () => {
   });
 
   it('a GLOBAL skill under .agents does not activate the hub on a PROJECT menu', () => {
-    // Scope leak: `allSkills` spans every scope, so without the scope filter one
-    // global skill under ~/.agents/skills lit the hub on a project menu the
-    // server had just answered `hubOffered: false` for.
     const rows = derive(
       { ...base, hosts: ['claude'], path: '.claude/skills/x/SKILL.md', hubOffered: false },
       {

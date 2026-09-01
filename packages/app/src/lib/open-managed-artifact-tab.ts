@@ -5,36 +5,14 @@ import {
   type SkillPreviewHashTarget,
 } from '@/lib/doc-hash';
 
-/**
- * Open a managed-artifact doc (skill/template) as the ACTIVE editor tab.
- *
- * Navigates by setting the URL hash — OK's nav source of truth. `onHashChange`
- * (NavigationHandler) then resolves the managed-artifact hash to a `{kind:'doc'}`
- * target via `openTargetTransition`, which fully activates the tab. Going through
- * the hash (rather than calling `openTarget` directly) is load-bearing: it keeps
- * the hash consistent with the active doc, so the nav effect can't later re-read
- * a stale hash and navigate away (`openTarget` activates but leaves the hash
- * pointing at the previous doc). It also closes the Settings dialog when open,
- * since Settings is itself hash-driven (`#settings`).
- */
 export function openManagedArtifactTab(docName: string): void {
   if (typeof window === 'undefined') return;
   const hash = hashFromDocName(docName);
   if (!isSameHash(window.location.hash, hash)) window.location.hash = hash;
 }
 
-/**
- * Open a pre-install skill preview as the ACTIVE tab. Same hash-driven nav as
- * `openManagedArtifactTab`; kept in this module (not inline in a component) so the
- * `window.location.hash` mutation stays out of React-Compiler-compiled component
- * bodies, which reject in-render mutation of global values.
- */
 export function openSkillPreviewTab(target: SkillPreviewHashTarget): void {
   if (typeof window === 'undefined') return;
   const hash = hashFromSkillPreview(target);
-  // `===` rather than the sibling's `isSameHash`: `hashFromSkillPreview` already
-  // percent-encodes every segment, so both sides are encoded and there is no
-  // asymmetry to tolerate. Decoding first would instead conflate a segment
-  // holding an escaped `%2F` with a real separator.
   if (window.location.hash !== hash) window.location.hash = hash;
 }

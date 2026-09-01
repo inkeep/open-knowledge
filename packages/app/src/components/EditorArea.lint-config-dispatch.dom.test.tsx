@@ -1,16 +1,3 @@
-/**
- * Dispatch test for the EditorArea asset branch: a markdownlint JSON config file
- * routes to the LintConfigEditor (Source/Rules toggle), while every other asset
- * — including a non-config `.json` like package.json — keeps the read-only
- * AssetPreview. Both branch targets are stubbed to markers so this test observes
- * only WHICH branch EditorArea selects; LintConfigEditor's own toggle behavior
- * is covered by its dedicated DOM test.
- *
- * The heavy EditorArea dependency graph is mocked following the sibling
- * `EditorArea.share-receive-miss.dom.test.tsx` harness. The config predicate
- * (`isMarkdownlintJsonConfig`) runs for real — it is the seam under test.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -108,8 +95,6 @@ vi.doMock('./BottomComposer', () => ({
 vi.doMock('./editor-area-overlay', () => ({ shouldPaintOverlay: () => false }));
 vi.doMock('@/components/DocPanel', () => ({ DocPanel: () => <div data-testid="doc-panel" /> }));
 
-// The two asset-branch targets, stubbed to markers so the test reads which
-// branch EditorArea picked (not the components' own rendering).
 vi.doMock('@/components/AssetPreview', () => ({
   AssetPreview: ({ assetPath }: { assetPath: string }) => (
     <div data-testid="asset-preview" data-asset-path={assetPath} />
@@ -145,9 +130,6 @@ describe('EditorArea — markdownlint config dispatch', () => {
   beforeEach(() => cleanup());
   afterEach(() => cleanup());
 
-  // The config editors are behind `React.lazy`, so the FIRST assertion against
-  // each one has to await the dynamic import; later tests in this file find the
-  // module already resolved and can query synchronously.
   test('routes a root .markdownlint.json to the config editor, not the asset preview', async () => {
     docCtx = assetCtx('.markdownlint.json');
     renderEditorArea();

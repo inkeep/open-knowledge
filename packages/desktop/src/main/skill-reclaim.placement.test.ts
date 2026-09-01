@@ -1,11 +1,3 @@
-/**
- * Seeding a user-global built-in is a FIRST-RUN act, not a per-launch top-up.
- *
- * Once the bundle exists anywhere the user can reach it, its host set is the
- * user's to choose: unchecking an agent in the install menu has to survive the
- * next launch, and an agent that only reads the shared `~/.agents/skills` hub
- * must not also get a copy under its own path.
- */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,7 +9,6 @@ const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
 const BUNDLES = [{ id: 'discovery', name: 'open-knowledge-discovery' }] as const;
 const NAME = 'open-knowledge-discovery';
 
-/** hostDir (existence gate) -> skillsRoot (write target), per `USER_SKILL_HOSTS`. */
 const HOSTS: Array<[string, string]> = [
   ['.claude', '.claude/skills'],
   ['.cursor', '.cursor/skills'],
@@ -29,11 +20,6 @@ const HOSTS: Array<[string, string]> = [
   ['.lmstudio', '.lmstudio/skills'],
 ];
 
-// The list above is hand-written on purpose (these suites build fixture dirs
-// from it), but it documents itself as mirroring `USER_SKILL_HOSTS` — and a
-// hand-mirror drifts silently, which is exactly what happened when `.lmstudio`
-// was added to `EDITOR_USER_SKILL_ROOT` and neither suite noticed. This pins the
-// mirror so the NEXT editor fails here instead of going untested.
 test('HOSTS mirrors USER_SKILL_HOSTS', () => {
   expect([...HOSTS].map(([, root]) => root).sort()).toEqual(
     USER_SKILL_HOSTS.map((h) => h.skillsRoot).sort(),
@@ -45,9 +31,7 @@ afterEach(() => {
   for (const p of cleanup.splice(0)) {
     try {
       rmSync(p, { recursive: true, force: true });
-    } catch {
-      /* best effort */
-    }
+    } catch {}
   }
 });
 
@@ -58,7 +42,6 @@ function bundleDir(): string {
   return d;
 }
 
-/** A `$HOME` with every host home present, so only placement decides the writes. */
 function homeWithAllHosts(): string {
   const h = mkdtempSync(join(tmpdir(), 'ok-placement-home-'));
   cleanup.push(h);
@@ -69,7 +52,6 @@ function homeWithAllHosts(): string {
 
 const dest = (home: string, root: string) => join(home, root, NAME);
 
-/** Put a copy of the bundle at one location, as a prior install would have. */
 function installAt(home: string, root: string): void {
   const dir = dest(home, root);
   mkdirSync(dir, { recursive: true });
@@ -118,7 +100,6 @@ describe('reclaimUserSkillsOnLaunch placement', () => {
 
   test('an uninstall from one agent survives the next launch', async () => {
     const home = homeWithAllHosts();
-    // Installed everywhere, then the user unchecks Codex.
     installAt(home, '.agents/skills');
     for (const [, root] of HOSTS) installAt(home, root);
     rmSync(dest(home, '.codex/skills'), { recursive: true, force: true });
@@ -146,10 +127,8 @@ describe('reclaimUserSkillsOnLaunch placement', () => {
   test('a host installed later is not auto-seeded', async () => {
     const home = homeWithAllHosts();
     const bundle = bundleDir();
-    // Existing install that predates the new agent.
     installAt(home, '.agents/skills');
     installAt(home, '.claude/skills');
-    // The user installs a new agent; its home appears with no OK skill in it.
     const newHost = join(home, '.opencode');
     mkdirSync(dirname(newHost), { recursive: true });
 

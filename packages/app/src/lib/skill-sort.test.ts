@@ -3,14 +3,11 @@ import type { FileTreeSortEntry } from '@pierre/trees';
 import { describe, expect, test } from 'vitest';
 import { createSkillSortComparator, SKILL_MD_PATH } from '@/lib/skill-sort';
 
-// Scope-header basename → scope, mirroring `labelToScope` in SkillsSidebarSection
-// (built from the user-facing "Project"/"Global" labels).
 const labelToScope: ReadonlyMap<string, SkillScope> = new Map([
   ['Project', 'project'],
   ['Global', 'global'],
 ]);
 
-/** Build a `FileTreeSortEntry` from a tree path (trailing slash ⇒ directory). */
 function entry(path: string): FileTreeSortEntry {
   const isDirectory = path.endsWith('/');
   const segments = (isDirectory ? path.slice(0, -1) : path).split('/');
@@ -23,13 +20,6 @@ function entry(path: string): FileTreeSortEntry {
   };
 }
 
-/**
- * Sort a list of tree paths with the comparator and return them re-ordered.
- *
- * `skills` names the prefixes that ARE skill folders. The comparator asks rather
- * than infers from depth, because grouping made depth ambiguous — so a caller
- * (here and in the sidebar) has to say.
- */
 function sortPaths(
   paths: string[],
   detected: ReadonlySet<string> = new Set(),
@@ -43,17 +33,11 @@ function sortPaths(
 
 describe('createSkillSortComparator', () => {
   test('scope headers order project above global (not alphabetically)', () => {
-    // Alphabetical would put Global first ("Global" < "Project"); the comparator must not.
     expect(sortPaths(['Global/', 'Project/'])).toEqual(['Project/', 'Global/']);
     expect(sortPaths(['Project/', 'Global/'])).toEqual(['Project/', 'Global/']);
   });
 
   test('every project entry sorts before every global entry across MIXED depths (the live bug)', () => {
-    // Pierre feeds the comparator entries at mixed depths — a depth-1 scope header
-    // vs a depth-3 skill file under the OTHER scope. The old depth-gated scope
-    // check never fired for those pairs, so Global's SKILL.md pulled the whole
-    // Global group above the Project header. Every Project/* must precede every
-    // Global/* regardless of depth.
     const paths = [
       'Global/',
       'Global/build/',
@@ -70,7 +54,6 @@ describe('createSkillSortComparator', () => {
   });
 
   test('within a scope, managed skills sort above detected ones', () => {
-    // `zeta` is managed, `alpha` is detected — managed wins despite alpha < zeta alphabetically.
     const detected = new Set(['Project/alpha']);
     expect(
       sortPaths(['Project/alpha/', 'Project/zeta/'], detected, new Set(['Project/zeta'])),
@@ -78,10 +61,6 @@ describe('createSkillSortComparator', () => {
   });
 
   test('authored skills lead their scope, ahead of anything grouped', () => {
-    // LEAF paths on purpose. Pierre only ever hands the comparator leaves and
-    // synthesizes the directory rows above them, so a test built from directory
-    // paths passes against a rule that does nothing in the real tree — which is
-    // exactly what happened on the first cut of this.
     const groups = new Set(['Global/anthropics-skills']);
     const skills = new Set([
       'Global/alpha',
@@ -98,7 +77,6 @@ describe('createSkillSortComparator', () => {
       skills,
       groups,
     );
-    // Your own skills first; the grouped leaf sorts last regardless of basename.
     expect(sorted[0]).toBe(`Global/alpha/${SKILL_MD_PATH}`);
     expect(sorted[sorted.length - 1]).toBe(
       `Global/anthropics-skills/deep-research/${SKILL_MD_PATH}`,
@@ -114,7 +92,6 @@ describe('createSkillSortComparator', () => {
   });
 
   test('SKILL.md sorts first among a skill’s files', () => {
-    // Alphabetically "SKILL.md" would sort after "aaa.md"; it must lead its siblings.
     const skills = new Set(['Project/foo']);
     expect(
       sortPaths([`Project/foo/${SKILL_MD_PATH}`, 'Project/foo/aaa.md'], new Set(), skills),
@@ -122,9 +99,7 @@ describe('createSkillSortComparator', () => {
   });
 
   test('a SKILL.md nested deeper than the skill root does not jump its siblings', () => {
-    // Depth-4 SKILL.md (inside a subfolder) has no first-sort privilege.
     const paths = ['Project/foo/sub/aaa.md', `Project/foo/sub/${SKILL_MD_PATH}`];
-    // Falls through to alphabetical: "SKILL.md" > "aaa.md" (case-insensitive base).
     expect(sortPaths(paths, new Set(), new Set(['Project/foo']))).toEqual([
       'Project/foo/sub/aaa.md',
       `Project/foo/sub/${SKILL_MD_PATH}`,
@@ -132,8 +107,6 @@ describe('createSkillSortComparator', () => {
   });
 
   test('the PINNED section leads its scope, ahead of authored skills', () => {
-    // Pinned is the one part of the tree the user built by hand, so it outranks
-    // even their own authored skills — which otherwise lead the scope.
     const pinned = new Set(['Global/PINNED']);
     const skills = new Set(['Global/PINNED/ponytail', 'Global/mine', 'Global/eng/browser']);
     const groups = new Set(['Global/eng']);
@@ -157,10 +130,6 @@ describe('createSkillSortComparator', () => {
   });
 
   test('groups order alphabetically among themselves', () => {
-    // Two leaves in DIFFERENT groups share every later comparison — same
-    // `SKILL.md` basename, same depth, both grouped — so without an explicit
-    // group-segment rule the comparator returned 0 and the group rows kept
-    // whatever order the skills endpoint answered in.
     const groups = new Set(['Global/ponytail', 'Global/eng', 'Global/open-knowledge-skills']);
     const skills = new Set([
       'Global/ponytail/audit',
@@ -186,8 +155,6 @@ describe('createSkillSortComparator', () => {
   });
 
   test('among non-SKILL.md siblings, a subdirectory sorts above a file', () => {
-    // Neither is SKILL.md, so the isDirectory branch decides: dir before file,
-    // even though "refs" > "aaa.md" alphabetically.
     expect(sortPaths(['Project/foo/aaa.md', 'Project/foo/refs/'])).toEqual([
       'Project/foo/refs/',
       'Project/foo/aaa.md',

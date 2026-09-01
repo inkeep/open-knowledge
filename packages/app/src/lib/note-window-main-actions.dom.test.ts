@@ -90,9 +90,6 @@ describe('note-window main action routing', () => {
   });
 
   test('a main-side refusal that RESOLVES { ok: false } is logged, not silently dropped', async () => {
-    // The invoke resolves (not rejects) with `{ ok: false, reason }` when the
-    // project window has closed in the cascade-close gap, so a `.catch`-only
-    // handler would drop it with no diagnostic signal.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const dispatchToMain = vi.fn(async () => ({
       ok: false as const,

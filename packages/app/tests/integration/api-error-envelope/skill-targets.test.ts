@@ -1,11 +1,3 @@
-/**
- * Narrow-integration test for `GET` / `PUT /api/skill-targets` AFTER the
- * store retirement: the committed target set + its re-projection are DELETED.
- * GET reports the DETECTED effective set plus per-scope folder states; PUT
- * accepts only `userInstallMode` (machine-wide default) or `folderAction`
- * (folder link/unlink verbs — covered in skills-in-place-list.test.ts).
- */
-
 import { SkillTargetsGetSuccessSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -28,7 +20,6 @@ describe('skill-targets — detected set + machine default (store retirement)', 
     const parsed = SkillTargetsGetSuccessSchema.safeParse(await res.json());
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
-    // The committed set is retired: always the detected fallback.
     expect(parsed.data.configured).toBe(false);
     expect(Array.isArray(parsed.data.folders)).toBe(true);
     const scopes = new Set(parsed.data.folders?.map((f) => f.scope));

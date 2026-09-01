@@ -1,13 +1,3 @@
-/**
- * Unit tests for the throttled paste-failure toast helper.
- *
- * Covers:
- *   - Toast fires on first call within a scope.
- *   - Toast is throttled — a second call within the window is suppressed.
- *   - Separate scopes have independent throttle windows.
- *   - The internal reset helper clears the throttle.
- */
-
 import * as actualSonner from 'sonner';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 

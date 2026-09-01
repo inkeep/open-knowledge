@@ -1,21 +1,3 @@
-/**
- * `ok config-sharing share` — switch the project to shared mode by removing OK
- * artifact paths from `.git/info/exclude`. Symmetric counterpart of
- * `ok config-sharing unshare`.
- *
- * No tracked-files safety check: going `local-only → shared` does not
- * create a tracking conflict (tracking state is orthogonal to the exclude
- * file). The user still needs to `git add` + commit the OK files to
- * actually share them with the team; this command only undoes the local
- * exclusion.
- *
- * On a project already in `shared` mode there is usually nothing to do. It is
- * NOT unconditionally a no-op: the remove pass also drains stale skill-exclude
- * lines an older build wrote, and a project can carry those while already
- * reading `shared` (mode is derived from the OK artifact lines, which skill
- * paths are no longer part of). That case writes, and says so.
- */
-
 import { resolve } from 'node:path';
 import { Command } from 'commander';
 import {
@@ -67,10 +49,6 @@ export function sharingShareCommand(): Command {
       }
 
       if (before === 'shared') {
-        // Gated on the drain: `removeOkPathsFromGitExclude` ran above and may
-        // have rewritten the file even in `shared` mode. Claiming "nothing to
-        // do" over that write is the exact phrasing this family corrected
-        // elsewhere.
         if (result.removed.length > 0) {
           process.stderr.write(
             `${success('✓')} ${info('Sharing mode is already')} ${accent('shared')}${info('.')}\n`,

@@ -1,35 +1,3 @@
-/**
- * Image body-click verification pin.
- *
- * Pins the current behavior of the existing `handleBodyClick` path in
- * `JsxComponentView.tsx` against a real-loaded image. The verification
- * documented an existing limitation: clicking the rendered `<img>`
- * dispatches `react-medium-image-zoom`'s lightbox (the canonical image
- * component wraps `BareImg` in `<Zoom>`), so the click never reaches PM's
- * mousedown-on-leaf path. `handleBodyClick`'s "selection still inside
- * the node" guard (`selFrom < pos || selFrom >= nodeEnd`) then returns
- * early because PM's selection never moved into the img range. Net
- * result: clicking the image does NOT NodeSelect via this path; users
- * reach NodeSelection via grip-click (covered by
- * `grip-click-nodeselect.e2e.ts`), keyboard L1/L2 nav, or programmatic
- * APIs.
- *
- * The fix is not included here because it is large: it would require
- * coordinating Zoom + PM selection or reshaping the click semantics.
- *
- * This test PINS the current behavior. If it ever starts failing (img
- * body-click DOES NodeSelect), the limitation resolved — update the
- * test to assert NodeSelection.
- *
- * Real Chromium is required: `react-medium-image-zoom` interaction,
- * floating-ui chrome rendering, and the PM mousedown pipeline are not
- * faithful in happy-dom / jsdom.
- *
- * Runs in CI's fixed `test:e2e` subset (listed in packages/app/package.json),
- * so it gates the merge queue — which is why its image bytes are stubbed
- * rather than fetched.
- */
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, stubRemoteImages, test } from './_helpers';
@@ -51,10 +19,6 @@ test('AC21/F4: img body-click does NOT NodeSelect (Zoom interception pin)', asyn
   page,
   api,
 }) => {
-  // The pin is about what a click on a *loaded* image does, so the bytes have
-  // to arrive — but they need not arrive over the network. Fetching them for
-  // real made a third-party CDN a required-gate dependency, and it failed two
-  // unrelated PRs and three merge-queue attempts in one morning.
   await stubRemoteImages(page);
   await setupDoc(
     page,
@@ -62,9 +26,6 @@ test('AC21/F4: img body-click does NOT NodeSelect (Zoom interception pin)', asyn
     '<img src="https://picsum.photos/id/237/300/200" alt="real loaded asset" />\n\nafter\n',
   );
 
-  // Park the cursor at the trailing paragraph (a position outside the img
-  // range) so the post-click selection is observably distinct from "PM
-  // happened to put the cursor on the img already."
   await page.evaluate(() => {
     const editor = window.__activeEditor;
     if (!editor) throw new Error('window.__activeEditor not set');
@@ -78,8 +39,6 @@ test('AC21/F4: img body-click does NOT NodeSelect (Zoom interception pin)', asyn
   await img.waitFor({ state: 'visible', timeout: 5_000 });
   await img.click();
 
-  // Pin: PM stays in TextSelection — Zoom intercepted the click. If this
-  // ever flips, the limitation resolved and the assertion needs to flip with it.
   const selType = await page.evaluate(() => {
     const editor = window.__activeEditor;
     if (!editor) return 'no-editor';

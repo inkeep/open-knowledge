@@ -11,25 +11,6 @@ import {
 } from './server-lock.ts';
 import { resolveUiRedirectPort } from './ui-redirect-port.ts';
 
-/**
- * Guardrail: `resolveUiInfo` (preview-url.ts) and `resolveUiRedirectPort`
- * (ui-redirect-port.ts) are twins that MUST agree on the "no UI" boundary —
- * both route the capability decision through the shared `lockAdvertisesUi`
- * predicate. This table drives BOTH over the same `server.lock` states and
- * asserts they classify UI-present identically (and, when present, surface the
- * same port). A divergence here is the exact class of bug the shared predicate
- * exists to prevent once `ui.lock` no longer backstops either surface.
- *
- * The OTHER `lockAdvertisesUi` consumers are exercised where their own
- * liveness/shape logic lives, so no surface reintroduces the divergence:
- *   - `serverExplicitlyLacksUi` (get-preview-url.ts) — the LIVE-lock inverse;
- *     pinned by get-preview-url.test.ts's `--only server` + draining hints.
- *   - `createOffCwdResolverDeps.inspect` (off-cwd-resolver.ts) — off-cwd-resolver.test.ts.
- *   - CLI `ok status` / `ok ps` / `resolveServerReuse` — all import the exported
- *     predicate; the missing-`capabilities` optimism is pinned by status.test.ts
- *     and ps.test.ts so a pre-v2 server never shows "no UI" while preview_url
- *     would navigate to it.
- */
 describe('resolveUiInfo ⇔ resolveUiRedirectPort agreement', () => {
   const dirs: string[] = [];
 
@@ -112,11 +93,8 @@ describe('resolveUiInfo ⇔ resolveUiRedirectPort agreement', () => {
         const redirect = resolveUiRedirectPort(lockDir);
         const infoPresent = base !== null;
         const redirectPresent = typeof redirect === 'number';
-        // The two twins must classify UI-present identically...
         expect(infoPresent).toBe(redirectPresent);
-        // ...and match the expected outcome for the state.
         expect(infoPresent).toBe(c.uiPresent);
-        // When a UI is present, both surface the same port.
         if (c.uiPresent) {
           expect(base).toContain(`:${redirect}`);
         }

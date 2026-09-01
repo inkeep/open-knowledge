@@ -1,15 +1,3 @@
-/**
- * `install` MCP tool — project an authored skill's source
- * (`.ok/skills/<name>/`) out into your editor host dirs (`.claude/skills/`,
- * `.cursor/skills/`, `.codex/skills/`) so your agents pick it up.
- *
- * The one new verb beyond the `skill` target on write/edit/delete/move: the
- * per-editor fan-out step. Routes to `POST /api/skill/install`
- * (server) which validates the source first (a conflicted / malformed SKILL.md
- * is refused, never projected verbatim), projects to the project-configured
- * editors (or an explicit `targets` list), and records the marker so
- * reclaim re-materializes it and the sharing-mode exclude stays skill-aware.
- */
 import {
   SKILL_INSTALL_WARNING_CODES,
   type SkillFolderActionMcp,
@@ -59,12 +47,6 @@ const DESCRIPTION = [
   'Copies auto-refresh when the source changes — you do NOT need to re-run install after editing a skill. After `delete({skill})` every location is removed with the source.',
 ].join('\n');
 
-/**
- * Folder-level skill topology (link / unlink / add-root). Lives on `install`
- * rather than `config` because MCP annotations are per-tool and static: one
- * mutating field on `config` forced its `readOnlyHint` off, which made every
- * plain config READ raise an approval prompt for users who never touch skills.
- */
 async function runSkillFolderAction(
   deps: InstallDeps,
   action: SkillFolderActionMcp,
@@ -227,10 +209,6 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
         );
       }
 
-      // Converting is per-location, the same verb the app offers: one request
-      // per location, in sequence. It is never a side effect of installing, and
-      // it records no skill-wide default — a later `add` still follows the form
-      // the skill already uses.
       for (const target of args.convert ?? []) {
         const converted = await httpPost(
           apiTarget(context.url, deps.localApi),
@@ -245,8 +223,6 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
         );
         if (!converted.ok) return textResult(errorTextWithDetail(converted), true);
       }
-      // A pure convert changes no membership, so there is no location math to
-      // run and nothing further to report.
       if (
         args.convert !== undefined &&
         args.add === undefined &&
@@ -260,14 +236,6 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
         );
       }
 
-      // All location math lives server-side (atomic read-modify-write) — the
-      // tool passes the additive args through verbatim.
-      //
-      // `mode` is deliberately NOT forwarded here. The endpoint's `mode` applies
-      // to the whole resulting location set, so `add: ['cursor'], mode: 'copy'`
-      // would also convert the claude and codex symlinks the caller never named.
-      // This tool's `mode` is scoped to `add`, so it is applied below as a
-      // per-location convert — the same verb the app uses for one row.
       const result = await httpPost(apiTarget(context.url, deps.localApi), '/api/skill/install', {
         ...(args.scope !== undefined ? { scope: args.scope } : {}),
         name: args.name,
@@ -279,8 +247,6 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       });
       if (!result.ok) return textResult(errorTextWithDetail(result), true);
 
-      // Shape ONLY the locations just added. An already-correct form converges
-      // server-side, so re-stating it is a no-op rather than a rewrite.
       for (const target of args.mode !== undefined ? (args.add ?? []) : []) {
         const shaped = await httpPost(apiTarget(context.url, deps.localApi), '/api/skill/install', {
           ...(args.scope !== undefined ? { scope: args.scope } : {}),
@@ -299,9 +265,6 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
       const hosts = Array.isArray(result.hosts) ? (result.hosts as string[]) : [];
       const scripts = result.scripts === true;
       const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
-      // A bulk add/remove skips the locations it cannot do and succeeds on the
-      // rest, so the codes are the only way to tell WHICH kind of failure hit
-      // WHICH location — the single-shot verbs return a status instead.
       const warningCodes = Array.isArray(result.warningCodes)
         ? (result.warningCodes as string[])
         : [];

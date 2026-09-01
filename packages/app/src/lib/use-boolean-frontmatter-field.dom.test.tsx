@@ -1,13 +1,3 @@
-/**
- * DOM tests for `useBooleanFrontmatterField` — the boolean sibling of
- * `useFrontmatterField`. Covers strict-boolean identity, live updates as
- * frontmatter changes, and binding teardown on unmount.
- *
- * The fake provider wraps a real `Y.Doc` so every case runs through the real
- * `bindFrontmatterDoc` YAML parse: the string "true" and the number 1 are
- * produced by the real parser, not hand-forced JS values.
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core';
 import { act, cleanup, renderHook } from '@testing-library/react';
@@ -19,8 +9,6 @@ interface FakeProvider {
   document: Y.Doc;
   on(event: 'synced', listener: () => void): void;
   off(event: 'synced', listener: () => void): void;
-  /** How many 'synced' listeners are currently attached — used to prove the
-   *  binding detaches on unmount. */
   syncedListenerCount(): number;
 }
 
@@ -48,8 +36,6 @@ function renderFlag(provider: FakeProvider, key = 'slides') {
   );
 }
 
-/** Mutate the shared frontmatter region the way a property-panel edit would —
- *  a second binding on the same doc, so the hook's own observer fires. */
 function patchSlides(provider: FakeProvider, value: boolean | string | null): void {
   const writer = bindFrontmatterDoc(provider);
   writer.patch({ slides: value });
@@ -114,9 +100,6 @@ describe('useBooleanFrontmatterField — teardown', () => {
     const provider = makeProvider('---\nslides: true\n---\nbody\n');
     const { result, unmount } = renderFlag(provider);
     expect(result.current).toBe(true);
-    // While mounted the binding holds one 'synced' listener on the provider (it
-    // also holds one Y.Text observer; dispose() removes both together, so the
-    // provider count returning to zero proves the whole binding was torn down).
     expect(provider.syncedListenerCount()).toBe(1);
 
     unmount();

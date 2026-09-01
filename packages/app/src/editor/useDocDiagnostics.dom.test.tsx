@@ -1,9 +1,3 @@
-/**
- * Behavioral test for useDocDiagnostics: lints the live `Y.Text('source')` of
- * the active provider and re-lints when that text changes. Uses a real Y.Doc
- * (the hook only touches `provider.document.getText('source')`).
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   DEFAULT_LINTER_CONFIG,
@@ -71,7 +65,6 @@ describe('useDocDiagnostics', () => {
   test('lints the live source text on mount', async () => {
     const { provider } = fakeProvider('# Title\n\n\ttabbed line\n');
     const { result } = renderHook(() => useDocDiagnostics(provider, enabled));
-    // The lint pass is async — the initial diagnostics land a tick after mount.
     await waitFor(() => expect(result.current.some((d) => d.code === 'MD010')).toBe(true));
   });
 
@@ -105,8 +98,6 @@ describe('useDocDiagnostics', () => {
     });
 
     rerender({ provider: editableTextProvider });
-    // The render itself must be empty. Waiting here would allow the effect's
-    // later reset to hide a one-frame flash of the prior Markdown diagnostics.
     expect(result.current).toEqual([]);
 
     rerender({ provider: markdownProvider });

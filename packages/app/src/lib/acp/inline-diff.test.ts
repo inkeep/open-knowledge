@@ -19,7 +19,6 @@ describe('computeDiffRows', () => {
     const rows = computeDiffRows(before, after);
     expect(rows.filter((r) => r.type === 'del')).toEqual([{ type: 'del', text: 'line 20' }]);
     expect(rows.filter((r) => r.type === 'add')).toEqual([{ type: 'add', text: 'line twenty' }]);
-    // The untouched top and bottom collapse into gap rows.
     const gaps = rows.filter((r): r is Extract<DiffRow, { type: 'gap' }> => r.type === 'gap');
     expect(gaps.length).toBeGreaterThanOrEqual(2);
     const shownLines = rows.filter((r) => r.type !== 'gap').length;

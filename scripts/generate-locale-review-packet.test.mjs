@@ -121,8 +121,6 @@ describe('reading the glossary', () => {
     ]);
   });
 
-  // The glossary splits rows across several tables so the columns stay readable.
-  // Which table a locale sits in is formatting, and must not change what it holds.
   test('reads a locale that sits in a later table', () => {
     expect(readGlossaryTerms(glossary, 'hi')).toEqual([
       { term: 'document', translation: 'दस्तावेज़' },
@@ -162,8 +160,6 @@ describe('the selection rule', () => {
     expect(glossaryUses[0].uses.map((use) => use.id)).toEqual(['Document', 'New document']);
   });
 
-  // `document` appears in hundreds of messages. Without the cap it alone would
-  // spend the whole budget and the reviewer would never reach the interface.
   test('caps how many uses of one locked word it shows', () => {
     const { glossaryUses } = selectMessages({
       entries: Array.from({ length: 20 }, (_, i) => entry(`document ${'x'.repeat(i)}`, [])),
@@ -184,8 +180,6 @@ describe('the selection rule', () => {
     expect(glossaryUses[0].uses.map((use) => use.id).sort()).toEqual(['All folders', 'a FOLDER']);
   });
 
-  // "branch" must not match "branching" — a pinned noun and a word that merely
-  // starts with it are different reviews.
   test("does not match a locked word wearing another word's tail", () => {
     const { glossaryUses } = selectMessages({
       entries: [entry('Branching strategy', []), entry('Rebranch', [])],
@@ -233,8 +227,6 @@ describe('the selection rule', () => {
     expect(picked.map(({ messages }) => messages.length)).toEqual([1, 3]);
   });
 
-  // "Back" and "View" really are referenced from both the menu bar and the
-  // command palette, so this is the shape the packet hits, not a hypothetical.
   test('does not offer a message twice when two surfaces both reference it', () => {
     const { surfaces: picked } = selectMessages({
       entries: [
@@ -323,17 +315,11 @@ describe('the packet', () => {
     expect(numbers).toEqual([1, 2]);
   });
 
-  // A reviewer of a right-to-left locale is spending an hour on something that
-  // cannot promote their language yet. Telling them up front is the only honest
-  // way to ask.
   test('tells a reviewer up front when approving will not promote the locale', () => {
     expect(packetFor({ promotable: false })).toMatch(/will not appear in the picker yet/);
     expect(packetFor({ promotable: true })).not.toMatch(/will not appear in the picker yet/);
   });
 
-  // Eight of the nine offered locales have never been read. A packet that tells
-  // their reviewer they are deciding whether to ship a language that already
-  // shipped reads as a form letter, and gets treated as one.
   test('does not tell a reviewer of an already-offered locale that it is unoffered', () => {
     const packet = packetFor({ offered: true });
     expect(packet).toMatch(/the app already offers the language/);
@@ -387,7 +373,6 @@ describe('the command line', () => {
     expect(parseArgs(['fr', '--out', '/tmp/fr.md'])).toEqual({ locale: 'fr', out: '/tmp/fr.md' });
   });
 
-  // `--out fr` would otherwise read its own filename as the locale.
   test('does not mistake the output path for the locale when the flag comes first', () => {
     expect(parseArgs(['--out', '/tmp/fr.md', 'fr'])).toEqual({ locale: 'fr', out: '/tmp/fr.md' });
   });
@@ -437,10 +422,6 @@ describe('the tracking table', () => {
     expect(undefined_).toEqual([]);
   });
 
-  // The reversal, stated as an invariant: an unread catalog is still offered,
-  // so the only thing that keeps an enumerated locale out of the picker is a
-  // recorded blocker. Withholding one for any other reason has to show up here
-  // as a failure rather than as a quiet omission from the tuple.
   test('nothing is withheld from the picker without a recorded blocker', () => {
     const withheld = SUPPORTED.filter((locale) => !PICKER.includes(locale));
     const unexplained = withheld.filter((locale) => {
@@ -450,8 +431,6 @@ describe('the tracking table', () => {
     expect(unexplained).toEqual([]);
   });
 
-  // The other half of honesty: being offered claims nothing, but claiming to
-  // have been read claims something a stranger has to be able to check.
   test('every locale recorded as read says who read it and where to look', () => {
     const unsubstantiated = [...status.entries()]
       .filter(([, row]) => ['reviewed', 'vouched'].includes(row.status))
@@ -460,8 +439,6 @@ describe('the tracking table', () => {
     expect(unsubstantiated).toEqual([]);
   });
 
-  // `vouched` records how the v1 picker got its entries. It is not a status to
-  // hand out — a locale outside the picker has no v1 grandfathering to record.
   test('nothing outside the picker is marked vouched', () => {
     const spurious = [...status.entries()]
       .filter(([locale, row]) => row.status === 'vouched' && !PICKER.includes(locale))
@@ -485,8 +462,6 @@ describe('the tracking table', () => {
     expect(spurious).toEqual([]);
   });
 
-  // A blocked locale cannot be offered however good its catalog is, so it must
-  // not be in the picker even if someone reviews it.
   test('no blocked locale is offered in the picker', () => {
     expect(PICKER.filter((locale) => LAYOUT_DEFERRED.includes(locale))).toEqual([]);
   });
@@ -518,8 +493,6 @@ describe('against the real catalogs', () => {
     }
   });
 
-  // The two `vouched` picker entries are the ones most worth sending out, so
-  // their packets must read correctly rather than being an afterthought.
   test('a packet for an offered locale reads as a check on what already ships', () => {
     for (const locale of PICKER.filter((tag) => tag !== 'en')) {
       expect(generate({ locale }), locale).toMatch(/the app already offers the language/);
@@ -532,7 +505,6 @@ describe('against the real catalogs', () => {
     expect(numbers.length).toBeLessThanOrEqual(TARGET_MESSAGES);
   });
 
-  // Feedback arrives as "17 → …", so the same run must produce the same 17.
   test('is byte-identical across runs, so numbered feedback keeps pointing at the same string', () => {
     expect(generate({ locale: 'hi' })).toBe(generate({ locale: 'hi' }));
   });

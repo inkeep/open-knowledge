@@ -1,7 +1,110 @@
-// Bug-report sidecar — the durable per-report YAML record backing the retry
-// list. Schema + open-state normalization; the writer/reader/retention live in
-// desktop main.
-
+export { VFileMessage } from 'vfile-message';
+// Bridge — observer/CRDT-bridge shared utilities (precedent #14)
+export {
+  addsBlankLines,
+  applyFastDiff,
+  applyIncrementalDiff,
+  applyPatchToFm,
+  applyPathDeleteToFm,
+  applyPathRenameToFm,
+  applyPathReorderSeqToFm,
+  applyPathReorderToFm,
+  applyPathSetToFm,
+  applyRenameToFm,
+  applyReorderToFm,
+  assertContentPreservation,
+  BRIDGE_LINE_KINDS,
+  BRIDGE_TOLERANCE_CLASSES,
+  type BridgeComposition,
+  type BridgeDivergenceLocation,
+  type BridgeInvariantLogPayload,
+  type BridgeInvariantSite,
+  type BridgeInvariantViolation,
+  BridgeInvariantViolationError,
+  type BridgeLineKind,
+  BridgeMergeContentLossError,
+  type BridgeMergeContentLossInfo,
+  type BridgeMergeContentLossLogPayload,
+  type BridgeMergeContentLossSide,
+  type BridgeMergeContentLossWhich,
+  type BridgeToleranceClass,
+  type BridgeToleranceSignal,
+  bindFrontmatterDoc,
+  bodyEdgeEmpties,
+  type ComparePmStructuralOptions,
+  type ComposeAdjustment,
+  classifyBridgeLine,
+  classifySeverity,
+  comparePmStructural,
+  compareRoundTripStructural,
+  composeWithDerivedBody,
+  composeWithDerivedFrontmatter,
+  createMergeBoundarySpace,
+  createStructuralFreshnessChecker,
+  type DiffChange,
+  DUPLICATION_GATE_MIN_LINE_LENGTH,
+  defaultScheduler,
+  detectAppliedToleranceClasses,
+  detectFmRegion,
+  diffLinesFast,
+  docEdgeRunsDiffer,
+  emitToleranceFire,
+  type FmBoundarySlotSplit,
+  type FmEditError,
+  type FmEditResult,
+  FORM_WRITE_ORIGIN,
+  type FrontmatterBinding,
+  type FrontmatterBindingPatchResult,
+  type FrontmatterBindingPatchSuccess,
+  type FrontmatterBindingPathResult,
+  type FrontmatterBindingPathSuccess,
+  type FrontmatterBindingRenameResult,
+  type FrontmatterBindingRenameSuccess,
+  type FrontmatterBindingReorderResult,
+  type FrontmatterBindingReorderSuccess,
+  type FrontmatterBindingUnsubscribe,
+  type FrontmatterDocProvider,
+  type FrontmatterSnapshot,
+  findDroppedContent,
+  findFirstDivergenceIndex,
+  fnv1aDigest,
+  fragmentHoldsPendingContent,
+  type InvariantViolation,
+  isParseEquivalentBridge,
+  locateBridgeDivergence,
+  MAX_FM_REGION_BYTES,
+  type MergeBoundarySpace,
+  mergeThreeWay,
+  normalizeBridge,
+  overMultipliedBodyLines,
+  PARSE_EQUIVALENCE_TOLERANCE,
+  type ParsedFmRegion,
+  type PmStructuralNode,
+  parseFencedFmRegion,
+  parseFmRegion,
+  pendingContentLines,
+  readFmKeys,
+  readFmMap,
+  readFmRegionWithError,
+  type Scheduler,
+  type StructuralDegradeLabel,
+  type StructuralDivergenceReason,
+  type StructuralEquivalenceResult,
+  type StructuralFreshnessChecker,
+  type StructuralFreshnessCheckerOptions,
+  type SynthesisedConflictMarkers,
+  type SynthesisedConflictRegion,
+  setToleranceTelemetryHook,
+  splitFmBoundarySlot,
+  structuralDivergence,
+  synthesiseConflictMarkers,
+  synthesiseConflictMarkersWithRegions,
+  type ToleranceClassSeverity,
+  type ToleranceFireRecord,
+  type ToleranceTelemetryHook,
+  toBridgeInvariantLog,
+  tryLineLevelCombine,
+} from './bridge/index.ts';
 export {
   clampToCodeUnits,
   isBlankNoteContent,
@@ -26,14 +129,27 @@ export {
   ReportSidecarSchema,
   type ReportSidecarState,
 } from './bug-report-sidecar/schema.ts';
-// Burst-grouping utility
 export {
   type Burst,
   bucketIntoBursts,
   type HumanEdit,
   type SessionTransaction,
 } from './burst-grouping.ts';
-// Client→server version metadata — the v1 wire contract builders.
+export type {
+  AutoConsolidationTrigger,
+  CheckpointBundleExposure,
+  CheckpointKind,
+  CheckpointKindAttributes,
+  CheckpointVisibility,
+  ParsedCheckpoint,
+} from './checkpoint-kinds.ts';
+export {
+  CHECKPOINT_KIND_REGISTRY,
+  CHECKPOINT_KINDS,
+  formatCheckpointBodyLine,
+  isSurfacedCheckpointKind,
+  parseCheckpoint,
+} from './checkpoint-kinds.ts';
 export {
   CLIENT_RUNTIME_VERSION_FALLBACK,
   CLIENT_VERSION_HEADER,
@@ -43,69 +159,6 @@ export {
   clientVersionHeaders,
   clientVersionTokenFields,
 } from './client-version.ts';
-// Logger types — typed contract for structured logging. Runtime lives in
-// `packages/server/src/logger.ts`; types stay here so renderer-side code can
-// import them without dragging pino/pino-roll into the renderer bundle.
-export type {
-  BundleManifest,
-  BundleRedaction,
-  ClassifiedPath,
-  Loggable,
-  LogLevel,
-  LogPayload,
-  OkBugReportCrashAckResult,
-  OkBugReportCrashDetectedEvent,
-  OkBugReportCrashDumpAvailability,
-  OkBugReportCreateResult,
-  OkBugReportDeleteResult,
-  OkBugReportListResult,
-  OkBugReportListRow,
-  OkBugReportScreenshot,
-  OkBugReportSendFallbackReason,
-  OkBugReportSendMetadata,
-  OkBugReportSendResult,
-  ReportBundleLevel,
-  ReportBundleSummary,
-  SerializedError,
-  SerializedErrorTruncation,
-} from './logger-types.ts';
-export {
-  BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
-  BUG_REPORT_SCREENSHOT_ZIP_NAME,
-  LOG_LEVELS,
-} from './logger-types.ts';
-// Renderer/browser console-capture helpers (capture-time scrub, level mapping,
-// structured-message unwrap, batch bounds) shared by the desktop main listener
-// and the web renderer forwarder, plus the server `/api/client-logs` ingest
-// that receives what the forwarder captured.
-export {
-  LOGGER_OWNED_FIELDS,
-  mapConsoleLevel,
-  parseStructuredConsoleMessage,
-  prepareCapturedConsoleMessage,
-  RENDERER_LOG_MAX_BATCH_BYTES,
-  RENDERER_LOG_MAX_ENTRIES,
-  RENDERER_LOG_MAX_MESSAGE_BYTES,
-  type RendererLogLevel,
-  truncateLogMessage,
-} from './logging/renderer-log.ts';
-// Canonical secret/credential scrub shared by the diagnostic-bundle assembly
-// and the renderer console-capture forwarder (one pattern list, no drift).
-export {
-  redactSecrets,
-  SECRET_PATTERN_NAMES,
-  scrubSecrets,
-} from './logging/secret-scrub.ts';
-// Cross-process contract version (pure integer; browser-safe).
-export { PROTOCOL_VERSION } from './protocol-version.ts';
-
-// Markdown pipeline (new unified+remark)
-
-// Re-export VFileMessage for Observer B's error classification (instanceof check
-// instead of fragile constructor.name string comparison).
-export { VFileMessage } from 'vfile-message';
-// Shared command identity — the single declaration point the native menu and
-// the Cmd+K palette both render from. Plain data + a pure evaluator.
 export {
   COMMAND_IDENTITIES,
   type CommandAvailabilitySpec,
@@ -133,7 +186,6 @@ export {
   type PassageMatchOptions,
   rewriteCeiling,
 } from './comments/passage-match.ts';
-// Sync-mode vocabulary + resolution rules (off/follow/full). Browser+node compatible.
 export {
   DEFAULT_PULL_INTERVAL_SECONDS,
   DEFAULT_PUSH_INTERVAL_SECONDS,
@@ -159,9 +211,6 @@ export {
   type SyncMode,
   type SyncModeChangeSource,
 } from './config/auto-sync-mode.ts';
-// Headless config writers + UI ConfigBinding.
-// Browser+node compatible — no Node deps; structural ConfigDocProvider type
-// keeps `@hocuspocus/provider` out of core's runtime deps.
 export {
   bindConfigDoc,
   type ConfigBinding,
@@ -247,7 +296,6 @@ export {
   type ServerRuntimeConfig,
 } from './config/resolve-server-config.ts';
 export type { Err, Ok, Result } from './config/result.ts';
-// Config schema, error envelope, and Result helper. Browser+node compatible.
 export {
   type Config,
   type ConfigPatch,
@@ -268,9 +316,6 @@ export {
 export { getLeafFieldMeta, resolveLeafSchema } from './config/schema-leaf.ts';
 export { CONFIG_SCHEMA_MAJOR, CONFIG_SCHEMA_MAJOR_PATH } from './config/schema-version.ts';
 export { type LocateOptions, locateIssue } from './config/source-locator.ts';
-// OTel helpers for config-edit spans. Browser+node compatible — imports
-// only `@opentelemetry/api`. Spans are inert no-ops when no SDK is
-// registered (server: OTEL_SDK_DISABLED gate; app: VITE_OTEL_ENABLED gate).
 export {
   addConfigSpanEvent,
   type ConfigOutcome,
@@ -282,7 +327,6 @@ export {
   withConfigSpan,
   withConfigSpanSync,
 } from './config/telemetry.ts';
-// Constants
 export {
   ACTIVITY_TTL_MS,
   changedBlockRange,
@@ -388,6 +432,18 @@ export {
 } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
 export {
+  DEFAULT_SIGTERM_GRACE_MS,
+  DEFAULT_SIGTERM_POLL_MS,
+  formatSpawnAttemptHeader,
+  SERVER_CRASH_LOG,
+  SERVER_EXIT_LOG,
+  SPAWN_ATTEMPT_MARKER,
+  SPAWN_ERROR_LOG,
+  SPAWN_ERROR_LOG_MAX_BYTES,
+  sliceLastSpawnAttempt,
+  spawnErrorLogOpenMode,
+} from './constants/lifecycle.ts';
+export {
   GREP_MAX_RESULTS,
   MCP_SERVER_NAME,
   OK_DESKTOP_TERMINAL_ENV,
@@ -471,8 +527,6 @@ export {
   EXCALIDRAW_FILE_EXTENSIONS,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   FILE_ATTACHMENT_EXTENSIONS,
-  // re-exported here as the canonical dispatch surface — same set, same
-  // role, but the import for the lookup helpers lives in code-languages.
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
@@ -495,7 +549,6 @@ export {
   VIDEO_EXTENSIONS,
   WIKI_EMBED_EXTENSIONS,
 } from './constants/upload.ts';
-// Extensions
 export { CodeBlockFidelity } from './extensions/code-block-fidelity.ts';
 export { EmphasisFidelity, StrongFidelity } from './extensions/emphasis-fidelity.ts';
 export { EscapeMark } from './extensions/escape-mark.ts';
@@ -536,21 +589,56 @@ export {
   WikiLink,
   type WikiLinkAttrs,
 } from './extensions/wiki-link.ts';
-// `WikiLinkEmbed` is transient: client-insert-only at drop time, never
-// emitted by server-side mdast→PM dispatch. Post round-trip
-// the node becomes PM `image` (image ext) or PM text+link mark (non-
-// image), NOT this PM node type. Still re-exported symmetrically with
-// the `WikiLink` peer so future consumers that need the node type or
-// attr shape directly (e.g. a non-default editor surface, a schema
-// introspection tool, a typed-component-nodes consumer) have a
-// public import path. Binding to the shape is an intentional contract
-// — the attrs (`target` / `alias` / `anchor` / `resolvedSrc`) are
 // schema-add-only per precedent #9, so the export commits to additive
-// evolution only.
 export {
   WikiLinkEmbed,
   type WikiLinkEmbedAttrs,
 } from './extensions/wiki-link-embed.ts';
+export {
+  type FrontmatterIssue,
+  FrontmatterIssueSchema,
+  type FrontmatterValidationError,
+  FrontmatterValidationErrorSchema,
+  fieldErrorsFromError,
+  toFrontmatterIssue,
+} from './frontmatter/errors.ts';
+export { parseFrontmatterRecord } from './frontmatter/record.ts';
+export {
+  FRONTMATTER_TYPES,
+  type FrontmatterMap,
+  FrontmatterMapSchema,
+  type FrontmatterPatch,
+  FrontmatterPatchSchema,
+  type FrontmatterType,
+  FrontmatterTypeSchema,
+  type FrontmatterValue,
+  FrontmatterValueSchema,
+  frontmatterValuesEqual,
+  inferType,
+  isFrontmatterValueEmpty,
+  isIsoDateString,
+  RESERVED_FRONTMATTER_KEY,
+} from './frontmatter/schema.ts';
+export {
+  extractFrontmatterTags,
+  FRONTMATTER_TAG_GRAMMAR_HINT,
+  FRONTMATTER_TAG_VALUE_RE,
+  isValidFrontmatterTagValue,
+} from './frontmatter/tags.ts';
+export {
+  applyPatchToDocument,
+  getDocumentKeys,
+  type ParsedFrontmatter,
+  parseFrontmatterYaml,
+  serializeFrontmatterMap,
+  withFences,
+} from './frontmatter/yaml-codec.ts';
+export {
+  diffFrontmatter,
+  type FrontmatterDelta,
+  FrontmatterDeltaSchema,
+  type PropertyChange,
+} from './frontmatter-diff.ts';
 export { parseBranchList } from './git/branch-list-parser.ts';
 export {
   agentToolDirs,
@@ -575,8 +663,6 @@ export {
   type WorktreeSelectorEntry,
   type WorktreeSelectorModel,
 } from './git/worktree-selector-model.ts';
-// Handoff — Open-in-Agent dropdown
-// + URN→IPC reason registry (`urn-ipc-registry.ts`).
 export {
   type AssembleHandoffPromptInput,
   assembleHandoffPrompt,
@@ -641,11 +727,6 @@ export {
   type WindowsShellFamily,
   withSkillPointer,
 } from './handoff/index.ts';
-// Interface locales — the single source of truth the config enum, the Lingui
-// catalog list and the locale matcher all derive from, plus the pure policy
-// every runtime resolves through and the browser's signal provider.
-// Browser-safe. The POSIX/Node signal provider is deliberately NOT here: it
-// reads `process.env`, so it ships from `./server.ts` instead.
 export { asBcp47Tag, type Bcp47Tag, toBcp47Tags } from './i18n/bcp47.ts';
 export {
   type NavigatorLanguages,
@@ -667,6 +748,63 @@ export {
   type LocaleSource,
   resolveLocale,
 } from './i18n/resolve-locale.ts';
+export {
+  emptyInstalledSkills,
+  INSTALLED_SKILLS_FILENAME,
+  INSTALLED_SKILLS_REL,
+  INSTALLED_SKILLS_SCHEMA_VERSION,
+  type InstalledSkillEntry,
+  InstalledSkillEntrySchema,
+  type InstalledSkillScope,
+  InstalledSkillScopeSchema,
+  type InstalledSkills,
+  InstalledSkillsSchema,
+  parseInstalledSkills,
+} from './installed-skills/schema.ts';
+export type {
+  BundleManifest,
+  BundleRedaction,
+  ClassifiedPath,
+  Loggable,
+  LogLevel,
+  LogPayload,
+  OkBugReportCrashAckResult,
+  OkBugReportCrashDetectedEvent,
+  OkBugReportCrashDumpAvailability,
+  OkBugReportCreateResult,
+  OkBugReportDeleteResult,
+  OkBugReportListResult,
+  OkBugReportListRow,
+  OkBugReportScreenshot,
+  OkBugReportSendFallbackReason,
+  OkBugReportSendMetadata,
+  OkBugReportSendResult,
+  ReportBundleLevel,
+  ReportBundleSummary,
+  SerializedError,
+  SerializedErrorTruncation,
+} from './logger-types.ts';
+export {
+  BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
+  BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  LOG_LEVELS,
+} from './logger-types.ts';
+export {
+  LOGGER_OWNED_FIELDS,
+  mapConsoleLevel,
+  parseStructuredConsoleMessage,
+  prepareCapturedConsoleMessage,
+  RENDERER_LOG_MAX_BATCH_BYTES,
+  RENDERER_LOG_MAX_ENTRIES,
+  RENDERER_LOG_MAX_MESSAGE_BYTES,
+  type RendererLogLevel,
+  truncateLogMessage,
+} from './logging/renderer-log.ts';
+export {
+  redactSecrets,
+  SECRET_PATTERN_NAMES,
+  scrubSecrets,
+} from './logging/secret-scrub.ts';
 export { selectFenceChar, widenFenceLength } from './markdown/code-fence.ts';
 export { MIN_CARRIED_EDGE_EMPTIES } from './markdown/doc-edge-blank-runs.ts';
 export { headingContentIdentity } from './markdown/heading-content-identity.ts';
@@ -677,8 +815,6 @@ export {
   mdastToMarkdown,
 } from './markdown/html-to-mdast.ts';
 export { MarkdownManager, type SerializeCallOptions } from './markdown/index.ts';
-// Markdown linter (the content-rules lint-plugin registry). Browser-safe;
-// consumed by the editor's CodeMirror lint facet + the no-code Settings GUI.
 export {
   type AppliesToPatternSummary,
   type AppliesToSummary,
@@ -854,7 +990,7 @@ export {
   type ParseHealthMetrics,
   resetParseHealth,
 } from './metrics/parse-health.ts';
-// Registry
+export { PROTOCOL_VERSION } from './protocol-version.ts';
 export {
   builtInComponents,
   type ComponentRegistry,
@@ -1503,310 +1639,6 @@ export {
   type DerivedViewChannel,
   DerivedViewChannelSchema,
 } from './schemas/cc1.ts';
-export type {
-  AnsiSlotName,
-  Base16Palette,
-  Base16ParseError,
-  Base16ParseResult,
-  Base16Scheme,
-  Base16Slot,
-} from './theme/base16.ts';
-export {
-  BASE16_SLOT_ROLES,
-  BASE16_SLOTS,
-  base16ToTokens,
-  base16ToYaml,
-  isBase16Hex,
-  mixHex,
-  parseBase16Scheme,
-  relativeLuminance,
-} from './theme/base16.ts';
-export type {
-  ColorThemeSelection,
-  ColorThemeSelectionInput,
-  SavedThemeIdError,
-  SavedThemeIdResult,
-  SavedThemeNameResult,
-  ThemePlugin,
-  ThemePluginId,
-} from './theme/theme-plugins.ts';
-export {
-  colorThemeMode,
-  deriveSavedThemeId,
-  deriveSavedThemeName,
-  generateColorThemesCss,
-  isDarkTheme,
-  parseSavedThemeId,
-  renderThemeBlock,
-  resolveColorThemeSelection,
-  resolveModePreference,
-  resolveThemePlugin,
-  SAVED_THEME_ID_PREFIX,
-  THEME_ID_PATTERN,
-  THEME_PLUGIN_IDS,
-  THEME_PLUGINS,
-} from './theme/theme-plugins.ts';
-export type {
-  OkUninstallBridge,
-  UninstallDispatchRequest,
-  UninstallDispatchResult,
-  UninstallIntent,
-  UninstallNoticeChecklistItem,
-  UninstallNoticeScreen,
-  UninstallProjectRow,
-  UninstallScreenSpec,
-} from './uninstall-bridge.ts';
-export {
-  HIDDEN_CONFIG_BASENAMES,
-  isHiddenDocName,
-  isProjectSkillBundlePath,
-  isValidDocName,
-  validateDocName,
-} from './util/doc-name.ts';
-export { toDesktopAssetHref } from './utils/asset-href.ts';
-export { isEmbedUrlRewritable, rewriteEmbedUrl } from './utils/embed-url-rewrite.ts';
-export { extensionOf } from './utils/extension.ts';
-export { formatFileSize } from './utils/file-size.ts';
-export { getGitHubStars } from './utils/github-stars.ts';
-export {
-  isLoomUrl,
-  type ParsedLoomUrl,
-  parseLoomUrl,
-} from './utils/loom-embed.ts';
-export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
-export {
-  hasUninstallFeedbackContent,
-  type PostUninstallFeedbackOptions,
-  postUninstallFeedback,
-  type UninstallFeedbackAnswers,
-  type UninstallFeedbackResult,
-  type UninstallFeedbackSource,
-  type UninstallFeedbackSubmission,
-} from './utils/uninstall-feedback-submit.ts';
-export { isVimeoUrl } from './utils/vimeo-embed.ts';
-export {
-  type ParsedYouTubeUrl,
-  parseYouTubeUrl,
-  youtubeEmbedUrl,
-} from './utils/youtube-embed.ts';
-
-// Desktop bridge types live on the dedicated `./desktop-bridge` leaf. Keeping
-// that leaf off this barrel avoids pulling markdown and CRDT dependencies into
-// Electron's type-resolution graph.
-
-// Shadow-repo layout helpers are NOT re-exported here — they import `node:fs`
-// and would contaminate core's browser-compatibility contract. Import via the
-// Node-only Git helpers are exposed through `./git-repository` and
-// `./shadow-repo-layout` subpaths so the browser-safe barrel stays clean.
-
-// Bridge — observer/CRDT-bridge shared utilities (precedent #14)
-export {
-  addsBlankLines,
-  applyFastDiff,
-  applyIncrementalDiff,
-  applyPatchToFm,
-  applyPathDeleteToFm,
-  applyPathRenameToFm,
-  applyPathReorderSeqToFm,
-  applyPathReorderToFm,
-  applyPathSetToFm,
-  applyRenameToFm,
-  applyReorderToFm,
-  assertContentPreservation,
-  BRIDGE_LINE_KINDS,
-  BRIDGE_TOLERANCE_CLASSES,
-  type BridgeComposition,
-  type BridgeDivergenceLocation,
-  type BridgeInvariantLogPayload,
-  type BridgeInvariantSite,
-  type BridgeInvariantViolation,
-  BridgeInvariantViolationError,
-  type BridgeLineKind,
-  BridgeMergeContentLossError,
-  type BridgeMergeContentLossInfo,
-  type BridgeMergeContentLossLogPayload,
-  type BridgeMergeContentLossSide,
-  type BridgeMergeContentLossWhich,
-  type BridgeToleranceClass,
-  type BridgeToleranceSignal,
-  bindFrontmatterDoc,
-  bodyEdgeEmpties,
-  type ComparePmStructuralOptions,
-  type ComposeAdjustment,
-  classifyBridgeLine,
-  classifySeverity,
-  comparePmStructural,
-  compareRoundTripStructural,
-  composeWithDerivedBody,
-  composeWithDerivedFrontmatter,
-  createMergeBoundarySpace,
-  createStructuralFreshnessChecker,
-  type DiffChange,
-  DUPLICATION_GATE_MIN_LINE_LENGTH,
-  defaultScheduler,
-  detectAppliedToleranceClasses,
-  detectFmRegion,
-  diffLinesFast,
-  docEdgeRunsDiffer,
-  emitToleranceFire,
-  type FmBoundarySlotSplit,
-  type FmEditError,
-  type FmEditResult,
-  FORM_WRITE_ORIGIN,
-  type FrontmatterBinding,
-  type FrontmatterBindingPatchResult,
-  type FrontmatterBindingPatchSuccess,
-  type FrontmatterBindingPathResult,
-  type FrontmatterBindingPathSuccess,
-  type FrontmatterBindingRenameResult,
-  type FrontmatterBindingRenameSuccess,
-  type FrontmatterBindingReorderResult,
-  type FrontmatterBindingReorderSuccess,
-  type FrontmatterBindingUnsubscribe,
-  type FrontmatterDocProvider,
-  type FrontmatterSnapshot,
-  findDroppedContent,
-  findFirstDivergenceIndex,
-  fnv1aDigest,
-  fragmentHoldsPendingContent,
-  type InvariantViolation,
-  isParseEquivalentBridge,
-  locateBridgeDivergence,
-  MAX_FM_REGION_BYTES,
-  type MergeBoundarySpace,
-  mergeThreeWay,
-  normalizeBridge,
-  overMultipliedBodyLines,
-  PARSE_EQUIVALENCE_TOLERANCE,
-  type ParsedFmRegion,
-  type PmStructuralNode,
-  parseFencedFmRegion,
-  parseFmRegion,
-  pendingContentLines,
-  readFmKeys,
-  readFmMap,
-  readFmRegionWithError,
-  type Scheduler,
-  type StructuralDegradeLabel,
-  type StructuralDivergenceReason,
-  type StructuralEquivalenceResult,
-  type StructuralFreshnessChecker,
-  type StructuralFreshnessCheckerOptions,
-  type SynthesisedConflictMarkers,
-  type SynthesisedConflictRegion,
-  setToleranceTelemetryHook,
-  splitFmBoundarySlot,
-  structuralDivergence,
-  synthesiseConflictMarkers,
-  synthesiseConflictMarkersWithRegions,
-  type ToleranceClassSeverity,
-  type ToleranceFireRecord,
-  type ToleranceTelemetryHook,
-  toBridgeInvariantLog,
-  tryLineLevelCombine,
-} from './bridge/index.ts';
-export type {
-  AutoConsolidationTrigger,
-  CheckpointBundleExposure,
-  CheckpointKind,
-  CheckpointKindAttributes,
-  CheckpointVisibility,
-  ParsedCheckpoint,
-} from './checkpoint-kinds.ts';
-// Checkpoint-kind metadata + the shared kind registry ARE browser-safe (pure
-// data, no `node:fs`) and live in `./checkpoint-kinds.ts`, so the editor UI can
-// drive timeline-row visibility off the same registry the server GC/timeline/
-// bundle paths use. `shadow-repo-layout` re-exports these for Node-only callers.
-export {
-  CHECKPOINT_KIND_REGISTRY,
-  CHECKPOINT_KINDS,
-  formatCheckpointBodyLine,
-  isSurfacedCheckpointKind,
-  parseCheckpoint,
-} from './checkpoint-kinds.ts';
-// Two-phase shutdown timing constants — shared by the CLI's idle-shutdown
-// UI-sibling termination and the desktop's `stopAllOwnedServers` auto-
-// update teardown. Calibrated against Hocuspocus's destroyTimeoutMs.
-//
-// The client ↔ collab keep-alive WebSocket primitive (`startKeepalive` and
-// related types) lives at `@inkeep/open-knowledge-core/keepalive` rather
-// than this barrel. It depends on `process.pid` (Node-only) and would
-// erode this barrel's browser-safety contract if exported here — the same
-// reason `./server` and `./shadow-repo-layout` are subpath-exported.
-export {
-  DEFAULT_SIGTERM_GRACE_MS,
-  DEFAULT_SIGTERM_POLL_MS,
-  formatSpawnAttemptHeader,
-  SERVER_CRASH_LOG,
-  SERVER_EXIT_LOG,
-  SPAWN_ATTEMPT_MARKER,
-  SPAWN_ERROR_LOG,
-  SPAWN_ERROR_LOG_MAX_BYTES,
-  sliceLastSpawnAttempt,
-  spawnErrorLogOpenMode,
-} from './constants/lifecycle.ts';
-export {
-  type FrontmatterIssue,
-  FrontmatterIssueSchema,
-  type FrontmatterValidationError,
-  FrontmatterValidationErrorSchema,
-  fieldErrorsFromError,
-  toFrontmatterIssue,
-} from './frontmatter/errors.ts';
-export { parseFrontmatterRecord } from './frontmatter/record.ts';
-export {
-  FRONTMATTER_TYPES,
-  type FrontmatterMap,
-  FrontmatterMapSchema,
-  type FrontmatterPatch,
-  FrontmatterPatchSchema,
-  type FrontmatterType,
-  FrontmatterTypeSchema,
-  type FrontmatterValue,
-  FrontmatterValueSchema,
-  frontmatterValuesEqual,
-  inferType,
-  isFrontmatterValueEmpty,
-  isIsoDateString,
-  RESERVED_FRONTMATTER_KEY,
-} from './frontmatter/schema.ts';
-// Frontmatter tag extractor + per-entry validator. The frontmatter `tags:`
-// grammar is more permissive than the inline `#tag` grammar (digit-leading
-// values like `2026` are valid here, not inline) — see `frontmatter/tags.ts`.
-export {
-  extractFrontmatterTags,
-  FRONTMATTER_TAG_GRAMMAR_HINT,
-  FRONTMATTER_TAG_VALUE_RE,
-  isValidFrontmatterTagValue,
-} from './frontmatter/tags.ts';
-// Frontmatter — per-key value schema + canonical YAML codec
-export {
-  applyPatchToDocument,
-  getDocumentKeys,
-  type ParsedFrontmatter,
-  parseFrontmatterYaml,
-  serializeFrontmatterMap,
-  withFences,
-} from './frontmatter/yaml-codec.ts';
-export {
-  diffFrontmatter,
-  type FrontmatterDelta,
-  FrontmatterDeltaSchema,
-  type PropertyChange,
-} from './frontmatter-diff.ts';
-export {
-  emptyInstalledSkills,
-  INSTALLED_SKILLS_FILENAME,
-  INSTALLED_SKILLS_REL,
-  INSTALLED_SKILLS_SCHEMA_VERSION,
-  type InstalledSkillEntry,
-  InstalledSkillEntrySchema,
-  type InstalledSkillScope,
-  InstalledSkillScopeSchema,
-  type InstalledSkills,
-  InstalledSkillsSchema,
-  parseInstalledSkills,
-} from './installed-skills/schema.ts';
 export {
   createWorkspaceSearchCorpus,
   createWorkspaceSearchDocument,
@@ -1896,9 +1728,6 @@ export {
   type PluginUpstream,
   pluginUpstreamsByName,
 } from './skills-catalog/plugin-upstream.ts';
-// Skill/Pack model — browser-safe schemas and source helpers. The node:fs
-// enumerator lives behind the `@inkeep/open-knowledge-core/skills-catalog`
-// subpath so this root barrel stays importable from app/docs browser bundles.
 export {
   type CatalogSkill,
   CatalogSkillSchema,
@@ -1930,16 +1759,11 @@ export {
   type SkillsSearchSuccess,
   SkillsSearchSuccessSchema,
 } from './skills-catalog/schema.ts';
-// Detected-skill scope resolution — pure, browser-safe project-locality helpers
-// shared by the client sidebar (bucketing) and the server endpoint (filtering).
 export {
   catalogRawScopeToOkScope,
   isDetectedSkillInProject,
   isSkillOutsideOpenProject,
 } from './skills-catalog/scope.ts';
-// Three-tier context-cost estimator — pure, browser-safe; shared by the client
-// preview payload and the server skills-list walk so a skill's cost reads the
-// same on every surface.
 export {
   ALWAYS_ON_TOKEN_BUDGET,
   estimateSkillCost,
@@ -1955,7 +1779,6 @@ export {
   type SkillsShSkillLinks,
   skillsShSkillLinks,
 } from './skills-catalog/source-fields.ts';
-// Template file format — single-block parse/compose/instantiate (+ legacy back-compat)
 export {
   composeTemplateFile,
   instantiateDoc,
@@ -1977,7 +1800,49 @@ export {
   TERMINAL_PLACEMENTS,
   type TerminalPlacement,
 } from './terminal-layout.ts';
-// Types
+export type {
+  AnsiSlotName,
+  Base16Palette,
+  Base16ParseError,
+  Base16ParseResult,
+  Base16Scheme,
+  Base16Slot,
+} from './theme/base16.ts';
+export {
+  BASE16_SLOT_ROLES,
+  BASE16_SLOTS,
+  base16ToTokens,
+  base16ToYaml,
+  isBase16Hex,
+  mixHex,
+  parseBase16Scheme,
+  relativeLuminance,
+} from './theme/base16.ts';
+export type {
+  ColorThemeSelection,
+  ColorThemeSelectionInput,
+  SavedThemeIdError,
+  SavedThemeIdResult,
+  SavedThemeNameResult,
+  ThemePlugin,
+  ThemePluginId,
+} from './theme/theme-plugins.ts';
+export {
+  colorThemeMode,
+  deriveSavedThemeId,
+  deriveSavedThemeName,
+  generateColorThemesCss,
+  isDarkTheme,
+  parseSavedThemeId,
+  renderThemeBlock,
+  resolveColorThemeSelection,
+  resolveModePreference,
+  resolveThemePlugin,
+  SAVED_THEME_ID_PREFIX,
+  THEME_ID_PATTERN,
+  THEME_PLUGIN_IDS,
+  THEME_PLUGINS,
+} from './theme/theme-plugins.ts';
 export type { Actor, PrincipalId, SessionId } from './types/actor.ts';
 export type {
   AgentFlashEntry,
@@ -1998,13 +1863,31 @@ export type {
   ShadowContributor,
   TimelineEntry,
 } from './types/timeline.ts';
-// `atomic-yaml-write` is NOT re-exported here — it imports `node:fs` and
-// would contaminate core's browser-compatibility contract. Import via the
-// server sub-barrel: `import { atomicWriteFile } from '@inkeep/open-knowledge-core/server'`.
-// Utils
+export type {
+  OkUninstallBridge,
+  UninstallDispatchRequest,
+  UninstallDispatchResult,
+  UninstallIntent,
+  UninstallNoticeChecklistItem,
+  UninstallNoticeScreen,
+  UninstallProjectRow,
+  UninstallScreenSpec,
+} from './uninstall-bridge.ts';
+export {
+  HIDDEN_CONFIG_BASENAMES,
+  isHiddenDocName,
+  isProjectSkillBundlePath,
+  isValidDocName,
+  validateDocName,
+} from './util/doc-name.ts';
 export { applyByPrefixSuffix } from './utils/apply-by-prefix-suffix.ts';
+export { toDesktopAssetHref } from './utils/asset-href.ts';
 export { ChunkedInsertError, chunkedYTextInsert } from './utils/chunked-insert.ts';
 export { createCodeFenceTracker } from './utils/code-fence-tracker.ts';
+export { isEmbedUrlRewritable, rewriteEmbedUrl } from './utils/embed-url-rewrite.ts';
+export { extensionOf } from './utils/extension.ts';
+export { formatFileSize } from './utils/file-size.ts';
+export { getGitHubStars } from './utils/github-stars.ts';
 export { scanHeadingLine } from './utils/heading-scan.ts';
 export {
   AGENT_COLORS,
@@ -2038,7 +1921,13 @@ export {
   type ResolveAssetProjectPathOptions,
   resolveAssetProjectPath,
 } from './utils/link-targets.ts';
+export {
+  isLoomUrl,
+  type ParsedLoomUrl,
+  parseLoomUrl,
+} from './utils/loom-embed.ts';
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
+export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
 export { randomUUID } from './utils/random-uuid.ts';
 export {
   decodeHrefPath,
@@ -2058,6 +1947,16 @@ export {
 } from './utils/slug.ts';
 export { expandTagToHierarchy, tagsMatchingPrefix } from './utils/tag-rollup.ts';
 export {
+  hasUninstallFeedbackContent,
+  type PostUninstallFeedbackOptions,
+  postUninstallFeedback,
+  type UninstallFeedbackAnswers,
+  type UninstallFeedbackResult,
+  type UninstallFeedbackSource,
+  type UninstallFeedbackSubmission,
+} from './utils/uninstall-feedback-submit.ts';
+export { isVimeoUrl } from './utils/vimeo-embed.ts';
+export {
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
   getWikiLinkResolutionCandidates,
@@ -2068,3 +1967,8 @@ export {
   type WikiLinkLookupIndex,
   type WikiLinkPagesInput,
 } from './utils/wiki-link-resolve.ts';
+export {
+  type ParsedYouTubeUrl,
+  parseYouTubeUrl,
+  youtubeEmbedUrl,
+} from './utils/youtube-embed.ts';

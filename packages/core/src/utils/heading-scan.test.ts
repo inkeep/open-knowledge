@@ -1,14 +1,6 @@
-/**
- * The single heading-line admission predicate, shared by the server's outline
- * producer and the source-mode client scan. Both producers must agree on every
- * line, so this pins the accept/reject boundary directly rather than through
- * either caller.
- */
-
 import { describe, expect, test } from 'vitest';
 import { scanHeadingLine } from './heading-scan.ts';
 
-/** Callers own the counter map; a fresh one means "first heading in a document". */
 function counts(): Map<string, number> {
   return new Map();
 }
@@ -47,7 +39,6 @@ describe('scanHeadingLine', () => {
   });
 
   test('tolerates a trailing carriage return', () => {
-    // CRLF documents keep the `\r` on every line once split on `\n`.
     expect(scanHeadingLine('# Intro\r', counts())).toEqual({
       level: 1,
       text: 'Intro',
@@ -60,9 +51,6 @@ describe('scanHeadingLine', () => {
   });
 
   test('rejects an indented hash line', () => {
-    // CommonMark §4.2 allows up to three leading spaces; this predicate does
-    // not, and the two producers must share that narrower rule so their
-    // heading counts stay 1:1.
     expect(scanHeadingLine('  # Indented', counts())).toBeNull();
   });
 
@@ -73,8 +61,6 @@ describe('scanHeadingLine', () => {
   });
 
   test('rejects a heading whose text slugs to nothing', () => {
-    // The slug is the outline's identity; a heading that cannot produce one is
-    // not addressable, so it is not a heading for either producer.
     expect(scanHeadingLine('## ---', counts())).toBeNull();
     expect(scanHeadingLine('## ***', counts())).toBeNull();
     expect(scanHeadingLine('## 🎉', counts())).toBeNull();
@@ -94,8 +80,6 @@ describe('scanHeadingLine', () => {
   });
 
   test('a rejected line does not consume a slug count', () => {
-    // An unaddressable heading must not shift the suffix of a later real one,
-    // or the client and server outlines drift by a suffix.
     const shared = counts();
 
     expect(scanHeadingLine('## ---', shared)).toBeNull();

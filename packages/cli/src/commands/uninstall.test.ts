@@ -21,9 +21,7 @@ describe('detectInstallMethods', () => {
         home,
         '/Users/x/.npm/_npx/abcd/node_modules/.bin/ok',
         npmStub,
-        (p) => p === userApp, // hermetic: only the injected user-app path "exists"
-        // App probes are platform-gated now; pin the platform under test so
-        // the assertion doesn't track whatever OS the suite runs on.
+        (p) => p === userApp,
         { platform: 'darwin' },
       );
       const kinds = methods.map((m) => m.method);
@@ -40,8 +38,6 @@ describe('detectInstallMethods', () => {
 
   test('detects the Windows NSIS install and points at Settings → Apps', () => {
     const localAppData = 'C:\\Users\\Jane\\AppData\\Local';
-    // The probe composes with node:path join, which is host-flavored — build
-    // the expected string the same way so the test is portable.
     const exe = join(
       localAppData,
       'Programs',
@@ -108,13 +104,13 @@ describe('resolveRecentDeinitProjects', () => {
       const selected = await resolveRecentDeinitProjects({
         home,
         platform: 'darwin',
-        cwd: a, // standing in an OK project — still not auto-selected
+        cwd: a,
         lockDirs: [],
         yes: true,
         readRecents: () => [{ path: b }],
         findRoot: () => ({ rootPath: a, distance: 0 }),
       });
-      expect(selected).toEqual([]); // neither the current project nor recents
+      expect(selected).toEqual([]);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -171,7 +167,7 @@ describe('resolveRecentDeinitProjects', () => {
         findRoot: () => ({ rootPath: a, distance: 0 }),
         promptFn: async (candidates) => candidates.filter((c) => c.path === b).map((c) => c.path),
       });
-      expect(selected).toEqual([b]); // only what the user ticked
+      expect(selected).toEqual([b]);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -189,7 +185,7 @@ describe('resolveRecentDeinitProjects', () => {
         readRecents: () => [{ path: join(home, 'deleted-project') }],
         findRoot: () => ({ rootPath: a, distance: 0 }),
       });
-      expect(selected).toEqual([a]); // the non-existent recent is dropped
+      expect(selected).toEqual([a]);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -215,8 +211,8 @@ describe('runUninstall', () => {
       });
       expect(result.status).toBe('dry-run');
       expect(result.message).toContain('Would remove');
-      expect(result.message).toContain('Move to Trash'); // binary instruction shown
-      expect(existsSync(join(home, '.ok'))).toBe(true); // nothing removed
+      expect(result.message).toContain('Move to Trash');
+      expect(existsSync(join(home, '.ok'))).toBe(true);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -268,12 +264,11 @@ describe('runUninstall', () => {
         cwd: home,
         yes: true,
         deps: {
-          discoverLockDirs: async () => ['/some/proj/.ok/local'], // → a stop-server op
+          discoverLockDirs: async () => ['/some/proj/.ok/local'],
           detectInstallMethods: () => [],
           runRemovalDeps: {
             clearToken: async () => ({ touched: [] }),
             clearEmbeddingsKey: async () => ({ touched: [] }),
-            // The SIGTERM fails → the stop-server op is `failed`.
             stopServer: () => ({ stopped: 0, failed: [{ pid: 99, error: 'EPERM' }] }),
           },
         },
@@ -315,8 +310,6 @@ describe('runUninstall', () => {
         deps: {
           discoverLockDirs: async () => [],
           detectInstallMethods: () => [],
-          // Stub the machine-touching primitives so the real keychain is never
-          // touched; fs ops run for real against the temp home.
           runRemovalDeps: {
             clearToken: async () => ({ touched: ['file'] }),
             clearEmbeddingsKey: async () => ({ touched: [] }),
@@ -327,8 +320,6 @@ describe('runUninstall', () => {
       expect(result.status).toBe('done');
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('Removed');
-      // The machinery is gone (the ~/.ok dir itself is kept in non-purge mode
-      // for the skills carve-out, but its contents are removed).
       expect(existsSync(join(home, '.ok', 'auth.yml'))).toBe(false);
       expect(existsSync(join(home, '.agents', 'skills', 'open-knowledge-discovery'))).toBe(false);
     } finally {
@@ -348,7 +339,7 @@ describe('runUninstall attached-client disclosure', () => {
         cwd: home,
         dryRun: true,
         deps: {
-          discoverLockDirs: async () => ['/some/proj/.ok/local'], // → a stop-server op
+          discoverLockDirs: async () => ['/some/proj/.ok/local'],
           detectInstallMethods: () => [],
           probeClients: async () => 1,
         },
@@ -357,7 +348,6 @@ describe('runUninstall attached-client disclosure', () => {
       expect(result.exitCode).toBe(0);
       expect(result.message).toContain('1 collaboration client');
       expect(result.message).toContain('restarting will NOT recover them');
-      // Disclosure only — no `--force`, no second prompt.
       expect(result.message).not.toContain('--force');
     } finally {
       rmSync(home, { recursive: true, force: true });

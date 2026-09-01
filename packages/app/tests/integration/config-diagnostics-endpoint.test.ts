@@ -1,17 +1,3 @@
-/**
- * Integration tests for active config reads against a booted server. Most
- * cover `GET /api/config/diagnostics`, the read-only surface that reports
- * diagnostics across the user, committed-project, and project-local layers.
- * The saved-theme deletion case composes the same user-home seam with the real
- * theme route and config reader so dangling references cannot erase siblings.
- *
- * Drives the real endpoint against a booted server: the three config files are
- * written on disk, the handler reads them fresh per request, and the response
- * is asserted end to end. The scope→file resolution and the value-free
- * projection are unit-tested in
- * `packages/core/src/config/collect-config-diagnostics.test.ts`.
- */
-
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
@@ -40,19 +26,16 @@ afterAll(async () => {
   rmSync(homeDir, { recursive: true, force: true });
 });
 
-/** Absolute path of the config file for `scope` under this server's dirs. */
 function scopeFile(scope: WriteScope): string {
   return resolveConfigPath(scope, server.contentDir, homeDir);
 }
 
-/** Write `value` as YAML at the config path for `scope`. */
 function writeScope(scope: WriteScope, value: Record<string, unknown>): void {
   const file = scopeFile(scope);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, stringify(value), 'utf-8');
 }
 
-/** The registry redirect for a dotted key path — pins response ⇄ registry. */
 function redirectFor(dottedPath: string): string {
   const entry = REMOVED_KEYS.find((k) => k.path.join('.') === dottedPath);
   if (!entry) throw new Error(`fixture key ${dottedPath} missing from registry`);
@@ -158,7 +141,6 @@ describe('GET /api/config/diagnostics', () => {
     const firstPaths = first.diagnostics.map((d) => d.path?.join('.')).sort();
     expect(firstPaths).toEqual(['appearance.sidebar.showAllFiles', 'mcp.autoStart']);
 
-    // Drop one stale key on disk; the same long-lived server must reflect it.
     writeScope('project-local', { mcp: { autoStart: false } });
 
     const second = (await (await fetch(url())).json()) as { diagnostics: DiagnosticItem[] };

@@ -1,12 +1,3 @@
-/**
- * Load-and-render wrapper for a skill bundle `.md` / `.mdx` file: drives the
- * shared `useViewerText` fetch lifecycle (loading / error / loaded), then hands
- * the loaded text to `SkillMarkdownViewer` for the read-only rendered prose.
- *
- * Reuses the same load state machine + status panes as the source `TextViewer`,
- * so loading spinners and error messages are identical — only the loaded branch
- * differs (rendered markdown instead of CodeMirror source).
- */
 import {
   type SkillScope,
   skillFileLiveDocName,
@@ -29,7 +20,6 @@ export function SkillMarkdownLoader({
   scope: SkillScope;
   name: string;
   path: string;
-  /** Which same-named bundle this file belongs to; omitted = by-name default. */
   host?: string;
   fileName: string;
 }) {
@@ -41,8 +31,6 @@ export function SkillMarkdownLoader({
     return <ViewerLoadingPane fileName={fileName} dataAttr={DATA_ATTR} />;
   }
   if (fetchState.status === 'error') {
-    // No "Open file" handoff — a skill bundle file lives outside the content
-    // dir, so there is no project-relative path to hand to the OS.
     return (
       <ViewerErrorPane fileName={fileName} dataAttr={DATA_ATTR} message={fetchState.message} />
     );
@@ -51,9 +39,7 @@ export function SkillMarkdownLoader({
     <SkillMarkdownViewer
       fileName={fileName}
       text={fetchState.content}
-      // Relative links in this reference resolve against its own bundle doc.
       linkBaseDocName={skillFileLiveDocName(scope, name, path)}
-      // The skill identity that makes `references/…` bundle-path chips clickable.
       skillPathLinkDocName={skillLiveDocName(scope, name)}
     />
   );

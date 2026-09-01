@@ -1,72 +1,3 @@
-/**
- * Open-in-Agent handoff matrix.
- *
- * Entry point: the file-sidebar right-click "Open with AI" submenu
- * (`OpenInAgentContextSubmenu`, mounted inside `FileTree`'s row context menu).
- * The top-toolbar Open-with-AI trigger was removed when Ask AI became the
- * single editor entry point; this is the surviving deep-link handoff surface.
- * It renders the SAME target set with the same `claude-cowork` exclusion
- * (`VISIBLE_TARGETS`) the old toolbar menu used, so every cell's dispatch
- * coverage carries over — only the way the menu is OPENED
- * changes (right-click the seeded doc's sidebar row → expand the "Open with AI"
- * submenu → click `file-tree-open-in-<target>`).
- *
- * Per-target rows carry `data-testid="file-tree-open-in-<target.id>"`
- * (e.g. `file-tree-open-in-cursor`); seeded in-app agent rows carry
- * `file-tree-open-in-thread-<agent.id>`. External-app rows are DETECTION-driven:
- * an app the install probe reports present shows without any opt-in, so most
- * cells just set `install`. An explicit Configure-agents override still wins
- * either way, which is what `enableDesktopTargets` seeds for the
- * enabled-but-not-installed cell. Install state also decides, for a visible row,
- * whether selecting it dispatches (installed) or opens the installer (not).
- *
- * Cell coverage:
- *   - Cells 1, 4: cowork-UI-hidden invariant — `claude-cowork` is filtered
- *     out of the submenu by `VISIBLE_TARGETS` even when enabled + `claude: true`.
- *     Dispatch by ID still works through `KNOWN_TARGETS` (covered by
- *     `useHandoffDispatch.test.ts`); these cells guard only the render-surface
- *     hide. Cells 2, 8: happy paths for enabled + installed targets.
- *   - Cell 3: a target the user enabled explicitly renders even though the probe
- *     reports it not installed, and selecting it opens the installer instead of
- *     dispatching.
- *   - Cell 5: Web Cursor happy path — POSTs to `/api/handoff` (target:
- *     `cursor`, with `workspacePath`) and asserts on the captured request.
- *     Server owns the `cursor <path>` + `open <url>` recipe; renderer just
- *     builds the URL and POSTs. This cell is the web mirror of cell 2.
- *   - Cell 7: with nothing installed, every per-target row is hidden, but the
- *     seeded in-app agent rows still render.
- * Each cell maps to the numbered scenarios in that section. Mocking at the
- * `window.okDesktop` bridge boundary (Electron host) + `page.route` on
- * `/api/installed-agents` (web host) via `fixtures/handoff-mocks.ts`.
- *
- * Key choices (debated at implementation time):
- *   - Real-server handoff dispatch is mocked. CI runners generally do not
- *     have Claude / Codex / Cursor installed, and even if they did, dispatching
- *     the URL would black-box the assertion. The mock lets us assert the exact
- *     dispatched URL, the call count, and the order.
- *   - Anchor-click swallowed for handoff schemes via `HTMLAnchorElement.
- *     prototype.click` override. Without this, Chromium would attempt to
- *     navigate to `claude://` etc., triggering a protocol-handler dialog
- *     (ignored in headless) OR a real navigation to `https://claude.ai/...`
- *     (would leave the app). See `handoff-mocks.ts` for the full rationale.
- *   - Cell 3 seeds an enable override for a target the probe reports NOT
- *     installed, then asserts the row still renders (an explicit override beats
- *     detection) and that selecting it opens the installer rather than
- *     dispatching a handoff.
- *
- * Host-specific notes:
- *   - Electron host cells MUST inject `window.okDesktop` via `addInitScript`
- *     BEFORE `page.goto(...)`. Setting it after hydration would race with
- *     `useCollabUrl` + `useWorkspace` boot logic.
- *   - Web host cells leave `window.okDesktop` undefined. The app falls
- *     through to `GET /api/workspace` (served by the real worker server)
- *     and `GET /api/installed-agents` (intercepted by the fixture).
- *   - The submenu's per-file `input` is built from the right-clicked node's
- *     `docName` + the workspace resolved via `GET /api/workspace` (host-
- *     agnostic — the worker server serves it in both host modes). With the
- *     workspace resolved the rows are enabled, not "No workspace"-disabled.
- */
-
 import { realpathSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
@@ -79,14 +10,6 @@ import {
 const DOC_NAME = 'handoff-test-doc';
 const DOC_MARKDOWN = '# Handoff Test Doc\n\nBody paragraph for the handoff matrix.';
 
-/**
- * Resolve the worker's contentDir to its canonical path. On macOS the tmpdir
- * (`/var/folders/...`) is a symlink to `/private/var/folders/...`. The server's
- * `/api/workspace` handler calls `realpathSync`, so web-host cells see the
- * resolved path; Electron-host cells see whatever we inject into
- * `bridge.config.projectPath`. Using `realpathSync` on both sides keeps the
- * test deterministic regardless of the symlink shape on the runner.
- */
 function resolvedContentDir(contentDir: string): string {
   try {
     return realpathSync(contentDir);
@@ -95,8 +18,6 @@ function resolvedContentDir(contentDir: string): string {
   }
 }
 
-/** Sidebar-scoped locator for the seeded doc's tree row. The handoff entry
- *  point lives on this row's right-click context menu. */
 function seededDocRow(page: Page) {
   return page
     .locator('[data-slot="sidebar-container"]')
@@ -111,21 +32,9 @@ async function seedAndNavigate(
   await page.goto(`/#/${DOC_NAME}`);
   await waitForActiveProviderSynced(page);
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
-  // The handoff submenu lives on the sidebar row's context menu; wait until
-  // the row has rendered before exercising it. (Both host paths populate the
-  // sidebar from `GET /api/documents` served by the worker server.)
   await expect(seededDocRow(page)).toBeVisible({ timeout: 15_000 });
 }
 
-/**
- * Right-click the seeded doc's sidebar row and expand its "Open with AI"
- * submenu so the `file-tree-open-in-*` rows are mounted + actionable.
- *
- * The submenu is a Radix `DropdownMenuSub` whose `DropdownMenuSubContent`
- * only mounts once the submenu trigger ("Open with AI", `role="menuitem"`)
- * is opened. Clicking the trigger opens it deterministically (hover-open can
- * race the row-context-menu's own open animation under CI load).
- */
 async function openHandoffSubmenu(page: Page): Promise<void> {
   await seededDocRow(page).click({ button: 'right' });
   const submenuTrigger = page.getByRole('menuitem', { name: 'Open with AI' });
@@ -133,14 +42,6 @@ async function openHandoffSubmenu(page: Page): Promise<void> {
   await submenuTrigger.click();
 }
 
-/**
- * Force-enable external apps in the Configure-agents store before boot — the
- * same override the user writes by flipping the toggle in Settings → Configure
- * agents. Detected apps need no seed; this is for the cell that wants a row for
- * an app the probe reports NOT installed.
- *
- * Call BEFORE `page.goto(...)` — `addInitScript` runs on the fresh document.
- */
 async function enableDesktopTargets(page: Page, targetIds: readonly string[]): Promise<void> {
   await page.addInitScript((ids: readonly string[]) => {
     const overrides: Record<string, boolean> = {};
@@ -149,13 +50,6 @@ async function enableDesktopTargets(page: Page, targetIds: readonly string[]): P
   }, targetIds);
 }
 
-/**
- * Register in-app agents in the Configure-agents store before boot. Seeding was
- * retired — per-agent thread rows now render for the user's ENABLED in-app
- * agents — so a cell that expects a thread row registers it here, the same store
- * `registerAgent` writes when the user turns one on in Settings. Call BEFORE
- * `page.goto(...)`.
- */
 async function registerInAppAgents(
   page: Page,
   agents: ReadonlyArray<{ source: string; id: string; name: string }>,
@@ -169,19 +63,6 @@ async function registerInAppAgents(
   }, agents);
 }
 
-/**
- * Wait until the install-state probe has resolved. Before the probe lands,
- * the submenu filters out every `installed: null` row and shows the
- * "Checking for installed agents" hint, so the installed rows the cells assert
- * on are absent until the probe settles.
- *
- * - Electron host: `detectProtocolCalls.length` grows to 3 once each unique
- *   scheme has been probed (the fixture mock resolves each immediately).
- * - Web host: the fixture's `window.fetch` wrapper sets
- *   `installedAgentsFetchResolved` after the single `/api/installed-agents`
- *   response lands. The React hook's state update is microtask-cheap; we
- *   rely on Playwright's internal retry window for the assertions that follow.
- */
 async function waitForProbeSettled(page: Page, host: 'electron' | 'web'): Promise<void> {
   if (host === 'electron') {
     await expect
@@ -211,10 +92,6 @@ test.describe('handoff — 8-cell matrix', () => {
     api,
     workerServer,
   }) => {
-    // Cowork is UI-hidden by VISIBLE_TARGETS regardless of install state.
-    // Dispatch by ID (deep links, programmatic callers) still works through
-    // KNOWN_TARGETS in `useHandoffDispatch`, so this test guards only the
-    // render-surface invariant: the row must not appear in the submenu.
     const cfg: HandoffMockConfig = {
       host: 'electron',
       install: { claude: true, codex: true, cursor: true },
@@ -227,13 +104,10 @@ test.describe('handoff — 8-cell matrix', () => {
     await waitForProbeSettled(page, 'electron');
     await openHandoffSubmenu(page);
 
-    // Enabled sibling rows render…
     await expect(page.getByTestId('file-tree-open-in-claude-code')).toBeVisible();
     await expect(page.getByTestId('file-tree-open-in-codex')).toBeVisible();
     await expect(page.getByTestId('file-tree-open-in-cursor')).toBeVisible();
 
-    // …but the cowork row is filtered out by VISIBLE_TARGETS even when enabled +
-    // `claude: true`. No way to click it, no way to dispatch from the UI.
     await expect(page.getByTestId('file-tree-open-in-claude-cowork')).toHaveCount(0);
   });
 
@@ -255,8 +129,6 @@ test.describe('handoff — 8-cell matrix', () => {
     await openHandoffSubmenu(page);
     await page.getByTestId('file-tree-open-in-cursor').click();
 
-    // Dispatch goes through POST /api/handoff with target='cursor' + URL +
-    // workspacePath. Server-side recipe orchestrates `cursor <path>` + URL.
     await expect
       .poll(async () => (await readCapturedHandoff(page)).handoffApiCalls.length, {
         timeout: 5_000,
@@ -271,10 +143,6 @@ test.describe('handoff — 8-cell matrix', () => {
     expect(u.hostname).toBe('anysphere.cursor-deeplink');
     expect(u.pathname).toBe('/prompt');
     expect(u.searchParams.get('mode')).toBe('agent');
-    // Prompt is threaded through all scopes via Cursor's double-
-    // encoded text= param. precedent #25 invariant preserved — the URL
-    // never carries file content / `file=` attach (the prompt is a short
-    // directive composed by the dispatch hook). Agent still grounds via OK MCP.
     expect(u.searchParams.get('text')).toBeTruthy();
     expect(u.searchParams.get('workspace')).toBeTruthy();
 
@@ -286,10 +154,6 @@ test.describe('handoff — 8-cell matrix', () => {
     api,
     workerServer,
   }) => {
-    // Codex is force-enabled in Configure agents but the probe reports it not
-    // installed. An explicit override beats detection, so the row renders
-    // anyway; selecting it opens the installer (openInstallUrl → openExternal)
-    // instead of dispatching a handoff.
     const cfg: HandoffMockConfig = {
       host: 'electron',
       install: { claude: true, codex: false, cursor: true },
@@ -303,12 +167,10 @@ test.describe('handoff — 8-cell matrix', () => {
     await waitForProbeSettled(page, 'electron');
     await openHandoffSubmenu(page);
 
-    // Enabled → visible, even though codex is not installed on this host.
     const codexRow = page.getByTestId('file-tree-open-in-codex');
     await expect(codexRow).toBeVisible();
     await codexRow.click();
 
-    // Not installed → the installer opens; no handoff dispatch fires.
     await expect
       .poll(async () => (await readCapturedHandoff(page)).openExternalCalls.length, {
         timeout: 5_000,
@@ -324,10 +186,6 @@ test.describe('handoff — 8-cell matrix', () => {
     api,
     workerServer,
   }) => {
-    // Web mirror of cell 1: cowork is filtered out of the submenu by
-    // VISIBLE_TARGETS regardless of `/api/installed-agents` response. Programmatic
-    // dispatch by ID still works for power users; the UI surface does not
-    // expose the row.
     const cfg: HandoffMockConfig = {
       host: 'web',
       install: { claude: true, codex: true, cursor: true },
@@ -349,9 +207,6 @@ test.describe('handoff — 8-cell matrix', () => {
     api,
     workerServer,
   }) => {
-    // Web host POSTs to /api/handoff same as Electron — the renderer is
-    // transport-agnostic. Server-side recipe orchestrates `cursor <path>` +
-    // URL. The fixture intercepts the POST and captures the body.
     const cfg: HandoffMockConfig = {
       host: 'web',
       install: { claude: true, codex: true, cursor: true },
@@ -364,9 +219,6 @@ test.describe('handoff — 8-cell matrix', () => {
     await waitForProbeSettled(page, 'web');
     await openHandoffSubmenu(page);
 
-    // Cursor row is rendered because it is enabled in Configure agents; the
-    // probe says `cursor: true`, so selecting it dispatches (rather than routing
-    // to the installer).
     await page.getByTestId('file-tree-open-in-cursor').click();
 
     await expect
@@ -383,17 +235,11 @@ test.describe('handoff — 8-cell matrix', () => {
     expect(u.hostname).toBe('anysphere.cursor-deeplink');
     expect(u.pathname).toBe('/prompt');
     expect(u.searchParams.get('mode')).toBe('agent');
-    // Prompt is threaded through all scopes via Cursor's double-
-    // encoded text= param. precedent #25 invariant preserved — the URL
-    // never carries file content / `file=` attach (the prompt is a short
-    // directive composed by the dispatch hook). Agent still grounds via OK MCP.
     expect(u.searchParams.get('text')).toBeTruthy();
     expect(u.searchParams.get('workspace')).toBeTruthy();
 
     await expect(page.getByText('Opened in Cursor.')).toBeVisible();
 
-    // Web host has no bridge openExternal surface — and the renderer doesn't
-    // fire URLs directly anymore (server does), so neither bridge is invoked.
     expect(captured.openExternalCalls.length).toBe(0);
     expect(captured.anchorClicks.length).toBe(0);
   });
@@ -410,8 +256,6 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    // The user has an enabled in-app agent (seeding is retired; enablement is the
-    // source of truth), so its per-agent thread row is offered below.
     await registerInAppAgents(page, [{ source: 'registry', id: 'claude-acp', name: 'Claude' }]);
     await seedAndNavigate(page, api);
 
@@ -424,11 +268,6 @@ test.describe('handoff — 8-cell matrix', () => {
     await waitForProbeSettled(page, 'web');
     await openHandoffSubmenu(page);
 
-    // Every per-target external-app row is hidden (nothing is installed and the
-    // user set no override), and there's no claude.ai web fallback. It is still
-    // not a dead end: the enabled in-app agent is server-hosted, so its per-agent
-    // thread row renders even with zero installed editors (the old generic "Start
-    // an agent" row + "no installed agents" hint are gone).
     for (const id of ['claude-cowork', 'claude-code', 'codex', 'cursor']) {
       await expect(page.getByTestId(`file-tree-open-in-${id}`)).toHaveCount(0);
     }
@@ -436,10 +275,8 @@ test.describe('handoff — 8-cell matrix', () => {
     await expect(page.getByTestId('file-tree-open-in-thread-claude-acp')).toBeVisible();
     await expect(page.getByTestId('file-tree-open-in-empty')).toHaveCount(0);
 
-    // Defensive: the menu render path must not have thrown.
     expect(consoleErrors.filter((e) => !e.includes('net::') && !e.includes('favicon'))).toEqual([]);
 
-    // No dispatches should have fired.
     const captured = await readCapturedHandoff(page);
     expect(captured.anchorClicks).toEqual([]);
     expect(captured.openExternalCalls).toEqual([]);
@@ -457,10 +294,6 @@ test.describe('handoff — 8-cell matrix', () => {
       workerContentDir: resolvedContentDir(workerServer.contentDir),
     };
     await installHandoffMocks(page, cfg);
-    // Override the default /api/handoff intercept to return 422 (Cursor not
-    // installed on this host). The renderer's `dispatchHandoff` maps 422 to
-    // `{ok:false, reason:'not-installed'}` which surfaces the failure toast
-    // + telemetry error line.
     await page.unroute('**/api/handoff');
     await page.route('**/api/handoff', async (route) => {
       await route.fulfill({
@@ -486,15 +319,12 @@ test.describe('handoff — 8-cell matrix', () => {
       })
       .toBe(1);
 
-    // Failure toast + Retry button visible (sonner error toast).
     await expect(page.getByText("Couldn't reach Cursor — try again?")).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
 
     const captured = await readCapturedHandoff(page);
-    // Renderer no longer fires openExternal / anchor clicks (server does).
     expect(captured.openExternalCalls).toEqual([]);
 
-    // Telemetry: one error line with the not-installed reason.
     expect(captured.recordHandoffCalls.length).toBe(1);
     const [line] = captured.recordHandoffCalls;
     expect(line?.target).toBe('cursor');

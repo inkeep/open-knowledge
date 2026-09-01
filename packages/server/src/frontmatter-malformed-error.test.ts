@@ -76,13 +76,8 @@ describe('classifyParseError — bounded-cardinality refusal class', () => {
       ]).toContain(c);
     }
   });
-
-  // `byte-0-promotion` is deliberately absent from the list above: the
-  // classifier reads parser messages, and that refusal never parsed anything.
-  // Its class rides on the error instead — pinned in the block below.
 });
 
-/** Minimal `ServerResponse` double — captures status + body, nothing else. */
 function captureRes(): { res: ServerResponse; read: () => { status: number; body: string } } {
   const captured = { status: 0, body: '' };
   const res = {
@@ -98,11 +93,6 @@ function captureRes(): { res: ServerResponse; read: () => { status: number; body
 
 describe('respondFrontmatterMalformed — throw-site class and hint win over prose-sniffing', () => {
   test('a byte-0 promotion refusal is NOT counted as a yaml parse error', () => {
-    // The whole point of the `class` label is that a spike in
-    // `yaml-parse-error` means the parser or schema regressed. Placement
-    // refusals landing in that bucket would make the signal unreadable — and
-    // they would, since the classifier falls through to it for any non-empty
-    // prose. This fails if the `err.refusalClass ??` short-circuit is removed.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const { res, read } = captureRes();
@@ -120,12 +110,10 @@ describe('respondFrontmatterMalformed — throw-site class and hint win over pro
       const event = JSON.parse(warn.mock.calls.at(-1)?.[0] as string);
       expect(event.event).toBe('frontmatter-malformed-write-refused');
       expect(event.class).toBe('byte-0-promotion');
-      // Confirms the bucket it would have landed in without the explicit class.
       expect(
         classifyParseError("the payload's leading `---` fence pair would land at byte 0"),
       ).toBe('yaml-parse-error');
 
-      // The hint replaces the YAML-quoting advice rather than stacking on it.
       const body = JSON.parse(read().body);
       expect(body.detail).toContain('Start the payload with a blank line.');
       expect(body.detail).not.toContain('Quote string values');
@@ -156,11 +144,6 @@ describe('respondFrontmatterMalformed — throw-site class and hint win over pro
 });
 
 describe('logFrontmatterRefusal / frontmatterRefusalDetail — the batch surface agrees', () => {
-  // `agent-write-batch` builds a per-entry error object instead of an HTTP
-  // response, so it cannot call `respondFrontmatterMalformed` — it calls these
-  // two directly. Reading `err.parseError` there instead is what made byte-0
-  // promotion refusals count as YAML parse errors on that path alone, so this
-  // pins that both surfaces resolve the class and the detail identically.
   test('a promotion refusal keeps its class and hint on the batch path', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

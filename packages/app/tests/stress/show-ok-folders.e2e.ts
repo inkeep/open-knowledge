@@ -1,14 +1,3 @@
-// Show .ok folders — the request-scoped `.ok` reveal with read-only posture.
-// Flipping the toggle fetches the listing with `showOk=true` and renders the
-// `.ok` rows (minus `worktrees/` and `local/`, which the server excludes at
-// every depth); clicks land on sanctioned surfaces only — template files on
-// the template editor, everything else on the read-only text viewer — and no
-// `.ok` row exposes a mutate context action. The doc-open guard is
-// visibility-independent: a direct hash to a raw `.ok` docName lands on the
-// read-only viewer (never the editable / create-mode editor), whether or not
-// the reveal is on. Mutation affordances stay dead even when a `.ok` row is
-// the activated target: toolbar create falls back to the workspace root and
-// keyboard delete opens no dialog.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
@@ -53,7 +42,6 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
   await page.goto(`/#/${controlDoc}`);
   await fileRow(page, `${controlDoc}.md`).waitFor({ state: 'visible', timeout: 15_000 });
 
-  // Default state: the reveal is off and no `.ok` row exists.
   await expect(folderRow(page, '.ok')).toHaveCount(0);
 
   await toggleShowOkFolders(page);
@@ -62,15 +50,12 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
   });
   await folderRow(page, '.ok').waitFor({ state: 'visible', timeout: 15_000 });
 
-  // Expand `.ok`: templates + the raw doc appear; the server never lists
-  // `worktrees/` or `local/` (excluded at every depth even while revealed).
   await folderRow(page, '.ok').click();
   await folderRow(page, 'templates').waitFor({ state: 'visible', timeout: 15_000 });
   await fileRow(page, `${rawDocBase}.md`).waitFor({ state: 'visible', timeout: 15_000 });
   await expect(folderRow(page, 'worktrees')).toHaveCount(0);
   await expect(folderRow(page, 'local')).toHaveCount(0);
 
-  // No mutate context actions on .ok rows — folder first…
   await folderRow(page, 'templates').click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: /copy path/i })).toBeVisible({
     timeout: 5_000,
@@ -82,7 +67,6 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
   await expect(page.getByRole('menuitem', { name: /hide/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // …then a file row.
   await fileRow(page, `${rawDocBase}.md`).click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: /copy path/i })).toBeVisible({
     timeout: 5_000,
@@ -93,10 +77,6 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
   await expect(page.getByRole('menuitem', { name: /hide/i })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  // A raw `.ok` doc row opens the read-only text viewer, not an editor.
-  // Read-only is enforced at the CodeMirror dispatch level (the DOM stays
-  // contenteditable for selection/copy UX), so the honest check is
-  // behavioral: typing changes nothing.
   await fileRow(page, `${rawDocBase}.md`).click();
   await expect(textViewer(page)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(`Raw probe ${stamp}`)).toBeVisible({ timeout: 15_000 });
@@ -105,9 +85,6 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
   await expect(page.getByText('MUTATION-ATTEMPT')).toHaveCount(0);
   await expect(page.getByText(`Raw probe ${stamp}`)).toBeVisible();
 
-  // A template file row routes to its content doc (templates are content docs
-  // now; the row navigates to the real `.ok/templates/` path, not the retired
-  // `__template__/` synthetic name).
   await folderRow(page, 'templates').click();
   await fileRow(page, `${templateName}.md`).waitFor({ state: 'visible', timeout: 15_000 });
   await fileRow(page, `${templateName}.md`).click();
@@ -117,8 +94,6 @@ test('toggle reveals .ok rows, routes clicks to sanctioned surfaces, and keeps r
     })
     .toBe(`#/.ok/templates/${templateName}`);
 
-  // Restore the worker-shared default from the same popover; the `.ok` rows
-  // retire with the flip.
   await toggleShowOkFolders(page);
   await expect(folderRow(page, '.ok')).toHaveCount(0, { timeout: 15_000 });
 });
@@ -143,21 +118,16 @@ test('a direct hash to a raw .ok docName lands read-only — existing shows byte
   await page.goto(`/#/${anchorDoc}`);
   await fileRow(page, `${anchorDoc}.md`).waitFor({ state: 'visible', timeout: 15_000 });
 
-  // Existing raw `.ok` file, reveal OFF (the guard is visibility-blind): the
-  // bytes open in the read-only viewer, never an editable editor.
   await page.evaluate((docName) => {
     window.location.hash = `#/${docName}`;
   }, `.ok/${rawDocBase}`);
   await expect(textViewer(page)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText(`Guard probe ${stamp}`)).toBeVisible({ timeout: 15_000 });
-  // Behavioral read-only pin: CodeMirror rejects the write at dispatch level.
   await page.locator('[data-text-viewer] .cm-content').click();
   await page.keyboard.type('MUTATION-ATTEMPT');
   await expect(page.getByText('MUTATION-ATTEMPT')).toHaveCount(0);
   await expect(page.getByText(`Guard probe ${stamp}`)).toBeVisible();
 
-  // Nonexistent `.ok` docName: the viewer's error pane is the non-create
-  // missing surface — typing-to-create is never offered.
   await page.evaluate((docName) => {
     window.location.hash = `#/${docName}`;
   }, `.ok/ghost-${stamp}`);
@@ -192,14 +162,9 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   });
   await folderRow(page, '.ok').waitFor({ state: 'visible', timeout: 15_000 });
 
-  // Activate the revealed `.ok` folder row; the expansion (probe file
-  // appearing) proves the click landed and `.ok` is the active folder.
   await folderRow(page, '.ok').click();
   await fileRow(page, `${probeDocBase}.md`).waitFor({ state: 'visible', timeout: 15_000 });
 
-  // Toolbar New file with `.ok` active: the create target falls back to the
-  // workspace root. The inline rename input opens against the auto-
-  // incrementing default (`Untitled.md` if not taken, else `Untitled 2.md`).
   await page.getByRole('button', { name: 'New file', exact: true }).click();
   const renameInput = page.getByRole('textbox', { name: /rename Untitled/i });
   await expect(renameInput).toBeVisible({ timeout: 10_000 });
@@ -207,7 +172,6 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   await renameInput.press('Enter');
   await fileRow(page, `${createdDoc}.md`).waitFor({ state: 'visible', timeout: 15_000 });
 
-  // Disk is the authority: the doc landed at the root, never inside `.ok`.
   await expect
     .poll(() => existsSync(join(workerServer.contentDir, `${createdDoc}.md`)), {
       timeout: 15_000,
@@ -215,19 +179,6 @@ test('an activated .ok folder row never becomes a mutation target — create fal
     .toBe(true);
   expect(existsSync(join(okDir, `${createdDoc}.md`))).toBe(false);
 
-  // Keyboard delete, positive control first: the same Delete key on a normal
-  // folder row opens the confirm dialog — proving key routing and tree focus
-  // work in this harness, so the `.ok` absence assertion below cannot pass
-  // vacuously. The tree's keydown handler requires focus inside the tree
-  // host, and a click alone doesn't guarantee it — focus the row explicitly
-  // (same pattern as file-tree-create's select-all helper). Escape cancels
-  // without deleting.
-  // The tree is virtualized with sticky ancestor headers: a folder row
-  // scrolled past the viewport top leaves the DOM entirely (its sticky
-  // stand-in renders as a button, not a treeitem), so re-locating a
-  // top-sorted folder row after interactions that scrolled the tree (the
-  // created-doc reveal above) requires parking the scroll back at the top
-  // first — same idiom as the post-toggle reveal earlier in this test.
   await treeScroller(page).evaluate((el) => {
     el.scrollTop = 0;
   });
@@ -241,10 +192,6 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   await page.keyboard.press('Escape');
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
-  // The same key on the selected-and-focused `.ok` row: no dialog opens, and
-  // the folder (with its probe file) stays on disk.
-  // Park the scroll again before re-locating `.ok` (top-sorted; the control
-  // row interactions above may have scrolled it out of the virtualized DOM).
   await treeScroller(page).evaluate((el) => {
     el.scrollTop = 0;
   });
@@ -258,7 +205,6 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   await expect(okRow).toBeVisible();
   expect(existsSync(join(okDir, `${probeDocBase}.md`))).toBe(true);
 
-  // Restore the worker-shared default from the same popover.
   await toggleShowOkFolders(page);
   await expect(folderRow(page, '.ok')).toHaveCount(0, { timeout: 15_000 });
 });
@@ -281,27 +227,11 @@ test('a legacy __template__ bookmark redirects to the content doc and opens it',
     'utf-8',
   );
 
-  // Land on an ordinary doc first so the redirect has somewhere to move FROM.
   await page.goto(`/#/${anchorDoc}`);
   await fileRow(page, `${anchorDoc}.md`).waitFor({ state: 'visible', timeout: 15_000 });
 
-  // A pre-migration bookmark of the retired synthetic name resolves at
-  // navigation to the content doc, so the template still opens (its body
-  // renders) rather than stranding on a phantom empty tab.
   await page.evaluate((name) => {
     window.location.hash = `#/__template__/${name}`;
   }, templateName);
-  // Anchor on the rendered heading, not on bare text. The outline panel lists
-  // every heading in the open doc as a button whose label and `title` are the
-  // heading text verbatim, so this marker necessarily exists on two surfaces
-  // once the outline has derived from the body — and an unscoped getByText
-  // matches both and trips Playwright strict mode. Both surfaces come from the
-  // same heading, so this is a race over which one renders first, not a slow
-  // assertion; raising the timeout would only give the outline entry more time
-  // to appear. (The file tree is not the second match: it labels its rows by
-  // filename, which is why `fileRow` above matches on `.md` names.) The outline
-  // entry is a button, so scoping to the heading role stays unique, and the
-  // template body is written as `# ${bodyMarker}` above — making the heading
-  // exactly the "its body renders" signal this test means to assert.
   await expect(page.getByRole('heading', { name: bodyMarker })).toBeVisible({ timeout: 15_000 });
 });

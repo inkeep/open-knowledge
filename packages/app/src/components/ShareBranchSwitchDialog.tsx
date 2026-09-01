@@ -1,26 +1,3 @@
-/**
- * Project-scoped branch-switch dialog. Mounts in the editor shell and
- * renders only on `project-branch-switch` payloads — the editor window
- * owns this project, but its current checkout differs from the share's
- * branch. Main has already resolved the target, so the renderer consumes
- * `payload.projectPath` + `payload.share` directly and drives the
- * state machine in `@/lib/share/branch-switch-flow`.
- *
- * STOP rule: the Switch path MUST NOT navigate on `runCheckout` HTTP 200
- * alone — dismissal waits for the CC1 `branch-switched` broadcast via
- * `bridge.project.awaitBranchSwitched`.
- *
- * That CC1 gate covers the switch leg only. The primary "Open in worktree"
- * action opens the share branch in its OWN window (`worktree.checkout` →
- * `project.open`) and never recycles this window's checkout, so on create
- * success it dispatches directly — same posture as the pivot path. Do not
- * wire the CC1 wait into that leg.
- *
- * Cancel discipline: this window IS the editor; Cancel only dismisses the
- * store (no window close), so the user remains in the project on its
- * current branch.
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import type { WorktreeCreateResult } from '@inkeep/open-knowledge-core';
@@ -71,7 +48,6 @@ import { refreshWorktrees } from '@/lib/worktree-store';
 
 export interface ShareBranchSwitchDialogProps {
   bridge: OkDesktopBridge;
-  /** Override store for testability. Production uses the singleton. */
   store?: ShareReceiveStore;
 }
 
@@ -120,24 +96,11 @@ export function ShareBranchSwitchDialog({
   const branchInfoStartedRef = useRef(false);
   const awaitBranchSwitchedStartedRef = useRef(false);
   const verdictProbeStartedRef = useRef(false);
-  // The payload the verdict probe currently belongs to. The verdict-probe effect
-  // self-transitions its own phase dep, so a cleanup-based cancel would drop its
-  // own result; it compares against this instead to ignore a late verdict from a
-  // superseded share. Updated in the per-payload reset effect below.
   const verdictPayloadRef = useRef<ProjectBranchSwitchPayload | null>(null);
 
   const active = isBranchSwitchPayload(payload) ? payload : null;
-  // Kind-aware noun so every surface (title, body, toasts) reads correctly for
-  // both single-doc and folder shares. `share.target.kind` is the discriminant;
-  // defaults to "document" when there's no active payload (no surface renders then).
   const targetNoun = active?.share.target.kind === 'folder' ? t`folder` : t`document`;
 
-  // Per-payload reset so a second share doesn't inherit the prior payload's
-  // single-fire refs / state. The component stays mounted at the App root.
-  // Unlike ShareReceiveDialog (which uses a keyed remount to dodge a
-  // consent-seed-vs-reset race between two effects), this dialog resets in a
-  // single effect with no competing seed effect, and the store nulls `payload`
-  // via dismiss() between shares — so the imperative reset is race-free here.
   // biome-ignore lint/correctness/useExhaustiveDependencies: payload is the reset trigger; the body resets state and captures the payload for the verdict staleness check.
   useEffect(() => {
     setBranchSwitchState(initialBranchSwitchState);
@@ -147,17 +110,11 @@ export function ShareBranchSwitchDialog({
     verdictPayloadRef.current = active;
   }, [payload]);
 
-  // Fetch branch-info once per payload so the variant matrix has fresh
-  // dirty-conflicts + shareTargetExists data. Single-fire via ref so render
-  // churn (state changes that re-trigger the effect) can't double-fetch.
   // biome-ignore lint/correctness/useExhaustiveDependencies: ref-guarded single-fire; unstable bridge identity would re-trigger.
   useEffect(() => {
     if (!active) return;
     if (branchInfoStartedRef.current) return;
     branchInfoStartedRef.current = true;
-    // Guard against a stale write: the dialog stays mounted across payloads, so
-    // a payload-A fetch that resolves after payload B armed must not stomp B's
-    // freshly-reset state (mirrors the awaiting-cc1 effect below).
     let cancelled = false;
     void bridge.project
       .fetchBranchInfo({
@@ -183,10 +140,6 @@ export function ShareBranchSwitchDialog({
     };
   }, [active]);
 
-  // Origin-hint pivot: when branch-info reports the target isn't on origin's
-  // branch (a stale-local-ref hint), fetch a real verdict rather than
-  // over-promising that a plain switch recovers it. Single-fire per payload so
-  // an `unknown` fallback to `ready` can't re-arm the probe into a loop.
   // biome-ignore lint/correctness/useExhaustiveDependencies: phase-gated single-fire; bridge identity churns every parent render.
   useEffect(() => {
     if (!active) return;
@@ -195,11 +148,6 @@ export function ShareBranchSwitchDialog({
     if (!shouldProbeTargetStatus(branchSwitchState.info)) return;
     verdictProbeStartedRef.current = true;
     setBranchSwitchState(markVerdictPending);
-    // Stale-write guard keyed on payload identity, not a cleanup cancel: this
-    // effect self-transitions its own phase dep (markVerdictPending), so a
-    // cleanup would fire on that transition and drop this very verdict. Compare
-    // the payload this fetch was issued for against the latest one instead, so a
-    // late verdict from a superseded share is ignored.
     const fetchedFor = active;
     void bridge.project
       .fetchTargetStatus({
@@ -217,8 +165,6 @@ export function ShareBranchSwitchDialog({
       })
       .catch((err) => {
         if (verdictPayloadRef.current !== fetchedFor) return;
-        // Fail-open: a rejected probe degrades to today's plain switch (the
-        // post-switch guard backstops the residual miss), never a stuck dialog.
         console.warn(
           '[receive] target-status-fetch-failed',
           err instanceof Error ? err.message : err,
@@ -227,12 +173,6 @@ export function ShareBranchSwitchDialog({
       });
   }, [branchSwitchState.phase, active]);
 
-  // Terminal-miss handoff: `deleted` / `never-on-branch` mean the shared target
-  // is gone on the share branch, so there is nothing to switch to — the
-  // "Open shared document" branch-switch shell is the wrong surface. Hand off to
-  // the dedicated miss dialog (honest verdict + Browse-folder escape), which the
-  // branch-match-ok deep-link path already uses, so a removed target reads
-  // identically regardless of which dispatch path delivered the share.
   useEffect(() => {
     if (branchSwitchState.phase !== 'verdict') return;
     const { kind } = branchSwitchState.resolution;
@@ -250,28 +190,16 @@ export function ShareBranchSwitchDialog({
     store.dismiss();
   }, [branchSwitchState, active, store]);
 
-  // Receive-log breadcrumb: one line per resolved verdict cell, so the
-  // stale-ref cohort stays countable on session inspection (actions taken from
-  // a cell log `verdict_cell` alongside `branch_dialog_action` separately).
-  // Fires once per resolution object — re-renders reuse the same state object,
-  // and each verdict entry (including a later ff-diverged re-entry) is a new one.
   useEffect(() => {
     if (branchSwitchState.phase !== 'verdict') return;
     console.log(formatReceiveLog({ verdict_cell: branchSwitchState.resolution.kind }));
   }, [branchSwitchState]);
 
-  // CC1-driven post-checkout navigation gate. After Switch resolves
-  // `{ok:true}` the state transitions to `awaiting-cc1-recycle`; we poll
-  // server-info (the late-join backstop for the CC1 `branch-switched`
-  // broadcast) and dispatch the warm-focus deep-link only after the recycle
-  // settles. Mirrors the proven pattern in the legacy ShareReceiveDialog.
   // biome-ignore lint/correctness/useExhaustiveDependencies: phase-keyed single-fire; bridge identity churns every parent render.
   useEffect(() => {
     if (branchSwitchState.phase !== 'awaiting-cc1-recycle') return;
     if (!active) return;
     const shareBranch = active.share.branch;
-    // The navigation target the switch committed to — the original share path
-    // for a plain / on-origin switch, or `renamedTo` when a rename was accepted.
     const pendingNavPath = branchSwitchState.pendingDoc;
     if (!shareBranch) {
       store.dismiss();
@@ -308,10 +236,6 @@ export function ShareBranchSwitchDialog({
                 '[receive] warm-focus-dispatch-failed branch_action=switch',
                 err instanceof Error ? err.message : err,
               );
-              // The dialog dismisses synchronously below before this open
-              // settles, so a reject here would otherwise leave the user in
-              // the editor with no doc open and no explanation. Surface it —
-              // matching the timeout/reject paths above.
               toast.error(
                 t`Branch switched but the ${targetNoun} could not be opened — try navigating to it manually.`,
               );
@@ -330,9 +254,6 @@ export function ShareBranchSwitchDialog({
       })
       .catch((err) => {
         if (cancelled) return;
-        // A reject here is an unexpected IPC failure, not the CC1 timeout
-        // handled above — log the identity and use a distinct message so the
-        // two are not conflated in diagnostics or the user's view.
         console.warn(
           '[receive] awaitBranchSwitched rejected',
           err instanceof Error ? err.message : err,
@@ -350,11 +271,6 @@ export function ShareBranchSwitchDialog({
   const { share, projectPath, currentBranch: payloadCurrentBranch } = active;
   const shareBranch = share.branch;
 
-  // Shared switch executor. `fastForward` rides only for the on-origin /
-  // renamed verdict cells (the server updates the stale local ref before
-  // checkout so the doc lands); the plain switch and the diverged cell pass it
-  // off. `pendingDoc` is the post-switch navigation target — the original path,
-  // or `renamedTo` when a rename was accepted.
   function runSwitch(
     pendingDoc: string,
     fastForward: boolean,
@@ -396,9 +312,6 @@ export function ShareBranchSwitchDialog({
         if (shouldDismiss) store.dismiss();
       })
       .catch((err) => {
-        // Log the rejection identity (IPC timeout, channel closed) — the toast
-        // alone gives no triage signal — consistent with every other catch in
-        // this component.
         console.warn(
           '[receive] runCheckout rejected branch_action=switch',
           err instanceof Error ? err.message : err,
@@ -415,9 +328,6 @@ export function ShareBranchSwitchDialog({
     runSwitch(shareTargetPath(share.target), false);
   }
 
-  // Verdict-cell actions. on-origin / renamed fast-forward the stale local ref
-  // to origin's tip before switching so the doc actually lands; diverged offers
-  // a plain switch (no fast-forward — the receive flow never merges).
   function handleSwitchAndUpdate(): void {
     if (branchSwitchState.phase !== 'verdict') return;
     runSwitch(shareTargetPath(share.target), true, branchSwitchState.resolution.kind);
@@ -453,42 +363,25 @@ export function ShareBranchSwitchDialog({
           '[receive] warm-focus-dispatch-failed branch_action=open-current',
           err instanceof Error ? err.message : err,
         );
-        // `store.dismiss()` runs synchronously below before this open settles;
-        // without a toast a reject leaves the user in the editor with no doc
-        // and no feedback. Surface it like the switch path does.
         toast.error(t`The ${targetNoun} could not be opened — try navigating to it manually.`);
       });
     store.dismiss();
   }
 
-  // Toast copy per worktree-checkout failure reason. Mirrors the worktree-create
-  // error vocabulary (NewWorktreeDialog's inline copy), adapted where that copy
-  // assumes a typed-name form field. Exhaustive so a new create-failure reason
-  // is a compile error here instead of a silent generic toast.
   function showWorktreeFailureToast(
     reason: WorktreeCheckoutSideEffectReason,
-    // An options bag, not positional params: `authFailed`/`notFoundAsIdentity` are both
-    // `true | undefined`, so positional passing would let a transposition
-    // compile and silently swap which copy the user sees.
     {
       helper,
       authFailed,
       notFoundAsIdentity,
     }: { helper?: string; authFailed?: true; notFoundAsIdentity?: true } = {},
   ): void {
-    // The repository-not-found masquerade: the remote answered, so the
-    // connection copy is wrong, and a Sign in cannot fix a repo the account
-    // can't see (or that is gone) — name what is actually known instead.
     if (reason === 'fetch-failed' && notFoundAsIdentity) {
       toast.error(
         t`Repository not found — it may not exist, or the account used may not have access.`,
       );
       return;
     }
-    // A credential miss reaches us as `fetch-failed`, but the connection copy
-    // below is a dead end for it: the fetch pins credential interactivity off,
-    // so nothing prompted the user, and retrying without a credential just
-    // fails the same way. Offer the sign-in they actually need.
     if (reason === 'fetch-failed' && authFailed) {
       toast.error(t`Could not fetch branch — sign in to GitHub and try again.`, {
         action: {
@@ -500,8 +393,6 @@ export function ShareBranchSwitchDialog({
     }
     switch (reason) {
       case 'helper-not-found': {
-        // `helper` accompanies this reason from the classifier; the fallback
-        // keeps the copy coherent if a future producer omits it.
         const tool = helper ?? t`a required git tool`;
         toast.error(
           t`Git needs ${tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again.`,
@@ -529,8 +420,6 @@ export function ShareBranchSwitchDialog({
         toast.error(t`This project isn't a git repository, so worktrees aren't available.`);
         return;
       case 'empty-repo':
-        // Same wording as the New-worktree dialog, so the two surfaces share one
-        // catalog entry rather than drifting apart per-locale.
         toast.error(
           t`This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again.`,
         );
@@ -549,10 +438,6 @@ export function ShareBranchSwitchDialog({
     }
   }
 
-  // Apply a worktree-checkout result (or IPC rejection as `null`) through the
-  // pure reducer. The updater's identity guard makes a late result a no-op —
-  // after a Cancel or a second share payload's reset, nothing below fires
-  // because neither branch's capture variable gets set.
   function applyWorktreeOutcome(result: WorktreeCreateResult | null): void {
     let failureReason: WorktreeCheckoutSideEffectReason | null = null;
     let failureHelper: string | undefined;
@@ -588,8 +473,6 @@ export function ShareBranchSwitchDialog({
       });
     }
     if (openPath !== null) {
-      // The anchor window's cached worktree model is stale now (a worktree was
-      // created or located) — refresh so this window's switcher + palette show it.
       refreshWorktrees();
       const target = openPath;
       void bridge.project
@@ -601,9 +484,6 @@ export function ShareBranchSwitchDialog({
           pendingBranch: shareBranch,
         })
         .catch((err) => {
-          // The dialog dismisses synchronously below; without a toast a reject
-          // here strands the user with no new window and no signal. The
-          // worktree itself persists, reachable from the switcher.
           console.warn(
             '[receive] worktree-open-failed branch_dialog_action=open-worktree',
             err instanceof Error ? err.message : err,
@@ -665,8 +545,6 @@ export function ShareBranchSwitchDialog({
     store.dismiss();
   }
 
-  // Cancel: this window IS the editor; closing it would close the user's
-  // session. store.dismiss() leaves the editor open on its current branch.
   function handleCancel(): void {
     console.log(
       formatReceiveLog({
@@ -811,11 +689,6 @@ export function ShareBranchSwitchDialog({
                 </Trans>
               </p>
             ) : (
-              // deleted / never-on-branch: the target is gone on the share
-              // branch. The handoff effect arms the dedicated miss dialog and
-              // dismisses this one, so render a brief spinner rather than the
-              // terminal verdict cell — the miss dialog owns that copy + the
-              // Browse-folder escape now.
               <p
                 className="flex items-center gap-2 text-sm text-muted-foreground"
                 data-testid="share-branch-switch-verdict-handoff"

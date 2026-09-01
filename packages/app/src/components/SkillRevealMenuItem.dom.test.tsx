@@ -1,12 +1,3 @@
-/**
- * `SkillRevealMenuItem` is the single reveal row behind every skills menu
- * surface (skill row, SKILL.md, bundle files, bundle folders), so its two gates
- * and its label are load-bearing for all of them at once: dropping the
- * `!bridge` guard throws on non-desktop hosts, dropping the `!absolutePath`
- * guard renders a row whose click reveals `undefined`, and hardcoding the macOS
- * label mislabels the shipping Windows and Linux desktops.
- */
-
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';

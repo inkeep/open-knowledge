@@ -15,26 +15,9 @@ import {
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 
-/**
- * Unit tests for the main-side PTY mediator. Every boundary (fork, send,
- * timer, ptyId) is an injected fake so the routing / coalescing / backpressure
- * logic runs without an Electron runtime. The coalesce timer is captured and
- * fired deterministically — no real timers, no open handles.
- *
- * The renderer↔main↔utility hops are real trust boundaries (cross-process,
- * untyped IPC): the message-narrowing + isDestroyed + spawn-error guards are
- * exercised with real malformed / destroyed-window input through the public
- * message path, not by mocking the call site to force a throw.
- */
-
-/** Captures everything the manager posts to / how often it kills its host. */
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
   killed = 0;
-  /**
-   * When set, `postMessage` throws this instead of recording. The utility is an
-   * injected dep, so this is the transport seam itself, not a stubbed internal.
-   */
   throwOnPost: unknown = null;
   private msgCb: ((raw: unknown) => void) | null = null;
   private exitCb: ((code: number | null) => void) | null = null;
@@ -235,11 +218,6 @@ describe('createTerminalManager — create', () => {
     });
   });
 
-  // Both notice payloads narrow through the shared guards, whose accepted sets
-  // are built from the same vocabulary tuples the unions derive from, so what
-  // this hop forwards is exactly the union. A reason or family added to a
-  // vocabulary reaches the renderer without a second edit here, instead of
-  // being silently dropped by a hand-mirrored literal chain.
   test.each([
     ...TERMINAL_SHELL_NOTICE_REASONS,
   ])('forwards the shared invalid-override reason %s to the renderer', (reason) => {
@@ -473,13 +451,10 @@ describe('createTerminalManager — coalescing + UTF-8 integrity', () => {
       cols: 80,
       rows: 24,
     });
-    // Trailing-only on purpose: a TUI redraw burst (erase + repaint) must land
-    // as ONE push — a leading-edge flush would deliver the erase fragment
-    // alone and render the partial state for a frame (visible tearing).
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'a' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'b' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'c' });
-    expect(h.dataPayloads()).toEqual([]); // buffered until the tick
+    expect(h.dataPayloads()).toEqual([]);
     h.runTimers();
     expect(h.dataPayloads()).toEqual(['abc']);
   });
@@ -493,8 +468,6 @@ describe('createTerminalManager — coalescing + UTF-8 integrity', () => {
       cols: 80,
       rows: 24,
     });
-    // node-pty's StringDecoder hands main whole codepoints per read; main only
-    // ever concatenates, never slices — so the combined string is byte-exact.
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '日本' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: '語 €' });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: ' 🚀' });
@@ -531,7 +504,6 @@ describe('createTerminalManager — exit + crash surfacing', () => {
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
     expect(h.sent.map((s) => s.channel)).toEqual(['ok:pty:data', 'ok:pty:exit']);
     expect(h.exits()[0]).toEqual({ ptyId: 'pty-1', exitCode: 0, signal: null });
-    // ptyId is cleared — a late input no longer reaches the (dead) host.
     const before = h.forked[0]?.posted.length ?? 0;
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'x' });
     expect(h.forked[0]?.posted.length).toBe(before);
@@ -607,7 +579,6 @@ describe('createTerminalManager — exit + crash surfacing', () => {
       signal: null,
       error: 'terminal host exited',
     });
-    // Next create forks a fresh host (the crashed one was dropped).
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
@@ -627,9 +598,6 @@ describe('createTerminalManager — exit + crash surfacing', () => {
       cols: 80,
       rows: 24,
     });
-    // Buffer a read without firing the coalesce timer, then crash the host. The
-    // buffer lives main-side (independent of the dead host), so the final bytes
-    // must still land before the exit state — mirroring the clean-exit ordering.
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'last gasp' });
     h.forked[0]?.emitExit(1);
     expect(h.sent.map((s) => s.channel)).toEqual(['ok:pty:data', 'ok:pty:exit']);
@@ -683,11 +651,9 @@ describe('createTerminalManager — backpressure', () => {
     });
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
     h.runTimers();
-    // Partial drain that stays at/above low-water → no resume yet.
-    h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 130 }); // 150 - 130 = 20, not < 20
+    h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 130 });
     expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-1' });
-    // One more byte drained crosses below the low-water mark → resume.
-    h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 5 }); // 15 < 20
+    h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 5 });
     expect(h.forked[0]?.posted).toContainEqual({ type: 'resume', ptyId: 'pty-1' });
   });
 
@@ -738,12 +704,9 @@ describe('createTerminalManager — destroyed-window guard', () => {
     const h = makeManager();
     const wc = makeWebContents();
     h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
-    // The page dies with output buffered inside the coalesce window.
     wc.destroyed = true;
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'a' });
     h.runTimers();
-    // Nothing deliverable → no re-arm (a dead page must not tick a timer
-    // forever). The buffered output stays put for a later adopt's replay path.
     expect(h.liveTimerCount()).toBe(0);
     expect(h.dataPayloads()).toEqual([]);
   });
@@ -767,10 +730,8 @@ describe('createTerminalManager — lifecycle reap', () => {
     h.runTimers();
     expect(utility?.killed).toBe(1);
     expect(h.warns).toContainEqual({ event: 'terminal-manager-shutdown-deadline' });
-    // The kill triggers a utility exit — it must NOT push into the gone window.
     utility?.emitExit(0);
     expect(h.exits()).toEqual([]);
-    // A fresh create forks a new host.
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
@@ -828,7 +789,6 @@ describe('createTerminalManager — lifecycle reap', () => {
     h.runTimers();
     expect(h.forked[0]?.killed).toBe(1);
     expect(h.forked[1]?.killed).toBe(1);
-    // The map is cleared — a later create forks anew.
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
@@ -839,10 +799,6 @@ describe('createTerminalManager — lifecycle reap', () => {
     expect(h.forked).toHaveLength(3);
   });
 
-  // `main` awaits killAll() before letting Electron quit or apply an update, so
-  // the promise's settlement is the contract — a reap that resolves early kills
-  // shells the user is still using, and one that never resolves wedges quit.
-  // These two pin both ends of it through the real manager/host seam.
   test('the killAll promise stays pending until the host exit arrives', async () => {
     const h = makeManager();
     h.mgr.create({
@@ -857,8 +813,6 @@ describe('createTerminalManager — lifecycle reap', () => {
     const quit = h.mgr.killAll().then(() => {
       settled = true;
     });
-    // Drain the whole microtask queue: a killAll that did not wait on its host
-    // would already have set the flag by the time this resolves.
     await new Promise((resolve) => setImmediate(resolve));
     expect(settled).toBe(false);
 
@@ -884,7 +838,6 @@ describe('createTerminalManager — lifecycle reap', () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(settled).toBe(false);
 
-    // The host stays silent, so only the force-kill deadline can end the reap.
     h.runTimers();
     await quit;
     expect(settled).toBe(true);
@@ -892,8 +845,6 @@ describe('createTerminalManager — lifecycle reap', () => {
   });
 
   test('killAll completes the reap even when one host throws on kill (no orphans)', () => {
-    // A throwing kill on one host must not abort the loop — the remaining
-    // windows' hosts would otherwise outlive the app (orphan shells).
     const forked: ThrowingUtility[] = [];
     const timers: Array<() => void> = [];
     let idn = 0;
@@ -924,13 +875,9 @@ describe('createTerminalManager — lifecycle reap', () => {
 
     expect(() => mgr.killAll()).not.toThrow();
     for (const timer of timers) expect(() => timer()).not.toThrow();
-    // Every host had kill() attempted despite the first one throwing.
     expect(forked.map((u) => u.killAttempts)).toEqual([1, 1, 1]);
   });
 
-  // `postMessage` and `kill()` are different boundaries. A kill-shaped code on
-  // a send must still reach the warn sink instead of inheriting kill's ESRCH
-  // suppression.
   test('a shutdown-send failure is surfaced even when it carries a kill-shaped code', () => {
     const h = makeManager();
     h.mgr.create({
@@ -949,7 +896,6 @@ describe('createTerminalManager — lifecycle reap', () => {
       event: 'terminal-manager-shutdown-send-failed',
       code: 'ESRCH',
     });
-    // The failure branch is unchanged: deadline dropped, host force-killed.
     expect(utility?.killed).toBe(1);
     expect(h.liveTimerCount()).toBe(0);
   });
@@ -986,7 +932,6 @@ describe('createTerminalManager — lifecycle reap', () => {
   });
 });
 
-/** A FakeUtility whose `kill()` can throw, to exercise the reap-loop guard. */
 class ThrowingUtility {
   killAttempts = 0;
   constructor(private readonly throwsOnKill: boolean) {}
@@ -1000,15 +945,9 @@ class ThrowingUtility {
 }
 
 describe('createTerminalManager — telemetry', () => {
-  // The telemetry sinks are injected deps (the OTel emission boundary), so
-  // asserting on them is a behavioral pin via the public message path — real
-  // exit / crash / input / reap input drives the observable signal, not a
-  // mocked internal call site.
   function makeTelemetryManager() {
     const shellExits: Array<{ crashed: boolean }> = [];
     const sessions: true[] = [];
-    // Captured whole so a test can assert the payload shape, not just the count
-    // — a future leak of command bytes into the signal would surface as an extra key.
     const concurrent: Array<{ count: number }> = [];
     const h = makeManager({
       recordShellExit: (info) => shellExits.push(info),
@@ -1110,7 +1049,6 @@ describe('createTerminalManager — telemetry', () => {
     h.start(1);
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'first\r' });
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
-    // Restart in the same window: a fresh PTY, no command, then a clean exit.
     h.start(1);
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-2', exitCode: 0, signal: null });
     expect(h.sessions).toHaveLength(1);
@@ -1119,14 +1057,14 @@ describe('createTerminalManager — telemetry', () => {
 
   test('a window-close reap counts every concurrent session that ran a command', () => {
     const h = makeTelemetryManager();
-    h.start(1); // pty-1
+    h.start(1);
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
       cols: 80,
       rows: 24,
-    }); // pty-2
+    });
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'a\r' });
     h.mgr.input({ windowId: 1, ptyId: 'pty-2', data: 'b\r' });
     h.mgr.killForWindow(1);
@@ -1136,15 +1074,15 @@ describe('createTerminalManager — telemetry', () => {
 
   test('a host crash emits a crashed shell-exit per session and counts only the ones that ran a command', () => {
     const h = makeTelemetryManager();
-    h.start(1); // pty-1
+    h.start(1);
     h.mgr.create({
       windowId: 1,
       webContents: makeWebContents(),
       projectRoot: PROJECT,
       cols: 80,
       rows: 24,
-    }); // pty-2
-    h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'a\r' }); // only pty-1 ran a command
+    });
+    h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'a\r' });
     h.forked[0]?.emitExit(1);
     expect(h.shellExits).toEqual([{ crashed: true }, { crashed: true }]);
     expect(h.sessions).toHaveLength(1);
@@ -1152,25 +1090,25 @@ describe('createTerminalManager — telemetry', () => {
 
   test('each create emits the concurrency signal with the window’s live session count', () => {
     const h = makeTelemetryManager();
-    h.start(1); // window 1 now has 1 session
-    h.start(1); // window 1 now has 2 sessions
+    h.start(1);
+    h.start(1);
     expect(h.concurrent.map((c) => c.count)).toEqual([1, 2]);
   });
 
   test('concurrency is counted per window independently', () => {
     const h = makeTelemetryManager();
-    h.start(1); // w1 -> 1
-    h.start(1); // w1 -> 2
-    h.start(2); // w2 -> 1 (a separate window's host, not the running total)
+    h.start(1);
+    h.start(1);
+    h.start(2);
     expect(h.concurrent.map((c) => c.count)).toEqual([1, 2, 1]);
   });
 
   test('a create reaching a concurrency level again after an exit re-emits that level', () => {
     const h = makeTelemetryManager();
-    h.start(1); // -> 1
-    h.start(1); // -> 2
-    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null }); // back to 1
-    h.start(1); // a fresh tab brings the window back to 2 concurrent
+    h.start(1);
+    h.start(1);
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+    h.start(1);
     expect(h.concurrent.map((c) => c.count)).toEqual([1, 2, 2]);
   });
 
@@ -1206,7 +1144,6 @@ describe('createTerminalManager — telemetry', () => {
 });
 
 describe('createTerminalManager — concurrent sessions', () => {
-  /** Open two sessions in one window over the same host; returns both create results. */
   function twoSessions(over?: Partial<TerminalManagerDeps>) {
     const h = makeManager({ highWaterBytes: 100, lowWaterBytes: 20, ...over });
     const wc = makeWebContents();
@@ -1237,7 +1174,6 @@ describe('createTerminalManager — concurrent sessions', () => {
     expect(b).toEqual({ ok: true, ptyId: 'pty-2' });
     expect(h.forked).toHaveLength(1);
     const posted = h.forked[0]?.posted ?? [];
-    // Both shells were spawned and neither was killed to make room for the other.
     expect(posted).toContainEqual({
       type: 'create',
       ptyId: 'pty-1',
@@ -1281,7 +1217,6 @@ describe('createTerminalManager — concurrent sessions', () => {
     const posted = h.forked[0]?.posted ?? [];
     expect(posted).toContainEqual({ type: 'pause', ptyId: 'pty-1' });
     expect(posted).not.toContainEqual({ type: 'pause', ptyId: 'pty-2' });
-    // B's bytes still reached the renderer despite A being paused.
     expect(dataFor(h, 'pty-2')).toEqual(['y'.repeat(10)]);
   });
 
@@ -1292,7 +1227,7 @@ describe('createTerminalManager — concurrent sessions', () => {
     h.runTimers();
     expect(h.forked[0]?.posted).toContainEqual({ type: 'pause', ptyId: 'pty-1' });
     expect(h.forked[0]?.posted).toContainEqual({ type: 'pause', ptyId: 'pty-2' });
-    h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 140 }); // 150 - 140 = 10 < 20
+    h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 140 });
     expect(h.forked[0]?.posted).toContainEqual({ type: 'resume', ptyId: 'pty-1' });
     expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-2' });
   });
@@ -1300,8 +1235,7 @@ describe('createTerminalManager — concurrent sessions', () => {
   test('a paused session never leaks its pause latch to a sibling', () => {
     const { h } = twoSessions();
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
-    h.runTimers(); // pty-1 pauses; pty-2 was never paused
-    // A drain on the never-paused sibling must not produce a resume.
+    h.runTimers();
     h.mgr.drain({ windowId: 1, ptyId: 'pty-2', bytes: 5 });
     expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-2' });
   });
@@ -1310,7 +1244,6 @@ describe('createTerminalManager — concurrent sessions', () => {
     const { h } = twoSessions();
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
     expect(h.exits()).toContainEqual({ ptyId: 'pty-1', exitCode: 0, signal: null });
-    // pty-2 still accepts input; the exited pty-1 no longer does.
     const before = h.forked[0]?.posted.length ?? 0;
     h.mgr.input({ windowId: 1, ptyId: 'pty-2', data: 'alive\r' });
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'ghost\r' });
@@ -1321,11 +1254,9 @@ describe('createTerminalManager — concurrent sessions', () => {
   test("one session's flood and pause do not disturb a sibling's exit accounting", () => {
     const { h } = twoSessions();
     h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
-    h.runTimers(); // pty-1 paused
-    // pty-2 exits cleanly while pty-1 stays paused.
+    h.runTimers();
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-2', exitCode: 0, signal: null });
     expect(h.exits()).toContainEqual({ ptyId: 'pty-2', exitCode: 0, signal: null });
-    // pty-1 is still paused and resumes independently once drained.
     h.mgr.drain({ windowId: 1, ptyId: 'pty-1', bytes: 150 });
     expect(h.forked[0]?.posted).toContainEqual({ type: 'resume', ptyId: 'pty-1' });
   });
@@ -1394,17 +1325,14 @@ describe('createTerminalManager — reload-survival metadata (label + order)', (
   test('setSessionMeta persists name + ordinal, setSessionOrder reorders, listSessions restores both', () => {
     const h = makeManager();
     const wc = makeWebContents();
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-2
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-3
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
 
     h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', customLabel: 'alpha', ordinal: 1 });
     h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-3', customLabel: 'gamma', ordinal: 3 });
-    // The user drags pty-3 to the front.
     h.mgr.setSessionOrder({ windowId: 1, orderedPtyIds: ['pty-3', 'pty-1', 'pty-2'] });
 
-    // Restored in the reordered sequence with names + sticky ordinals intact; the
-    // untouched survivor keeps its null metadata (renderer falls back positionally).
     expect(h.mgr.listSessions(1)).toEqual([
       { ptyId: 'pty-3', customLabel: 'gamma', ordinal: 3 },
       { ptyId: 'pty-1', customLabel: 'alpha', ordinal: 1 },
@@ -1415,11 +1343,10 @@ describe('createTerminalManager — reload-survival metadata (label + order)', (
   test('setSessionMeta is a partial update — one field never clobbers the other', () => {
     const h = makeManager();
     const wc = makeWebContents();
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
     h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', ordinal: 5 });
     h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', customLabel: 'renamed' });
     expect(h.mgr.listSessions(1)).toEqual([{ ptyId: 'pty-1', customLabel: 'renamed', ordinal: 5 }]);
-    // An empty rename clears the label (null) but leaves the ordinal intact.
     h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-1', customLabel: null });
     expect(h.mgr.listSessions(1)).toEqual([{ ptyId: 'pty-1', customLabel: null, ordinal: 5 }]);
   });
@@ -1427,17 +1354,17 @@ describe('createTerminalManager — reload-survival metadata (label + order)', (
   test('a session created after a reorder appends after the reordered block', () => {
     const h = makeManager();
     const wc = makeWebContents();
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-2
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
     h.mgr.setSessionOrder({ windowId: 1, orderedPtyIds: ['pty-2', 'pty-1'] });
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-3
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
     expect(h.mgr.listSessions(1).map((e) => e.ptyId)).toEqual(['pty-2', 'pty-1', 'pty-3']);
   });
 
   test('setSessionMeta / setSessionOrder on an unknown window or ptyId is a no-op', () => {
     const h = makeManager();
     const wc = makeWebContents();
-    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 }); // pty-1
+    h.mgr.create({ windowId: 1, webContents: wc, projectRoot: PROJECT, cols: 80, rows: 24 });
     h.mgr.setSessionMeta({ windowId: 999, ptyId: 'pty-1', customLabel: 'x' });
     h.mgr.setSessionMeta({ windowId: 1, ptyId: 'pty-UNKNOWN', customLabel: 'x' });
     h.mgr.setSessionOrder({ windowId: 999, orderedPtyIds: ['pty-1'] });
