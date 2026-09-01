@@ -2492,6 +2492,52 @@ describe('ProviderPool syncPromise lifecycle integration (F15)', () => {
     expect(sendTokenSpy).not.toHaveBeenCalled();
   });
 
+  test('the client-minted forced close never triggers a reauth', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry || entry.kind !== 'active') throw new Error('expected an active entry');
+    const sendTokenSpy = vi
+      .spyOn(entry.provider, 'sendToken')
+      .mockImplementation(() => Promise.resolve());
+
+    for (let i = 0; i < 15; i++) {
+      entry.provider.emit('close', { event: { code: 4408, reason: 'forced', wasClean: false } });
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    expect(sendTokenSpy).not.toHaveBeenCalled();
+    expect(entry.serverDrivenCloseReauthAttempts).toBe(0);
+  });
+
+  test('a 4408 the client did not mint still reauths', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    const sendTokenSpy = vi
+      .spyOn(entry.provider, 'sendToken')
+      .mockImplementation(() => Promise.resolve());
+
+    entry.provider.emit('close', {
+      event: { code: 4408, reason: 'Connection Timeout', wasClean: true },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(sendTokenSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a forced close while a mount gate is pending rejects it', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    const gate = syncPromise('doc1', entry.provider);
+
+    entry.provider.emit('close', { event: { code: 4408, reason: 'forced', wasClean: false } });
+
+    await expect(gate).rejects.toBeInstanceOf(PreSyncDisconnectError);
+  });
+
   test('a successful sync resets the server-driven-close reauth ceiling', async () => {
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open('doc1');

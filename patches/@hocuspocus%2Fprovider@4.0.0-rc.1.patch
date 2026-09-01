@@ -1,0 +1,53 @@
+diff --git a/dist/hocuspocus-provider.cjs b/dist/hocuspocus-provider.cjs
+index cf5602474c793441b87de30417191d98eb83c7e3..5517ae5a0e444eca0b77fe12f9792075ae275478 100644
+--- a/dist/hocuspocus-provider.cjs
++++ b/dist/hocuspocus-provider.cjs
+@@ -1361,7 +1361,8 @@ var HocuspocusProviderWebsocket = class HocuspocusProviderWebsocket extends Even
+ 		if (this.configuration.messageReconnectTimeout >= getUnixTime() - this.lastMessageReceived) return;
+ 		this.closeTries += 1;
+ 		if (this.closeTries > 2) {
+-			this.onClose({ event: {
++			// OK patch: forced-close emits close. See src/HocuspocusProviderWebsocket.ts for why.
++			this.emit("close", { event: {
+ 				code: 4408,
+ 				reason: "forced"
+ 			} });
+diff --git a/dist/hocuspocus-provider.esm.js b/dist/hocuspocus-provider.esm.js
+index f51bb321df577ba21a218f2cd7c98cd29f2a12c5..da9f17abb54a9f8bae975a3953a9bf30e51d73ca 100644
+--- a/dist/hocuspocus-provider.esm.js
++++ b/dist/hocuspocus-provider.esm.js
+@@ -1332,7 +1332,8 @@ var HocuspocusProviderWebsocket = class HocuspocusProviderWebsocket extends Even
+ 		if (this.configuration.messageReconnectTimeout >= getUnixTime() - this.lastMessageReceived) return;
+ 		this.closeTries += 1;
+ 		if (this.closeTries > 2) {
+-			this.onClose({ event: {
++			// OK patch: forced-close emits close. See src/HocuspocusProviderWebsocket.ts for why.
++			this.emit("close", { event: {
+ 				code: 4408,
+ 				reason: "forced"
+ 			} });
+diff --git a/src/HocuspocusProviderWebsocket.ts b/src/HocuspocusProviderWebsocket.ts
+index 770670c06bcd41e5d5941e5ceeb97cecdb933961..b75471d435c764d840ecabed5a6b864b7691b29e 100644
+--- a/src/HocuspocusProviderWebsocket.ts
++++ b/src/HocuspocusProviderWebsocket.ts
+@@ -470,7 +470,19 @@ export class HocuspocusProviderWebsocket extends EventEmitter {
+ 		this.closeTries += 1;
+ 		// https://bugs.webkit.org/show_bug.cgi?id=247943
+ 		if (this.closeTries > 2) {
+-			this.onClose({
++			// OK patch: forced-close emits close.
++			// This branch stands in for a socket close the platform failed to
++			// report, so it has to produce the same emission a real close does.
++			// Calling `onClose` directly runs this websocket's own teardown but
++			// never emits `close`, and `HocuspocusProvider.onClose` (the only
++			// writer of `synced = false`) is subscribed to `close`. Without the
++			// emission `isSynced` stays true across the teardown, and because the
++			// setter is edge-gated the reconnect's SyncStep2 writes true over
++			// true. The transport drop stays observable (status and disconnect
++			// fire either way); what no consumer can learn is that the DOCUMENT
++			// went out of sync. Emitting keeps this websocket's own teardown
++			// ahead of every attached provider's handler, as on a native close.
++			this.emit("close", {
+ 				event: {
+ 					code: 4408,
+ 					reason: "forced",

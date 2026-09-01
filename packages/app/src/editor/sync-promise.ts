@@ -262,17 +262,23 @@ export function syncPromise(docName: string, provider: HocuspocusProvider): Prom
     }
   };
 
-  const onClose = (_data: onCloseParameters) => {
+  const onClose = ({ event }: onCloseParameters) => {
     const entry = cache.get(docName);
     if (!entry || entry.settled) return;
     entry.settled = true;
     const error = new PreSyncDisconnectError(docName);
-    console.warn(`[syncPromise] ${docName} rejected: ${error.message}`);
+    const closeCode = event?.code ?? null;
+    const closeReason = event?.reason ?? null;
+    console.warn(
+      `[syncPromise] ${docName} rejected: ${error.message} (close ${closeCode ?? '<none>'} "${closeReason ?? ''}")`,
+    );
     const closeMountId = getMountId(docName);
     mark('ok/sync/reject', {
       docName,
       mountId: closeMountId,
       reason: 'pre-sync-disconnect',
+      closeCode,
+      closeReason,
     });
     detach(entry);
     if (!hasPendingEntries()) uninstallVisibilityHandler();

@@ -631,13 +631,18 @@ export async function pollUntil(
   condition: () => boolean | Promise<boolean>,
   timeoutMs = 5000,
   intervalMs = 100,
+  what?: string,
 ): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await condition()) return;
     await wait(intervalMs);
   }
-  throw new Error(`pollUntil timed out after ${timeoutMs}ms`);
+  throw new Error(
+    what === undefined
+      ? `pollUntil timed out after ${timeoutMs}ms`
+      : `pollUntil timed out after ${timeoutMs}ms waiting for ${what}`,
+  );
 }
 
 export async function awaitFileWatcherIndexed(

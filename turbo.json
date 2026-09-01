@@ -2,7 +2,9 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     "test-support/fixtures/share-url-v1-v2.json",
-    "test-support/fixtures/codex-legacy-warning-envelopes.json"
+    "test-support/fixtures/codex-legacy-warning-envelopes.json",
+    "pnpm-workspace.yaml",
+    "patches/*.patch"
   ],
   "tasks": {
     "build": {
@@ -103,6 +105,8 @@
         "src/**/*.tsx",
         "tests/dom/**/*.ts",
         "tests/dom/**/*.tsx",
+        "tests/*.test-helper.ts",
+        "tests/integration/test-harness.ts",
         "vitest.dom.config.ts",
         "vitest.config.ts",
         "vite.dedupe.ts",

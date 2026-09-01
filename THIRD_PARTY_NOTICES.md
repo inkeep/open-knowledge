@@ -6688,6 +6688,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | Package | Patch file |
 | --- | --- |
 | `@handlewithcare/remark-prosemirror@0.1.5` | `patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch` |
+| `@hocuspocus/provider@4.0.0-rc.1` | `patches/@hocuspocus%2Fprovider@4.0.0-rc.1.patch` |
 | `@lingui/core@6.5.0` | `patches/@lingui%2Fcore@6.5.0.patch` |
 | `@pierre/diffs@1.3.6` | `patches/@pierre%2Fdiffs@1.3.6.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |

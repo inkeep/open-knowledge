@@ -72,6 +72,9 @@ const IDLE_SERVER_RESTART_RECOVERY: ServerRestartRecoveryState = Object.freeze({
 
 const SERVER_DRIVEN_CLOSE_REAUTH_CEILING = 5;
 
+const FORCED_CLOSE_CODE = 4408;
+const FORCED_CLOSE_REASON = 'forced';
+
 interface PoolEntryBase {
   provider: HocuspocusProvider;
   docName: string;
@@ -1182,6 +1185,15 @@ export class ProviderPool {
     const onServerDrivenClose = ({ event }: { event?: { code?: number; reason?: string } }) => {
       if (entry.kind !== 'active' || this.entries.get(docName) !== entry) return;
       if (!event?.reason) return;
+      if (event.code === FORCED_CLOSE_CODE && event.reason === FORCED_CLOSE_REASON) {
+        this.emitStructuredClientBreadcrumb({
+          event: 'ok-provider-half-open-forced-close',
+          docName,
+          code: event.code,
+          reason: event.reason,
+        });
+        return;
+      }
       if (entry.serverDrivenCloseReauthInFlight) return;
       if (entry.serverDrivenCloseReauthAttempts >= SERVER_DRIVEN_CLOSE_REAUTH_CEILING) {
         if (entry.serverDrivenCloseReauthAttempts === SERVER_DRIVEN_CLOSE_REAUTH_CEILING) {
