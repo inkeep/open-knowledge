@@ -4586,6 +4586,9 @@
     ],
     "mPzgTS": ["Ouvrir ", ["docName"]],
     "mR3uQg": ["Ce fichier a été supprimé sur la branche actuelle (conflit delete-modify)."],
+    "mRitpT": [
+      "Il ajoute également les rapports de plantage que macOS a enregistrés pour OpenKnowledge et ses processus auxiliaires, uniquement les nôtres et jamais ceux d'une autre application."
+    ],
     "mToVM9": ["Envoyer un message à ", ["agentName"]],
     "mU3j1b": ["Retirer l'élément ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflit)"],

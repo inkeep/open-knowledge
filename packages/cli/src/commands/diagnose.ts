@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
@@ -12,6 +12,11 @@ import {
   collectBundle,
   writeBundle,
 } from '../diagnose/bundle.ts';
+import {
+  collectDiagnosticReports,
+  type DiagnosticReportCollection,
+  renderDiagnosticReportsStatus,
+} from '../diagnose/diagnostic-reports.ts';
 import {
   discoverLockDirs,
   type ProcessUsage,
@@ -432,6 +437,7 @@ export interface RunDiagnoseBundleDeps {
   prompt?: (question: string) => Promise<string>;
   runProcessDiagnose?: (pid: number) => Promise<string>;
   collectDeps?: CollectBundleDeps;
+  diagnosticReportsDir?: string;
   now?: () => Date;
 }
 
@@ -476,10 +482,14 @@ function describeContentDirPath(collected: CollectedBundle): string {
     : 'not present';
 }
 
-function describeCredentials(collected: CollectedBundle): string {
+function describeCredentials(collected: CollectedBundle, stagedDiagnosticReports: number): string {
   const scrub = collected.manifest.redaction.secretScrub;
   if (scrub === undefined) {
-    return pc.yellow('NOT scrubbed (--no-redact): tokens and keys ship verbatim');
+    return pc.yellow(
+      stagedDiagnosticReports > 0
+        ? 'NOT scrubbed (--no-redact): tokens and keys ship verbatim, crash reports excepted'
+        : 'NOT scrubbed (--no-redact): tokens and keys ship verbatim',
+    );
   }
   return `scrubbed known credential formats (${scrub.redactedLineCount} line(s) across ${scrub.redactions.length} file(s))`;
 }
@@ -488,6 +498,7 @@ function printSummary(
   log: (msg: string) => void,
   collected: CollectedBundle,
   outputPath: string,
+  diagnosticReports: DiagnosticReportCollection,
 ): void {
   const { summary, manifest } = collected;
   log('');
@@ -499,8 +510,17 @@ function printSummary(
     `  Document names:      included in cleartext (${summary.docNameCount} doc.name occurrence(s) in telemetry)`,
   );
   log(`  Content-dir path:    ${describeContentDirPath(collected)}`);
-  log(`  Credentials:         ${describeCredentials(collected)}`);
+  log(`  Credentials:         ${describeCredentials(collected, summary.stagedDiagnosticReports)}`);
   log(`  Server status:       ${manifest.serverStatus}`);
+  log(
+    `  macOS crash reports: ${renderDiagnosticReportsStatus(diagnosticReports, summary.stagedDiagnosticReports)}`,
+  );
+  if (summary.stagedDiagnosticReports > 0) {
+    log('                       rewritten on the way in: escaped path separators normalised');
+    log('                       so the scrub can read them, and the per-device identifier');
+    log('                       replaced. Not byte-identical to the files macOS wrote, on');
+    log('                       any tier and regardless of --no-redact.');
+  }
   log(`  Output:              ${outputPath}`);
   log('');
 }
@@ -537,12 +557,17 @@ export async function runDiagnoseBundle(
   }
 
   const redact = opts.redact !== false;
+  const diagnosticReports = collectDiagnosticReports(
+    deps.diagnosticReportsDir ?? join(homedir(), 'Library', 'Logs', 'DiagnosticReports'),
+    now(),
+  );
   const collected = await collectBundle({
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
     processDir,
     redact,
     scrubSecrets: redact,
+    diagnosticReports,
     deps: deps.collectDeps,
   });
 
@@ -550,7 +575,7 @@ export async function runDiagnoseBundle(
     if (collected.manifest.serverStatus === 'not-running') {
       log(pc.yellow('  server not running — live state unavailable'));
     }
-    printSummary(log, collected, outputPath);
+    printSummary(log, collected, outputPath, diagnosticReports);
 
     if (opts.yes !== true) {
       const answer = await prompt('Write bundle? [y/N]: ');

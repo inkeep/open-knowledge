@@ -139,6 +139,60 @@ describe('redactStagedBundle — contentDir masking', () => {
     expect(after).toContain('<CONTENT_DIR>');
   });
 
+  test('masks contentDir in a diagnostic-reports/*.ips without re-serialising it', () => {
+    const stagingDir = makeStagingDir();
+    const contentDir = '/Users/test/notes';
+    mkdirSync(join(stagingDir, 'diagnostic-reports'));
+    const header = JSON.stringify({ app_name: 'OpenKnowledge', name: 'OpenKnowledge' });
+    const body = [
+      '{',
+      `  "procPath" : "${contentDir}/OpenKnowledge.app/Contents/MacOS/OpenKnowledge",`,
+      `  "asi" : {"OpenKnowledge":["loaded from ${contentDir}/plugins"]},`,
+      '  "threads" : [{"threadState":{"x":[{"value":18446744072631617535}]}}],',
+      '  "termination" : {"namespace":"SIGNAL","indicator":"Abort trap: 6"}',
+      '}',
+    ].join('\n');
+    const raw = `${header}\n${body}\n`;
+    writeStaged(stagingDir, 'diagnostic-reports/OpenKnowledge-2026-08-27.ips', raw);
+
+    redactStagedBundle({ stagingDir, contentDir });
+
+    const after = readStaged(stagingDir, 'diagnostic-reports/OpenKnowledge-2026-08-27.ips');
+    expect(after).not.toContain(contentDir);
+    expect(after).toContain('<CONTENT_DIR>/OpenKnowledge.app/Contents/MacOS/OpenKnowledge');
+    expect(after).toContain('loaded from <CONTENT_DIR>/plugins');
+    expect(after).toContain('"value":18446744072631617535');
+    expect(after).toContain('"termination" : {');
+  });
+
+  test('leaves an .ips alone when the content dir does not appear in it', () => {
+    const stagingDir = makeStagingDir();
+    mkdirSync(join(stagingDir, 'diagnostic-reports'));
+    const raw = `{"name":"OpenKnowledge"}\n{"threads":[{"x":[{"value":18446744072631617535}]}]}\n`;
+    writeStaged(stagingDir, 'diagnostic-reports/OpenKnowledge-clean.ips', raw);
+
+    redactStagedBundle({ stagingDir, contentDir: '/Users/nobody/no-such-dir' });
+
+    expect(readStaged(stagingDir, 'diagnostic-reports/OpenKnowledge-clean.ips')).toBe(raw);
+  });
+
+  test('masks a truncated .ips that will not parse', () => {
+    const stagingDir = makeStagingDir();
+    const contentDir = '/Users/test/notes';
+    mkdirSync(join(stagingDir, 'diagnostic-reports'));
+    writeStaged(
+      stagingDir,
+      'diagnostic-reports/OpenKnowledge-truncated.ips',
+      `{"name":"OpenKnowledge"}\n{"procPath":"${contentDir}/bin`,
+    );
+
+    redactStagedBundle({ stagingDir, contentDir });
+
+    const after = readStaged(stagingDir, 'diagnostic-reports/OpenKnowledge-truncated.ips');
+    expect(after).not.toContain(contentDir);
+    expect(after).toContain('<CONTENT_DIR>/bin');
+  });
+
   test('masks contentDir in a state/.txt plain file', () => {
     const stagingDir = makeStagingDir();
     const contentDir = '/Users/test/notes';

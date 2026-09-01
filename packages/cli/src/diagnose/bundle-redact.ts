@@ -104,10 +104,17 @@ function isLineDelimitedJson(filePath: string): boolean {
   return filePath.endsWith('.jsonl') || filePath.endsWith('.log') || isRotatedLogPath(filePath);
 }
 
+export const CONTENT_SUBDIRS_MASKED = [
+  'telemetry',
+  'logs',
+  'process',
+  'diagnostic-reports',
+] as const;
+
 export function redactStagedBundle(opts: RedactStagedBundleOpts): void {
   const ctx: RedactCtx = { contentDir: opts.contentDir };
 
-  for (const subdir of ['telemetry', 'logs', 'process']) {
+  for (const subdir of CONTENT_SUBDIRS_MASKED) {
     for (const filePath of walkDirFiles(join(opts.stagingDir, subdir))) {
       if (isLineDelimitedJson(filePath)) {
         redactJsonlFile(filePath, ctx);

@@ -132,6 +132,8 @@ function ReportBugDialog({
   crashDumpAvailable: probedCrashDumpAvailable = false,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
+  const isMacOS =
+    (typeof window !== 'undefined' ? window.okDesktop?.platform : undefined) === 'darwin';
   const [phase, setPhase] = useState<Phase>(COMPOSE_IDLE);
   const [note, setNote] = useState('');
   const [detailed, setDetailed] = useState(crashContext !== undefined || crashInvite !== undefined);
@@ -376,7 +378,13 @@ function ReportBugDialog({
                         Adds telemetry, server state, and runtime info when available. Credentials
                         are always removed; document names, if included, appear in cleartext (not
                         redacted).
-                      </Trans>
+                      </Trans>{' '}
+                      {isMacOS && (
+                        <Trans>
+                          It also adds the crash reports macOS recorded for OpenKnowledge and its
+                          helper processes, only ours and never another app's.
+                        </Trans>
+                      )}
                     </p>
                   </div>
                 </div>

@@ -3808,6 +3808,9 @@
     ],
     "mPzgTS": [["docName"], " 열기"],
     "mR3uQg": ["이 파일은 현재 브랜치에서 삭제되었습니다 (delete-modify 충돌)."],
+    "mRitpT": [
+      "OpenKnowledge 및 해당 헬퍼 프로세스에 대해 macOS가 기록한 충돌 보고서도 추가합니다. 우리 것만 포함되며 다른 앱의 것은 절대 포함되지 않습니다."
+    ],
     "mToVM9": [["agentName"], " 메시지"],
     "mU3j1b": ["항목 ", ["0"], " 제거"],
     "mVFyH-": [["accessibleLabel"], " (충돌)"],

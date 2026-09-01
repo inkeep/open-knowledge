@@ -365,6 +365,254 @@ describe('collectReportBundle — full level', () => {
     expect(shipIt).not.toContain(SECRET);
   });
 
+  describe('macOS diagnostic reports', () => {
+    const DEVICE_KEY = '03BEA1C8-0E42-2631-A65B-FB48F8C46739';
+    const BOOT_SESSION = '2C1A7E44-9B3D-4A02-8F55-1D0C6E9B7A31';
+    const SLEEP_WAKE = '7F2B9C10-4E5A-4B88-9C31-0A2D5E7F1B44';
+    const INCIDENT_ID = '9D5B0E6B-1F0A-4E77-9A6E-6C7B2E0A0B11';
+
+    function writeDiagnosticReport(
+      dir: string,
+      fileName: string,
+      opts: { name: string; termination?: string; asi?: string },
+    ): void {
+      const header = JSON.stringify({
+        app_name: opts.name,
+        name: opts.name,
+        bug_type: '309',
+        timestamp: '2026-08-27 04:59:58.00 +0000',
+      });
+      const body = JSON.stringify({
+        procName: opts.name,
+        procPath: `/Users/test/Applications/${opts.name}.app/Contents/MacOS/${opts.name}`,
+        crashReporterKey: DEVICE_KEY,
+        bootSessionUUID: BOOT_SESSION,
+        sleepWakeUUID: SLEEP_WAKE,
+        incident_id: INCIDENT_ID,
+        termination: {
+          namespace: opts.termination ?? 'USER',
+          code: 0,
+          indicator: opts.termination ?? 'USER 0',
+        },
+        asi: { [opts.name]: [opts.asi ?? 'abort() called'] },
+      });
+      const raw = `${header}\n${body}\n`.replaceAll('/', String.raw`\/`);
+      expect(raw).toContain(String.raw`\/Users\/test`);
+      writeAt(dir, fileName, raw);
+    }
+
+    test('carries the app own report and names the cause', async () => {
+      const diagnosticReportsDir = makeTmpDir();
+      writeDiagnosticReport(diagnosticReportsDir, 'OpenKnowledge-2026-08-27-045958.ips', {
+        name: 'OpenKnowledge',
+      });
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      const entry = 'diagnostic-reports/OpenKnowledge-2026-08-27-045958.ips';
+      expect(listZipEntries(zipPath)).toContain(entry);
+      expect(readZipEntry(zipPath, entry)).toContain('USER 0');
+      expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
+        '1 collected (7d; 0 other-process report(s) ignored; 0 unparseable)\n',
+      );
+    });
+
+    const URL_CREDENTIAL = 'https://svc:s3cretpassword@api.example.com/v1';
+
+    test.each([
+      ['with a project in scope', true],
+      ['with no project in scope', false],
+    ])('scrubs secrets out of a collected report, %s', async (_label, withProject) => {
+      const diagnosticReportsDir = makeTmpDir();
+      writeDiagnosticReport(diagnosticReportsDir, 'OpenKnowledge-2026-08-27-045958.ips', {
+        name: 'OpenKnowledge',
+        asi: `fetch failed for ${URL_CREDENTIAL}`,
+      });
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        ...(withProject ? { projectDir: makeFullProjectDir() } : {}),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      const report = readZipEntry(
+        zipPath,
+        'diagnostic-reports/OpenKnowledge-2026-08-27-045958.ips',
+      );
+      expect(report).toContain('USER 0');
+      expect(report).not.toContain('s3cretpassword');
+      expect(report).not.toContain('/Users/test');
+      expect(report).not.toContain(DEVICE_KEY);
+      expect(report).not.toContain(BOOT_SESSION);
+      expect(report).toContain(INCIDENT_ID);
+      expect(report).toContain(SLEEP_WAKE);
+    });
+
+    test('scrubs secrets out of a truncated report that will not parse', async () => {
+      const diagnosticReportsDir = makeTmpDir();
+      const header = JSON.stringify({ name: 'OpenKnowledge', bug_type: '309' });
+      const torn = `{"procName":"OpenKnowledge","asi":"fetch failed for ${URL_CREDENTIAL}`;
+      writeAt(
+        diagnosticReportsDir,
+        'OpenKnowledge-torn.ips',
+        `${header}\n${torn}`.replaceAll('/', String.raw`\/`),
+      );
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      const report = readZipEntry(zipPath, 'diagnostic-reports/OpenKnowledge-torn.ips');
+      expect(report).not.toContain('s3cretpassword');
+    });
+
+    test('says a report was rewritten even when redaction is disabled', async () => {
+      const diagnosticReportsDir = makeTmpDir();
+      writeDiagnosticReport(diagnosticReportsDir, 'OpenKnowledge-2026-08-27-045958.ips', {
+        name: 'OpenKnowledge',
+      });
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        redact: false,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      const readme = readZipEntry(zipPath, 'README.md');
+      expect(readme).toContain('Redaction was disabled for this bundle');
+      expect(readme).toContain('rewritten on the way in');
+      expect(readme).toContain('not byte-identical to the files macOS wrote');
+      const report = readZipEntry(
+        zipPath,
+        'diagnostic-reports/OpenKnowledge-2026-08-27-045958.ips',
+      );
+      expect(report).not.toContain(DEVICE_KEY);
+      expect(report).not.toContain(String.raw`\/Users`);
+    });
+
+    test('claims no exception when no report was staged', async () => {
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        redact: false,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir: makeTmpDir(),
+      });
+
+      const readme = readZipEntry(zipPath, 'README.md');
+      expect(readme).toContain('Redaction was disabled for this bundle');
+      expect(readme).not.toContain('exception');
+    });
+
+    test('does not carry another application report', async () => {
+      const diagnosticReportsDir = makeTmpDir();
+      writeDiagnosticReport(diagnosticReportsDir, 'Slack-2026-08-27-045958.ips', { name: 'Slack' });
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      expect(listZipEntries(zipPath).filter((e) => e.startsWith('diagnostic-reports/'))).toEqual(
+        [],
+      );
+    });
+
+    test('carries the reports and the record when full level has no project in scope', async () => {
+      const diagnosticReportsDir = makeTmpDir();
+      writeDiagnosticReport(diagnosticReportsDir, 'OpenKnowledge-2026-08-27-045958.ips', {
+        name: 'OpenKnowledge',
+      });
+      writeDiagnosticReport(diagnosticReportsDir, 'Slack-2026-08-27-045958.ips', { name: 'Slack' });
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath, summary } = await collectReportBundle({
+        level: 'full',
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      expect(summary.systemWide).toBe(true);
+      const entries = listZipEntries(zipPath);
+      expect(entries).toContain('diagnostic-reports/OpenKnowledge-2026-08-27-045958.ips');
+      expect(entries).not.toContain('diagnostic-reports/Slack-2026-08-27-045958.ips');
+      expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
+        '1 collected (7d; 1 other-process report(s) ignored; 0 unparseable)\n',
+      );
+      expect(readZipEntry(zipPath, 'README.md')).toContain('Crash reports: written by macOS');
+    });
+
+    test('does not collect at standard level', async () => {
+      const diagnosticReportsDir = makeTmpDir();
+      writeDiagnosticReport(diagnosticReportsDir, 'OpenKnowledge-2026-08-27-045958.ips', {
+        name: 'OpenKnowledge',
+      });
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'standard',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir,
+      });
+
+      const entries = listZipEntries(zipPath);
+      expect(entries.filter((e) => e.startsWith('diagnostic-reports/'))).toEqual([]);
+      expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
+        'not-collected (no collection attempted)\n',
+      );
+    });
+
+    test('records an empty window rather than staying silent', async () => {
+      const outputPath = join(makeTmpDir(), 'report.zip');
+
+      const { zipPath } = await collectReportBundle({
+        level: 'full',
+        projectDir: makeFullProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        diagnosticReportsDir: makeTmpDir(),
+      });
+
+      expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
+        'none found in window (7d; 0 other-process report(s) ignored; 0 unparseable)\n',
+      );
+    });
+  });
+
   test('scrubs ROTATED user logs too, whose counter suffix defeats an extension test', async () => {
     const projectDir = makeFullProjectDir();
     const userLogsDir = makeTmpDir();

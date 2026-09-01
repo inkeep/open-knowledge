@@ -91,6 +91,7 @@ function installBridge(
     send?: (request: SendRequest) => Promise<OkBugReportSendResult>;
     captureScreenshot?: () => Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability?: () => Promise<{ available: boolean }>;
+    platform?: string;
   } = {},
 ): BridgeLog {
   const log: BridgeLog = {
@@ -103,6 +104,7 @@ function installBridge(
     crashDumpAvailabilityCalls: 0,
   };
   const bridge = {
+    platform: handlers.platform ?? 'darwin',
     bugReport: {
       create: (request: CreateRequest) => {
         log.createCalls.push(request);
@@ -285,6 +287,13 @@ describe('ReportBugDialog', () => {
     expect(
       screen.getByText(
         'Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted).',
+        { exact: false },
+      ),
+    ).not.toBeNull();
+    expect(
+      screen.getByText(
+        "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's.",
+        { exact: false },
       ),
     ).not.toBeNull();
 
@@ -294,6 +303,18 @@ describe('ReportBugDialog', () => {
 
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Create report' })).not.toBeNull();
+  });
+
+  test('omits the macOS crash-report sentence off macOS', async () => {
+    installBridge({ platform: 'win32' });
+    await renderDialog();
+
+    expect(
+      screen.getByText('Adds telemetry, server state, and runtime info when available.', {
+        exact: false,
+      }),
+    ).not.toBeNull();
+    expect(screen.queryByText(/crash reports macOS recorded/)).toBeNull();
   });
 
   test('a system-wide report says up front that no project logs are included', async () => {

@@ -55,6 +55,38 @@ function makeProjectDir(slug = 'bundle-proj'): string {
   return projectDir;
 }
 
+describe('collectStandardBundle — diagnostic-report staging count', () => {
+  test('counts what reached the zip, not what the sweep selected', async () => {
+    const projectDir = makeProjectDir();
+    const reportsDir = makeTmpDir();
+    const present = join(reportsDir, 'OpenKnowledge-present.ips');
+    writeFileSync(
+      present,
+      `${JSON.stringify({ name: 'OpenKnowledge' })}\n{"procName":"OpenKnowledge"}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir,
+      redact: true,
+      outputPath,
+      diagnosticReports: {
+        files: [present, join(reportsDir, 'OpenKnowledge-vanished.ips')],
+        outcome: 'collected',
+        foreignIgnored: 0,
+        unparseable: 0,
+        droppedOverCap: 0,
+        windowDays: 7,
+      },
+    });
+
+    expect(listZipEntries(zipPath)).toContain('diagnostic-reports/OpenKnowledge-present.ips');
+    expect(readZipEntry(zipPath, 'state/diagnostic-reports-status.txt')).toBe(
+      '1 collected (7d; 0 other-process report(s) ignored; 0 unparseable; 1 vanished before staging)\n',
+    );
+  });
+});
+
 describe('collectStandardBundle — project bundle', () => {
   test('packages lock/spawn-error, local sink logs, and sysinfo into the zip', async () => {
     const projectDir = makeProjectDir();

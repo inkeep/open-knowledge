@@ -13,6 +13,11 @@ import {
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import type { ZipFile } from 'yazl';
 import type { DesktopMetadata } from '../diagnose/bundle.ts';
+import {
+  type DiagnosticReportCollection,
+  prepareDiagnosticReportText,
+  renderDiagnosticReportsStatus,
+} from '../diagnose/diagnostic-reports.ts';
 import type { LanguageMetadata } from '../report-language.ts';
 import { redactContent, SECRET_PATTERN_NAMES } from './bug-report-redact.ts';
 import { DESKTOP_BUNDLE_ID } from './desktop-dispatch.ts';
@@ -50,6 +55,7 @@ export interface CollectStandardBundleOptions {
   userLogsDir?: string;
   shipItLogFiles?: string[];
   bugReportLedgerFiles?: string[];
+  diagnosticReports?: DiagnosticReportCollection;
   note?: string;
   extraFiles?: BundleExtraFile[];
   desktop?: DesktopMetadata | null;
@@ -315,10 +321,11 @@ function addContentFiles(args: {
 }): void {
   for (const file of args.files) {
     try {
+      const raw = readFileSync(file, 'utf8');
       addTextEntry({
         zipfile: args.zipfile,
         name: `${args.prefix}/${basename(file)}`,
-        content: readFileSync(file, 'utf8'),
+        content: file.endsWith('.ips') ? prepareDiagnosticReportText(raw) : raw,
         redact: args.redact,
         revealDocNames: args.revealDocNames,
         bundleFiles: args.bundleFiles,
@@ -354,6 +361,7 @@ export async function collectStandardBundle(
     ? collectLocalSinkLogs(opts.projectDir)
     : { files: [] };
   const shipItFiles = opts.shipItLogFiles ?? [];
+  const diagnosticReportFiles = opts.diagnosticReports?.files ?? [];
 
   logger?.info(
     {
@@ -362,6 +370,7 @@ export async function collectStandardBundle(
       lockFileCount: lockFiles.length,
       localSinkFileCount: localSinkFiles.length,
       shipItLogFileCount: shipItFiles.length,
+      diagnosticReportCount: diagnosticReportFiles.length,
     },
     'files collected',
   );
@@ -413,6 +422,17 @@ export async function collectStandardBundle(
     logger,
   });
 
+  addContentFiles({
+    zipfile,
+    files: diagnosticReportFiles,
+    prefix: 'diagnostic-reports',
+    redact,
+    revealDocNames,
+    bundleFiles,
+    redactions,
+    logger,
+  });
+
   for (const extra of opts.extraFiles ?? []) {
     try {
       const raw = readFileSync(extra.sourcePath);
@@ -438,6 +458,20 @@ export async function collectStandardBundle(
       redactions,
     });
   }
+
+  const diagnosticReportEntryNames = new Set(
+    diagnosticReportFiles.map((f) => `diagnostic-reports/${basename(f)}`),
+  );
+  const diagnosticReportEntries = bundleFiles.filter((f) => diagnosticReportEntryNames.has(f));
+  const diagnosticReportsStatus =
+    opts.diagnosticReports === undefined
+      ? 'not-collected (no collection attempted)'
+      : renderDiagnosticReportsStatus(opts.diagnosticReports, diagnosticReportEntries.length);
+  zipfile.addBuffer(
+    Buffer.from(`${diagnosticReportsStatus}\n`, 'utf8'),
+    'state/diagnostic-reports-status.txt',
+  );
+  bundleFiles.push('state/diagnostic-reports-status.txt');
 
   const sysinfoJson = JSON.stringify(sysinfo, null, 2);
   zipfile.addBuffer(Buffer.from(sysinfoJson, 'utf8'), 'sysinfo.json');
@@ -468,6 +502,26 @@ export async function collectStandardBundle(
         (f) => f.startsWith('logs/') && !isProjectTaggable(f) && !shipItEntryNames.has(f),
       )
     : [];
+
+  const diagnosticReportCaveat =
+    diagnosticReportEntries.length > 0
+      ? [
+          'Crash reports under diagnostic-reports/ are rewritten on the way in,',
+          'independently of this setting: escaped path separators are normalised',
+          'so the scrub above can read them, and the identifiers that link this',
+          "machine's bundles to each other are replaced. Nothing else is changed;",
+          'they are not byte-identical to the files macOS wrote.',
+        ]
+      : [];
+
+  const noRedactDisclosure =
+    diagnosticReportCaveat.length > 0
+      ? [
+          'Redaction was disabled for this bundle; file contents are unmodified,',
+          'with one exception.',
+          ...diagnosticReportCaveat,
+        ]
+      : ['Redaction was disabled for this bundle; file contents are unmodified.'];
 
   const readme = [
     '# Bug Report Bundle',
@@ -503,6 +557,23 @@ export async function collectStandardBundle(
           '',
         ]
       : []),
+    ...(diagnosticReportEntries.length > 0
+      ? [
+          'Crash reports: written by macOS itself rather than by OpenKnowledge,',
+          'and machine-wide rather than scoped to any one project. They record',
+          'why the operating system ended a process of this app — the signal or',
+          'exception, the code-signing verdict, and whatever text the process',
+          'left behind as it died. They also carry machine details the OS puts',
+          'in every report: the account uid, the Mac model, and the name of the',
+          'process that launched this app, which on a managed machine can be',
+          "internal tooling. The identifiers that would link this machine's",
+          'bundles to each other are replaced before bundling. Only this',
+          "app's own reports are collected, never another application's, though",
+          'a report of ours still names the processes it ran alongside:',
+          ...diagnosticReportEntries.map((f) => `- ${f}`),
+          '',
+        ]
+      : []),
     ...(ledgerEntries.length > 0
       ? [
           'Send history: a small record for each bug report previously generated',
@@ -523,10 +594,11 @@ export async function collectStandardBundle(
             ? `${totalRedacted} line(s) were scrubbed across ${redactions.length} file(s).`
             : 'No redactions were needed.',
           'See MANIFEST.json for the full redaction audit report.',
+          ...diagnosticReportCaveat,
           '',
           'This bundle is safe to attach to a GitHub issue.',
         ]
-      : ['Redaction was disabled for this bundle; file contents are unmodified.']),
+      : noRedactDisclosure),
   ].join('\n');
   zipfile.addBuffer(Buffer.from(readme, 'utf8'), 'README.md');
 

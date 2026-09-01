@@ -55,6 +55,7 @@ function makeRunnerDeps(over: Partial<RunDiagnoseBundleDeps> = {}): {
       return 'y';
     },
     collectDeps: deterministicCollectDeps(),
+    diagnosticReportsDir: makeTmpDir('ok-bundle-runner-reports-'),
     ...over,
   };
   return { captured, deps };
@@ -68,6 +69,77 @@ function readZipEntries(zipPath: string): string[] {
     .filter((l) => l.length > 0)
     .sort();
 }
+
+describe('runDiagnoseBundle — macOS crash reports', () => {
+  function writeReport(dir: string, fileName: string, name: string): void {
+    const header = JSON.stringify({
+      app_name: name,
+      name,
+      bug_type: '309',
+      timestamp: '2026-05-28 14:00:00.00 +0000',
+    });
+    const body = JSON.stringify({ procName: name, asi: { [name]: ['abort() called'] } });
+    writeAt(dir, fileName, `${header}\n${body}\n`.replaceAll('/', String.raw`\/`));
+  }
+
+  test('collects into the zip, and the summary says what it found', async () => {
+    const contentDir = makeTmpDir();
+    const reportsDir = makeTmpDir('ok-bundle-runner-reports-');
+    writeReport(reportsDir, 'OpenKnowledge-2026-05-28-140000.ips', 'OpenKnowledge');
+    writeReport(reportsDir, 'Slack-2026-05-28-140000.ips', 'Slack');
+    const { deps, captured } = makeRunnerDeps({ diagnosticReportsDir: reportsDir });
+
+    const result = await runDiagnoseBundle({ contentDir, yes: true }, deps);
+
+    const entries = readZipEntries(result.outputPath ?? '');
+    expect(entries).toContain('diagnostic-reports/OpenKnowledge-2026-05-28-140000.ips');
+    expect(entries).not.toContain('diagnostic-reports/Slack-2026-05-28-140000.ips');
+    expect(entries).toContain('state/diagnostic-reports-status.txt');
+    const summaryLine = captured.logs.find((l) => l.includes('macOS crash reports:'));
+    expect(summaryLine).toContain(
+      '1 collected (7d; 1 other-process report(s) ignored; 0 unparseable)',
+    );
+    expect(summaryLine).not.toContain('not-collected');
+  });
+
+  test('reports an empty sweep rather than staying silent', async () => {
+    const contentDir = makeTmpDir();
+    const { deps, captured } = makeRunnerDeps();
+
+    await runDiagnoseBundle({ contentDir, yes: true }, deps);
+
+    expect(captured.logs.find((l) => l.includes('macOS crash reports:'))).toContain(
+      'none found in window',
+    );
+  });
+
+  test('--no-redact names the crash-report rewrite as the exception', async () => {
+    const contentDir = makeTmpDir();
+    const reportsDir = makeTmpDir('ok-bundle-runner-reports-');
+    writeReport(reportsDir, 'OpenKnowledge-2026-05-28-140000.ips', 'OpenKnowledge');
+    const { deps, captured } = makeRunnerDeps({ diagnosticReportsDir: reportsDir });
+
+    await runDiagnoseBundle({ contentDir, yes: true, redact: false }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    expect(allLogs).toContain(
+      'NOT scrubbed (--no-redact): tokens and keys ship verbatim, crash reports excepted',
+    );
+    expect(allLogs).toContain('Not byte-identical to the files macOS wrote');
+  });
+
+  test('--no-redact promises no exception when no report was staged', async () => {
+    const contentDir = makeTmpDir();
+    const { deps, captured } = makeRunnerDeps();
+
+    await runDiagnoseBundle({ contentDir, yes: true, redact: false }, deps);
+    const allLogs = captured.logs.join('\n');
+
+    expect(allLogs).toContain('NOT scrubbed (--no-redact): tokens and keys ship verbatim');
+    expect(allLogs).not.toContain('crash reports excepted');
+    expect(allLogs).not.toContain('Not byte-identical to the files macOS wrote');
+  });
+});
 
 describe('runDiagnoseBundle — tracer bullet', () => {
   test('writes a zip to the default path with no server running and --yes', async () => {

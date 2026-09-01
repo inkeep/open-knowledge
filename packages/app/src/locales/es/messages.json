@@ -4548,6 +4548,9 @@
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
     "mR3uQg": ["Este archivo se eliminó en la rama actual (conflicto delete-modify)."],
+    "mRitpT": [
+      "También añade los informes de fallos que macOS registró para OpenKnowledge y sus procesos auxiliares, solo los nuestros y nunca los de otra aplicación."
+    ],
     "mToVM9": ["Escribir a ", ["agentName"]],
     "mU3j1b": ["Quitar el elemento ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflicto)"],

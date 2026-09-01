@@ -4454,6 +4454,9 @@
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
     "mR3uQg": ["Este arquivo foi excluído no ramo atual (conflito delete-modify)."],
+    "mRitpT": [
+      "Também adiciona os relatórios de falha que o macOS registrou para o OpenKnowledge e seus processos auxiliares, apenas os nossos e nunca os de outro aplicativo."
+    ],
     "mToVM9": ["Enviar mensagem para ", ["agentName"]],
     "mU3j1b": ["Remover o item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflito)"],

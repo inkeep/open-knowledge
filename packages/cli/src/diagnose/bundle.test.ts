@@ -69,6 +69,39 @@ function writeAt(contentDir: string, relPath: string, body: string): void {
   writeFileSync(full, body);
 }
 
+describe('collectBundle — diagnostic-report staging count', () => {
+  test('counts what was staged, not what the sweep selected', async () => {
+    const contentDir = makeTmpDir();
+    const reportsDir = makeTmpDir();
+    const present = join(reportsDir, 'OpenKnowledge-present.ips');
+    writeFileSync(
+      present,
+      `${JSON.stringify({ name: 'OpenKnowledge' })}\n{"procName":"OpenKnowledge"}\n`,
+    );
+
+    const collected = await collectBundle({
+      contentDir,
+      deps: makeDeterministicDeps(),
+      diagnosticReports: {
+        files: [present, join(reportsDir, 'OpenKnowledge-vanished.ips')],
+        outcome: 'collected',
+        foreignIgnored: 0,
+        unparseable: 0,
+        droppedOverCap: 0,
+        windowDays: 7,
+      },
+    });
+
+    expect(
+      readFileSync(join(collected.stagingDir, 'state', 'diagnostic-reports-status.txt'), 'utf-8'),
+    ).toBe(
+      '1 collected (7d; 0 other-process report(s) ignored; 0 unparseable; 1 vanished before staging)\n',
+    );
+    expect(collected.summary.stagedDiagnosticReports).toBe(1);
+    collected.cleanup();
+  });
+});
+
 describe('collectBundle — smoke', () => {
   test('produces a v2 manifest on a fresh content-dir with no server', async () => {
     const contentDir = makeTmpDir();

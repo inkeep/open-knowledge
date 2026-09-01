@@ -3496,6 +3496,9 @@
     "mPy9lS": ["把我現有的規格整理成一個依領域分組的連結索引，並標出和目前程式碼已經脫節的部分。"],
     "mPzgTS": ["開啟 ", ["docName"]],
     "mR3uQg": ["此檔案已在目前分支中刪除（delete-modify 衝突）。"],
+    "mRitpT": [
+      "它還會加入 macOS 為 OpenKnowledge 及其輔助程序記錄的當機報告，僅包含我們的報告，絕不包含其他應用程式的報告。"
+    ],
     "mToVM9": ["傳訊息給 ", ["agentName"]],
     "mU3j1b": ["移除項目 ", ["0"]],
     "mVFyH-": [["accessibleLabel"], "（衝突）"],

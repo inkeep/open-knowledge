@@ -7289,6 +7289,10 @@ msgstr "分享網址無效。"
 msgid "Invalid YAML"
 msgstr "無效的 YAML"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "它還會加入 macOS 為 OpenKnowledge 及其輔助程序記錄的當機報告，僅包含我們的報告，絕不包含其他應用程式的報告。"
+
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName
 #: src/components/acp/ThreadView.tsx

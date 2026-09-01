@@ -22,6 +22,10 @@ import {
   defaultReadDesktopEnv,
   writeBundle,
 } from './diagnose/bundle.ts';
+import {
+  collectDiagnosticReports,
+  type DiagnosticReportCollection,
+} from './diagnose/diagnostic-reports.ts';
 import { defaultReadLanguage, type LanguageMetadata } from './report-language.ts';
 import { isObject } from './utils/is-object.ts';
 
@@ -37,6 +41,7 @@ export interface CollectReportBundleOptions {
   extraFiles?: BundleExtraFile[];
   userLogsDir?: string;
   cachesDir?: string;
+  diagnosticReportsDir?: string;
   bugReportsDir?: string;
   logger?: BundleLogger;
   readDesktopEnv?: () => DesktopMetadata | null;
@@ -73,6 +78,7 @@ async function collectFullBundle(
   projectDir: string,
   readDesktopEnv: () => DesktopMetadata | null,
   readLanguage: () => LanguageMetadata,
+  diagnosticReports: DiagnosticReportCollection,
 ): Promise<ReportBundleResult> {
   const projectSlug = resolveProjectSlug(projectDir, opts.logger);
   const collected = await collectBundle({
@@ -87,6 +93,7 @@ async function collectFullBundle(
       ...collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     ],
     userStateFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),
+    diagnosticReports,
     deps: { readDesktopEnv, readLanguage, logger: opts.logger },
   });
   try {
@@ -116,8 +123,19 @@ export async function collectReportBundle(
   const { projectDir } = opts;
   const readDesktopEnv = opts.readDesktopEnv ?? defaultReadDesktopEnv;
   const readLanguage = opts.readLanguage ?? defaultReadLanguage;
+  const resolveDiagnosticReports = (): DiagnosticReportCollection =>
+    collectDiagnosticReports(
+      opts.diagnosticReportsDir ?? join(homedir(), 'Library', 'Logs', 'DiagnosticReports'),
+      new Date(),
+    );
   if (opts.level === 'full' && projectDir !== undefined) {
-    return collectFullBundle(opts, projectDir, readDesktopEnv, readLanguage);
+    return collectFullBundle(
+      opts,
+      projectDir,
+      readDesktopEnv,
+      readLanguage,
+      resolveDiagnosticReports(),
+    );
   }
   const { zipPath, summary } = await collectStandardBundle({
     projectDir,
@@ -127,6 +145,7 @@ export async function collectReportBundle(
     userLogsDir: opts.userLogsDir,
     shipItLogFiles: collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     bugReportLedgerFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),
+    diagnosticReports: opts.level === 'full' ? resolveDiagnosticReports() : undefined,
     logger: opts.logger,
     note: opts.note,
     extraFiles: opts.extraFiles,

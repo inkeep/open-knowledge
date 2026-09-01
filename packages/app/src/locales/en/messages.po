@@ -7289,6 +7289,10 @@ msgstr "Invalid share URL."
 msgid "Invalid YAML"
 msgstr "Invalid YAML"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName
 #: src/components/acp/ThreadView.tsx

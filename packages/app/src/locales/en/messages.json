@@ -3933,6 +3933,9 @@
     ],
     "mPzgTS": ["Open ", ["docName"]],
     "mR3uQg": ["This file was deleted on the current branch (delete-modify conflict)."],
+    "mRitpT": [
+      "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+    ],
     "mToVM9": ["Message ", ["agentName"]],
     "mU3j1b": ["Remove item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflict)"],

@@ -3472,6 +3472,9 @@
     "mPy9lS": ["把我现有的规格整理成一个按领域分组的链接索引，并标出与当前代码脱节的部分。"],
     "mPzgTS": ["打开 ", ["docName"]],
     "mR3uQg": ["此文件已在当前分支中删除（delete-modify 冲突）。"],
+    "mRitpT": [
+      "它还会添加 macOS 为 OpenKnowledge 及其辅助进程记录的崩溃报告，仅包含我们的报告，绝不包含其他应用的报告。"
+    ],
     "mToVM9": ["给 ", ["agentName"], " 发消息"],
     "mU3j1b": ["移除项目 ", ["0"]],
     "mVFyH-": [["accessibleLabel"], "（冲突）"],
