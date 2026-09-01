@@ -13,6 +13,11 @@ interface ContainmentErr {
 
 type ContainmentResult = ContainmentOk | ContainmentErr;
 
+export function escapesRoot(rel: string): boolean {
+  const forwardSlashed = rel.replace(/\\/g, '/');
+  return forwardSlashed === '..' || forwardSlashed.startsWith('../') || isAbsolute(rel);
+}
+
 export function resolveWithinRoot(root: string, candidate: string): ContainmentResult {
   if (typeof root !== 'string' || !isAbsolute(root)) {
     return { ok: false, reason: `root path is not absolute: ${String(root)}` };
@@ -29,7 +34,7 @@ export function resolveWithinRoot(root: string, candidate: string): ContainmentR
   if (rel === '') {
     return { ok: true, abs, rel: '' };
   }
-  if (rel === '..' || rel.startsWith('../') || isAbsolute(rel)) {
+  if (escapesRoot(rel)) {
     return {
       ok: false,
       reason: `path "${candidate}" escapes the configured root`,

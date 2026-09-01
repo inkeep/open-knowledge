@@ -1,5 +1,6 @@
+import { win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { resolveWithinRoot } from './path-safety.ts';
+import { escapesRoot, resolveWithinRoot } from './path-safety.ts';
 
 describe('resolveWithinRoot — accepts inputs contained in root', () => {
   test('plain relative path', () => {
@@ -105,5 +106,39 @@ describe('resolveWithinRoot — rejects escapes', () => {
   test('refuses sibling that prefix-matches root', () => {
     const result = resolveWithinRoot('/srv/project', '/srv/project-extra/foo.md');
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('escapesRoot — win32 separators (PRD-8341)', () => {
+  const root = 'C:\\srv\\project';
+
+  test.each([
+    ['..\\etc\\passwd'],
+    ['..\\..\\..\\Windows\\System32\\config\\SAM'],
+    ['articles\\..\\..\\secrets.md'],
+  ])('refuses win32 traversal %s', (candidate) => {
+    expect(escapesRoot(win32.relative(root, win32.resolve(root, candidate)))).toBe(true);
+  });
+
+  test.each([
+    ['C:\\Windows\\win.ini'],
+    ['\\\\server\\share\\secrets.md'],
+    ['D:\\other.md'],
+  ])('refuses win32 absolute %s', (candidate) => {
+    const rel = win32.relative(root, win32.resolve(root, candidate));
+    expect(escapesRoot(rel) || win32.isAbsolute(rel)).toBe(true);
+  });
+
+  test.each([
+    ['articles\\auth.md'],
+    ['articles/auth.md'],
+    ['..abc\\notes.md'],
+    ['deep\\..\\ok.md'],
+  ])('still accepts contained win32 path %s', (candidate) => {
+    expect(escapesRoot(win32.relative(root, win32.resolve(root, candidate)))).toBe(false);
+  });
+
+  test('refuses a posix name that mimics a win32 escape', () => {
+    expect(escapesRoot('..\\etc')).toBe(true);
   });
 });
