@@ -272,6 +272,7 @@
     "2XQ8Ww": ["Ouvrir l'aperçu quand l'agent modifie"],
     "2YOwme": ["Redémarré — exécute maintenant la v", ["appRuntime"], "."],
     "2YZwPB": ["La réponse des liens sortants ne correspond pas à la forme attendue."],
+    "2Yt22K": ["Masquer l’original"],
     "2hYmUH": ["my@email.com"],
     "2hpdRq": ["Masquer le panneau (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Saisissez une URL valide (par exemple https://api.openai.com/v1)."],
@@ -437,6 +438,7 @@
     "4Vgtaz": [
       "Le tableau est injoignable. Il n'existe peut-être pas, ou le serveur est peut-être hors ligne."
     ],
+    "4_-TKi": ["Accepter les deux versions pour le conflit ", ["0"]],
     "4buZWd": ["Hérité de ", ["path"]],
     "4c_a6S": ["Rien de défini pour l'instant."],
     "4d0VYJ": ["Nous créerons un ID de thème sûr à partir de ce nom."],
@@ -473,6 +475,7 @@
     "4v2Yyz": [
       "Sélectionne toutes les lignes visibles de l'arborescence lorsque le focus est dans la barre latérale Fichiers."
     ],
+    "4vn1gP": ["Tous les conflits sont résolus. Appliquez les modifications pour enregistrer."],
     "4xtLTl": ["Dossier « ", ["basename"], " » masqué"],
     "4zGlN_": ["Collez l'URL d'une image ou cliquez pour l'envoyer"],
     "4z_1j2": ["Rendu"],
@@ -788,17 +791,6 @@
     ],
     "8AjnFz": ["« ", ["0"], " » avait déjà été importé (contenu identique)."],
     "8F1i42": ["Page introuvable"],
-    "8FqTCr": [
-      [
-        "chunksRemaining",
-        "plural",
-        {
-          "one": ["#", " bloc non résolu"],
-          "many": ["#", " blocs non résolus"],
-          "other": ["#", " blocs non résolus"]
-        }
-      ]
-    ],
     "8Gzz2G": ["worktree de ", ["worktreeOf"]],
     "8HvJlU": [
       "Une compétence DIFFÉRENTE portant un nom semblable se trouve dans ",
@@ -1042,6 +1034,7 @@
       ["0"],
       " — lecture seule ; ouvrez-le pour en modifier une copie"
     ],
+    "Al8HPP": ["Accepter la version actuelle pour le conflit ", ["0"]],
     "Am78jY": ["Faites glisser ", ["keyName"], " pour réorganiser"],
     "ApeA0n": [["dropCount"], " modifications annulées sur ", ["docName"]],
     "Aq-O0x": ["statut"],
@@ -1914,6 +1907,7 @@
       ["componentName"],
       "> n'est pas un composant connu. Copiez la source pour l'utiliser ailleurs, ou supprimez le bloc."
     ],
+    "KhNkCq": ["Accepter les deux"],
     "Khxcyu": ["L'accès au terminal n'est pas activé pour ce projet."],
     "KjTmeO": ["Mettez OpenKnowledge à jour pour ouvrir ce partage."],
     "KkEAud": ["Crée un fichier à partir du document ou du dossier courant."],
@@ -2003,7 +1997,6 @@
     "LaskKp": ["Envoyer dans la discussion (", ["0"], ")"],
     "Lbl6KA": ["Impossible d'installer depuis ", ["0"], " : ", ["1"]],
     "LbmLyU": ["Impossible de modifier en toute sécurité la configuration de cet outil"],
-    "Lcehxn": ["Enregistrer la résolution"],
     "LdABLa": ["Impossible d'ouvrir ", ["target"], ". Essayez de l'ouvrir manuellement."],
     "LdKIHS": ["Rédiger une spécification"],
     "LeGeTf": ["OpenKnowledge sur GitHub"],
@@ -2016,6 +2009,7 @@
     ],
     "LhWYpm": ["D'autres chemins OK sont suivis en amont :"],
     "Li4U-T": ["En savoir plus sur ", ["title"]],
+    "LkQRL8": ["Afficher l’original"],
     "LlHqdU": ["Initialisation du projet"],
     "LlJ8LD": [
       "Partage de la configuration inchangé : ",
@@ -2195,6 +2189,7 @@
     "Ni4b7h": [
       "Les plugins de projet constituent la norme de rédaction de votre projet — activez-les ou désactivez-les ici. Chaque plugin activé obtient sa propre page sous Plugins dans la barre latérale des paramètres."
     ],
+    "NjnHNV": ["Accepter la version entrante pour le conflit ", ["0"]],
     "NjrIak": ["Fichier : <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Modifier ", ["tag"]],
     "NkXEFS": ["Échec de la restauration — document inchangé"],
@@ -2204,6 +2199,7 @@
     "NnQapF": ["Ouvrir avec l'IA ", ["targetDisplayName"]],
     "NoY1k4": ["Structure de réponse du serveur invalide"],
     "NpC29w": ["Crée un nouvel élément de liste à partir de l'élément courant."],
+    "NpRLRj": ["Annulez vos résolutions pour modifier ceci."],
     "NrFwux": ["Échec de l'enregistrement des règles de contenu — ", ["0"]],
     "Ns0z5o": [
       "Quand vous installez une compétence publiée, en informer l'annuaire de compétences (skills.sh) pour que son nombre d'installations soit exact. Envoie le nom de la compétence, son dépôt source, et les outils d'agent vers lesquels elle est allée — jamais le contenu des fichiers, et jamais pour une compétence provenant d'une source privée, locale ou saisie à la main. Une fois par compétence et par machine."
@@ -2262,6 +2258,7 @@
     "OLBz-_": ["Le rendu du diagramme Mermaid a échoué."],
     "OLIKgw": ["Faites glisser l'élément ", ["0"], " pour réorganiser"],
     "ONPvOb": ["Chargement de l'activité de l'agent"],
+    "ONUgxB": ["Ce conflit n'est plus disponible."],
     "ONWvwQ": ["Envoyer"],
     "ONchxy": ["total"],
     "ONgEZF": ["Chargement des titres de ", ["pageTarget"]],
@@ -2349,6 +2346,7 @@
     "PVSwOe": ["Réorientation : attente de l’arrêt de l’exécution en cours…"],
     "PVUn_c": ["Ouvrir le dossier"],
     "PVggyD": ["Schémas de frontmatter"],
+    "PWh9Ii": ["Appliquer les modifications"],
     "PWqtgd": ["Chargement du chat"],
     "PXaT32": ["Le serveur a renvoyé une réponse de cibles de compétences incomplète."],
     "PYmp-0": ["Importer comme modèle"],
@@ -2438,6 +2436,7 @@
     "QQghPu": ["Installer dans Claude Desktop"],
     "QR5SP1": ["modèle créé"],
     "QRSdsO": ["Indexing request timeout (seconds)"],
+    "QVk3SK": ["Ce fichier a été supprimé sur la branche entrante (conflit modify-delete)."],
     "QWdKwH": ["Déplacer"],
     "QYTOaN": ["Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
@@ -2877,6 +2876,7 @@
     ],
     "VIwCaD": ["Entrée"],
     "VJaBca": ["Choisir un dossier de compétence"],
+    "VL6VsE": ["Accepter l’actuel"],
     "VM7H66": ["Ce fichier est binaire et ne peut pas être affiché comme du texte."],
     "VMlRqi": ["Masquer les détails"],
     "VNNRfN": ["définir comme source"],
@@ -3141,7 +3141,7 @@
       "Impossible de redémarrer le serveur — un autre processus le détient. Quittez les autres fenêtres OpenKnowledge de ce projet, puis réessayez."
     ],
     "Xv_ijG": ["https://github.com/owner/repo ou owner/repo"],
-    "XyOUTJ": ["Quitter la fusion"],
+    "XzL7x7": ["Rouvrez ", ["filePath"], " pour continuer à modifier."],
     "Xzy0s0": ["Retirer ", ["fullLabel"], " du contexte"],
     "Y-Urt2": ["Équation mathématique en bloc rendue avec KaTeX à partir d'une source LaTeX."],
     "Y1QMlM": ["Configurer"],
@@ -3196,6 +3196,7 @@
     "YW7Q86": [
       "Les paramètres de recherche ne sont pas encore chargés — réessayez dans un instant"
     ],
+    "YWK2zy": ["Différences du conflit pour ", ["fileName"]],
     "Y_GpJd": ["La demande de téléchargement de ", ["0"], " a expiré."],
     "Y_ZQ6l": ["Installation de ", ["agentName"], "…"],
     "Y_iImT": ["Fichier ", ["identity"], " impossible à résoudre. Accéder à la référence."],
@@ -3378,6 +3379,7 @@
       "Vous avez choisi votre répertoire personnel. OpenKnowledge indexera tout ce qu'il contient — c'est volumineux et cela peut faire remonter des fichiers personnels."
     ],
     "_SDGzH": ["Continuer dans le navigateur"],
+    "_SkqfM": ["Accepter l’entrant"],
     "_TDESN": [
       "Erreur réseau - ",
       ["kind"],
@@ -3947,7 +3949,6 @@
         }
       ]
     ],
-    "g3UF2V": ["Accepter"],
     "g4WlQK": [
       "La gestion des outils IA du projet n'est disponible que dans l'application de bureau OpenKnowledge."
     ],
@@ -3968,6 +3969,7 @@
     "gAhHu7": [
       "La correction automatique ne s'applique qu'aux problèmes ayant une correction mécanique connue."
     ],
+    "gBCeDq": ["Aucun ancêtre commun : les deux branches ont ajouté ce fichier (conflit add/add)."],
     "gBbxn_": ["Vérification de l'état de connexion"],
     "gDkNHk": ["Voulez-vous vraiment supprimer « ", ["name"], " » ?"],
     "gGVP4q": [
@@ -4060,6 +4062,7 @@
       "Gardez une trace écrite de la façon dont votre produit se construit. Un espace pour proposer des idées, consigner des décisions, rédiger des spécifications et noter ce que vous avez appris après un incident."
     ],
     "hCattk": ["OpenKnowledge a importé ", ["source"]],
+    "hCghAK": ["Ce conflit est résolu."],
     "hDEaQu": ["Connectez OpenKnowledge aux autres outils que vous utilisez."],
     "hDKtoF": ["il y a ", ["diffHrs"], " h"],
     "hDoLrm": ["Retirer ", ["projectName"], " des projets récents"],
@@ -4290,6 +4293,11 @@
       "Intègre une page externe dans une iframe en ligne (docs, démos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Activer Auto (Tirer seulement)"],
+    "jTdrn1": [
+      "Impossible de vérifier si ",
+      ["filePath"],
+      " est toujours en conflit — nouvelle tentative."
+    ],
     "jWzDfC": ["Vérification des outils IA dont vous disposez"],
     "jZ_E5M": ["Échec de la récupération — consultez les journaux du serveur pour les détails."],
     "j_Z6g7": ["Valeur par défaut partagée"],
@@ -4493,7 +4501,6 @@
       "Un chemin à l'intérieur de la compétence — n'importe quel dossier convient (par ex. references/notes.md). Les dossiers du chemin sont créés pour vous."
     ],
     "lPkjpD": ["Envoyé ", ["pushed"]],
-    "lPzyrU": ["Tous les blocs sont résolus"],
     "lS83Sg": ["Impossible d’accéder au presse-papiers."],
     "lScd1O": [
       "Les diaporamas Slidev s'ouvrent uniquement dans l'application de bureau OpenKnowledge."
@@ -4591,6 +4598,7 @@
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."
     ],
     "mPzgTS": ["Ouvrir ", ["docName"]],
+    "mR3uQg": ["Ce fichier a été supprimé sur la branche actuelle (conflit delete-modify)."],
     "mToVM9": ["Envoyer un message à ", ["agentName"]],
     "mU3j1b": ["Retirer l'élément ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflit)"],
@@ -4879,6 +4887,9 @@
       " a été ouvert, car il contient un dossier .git"
     ],
     "pZAs1T": ["Échec du chargement des liens sortants"],
+    "pZaMLc": [
+      "Ce fichier contient des lignes qui ressemblent à des marqueurs de conflit, si bien que les limites du conflit ne peuvent pas être lues de façon fiable. Résolvez-le à la main ou avec Demander à l'IA."
+    ],
     "paCw0z": [
       "tout ce qui se trouve sous les dossiers ",
       ["0"],
@@ -5549,6 +5560,7 @@
     "wU8WyK": ["Champs d'élément"],
     "wVa83H": ["Impossible de créer le rapport"],
     "wWtVYd": ["Saisissez un port entre 1 et 65535."],
+    "wXFalZ": ["Aperçu de ", ["filename"]],
     "wXO4Tg": ["il y a ", ["hrs"], " h"],
     "wXw19Y": ["« ", ["projectName"], " » retiré des projets récents. Son dossier n'existe plus."],
     "wZPUJx": ["« ", ["0"], " »"],
@@ -5670,6 +5682,7 @@
     "y46m5r": ["L'application de bureau ne répond pas. Actualisez et réessayez."],
     "y5FUYi": ["Menu de suggestions ouvert"],
     "y5UgU8": ["Désactiver ", ["0"]],
+    "y6HGwM": ["Conflits restants : ", ["liveRemaining"], "."],
     "y8B54M": ["Impossible d'envoyer votre invite — veuillez réessayer."],
     "yCX4jp": [" Votre sélection n'a pas pu être restaurée."],
     "yChG5C": ["Enter a positive whole number."],

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { ConflictMarkersInContentError } from './conflict-errors.ts';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
@@ -159,6 +160,65 @@ describe('ConflictStore resolveConflict()', () => {
     await expect(store.resolveConflict('unknown.md', 'mine')).rejects.toThrow(
       'no conflict tracked for file: unknown.md',
     );
+  });
+
+  test("strategy 'content': refuses content that still carries conflict markers", async () => {
+    // Writing this would commit a document with literal `<<<<<<<` in it AND
+    // clear the tracked conflict, so the UI reports it solved while the file is
+    // broken. Refused before any git command runs.
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md'));
+
+    const markered = [
+      '# Pricing',
+      '',
+      '<<<<<<< ours',
+      'The Team tier moves to $29 per seat.',
+      '=======',
+      'The Team tier moves to $29 per seat, grandfathered.',
+      '>>>>>>> theirs',
+      '',
+    ].join('\n');
+
+    await expect(store.resolveConflict('a.md', 'content', markered)).rejects.toThrow(
+      ConflictMarkersInContentError,
+    );
+    // Typed, not bare: the HTTP boundary keys a 422 off this, so a bare Error
+    // would fall into the generic catch and become a 500 — which the
+    // `resolve_conflict` contract reads as a transient commit failure.
+    await expect(store.resolveConflict('a.md', 'content', markered)).rejects.toMatchObject({
+      name: 'ConflictMarkersInContentError',
+      file: 'a.md',
+    });
+    // Still tracked — a refused resolution must not clear the conflict.
+    expect(store.count()).toBe(1);
+  });
+
+  test("strategy 'content': accepts a genuine resolution mentioning no markers", async () => {
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md'));
+    // Rejected later for lack of git, but NOT by the marker guard — proving the
+    // guard does not refuse ordinary content.
+    await expect(
+      store.resolveConflict('a.md', 'content', '# Pricing\n\nThe Team tier moves to $29.\n'),
+    ).rejects.not.toThrow(/contains conflict markers/);
+  });
+
+  test("strategy 'content': accepts a resolution whose body contains a setext H1", async () => {
+    // Seven `=` is both a conflict separator and a Markdown setext H1
+    // underline. Refusing on the loose marker predicate made every document
+    // with such a heading unresolvable through the UI: the user accepts every
+    // hunk, presses Apply, and gets "Couldn't save the resolution" forever.
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md'));
+    await expect(
+      store.resolveConflict(
+        'a.md',
+        'content',
+        'Release Notes\n=======\n\nThe Team tier moves to $29.\n',
+      ),
+    ).rejects.not.toThrow(/contains conflict markers/);
+    expect(store.count()).toBe(1);
   });
 
   test("strategy 'mine'/'theirs': removes conflict from store when git succeeds", async () => {
@@ -426,6 +486,33 @@ describe('ConflictStore resolveConflict() — working-tree variant', () => {
     expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL\n');
     expect(store.count()).toBe(0);
     expect(await headSha()).toBe(before);
+  });
+
+  test('the entry leaves the store BEFORE the resolved bytes reach disk', async () => {
+    // Ordering, not timing. Writing first opens a window the file watcher can
+    // land in: it re-seeds the doc from disk while the store still lists this
+    // file, and conflict-lifecycle-seed re-marks lifecycle.status='conflict'
+    // from an entry that is about to be deleted. That re-mark can outlive the
+    // resolve's own clear, leaving the doc flagged with no store entry behind
+    // it — which strands the conflict view on its loading state.
+    const { blobSha } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+
+    const target = join(projectDir, 'a.md');
+    let diskAtRemoval: string | null = null;
+    const realRemove = store.removeConflict.bind(store);
+    store.removeConflict = (f: string) => {
+      diskAtRemoval = readFileSync(target, 'utf-8');
+      return realRemove(f);
+    };
+
+    await store.resolveConflict('a.md', 'content', 'HAND-MERGED\n');
+
+    // Still the pre-resolve bytes: the store was cleared first.
+    expect(diskAtRemoval).toBe('LOCAL\n');
+    expect(readFileSync(target, 'utf-8')).toBe('HAND-MERGED\n');
+    expect(store.count()).toBe(0);
   });
 
   test("'content' writes the merged bytes without committing", async () => {

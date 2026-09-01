@@ -524,10 +524,6 @@ msgstr "{boldName} fica fora deste projeto, em <0>{source}</0> — os agentes ex
 msgid "{chars, plural, one {char} other {chars}}"
 msgstr "{chars, plural, one {caractere} many {caracteres} other {caracteres}}"
 
-#: src/components/DiffView.tsx
-msgid "{chunksRemaining, plural, one {# unresolved hunk} other {# unresolved hunks}}"
-msgstr "{chunksRemaining, plural, one {# trecho não resolvido} many {# trechos não resolvidos} other {# trechos não resolvidos}}"
-
 #: src/editor/utils/editor-strings.ts
 msgid "{componentLabel} (empty)"
 msgstr "{componentLabel} (vazio)"
@@ -1327,9 +1323,32 @@ msgstr "Sobre o {appName}"
 msgid "Above"
 msgstr "Acima"
 
-#: src/components/DiffView.tsx
-msgid "Accept"
-msgstr "Aceitar"
+#: src/components/ConflictView.tsx
+msgid "Accept both"
+msgstr "Aceitar ambos"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept both versions for conflict {0}"
+msgstr "Aceitar ambas as versões para o conflito {0}"
+
+#: src/components/ConflictView.tsx
+msgid "Accept current"
+msgstr "Aceitar atual"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept current version for conflict {0}"
+msgstr "Aceitar a versão atual para o conflito {0}"
+
+#: src/components/ConflictView.tsx
+msgid "Accept incoming"
+msgstr "Aceitar recebido"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept incoming version for conflict {0}"
+msgstr "Aceitar a versão recebida para o conflito {0}"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Accept their deletion"
@@ -1671,6 +1690,10 @@ msgstr "{editor} alinhado ao código fonte (os bytes dele têm backup)"
 msgid "All"
 msgstr "Tudo"
 
+#: src/components/ConflictView.tsx
+msgid "All conflicts resolved. Apply changes to save."
+msgstr "Todos os conflitos resolvidos. Aplique as alterações para salvar."
+
 #: src/components/FolderOverview.tsx
 msgid "All files"
 msgstr "Todos os arquivos"
@@ -1678,10 +1701,6 @@ msgstr "Todos os arquivos"
 #: src/components/FileTreeFilteredToZeroNotice.tsx
 msgid "All files are hidden by view filters."
 msgstr "Os filtros de visualização ocultam todos os arquivos."
-
-#: src/components/DiffView.tsx
-msgid "All hunks resolved"
-msgstr "Todos os trechos resolvidos"
 
 #: src/components/CommandPalette.tsx
 msgid "All tags"
@@ -1841,6 +1860,10 @@ msgstr "Aplica-se quando você retomar esta conversa"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "Aplicar e reiniciar o servidor do projeto"
+
+#: src/components/ConflictView.tsx
+msgid "Apply changes"
+msgstr "Aplicar alterações"
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
@@ -3132,6 +3155,10 @@ msgstr "conflito"
 msgid "Conflict"
 msgstr "Conflito"
 
+#: src/components/ConflictView.tsx
+msgid "Conflict diff for {fileName}"
+msgstr "Diferenças do conflito em {fileName}"
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicted files"
 msgstr "Arquivos em conflito"
@@ -3144,6 +3171,10 @@ msgstr "Arquivos em conflito: {0}."
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "Conflitos"
+
+#: src/components/ConflictView.tsx
+msgid "Conflicts remaining: {liveRemaining}."
+msgstr "Conflitos restantes: {liveRemaining}."
 
 #: src/components/AuthModal.tsx
 msgid "Connect"
@@ -3635,6 +3666,10 @@ msgstr "Não deu para adicionar esse comentário."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Não deu para aplicar a alteração: {0}"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Couldn't check whether {filePath} is still conflicted — retrying."
+msgstr "Não foi possível verificar se {filePath} ainda está em conflito — tentando novamente."
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -5460,10 +5495,6 @@ msgstr "Sair"
 msgid "exit {0}"
 msgstr "saída {0}"
 
-#: src/components/DiffView.tsx
-msgid "Exit merge"
-msgstr "Sair da mesclagem"
-
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "Expand {keyName}"
@@ -6579,6 +6610,10 @@ msgstr "Ocultar a pasta"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Hide HTML preview"
 msgstr "Ocultar a pré-visualização do HTML"
+
+#: src/components/ConflictView.tsx
+msgid "Hide original"
+msgstr "Ocultar original"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide Others"
@@ -8596,6 +8631,10 @@ msgstr "Ainda não há comentários neste projeto. Comente um trecho para começ
 msgid "No comments yet. Select text in the document to add one."
 msgstr "Ainda não há comentários. Selecione um texto no documento para adicionar um."
 
+#: src/components/ConflictView.tsx
+msgid "No common ancestor — both branches added this file (add/add conflict)."
+msgstr "Sem ancestral comum: os dois ramos adicionaram este arquivo (conflito add/add)."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "Nenhuma alteração de conteúdo nesta versão."
@@ -10184,6 +10223,10 @@ msgstr "Pressione o sol ou a lua em “Custom” acima para usar este tema."
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
 msgstr "Navegadores de pré-visualização não conseguem copiar sozinhos. Use Cmd/Ctrl+C na URL acima ou abra o OK no app de desktop."
 
+#: src/components/ConflictFilePreview.tsx
+msgid "Preview of {filename}"
+msgstr "Pré-visualização de {filename}"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Preview of the screenshot"
 msgstr "Pré-visualização da captura de tela"
@@ -10601,6 +10644,7 @@ msgid "Recycle Bin"
 msgstr "Lixeira"
 
 #: src/components/AppMenubar.tsx
+#: src/components/ConflictView.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
 msgstr "Refazer"
@@ -10637,7 +10681,6 @@ msgid "Reinstalling"
 msgstr "Reinstalando"
 
 #: src/components/acp/PlanChecklist.tsx
-#: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "Rejeitar"
 
@@ -10886,6 +10929,10 @@ msgstr "Renderizado"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "Reabrir"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Reopen {filePath} to keep editing."
+msgstr "Reabra {filePath} para continuar editando."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11363,10 +11410,6 @@ msgstr "Falha ao salvar: {error}"
 #: src/components/acp/ThreadView.tsx
 msgid "Save queued message"
 msgstr "Salvar a mensagem na fila"
-
-#: src/components/DiffView.tsx
-msgid "Save resolution"
-msgstr "Salvar a resolução"
 
 #: src/comments/ThreadCard.tsx
 msgid "Save this comment (Enter)"
@@ -12127,6 +12170,10 @@ msgstr "Mostrar ou ocultar Arquivos"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Terminal"
 msgstr "Mostrar ou ocultar o Terminal"
+
+#: src/components/ConflictView.tsx
+msgid "Show original"
+msgstr "Mostrar original"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -13133,6 +13180,10 @@ msgstr "Obrigado pelo relatório!"
 msgid "That branch is already open in another worktree."
 msgstr "Esse ramo já está aberto em outro worktree."
 
+#: src/components/ConflictView.tsx
+msgid "That conflict is no longer available."
+msgstr "Esse conflito não está mais disponível."
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "That did not go through. Check the server logs and try again."
 msgstr "Isso não foi concluído. Verifique os logs do servidor e tente de novo."
@@ -13603,6 +13654,10 @@ msgstr "Isto pode ser configurado em Configurações > Ferramentas de IA e CLI"
 msgid "This comment is on the whole property"
 msgstr "Este comentário é sobre a propriedade inteira"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "This conflict is resolved."
+msgstr "Este conflito foi resolvido."
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "Este documento"
@@ -13643,6 +13698,10 @@ msgstr "Este campo carrega palavras-chave de esquema adicionais que o editor nã
 msgid "This file can't be opened in the text editor."
 msgstr "Não dá para abrir este arquivo no editor de texto."
 
+#: src/components/ConflictView.tsx
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
+msgstr "Este arquivo contém linhas que parecem marcadores de conflito, então os limites do conflito não podem ser lidos de forma confiável. Resolva-o manualmente ou com Perguntar à IA."
+
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
 msgstr "Este arquivo não foi encontrado."
@@ -13654,6 +13713,14 @@ msgstr "Este arquivo é binário e não pode ser mostrado como texto."
 #: src/components/use-viewer-text.ts
 msgid "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
 msgstr "Este arquivo é grande demais para abrir no editor de texto integrado (limite de 1 MB). Use Abrir arquivo, abaixo, para abri-lo em outro app."
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the current branch (delete-modify conflict)."
+msgstr "Este arquivo foi excluído no ramo atual (conflito delete-modify)."
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the incoming branch (modify-delete conflict)."
+msgstr "Este arquivo foi excluído no ramo recebido (conflito modify-delete)."
 
 #: src/lib/share/receive-flow.ts
 msgid "This folder doesn't contain a git repository. Pick a different folder?"
@@ -14235,7 +14302,7 @@ msgstr "A última edição em {docName} foi desfeita"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
-#: src/components/DiffView.tsx
+#: src/components/ConflictView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -14264,6 +14331,10 @@ msgstr "Desfaz ou refaz suas próprias edições, deixando intactas as de colabo
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Undo to this edit?"
 msgstr "Desfazer até esta edição?"
+
+#: src/components/ConflictView.tsx
+msgid "Undo your resolutions to change this."
+msgstr "Desfaça suas resoluções para alterar isto."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."

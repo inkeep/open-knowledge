@@ -32,6 +32,11 @@ const API_EXT_PATH = join(SERVER_SRC_ROOT, 'api-extension.ts');
 // Wave 2 lift; the deps interface restates the walk-opts contract's showOk
 // field types.
 const DOCUMENT_ROUTES_PATH = join(SERVER_SRC_ROOT, 'http/document-routes.ts');
+// Hosts `toOpenTarget` (the sync popover's open-target resolver, the second
+// authorized consumer) after its Wave 2 lift out of api-extension.ts with the
+// git family — moved whole with its sole consumer, the worktree-status
+// handler; the authorization rationale travels with the region check below.
+const GIT_ROUTES_PATH = join(SERVER_SRC_ROOT, 'http/git-routes.ts');
 
 /** Recursively enumerate `.ts` files under `dir`, skipping test files. */
 function listProductionTsFiles(dir: string): string[] {
@@ -66,7 +71,12 @@ function sliceRegion(source: string, startAnchor: string, endAnchor: RegExp): [n
 
 describe('showOk caller coverage', () => {
   test('no server/cli production file outside the sanctioned files names showOk', () => {
-    const allowedFiles = new Set([CONTENT_FILTER_PATH, API_EXT_PATH, DOCUMENT_ROUTES_PATH]);
+    const allowedFiles = new Set([
+      CONTENT_FILTER_PATH,
+      API_EXT_PATH,
+      DOCUMENT_ROUTES_PATH,
+      GIT_ROUTES_PATH,
+    ]);
     const offenders: string[] = [];
     for (const root of [SERVER_SRC_ROOT, CLI_SRC_ROOT]) {
       for (const file of listProductionTsFiles(root)) {
@@ -86,7 +96,22 @@ describe('showOk caller coverage', () => {
       'export interface StreamShowAllOpts',
       /export async function walkContentDirForShowAll/,
     );
-    // Region A2: `toOpenTarget`, the sync popover's open-target resolver.
+    const outside: string[] = [];
+    for (const match of source.matchAll(/\bshowOk\b/g)) {
+      const offset = match.index ?? 0;
+      const inWalk = offset >= walkStart && offset < walkEnd;
+      if (!inWalk) {
+        const line = source.slice(0, offset).split('\n').length;
+        outside.push(
+          `api-extension.ts:${line} — showOk outside the walk-opts region. ` +
+            'Only the tree-listing path may pass the flag; a new consumer needs a deliberate ' +
+            'spec decision, not a new call site.',
+        );
+      }
+    }
+
+    // git-routes.ts (post-lift home of `toOpenTarget`, the sync popover's
+    // open-target resolver — Region A2 before the git family's Wave 2 lift).
     //
     // A second AUTHORIZED consumer, not a leak. It enumerates nothing — the
     // rows come from `git status`, which never consults ContentFilter — and
@@ -98,20 +123,19 @@ describe('showOk caller coverage', () => {
     // unconditionally (OK_ALWAYS_SKIP_CHILDREN), so per-machine state cannot
     // reach the wire through this path either way.
     // Starts at the docblock, which states the contract and names the flag.
+    const gitSource = readFileSync(GIT_ROUTES_PATH, 'utf8');
     const [openTargetStart, openTargetEnd] = sliceRegion(
-      source,
+      gitSource,
       '   * Where a project-relative working-tree path opens',
       /\n {2}\/\*\*/,
     );
-    const outside: string[] = [];
-    for (const match of source.matchAll(/\bshowOk\b/g)) {
+    for (const match of gitSource.matchAll(/\bshowOk\b/g)) {
       const offset = match.index ?? 0;
-      const inWalk = offset >= walkStart && offset < walkEnd;
       const inOpenTarget = offset >= openTargetStart && offset < openTargetEnd;
-      if (!inWalk && !inOpenTarget) {
-        const line = source.slice(0, offset).split('\n').length;
+      if (!inOpenTarget) {
+        const line = gitSource.slice(0, offset).split('\n').length;
         outside.push(
-          `api-extension.ts:${line} — showOk outside the walk-opts region. ` +
+          `http/git-routes.ts:${line} — showOk outside the toOpenTarget region. ` +
             'Only the tree-listing path may pass the flag; a new consumer needs a deliberate ' +
             'spec decision, not a new call site.',
         );
@@ -154,5 +178,6 @@ describe('showOk caller coverage', () => {
     // regions above to be revisited rather than rotting into dead authority.
     expect(readFileSync(CONTENT_FILTER_PATH, 'utf8')).toContain('showOk?: boolean');
     expect(readFileSync(DOCUMENT_ROUTES_PATH, 'utf8')).toContain("searchParams.get('showOk')");
+    expect(readFileSync(GIT_ROUTES_PATH, 'utf8')).toContain('showOk: true');
   });
 });

@@ -44,6 +44,7 @@ export {
   waitForActiveProviderSynced,
 } from './provider.ts';
 export { escapeRegExp } from './regexp.ts';
+export { stubRemoteImages } from './remote-image-stub.ts';
 export { matchIsWithinReadableScrollport } from './scrollport.ts';
 export {
   checkCollabSync,

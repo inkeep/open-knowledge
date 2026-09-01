@@ -1,5 +1,5 @@
 import { Trans } from '@lingui/react/macro';
-import { DiffView } from '@/components/DiffView';
+import { MultiFileDiff } from '@pierre/diffs/react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,11 +10,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { okPierreTheme } from '@/lib/pierre-theme';
 
 /**
  * Confirm-diff shown when Update would overwrite a locally-modified skill. Renders
- * the user's current SKILL.md body against the incoming upstream (read-only reuse
- * of `DiffView`), then lets them Take upstream (apply, discarding local edits —
+ * the user's current SKILL.md body against the incoming upstream (read-only
+ * `MultiFileDiff`), then lets them Take upstream (apply, discarding local edits —
  * recoverable from version history) or Keep mine (cancel). Only opened when the
  * skill is modified AND upstream changed; a clean skill updates without this gate.
  */
@@ -37,7 +38,11 @@ export function SkillUpdateConflictDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-3xl flex-col">
+      {/* Side-by-side diff of two prose bodies: at the dialog base width the
+          columns are narrow enough that a single sentence wraps over four
+          lines and the two sides stop being comparable at a glance. The `sm:`
+          prefix is required to beat DialogContent's own `sm:max-w-sm`. */}
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>
             <Trans>Update "{skillName}" over your edits?</Trans>
@@ -50,8 +55,17 @@ export function SkillUpdateConflictDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="min-h-0 flex-1 overflow-auto">
-          {/* old = your current body, new = incoming upstream. */}
-          <DiffView oldContent={localBody} newContent={upstreamBody} layout="unified" />
+          {/* old = your current body, new = incoming upstream.
+              `diffStyle` is explicit because Pierre's diff renderer defaults to
+              `split`, which would put two narrow columns of wrapped prose side
+              by side. Unified also matches the conflict surface, whose renderer
+              hardcodes unified and cannot be switched. */}
+          <MultiFileDiff
+            className="conflict-view"
+            oldFile={{ name: skillName, contents: localBody }}
+            newFile={{ name: skillName, contents: upstreamBody }}
+            options={{ overflow: 'wrap', diffStyle: 'unified', theme: okPierreTheme() }}
+          />
         </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={applying}>

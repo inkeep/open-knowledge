@@ -39,7 +39,7 @@ describe('tokenize', () => {
     expect(createHighlighterCore).not.toHaveBeenCalled();
     expect(highlighter.codeToTokens).toHaveBeenCalledWith('{}', {
       lang: 'json',
-      themes: { light: 'github-light', dark: 'github-dark' },
+      theme: 'ok-syntax',
     });
   });
 
@@ -47,7 +47,7 @@ describe('tokenize', () => {
     await tokenize('body {}', 'not-loaded');
     expect(highlighter.codeToTokens).toHaveBeenCalledWith('body {}', {
       lang: 'text',
-      themes: { light: 'github-light', dark: 'github-dark' },
+      theme: 'ok-syntax',
     });
   });
 });

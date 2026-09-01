@@ -69,6 +69,7 @@ import {
   selectionSnapshotToCompose,
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import { useConflictComposerPrefill } from '@/hooks/use-conflict-composer-prefill';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
 import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
@@ -102,6 +103,7 @@ import { cn } from '@/lib/utils';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 import { emitOpenAskAiComposer, subscribeToOpenAskAiComposer } from './ask-ai-composer-events';
 import { clearComposerDraft, getComposerDraft, setComposerDraftDoc } from './composer-draft-store';
+import { nextTouchedFiles } from './composer-touched-files';
 import { focusComposerInputOnCardPointer } from './focus-composer-on-card-pointer';
 import { usePageList } from './PageListContext';
 
@@ -113,12 +115,6 @@ const MARKDOWN_RELATIVE_PATH_EXTENSION = /\.(md|mdx)$/i;
 function docNameToComposerRelativePath(docName: string, docExt?: string): string {
   if (MARKDOWN_RELATIVE_PATH_EXTENSION.test(docName)) return docName;
   return docExt ? `${docName}${docExt}` : docNameToRelativePath(docName);
-}
-
-function markdownRelativePathStem(path: string): string | null {
-  return MARKDOWN_RELATIVE_PATH_EXTENSION.test(path)
-    ? path.replace(MARKDOWN_RELATIVE_PATH_EXTENSION, '')
-    : null;
 }
 
 /**
@@ -229,6 +225,15 @@ export function BottomComposer({
   const [isEmpty, setIsEmpty] = useState(true);
   const [pending, setPending] = useState(false);
   const inputRef = useRef<ComposerMentionInputHandle>(null);
+  // Conflicted doc: seed the resolve-conflicts instruction so the agent route is
+  // reachable without retyping it. Guarded against clobbering an in-progress
+  // draft; see the hook. `isSeedIntact` marks
+  // a draft nobody typed, which the touched-file effect below must not read as
+  // composing.
+  const { isSeedIntact, onContentChanged: onPrefillContentChanged } = useConflictComposerPrefill(
+    activeDocOrNull,
+    inputRef,
+  );
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Shared draft doc — the SAME store the create/empty-screen hero composer
@@ -460,19 +465,8 @@ export function BottomComposer({
     // Folder mode has no active doc to "touch" — its single top-row chip is the
     // folder itself, derived below, not the touched-file set.
     if (folderMode || isEmpty) return;
-    setTouchedFiles((prev) => {
-      if (dismissedFiles.has(activeFilePath)) return prev;
-      const activeStem = markdownRelativePathStem(activeFilePath);
-      const next =
-        activeStem === null
-          ? prev
-          : prev.filter(
-              (path) => path === activeFilePath || markdownRelativePathStem(path) !== activeStem,
-            );
-      if (next.includes(activeFilePath)) return next.length === prev.length ? prev : next;
-      return [...next, activeFilePath];
-    });
-  }, [folderMode, isEmpty, activeFilePath, dismissedFiles]);
+    setTouchedFiles((prev) => nextTouchedFiles(prev, activeFilePath, dismissedFiles, isSeedIntact));
+  }, [folderMode, isEmpty, isSeedIntact, activeFilePath, dismissedFiles]);
 
   // The visible top-row context chips.
   //   - Folder mode: the folder is the sole chip — the composer's scope — present
@@ -1094,7 +1088,10 @@ export function BottomComposer({
             ref={inputRef}
             ariaLabel={t`Ask AI`}
             onEmptyChange={setIsEmpty}
-            onContentChange={setComposerDraftDoc}
+            onContentChange={(doc) => {
+              setComposerDraftDoc(doc);
+              onPrefillContentChanged();
+            }}
             onMentionsChange={setInlineMentions}
             onSubmit={submit}
             initialDoc={initialDraftDoc}

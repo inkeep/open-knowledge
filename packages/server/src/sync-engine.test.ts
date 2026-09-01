@@ -6607,6 +6607,85 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     }
   });
 
+  test('REPRO: content-strategy resolve fires the resolved callback', async () => {
+    // The callback is what clears the doc's `lifecycle.status`, which is what
+    // swaps DiffViewBoundary out. If it does not fire on the `content` path,
+    // the conflict view outlives its conflict and hangs.
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+
+    const resolved: string[][] = [];
+    const engine = makePullEngine({
+      onContentConflictsResolved: (files) => {
+        resolved.push([...files]);
+      },
+    });
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      expect(engine.getConflicts()).toHaveLength(1);
+
+      // What "Apply changes" sends: an arbitrary merged body.
+      await engine.resolveConflict('a.md', 'content', 'MERGED\nline2\n');
+
+      expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('MERGED\nline2\n');
+      expect(engine.getConflicts()).toEqual([]);
+      expect(resolved).toEqual([['a.md']]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a merge-native resolve also fires the resolved callback', async () => {
+    // The callback is what clears `lifecycle.status`, and it used to fire only
+    // for working-tree conflicts — merge-native was left to the file-watcher's
+    // reconcile, which clears only for a loaded doc and only once the reconcile
+    // lands. When neither held, the flag stayed set with no conflict behind it
+    // and the conflict view sat on screen with nothing to show.
+    await cloneBehindOrigin({
+      seed: { 'a.md': 'line1\nline2\n' },
+      advance: { 'a.md': 'ORIGIN1\nline2\n' },
+    });
+    // Committed locally — this is what makes it merge-native rather than an
+    // uncommitted overlay.
+    writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
+    const git = simpleGit(projectDir);
+    // Identity per-repo, not inherited: CI runners have no global git identity,
+    // so a bare commit here fails with "Author identity unknown" while passing
+    // on any developer machine. Every other committing test in this file does
+    // the same.
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    await git.add('a.md');
+    await git.commit('local edit');
+
+    const resolved: string[][] = [];
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'auto',
+      onContentConflictsResolved: (files) => {
+        resolved.push([...files]);
+      },
+    });
+    try {
+      await engine.start();
+      await engine.trigger('sync');
+      expect(engine.getConflicts()).toHaveLength(1);
+
+      await engine.resolveConflict('a.md', 'content', 'MERGED\nline2\n');
+
+      expect(engine.getConflicts()).toEqual([]);
+      expect(resolved).toEqual([['a.md']]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
   test('resolving keep-mine leaves the overlay and clears the conflict without committing', async () => {
     await cloneBehindOrigin({
       seed: { 'a.md': 'line1\nline2\n' },

@@ -37,7 +37,7 @@ const DESCRIPTION = [
   '- `content` — writes the provided `content` argument (e.g. a per-hunk merged result, or the live Y.Text bytes the user sees in the DiffView). The provided string must be non-empty — use `delete` to remove the file entirely (an agent constructing a per-hunk merge that happens to land on `""` gets a 400 at the Zod boundary rather than a misleading 500).',
   '- `delete` — runs `git rm <file>` then commits the deletion. Honors deletion intent for delete-modify (DU: "keep deletion") and modify-delete (UD: "accept their deletion") shapes. Inspect the `shape` field on `conflicts({ kind: "content" })` to pick the right strategy for the conflict shape.',
   '',
-  'Returns 200 on success; 500 indicates commit failure (re-call `conflicts({ kind: "list" })` to confirm post-state — the resolve API is best-effort, non-atomic, and the file may have been resolved by another session).',
+  'Returns 200 on success. 422 (`urn:ok:error:unresolved-conflict-markers`) means the `content` you sent still contains a `<<<<<<< … >>>>>>>` block — a permanent rejection of those bytes, so resolve every region before retrying rather than re-sending. 500 indicates commit failure (re-call `conflicts({ kind: "list" })` to confirm post-state — the resolve API is best-effort, non-atomic, and the file may have been resolved by another session).',
   '',
   '**DESTRUCTIVE:** this modifies the working tree and creates a git commit.',
   '',

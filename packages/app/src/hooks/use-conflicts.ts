@@ -83,7 +83,14 @@ export function useConflicts(): {
     const requestId = ++latestRequestId.current;
     void fetchConflicts().then(({ conflicts: list, error: err }) => {
       if (requestId !== latestRequestId.current) return;
-      setConflicts(list);
+      // A failed fetch returns an EMPTY list beside its error, so writing it
+      // through would destroy a known-good list on every transient blip — and
+      // this refreshes on every CC1 sync-status signal, which fires repeatedly
+      // during exactly the merge a user is resolving. Consumers that gate on
+      // "no entry for this doc" would then tear down a live conflict view, and
+      // its unapplied resolutions with it, the moment a poll missed. Keep the
+      // last good list and let `error` say the picture is stale.
+      if (err === undefined) setConflicts(list);
       setError(err ?? null);
       setLoading(false);
     });

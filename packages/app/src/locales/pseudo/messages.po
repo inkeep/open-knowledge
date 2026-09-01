@@ -524,10 +524,6 @@ msgstr ""
 msgid "{chars, plural, one {char} other {chars}}"
 msgstr ""
 
-#: src/components/DiffView.tsx
-msgid "{chunksRemaining, plural, one {# unresolved hunk} other {# unresolved hunks}}"
-msgstr ""
-
 #: src/editor/utils/editor-strings.ts
 msgid "{componentLabel} (empty)"
 msgstr ""
@@ -1327,8 +1323,31 @@ msgstr ""
 msgid "Above"
 msgstr ""
 
-#: src/components/DiffView.tsx
-msgid "Accept"
+#: src/components/ConflictView.tsx
+msgid "Accept both"
+msgstr ""
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept both versions for conflict {0}"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Accept current"
+msgstr ""
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept current version for conflict {0}"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Accept incoming"
+msgstr ""
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept incoming version for conflict {0}"
 msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
@@ -1671,16 +1690,16 @@ msgstr ""
 msgid "All"
 msgstr ""
 
+#: src/components/ConflictView.tsx
+msgid "All conflicts resolved. Apply changes to save."
+msgstr ""
+
 #: src/components/FolderOverview.tsx
 msgid "All files"
 msgstr ""
 
 #: src/components/FileTreeFilteredToZeroNotice.tsx
 msgid "All files are hidden by view filters."
-msgstr ""
-
-#: src/components/DiffView.tsx
-msgid "All hunks resolved"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -1840,6 +1859,10 @@ msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Apply changes"
 msgstr ""
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
@@ -3132,6 +3155,10 @@ msgstr ""
 msgid "Conflict"
 msgstr ""
 
+#: src/components/ConflictView.tsx
+msgid "Conflict diff for {fileName}"
+msgstr ""
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicted files"
 msgstr ""
@@ -3143,6 +3170,10 @@ msgstr ""
 
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Conflicts remaining: {liveRemaining}."
 msgstr ""
 
 #: src/components/AuthModal.tsx
@@ -3634,6 +3665,10 @@ msgstr ""
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Couldn't apply the change: {0}"
+msgstr ""
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Couldn't check whether {filePath} is still conflicted — retrying."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
@@ -5460,10 +5495,6 @@ msgstr ""
 msgid "exit {0}"
 msgstr ""
 
-#: src/components/DiffView.tsx
-msgid "Exit merge"
-msgstr ""
-
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "Expand {keyName}"
@@ -6578,6 +6609,10 @@ msgstr ""
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Hide HTML preview"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Hide original"
 msgstr ""
 
 #: src/lib/native-menu-catalog.ts
@@ -8596,6 +8631,10 @@ msgstr ""
 msgid "No comments yet. Select text in the document to add one."
 msgstr ""
 
+#: src/components/ConflictView.tsx
+msgid "No common ancestor — both branches added this file (add/add conflict)."
+msgstr ""
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr ""
@@ -10184,6 +10223,10 @@ msgstr ""
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
 msgstr ""
 
+#: src/components/ConflictFilePreview.tsx
+msgid "Preview of {filename}"
+msgstr ""
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Preview of the screenshot"
 msgstr ""
@@ -10601,6 +10644,7 @@ msgid "Recycle Bin"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
+#: src/components/ConflictView.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
 msgstr ""
@@ -10637,7 +10681,6 @@ msgid "Reinstalling"
 msgstr ""
 
 #: src/components/acp/PlanChecklist.tsx
-#: src/components/DiffView.tsx
 msgid "Reject"
 msgstr ""
 
@@ -10885,6 +10928,10 @@ msgstr ""
 
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
+msgstr ""
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Reopen {filePath} to keep editing."
 msgstr ""
 
 #: src/components/acp/ThreadHistoryMenu.tsx
@@ -11362,10 +11409,6 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Save queued message"
-msgstr ""
-
-#: src/components/DiffView.tsx
-msgid "Save resolution"
 msgstr ""
 
 #: src/comments/ThreadCard.tsx
@@ -12126,6 +12169,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Terminal"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Show original"
 msgstr ""
 
 #: src/components/AgentDiffPane.tsx
@@ -13133,6 +13180,10 @@ msgstr ""
 msgid "That branch is already open in another worktree."
 msgstr ""
 
+#: src/components/ConflictView.tsx
+msgid "That conflict is no longer available."
+msgstr ""
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "That did not go through. Check the server logs and try again."
 msgstr ""
@@ -13603,6 +13654,10 @@ msgstr ""
 msgid "This comment is on the whole property"
 msgstr ""
 
+#: src/components/DiffViewBoundary.tsx
+msgid "This conflict is resolved."
+msgstr ""
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr ""
@@ -13643,6 +13698,10 @@ msgstr ""
 msgid "This file can't be opened in the text editor."
 msgstr ""
 
+#: src/components/ConflictView.tsx
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
+msgstr ""
+
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
 msgstr ""
@@ -13653,6 +13712,14 @@ msgstr ""
 
 #: src/components/use-viewer-text.ts
 msgid "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the current branch (delete-modify conflict)."
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the incoming branch (modify-delete conflict)."
 msgstr ""
 
 #: src/lib/share/receive-flow.ts
@@ -14235,7 +14302,7 @@ msgstr ""
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
-#: src/components/DiffView.tsx
+#: src/components/ConflictView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -14263,6 +14330,10 @@ msgstr ""
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Undo to this edit?"
+msgstr ""
+
+#: src/components/ConflictView.tsx
+msgid "Undo your resolutions to change this."
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

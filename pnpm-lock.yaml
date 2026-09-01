@@ -6,36 +6,14 @@ settings:
 
 overrides:
   '@babel/core@7': ~7.29.6
-  '@hono/node-server@1': ~1.19.15
-  '@opentelemetry/core@2': ~2.8.0
-  brace-expansion@1: ~1.1.18
-  brace-expansion@2: ~2.1.4
-  builder-util-runtime@9: ~9.7.0
-  dompurify@3: ~3.4.13
-  esbuild@0.27: ~0.28.1
-  fast-uri@3: ~3.1.5
-  fast-xml-parser@5: ~5.10.1
-  hono@4: ~4.12.34
-  ip-address@10: ~10.3.1
-  js-yaml@3: ~3.15.1
-  js-yaml@4: ~4.3.1
-  lodash-es@4: ~4.18.0
-  mermaid@11: ~11.16.1
-  nanoid@3: ~3.3.18
-  nanoid@4: ~5.1.16
-  nanoid@5: ~5.1.16
-  next@16: ~16.2.11
-  postcss@8: ~8.5.23
-  sharp@0.34: ~0.35.0
-  tar@7: ~7.5.21
-  undici@6: ~6.28.0
-  undici@7: ~7.29.0
   '@codemirror/state': 6.6.0
   '@codemirror/view': 6.43.3
   '@floating-ui/core': 1.7.5
   '@floating-ui/dom': 1.7.6
   '@floating-ui/react-dom': 2.1.8
   '@floating-ui/utils': 0.2.11
+  '@hono/node-server@1': ~1.19.15
+  '@opentelemetry/core@2': ~2.8.0
   '@radix-ui/number': 1.1.1
   '@radix-ui/primitive': 1.1.4
   '@radix-ui/react-accessible-icon': 1.1.7
@@ -135,13 +113,35 @@ overrides:
   '@tiptap/starter-kit': 3.22.3
   '@tiptap/suggestion': 3.22.3
   '@types/node': ^24.7.0
+  brace-expansion@1: ~1.1.18
+  brace-expansion@2: ~2.1.4
+  builder-util-runtime@9: ~9.7.0
+  dompurify@3: ~3.4.13
+  esbuild@0.27: ~0.28.1
+  fast-uri@3: ~3.1.5
+  fast-xml-parser@5: ~5.10.1
+  hono@4: ~4.12.34
+  ip-address@10: ~10.3.1
+  js-yaml@3: ~3.15.1
+  js-yaml@4: ~4.3.1
+  lodash-es@4: ~4.18.0
   mdast-util-mdx-jsx: 3.2.0
+  mermaid@11: ~11.16.1
+  nanoid@3: ~3.3.18
+  nanoid@4: ~5.1.16
+  nanoid@5: ~5.1.16
+  next@16: ~16.2.11
+  postcss@8: ~8.5.23
   prosemirror-model: 1.25.4
   prosemirror-view: 1.41.8
   radix-ui: 1.4.3
   react: 19.2.5
   react-dom: 19.2.5
   react-lite-youtube-embed: 3.5.1
+  sharp@0.34: ~0.35.0
+  tar@7: ~7.5.21
+  undici@6: ~6.28.0
+  undici@7: ~7.29.0
 
 patchedDependencies:
   '@handlewithcare/remark-prosemirror@0.1.5':
@@ -150,6 +150,9 @@ patchedDependencies:
   '@lingui/core@6.5.0':
     hash: 126db40cb2224e90abf5f063d3aa005eb1bc84796d77216d5a9e52d5cd28a656
     path: patches/@lingui%2Fcore@6.5.0.patch
+  '@pierre/diffs@1.3.6':
+    hash: c823ecf3ff76ff3c3e71f441f2a7286aa2aae8e91b4d5e5a10554d8441d6c739
+    path: patches/@pierre%2Fdiffs@1.3.6.patch
   '@pierre/trees@1.0.0-beta.4':
     hash: 86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88
     path: patches/@pierre%2Ftrees@1.0.0-beta.4.patch
@@ -378,9 +381,6 @@ importers:
       '@codemirror/lint':
         specifier: ^6.9.7
         version: 6.9.7
-      '@codemirror/merge':
-        specifier: ^6.12.1
-        version: 6.12.2
       '@codemirror/search':
         specifier: ^6.6.0
         version: 6.7.1
@@ -468,6 +468,9 @@ importers:
       '@panzoom/panzoom':
         specifier: ^4.6.2
         version: 4.6.2
+      '@pierre/diffs':
+        specifier: 1.3.6
+        version: 1.3.6(patch_hash=c823ecf3ff76ff3c3e71f441f2a7286aa2aae8e91b4d5e5a10554d8441d6c739)(@shikijs/themes@3.23.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@pierre/trees':
         specifier: 1.0.0-beta.4
         version: 1.0.0-beta.4(patch_hash=86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -475,9 +478,6 @@ importers:
         specifier: ^0.2.1
         version: 0.2.1(@types/react@19.2.17)(react@19.2.5)
       '@shikijs/langs':
-        specifier: ^3.23.0
-        version: 3.23.0
-      '@shikijs/themes':
         specifier: ^3.23.0
         version: 3.23.0
       '@tanstack/react-query':
@@ -730,6 +730,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.0.1
         version: 6.0.1(@rolldown/plugin-babel@0.2.2(@babel/core@7.29.7)(@babel/runtime@7.29.7)(rolldown@1.1.5)(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0)))(babel-plugin-react-compiler@0.0.0-experimental-a8e64ef-20260402)(vite@8.0.8(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.0)(yaml@2.9.0))
+      axe-core:
+        specifier: ~4.12.1
+        version: 4.12.1
       babel-plugin-react-compiler:
         specifier: 0.0.0-experimental-a8e64ef-20260402
         version: 0.0.0-experimental-a8e64ef-20260402
@@ -1776,9 +1779,6 @@ packages:
 
   '@codemirror/lint@6.9.7':
     resolution: {integrity: sha512-28/+iWLYxKxsvGYhSYL7zaCZqLz5+FFFDq9tVsvGv9kv8RY4fFAchJ5WX9M3YrrRlTIsECjsXPqeNgnSmNP2dg==}
-
-  '@codemirror/merge@6.12.2':
-    resolution: {integrity: sha512-V8JvyAPjHbPupqP7BeMcsdsYCbyPij74jxIbaIJDORI+VZzW44zFmon8bF+oxGWvOKhcRmkiUMXd8MxHr3YA2w==}
 
   '@codemirror/search@6.7.1':
     resolution: {integrity: sha512-uMe5UO6PamJtSHrXhhHOzSX3ReWtiJrva6GnPMwSOrZtiExb5X5eExhr2OUZQVvdxPsKpY3Ro2mFbQadpPWmHA==}
@@ -4180,6 +4180,36 @@ packages:
   '@peculiar/webcrypto@1.7.1':
     resolution: {integrity: sha512-ODOov0sGMJMf3jPonOkgGqPknTsu+DdQ7kD++gz8aI+aFMOMHFbWAA2taqXXVTdP+OTOQR/znGvSpmkeI0WTYQ==}
     engines: {node: '>=14.18.0'}
+
+  '@pierre/diffs@1.3.6':
+    resolution: {integrity: sha512-a3woaW2QHy78JDxPJK0OJzwZUN4xoQLLIS/pceO8X6+L8gA5D682mP7/w3YxxEVRPXOaoe/p/RJ5Oj/3nrEzew==}
+    peerDependencies:
+      react: 19.2.5
+      react-dom: 19.2.5
+
+  '@pierre/theme@2.0.0':
+    resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
+    engines: {vscode: ^1.0.0}
+
+  '@pierre/theming@1.0.1':
+    resolution: {integrity: sha512-WCI5Qd7iprDpISL9fBYOLe8RV53+b7mFNA3bPzl60/2CKCSrsKN8zEcep6Y3BAzvARlmca50zGjDodqPGiTUKA==}
+    peerDependencies:
+      '@pierre/theme': ^1.1.0 || ^2.0.0
+      '@shikijs/themes': ^3.0.0 || ^4.0.0
+      react: 19.2.5
+      react-dom: 19.2.5
+      shiki: ^3.0.0 || ^4.0.0
+    peerDependenciesMeta:
+      '@pierre/theme':
+        optional: true
+      '@shikijs/themes':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
+      shiki:
+        optional: true
 
   '@pierre/trees@1.0.0-beta.4':
     resolution: {integrity: sha512-OfT1yk9ne8Te5+GB5zUY8yqE6B8BqjBHQJleH4lu8ltwNpoocZl4vXt1AzlEExpxI/pp+AFX5QG+lR3JjtTEag==}
@@ -7265,6 +7295,10 @@ packages:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
   dir-compare@4.2.0:
     resolution: {integrity: sha512-2xMCmOoMrdQIPHdsTawECdNPwlVFB9zGcz3kuhmBO6U3oU+UQjsue0i8ayLKpgBcm+hcXPMVSGUN9d+pvJ6+VQ==}
 
@@ -8859,6 +8893,9 @@ packages:
   lru-cache@7.18.3:
     resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
     engines: {node: '>=12'}
+
+  lru_map@0.4.1:
+    resolution: {integrity: sha512-I+lBvqMMFfqaV8CJCISjI3wbjmwVu/VyOoU7+qtu9d7ioW5klMgsTTiUOUp+DJvfTTzKXoPbyC6YfgkNcyPSOg==}
 
   lucide-react@0.503.0:
     resolution: {integrity: sha512-HGGkdlPWQ0vTF8jJ5TdIqhQXZi6uh3LnNgfZ8MHiuxFfX3RZeA79r2MW2tHAZKlAVfoNE8esm3p+O6VkIvpj6w==}
@@ -12202,14 +12239,6 @@ snapshots:
       '@codemirror/view': 6.43.3
       crelt: 1.0.7
 
-  '@codemirror/merge@6.12.2':
-    dependencies:
-      '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
-      '@codemirror/view': 6.43.3
-      '@lezer/highlight': 1.2.3
-      style-mod: 4.1.3
-
   '@codemirror/search@6.7.1':
     dependencies:
       '@codemirror/state': 6.6.0
@@ -14521,6 +14550,30 @@ snapshots:
       '@peculiar/utils': 2.0.3
       tslib: 2.8.1
       webcrypto-core: 1.9.2
+
+  '@pierre/diffs@1.3.6(patch_hash=c823ecf3ff76ff3c3e71f441f2a7286aa2aae8e91b4d5e5a10554d8441d6c739)(@shikijs/themes@3.23.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+    dependencies:
+      '@pierre/theme': 2.0.0
+      '@pierre/theming': 1.0.1(@pierre/theme@2.0.0)(@shikijs/themes@3.23.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(shiki@3.23.0)
+      '@shikijs/transformers': 3.23.0
+      diff: 9.0.0
+      hast-util-to-html: 9.0.5
+      lru_map: 0.4.1
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+      shiki: 3.23.0
+    transitivePeerDependencies:
+      - '@shikijs/themes'
+
+  '@pierre/theme@2.0.0': {}
+
+  '@pierre/theming@1.0.1(@pierre/theme@2.0.0)(@shikijs/themes@3.23.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(shiki@3.23.0)':
+    optionalDependencies:
+      '@pierre/theme': 2.0.0
+      '@shikijs/themes': 3.23.0
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+      shiki: 3.23.0
 
   '@pierre/trees@1.0.0-beta.4(patch_hash=86ac804ac75d9f365ee9ef918460463a211ac5201ebc3cf04fc0534c5b3adf88)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
@@ -17569,6 +17622,8 @@ snapshots:
 
   diff@8.0.4: {}
 
+  diff@9.0.0: {}
+
   dir-compare@4.2.0:
     dependencies:
       minimatch: 3.1.5
@@ -19511,6 +19566,8 @@ snapshots:
       yallist: 4.0.0
 
   lru-cache@7.18.3: {}
+
+  lru_map@0.4.1: {}
 
   lucide-react@0.503.0(react@19.2.5):
     dependencies:

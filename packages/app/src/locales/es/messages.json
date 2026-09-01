@@ -260,6 +260,7 @@
     "2XQ8Ww": ["Abrir la vista previa cuando el agente edite"],
     "2YOwme": ["Reiniciado: ahora se ejecuta la v", ["appRuntime"], "."],
     "2YZwPB": ["La respuesta de enlaces salientes no tenía la forma esperada."],
+    "2Yt22K": ["Ocultar original"],
     "2hYmUH": ["yo@correo.com"],
     "2hpdRq": ["Ocultar el panel (", ["panelShortcutLabel"], ")"],
     "2j1kfc": ["Escribe una URL válida (por ejemplo https://api.openai.com/v1)."],
@@ -423,6 +424,7 @@
     "4Vgtaz": [
       "No se pudo acceder a la pizarra. Puede que no exista o que el servidor esté sin conexión."
     ],
+    "4_-TKi": ["Aceptar ambas versiones para el conflicto ", ["0"]],
     "4buZWd": ["Heredado de ", ["path"]],
     "4c_a6S": ["Todavía no hay nada definido."],
     "4d0VYJ": ["Crearemos un ID de tema seguro a partir de este nombre."],
@@ -459,6 +461,7 @@
     "4v2Yyz": [
       "Selecciona todas las filas visibles del árbol de archivos cuando el foco está en la barra lateral Archivos."
     ],
+    "4vn1gP": ["Todos los conflictos resueltos. Aplica los cambios para guardar."],
     "4xtLTl": ["Carpeta “", ["basename"], "” oculta"],
     "4zGlN_": ["Pega la URL de la imagen o haz clic en subir"],
     "4z_1j2": ["Renderizado"],
@@ -766,17 +769,6 @@
     ],
     "8AjnFz": ["\"", ["0"], "\" ya se había importado (contenido idéntico)."],
     "8F1i42": ["No se encontró la página"],
-    "8FqTCr": [
-      [
-        "chunksRemaining",
-        "plural",
-        {
-          "one": ["#", " fragmento sin resolver"],
-          "many": ["#", " fragmentos sin resolver"],
-          "other": ["#", " fragmentos sin resolver"]
-        }
-      ]
-    ],
     "8Gzz2G": ["worktree de ", ["worktreeOf"]],
     "8HvJlU": [
       "En ",
@@ -1020,6 +1012,7 @@
       ["0"],
       ": es de solo lectura; ábrelo para editar una copia"
     ],
+    "Al8HPP": ["Aceptar la versión actual para el conflicto ", ["0"]],
     "Am78jY": ["Arrastra ", ["keyName"], " para reordenar"],
     "ApeA0n": ["Se deshicieron ", ["dropCount"], " ediciones en ", ["docName"]],
     "Aq-O0x": ["estado"],
@@ -1887,6 +1880,7 @@
       ["componentName"],
       "> no es un componente conocido. Copia el código para usarlo en otro sitio o elimina el bloque."
     ],
+    "KhNkCq": ["Aceptar ambos"],
     "Khxcyu": ["El acceso a la terminal no está activado en este proyecto."],
     "KjTmeO": ["Actualiza OpenKnowledge para abrir este elemento compartido."],
     "KkEAud": ["Crea un archivo a partir del documento o la carpeta actuales."],
@@ -1974,7 +1968,6 @@
     "LaskKp": ["Enviar al chat (", ["0"], ")"],
     "Lbl6KA": ["No se pudo instalar desde ", ["0"], ": ", ["1"]],
     "LbmLyU": ["No se puede editar con seguridad la configuración de esta herramienta"],
-    "Lcehxn": ["Guardar la resolución"],
     "LdABLa": ["No se pudo abrir ", ["target"], ". Prueba a abrirlo manualmente."],
     "LdKIHS": ["Redactar una especificación"],
     "LeGeTf": ["OpenKnowledge en GitHub"],
@@ -1987,6 +1980,7 @@
     ],
     "LhWYpm": ["Hay otras rutas OK seguidas en el remoto:"],
     "Li4U-T": ["Más información sobre ", ["title"]],
+    "LkQRL8": ["Mostrar original"],
     "LlHqdU": ["Inicializando el proyecto"],
     "LlJ8LD": [
       "El uso compartido de la configuración no cambió: ",
@@ -2170,6 +2164,7 @@
     "Ni4b7h": [
       "Los complementos de proyecto son el estándar de autoría de tu proyecto: actívalos o desactívalos aquí. Cada complemento activado tiene su propia página bajo Complementos en la barra lateral de ajustes."
     ],
+    "NjnHNV": ["Aceptar la versión entrante para el conflicto ", ["0"]],
     "NjrIak": ["Archivo: <0>", ["fixedName"], ".md</0>"],
     "NkNfSr": ["Editar ", ["tag"]],
     "NkXEFS": ["Falló la restauración: el documento no cambió"],
@@ -2179,6 +2174,7 @@
     "NnQapF": ["Abrir con la IA ", ["targetDisplayName"]],
     "NoY1k4": ["La estructura de la respuesta del servidor no es válida"],
     "NpC29w": ["Crea un elemento de lista nuevo a partir del elemento actual."],
+    "NpRLRj": ["Deshaz tus resoluciones para cambiar esto."],
     "NrFwux": ["No se pudieron guardar las reglas de contenido — ", ["0"]],
     "Ns0z5o": [
       "Cuando instalas una habilidad publicada, se avisa al directorio de habilidades (skills.sh) para que su recuento de instalaciones sea exacto. Se envía el nombre de la habilidad, su repositorio de origen y a qué herramientas de IA fue; nunca el contenido de los archivos, y nunca en el caso de una habilidad de un origen privado, local o escrito a mano. Una vez por habilidad y equipo."
@@ -2237,6 +2233,7 @@
     "OLBz-_": ["No se pudo renderizar el diagrama de Mermaid."],
     "OLIKgw": ["Arrastra el elemento ", ["0"], " para reordenar"],
     "ONPvOb": ["Cargando la actividad del agente"],
+    "ONUgxB": ["Ese conflicto ya no está disponible."],
     "ONWvwQ": ["Subir"],
     "ONchxy": ["total"],
     "ONgEZF": ["Cargando los encabezados de ", ["pageTarget"]],
@@ -2322,6 +2319,7 @@
     "PVSwOe": ["Redirigiendo: esperando a que se detenga la ejecución actual…"],
     "PVUn_c": ["Abrir carpeta"],
     "PVggyD": ["Esquemas de frontmatter"],
+    "PWh9Ii": ["Aplicar cambios"],
     "PWqtgd": ["Cargando el chat"],
     "PXaT32": ["El servidor devolvió una respuesta de destinos de habilidades incompleta."],
     "PYmp-0": ["Importar como plantilla"],
@@ -2415,6 +2413,7 @@
     "QQghPu": ["Instalar en Claude Desktop"],
     "QR5SP1": ["plantilla creada"],
     "QRSdsO": ["Indexing request timeout (seconds)"],
+    "QVk3SK": ["Este archivo se eliminó en la rama entrante (conflicto modify-delete)."],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Puedes cambiarlo más adelante en <0>Ajustes → Sincronización</0>."],
     "QYfQdv": ["CLI de ", ["displayName"]],
@@ -2847,6 +2846,7 @@
     ],
     "VIwCaD": ["Entrada"],
     "VJaBca": ["Elige una carpeta de habilidad"],
+    "VL6VsE": ["Aceptar actual"],
     "VM7H66": ["Este archivo es binario y no se puede mostrar como texto."],
     "VMlRqi": ["Ocultar detalles"],
     "VNNRfN": ["convertir en origen"],
@@ -3116,7 +3116,7 @@
       "No se pudo reiniciar el servidor: otro proceso lo tiene. Cierra las demás ventanas de OpenKnowledge de este proyecto e inténtalo de nuevo."
     ],
     "Xv_ijG": ["https://github.com/propietario/repo o propietario/repo"],
-    "XyOUTJ": ["Salir de la fusión"],
+    "XzL7x7": ["Vuelve a abrir ", ["filePath"], " para seguir editando."],
     "Xzy0s0": ["Quitar ", ["fullLabel"], " del contexto"],
     "Y-Urt2": ["Ecuación matemática en bloque renderizada con KaTeX a partir de código LaTeX."],
     "Y1QMlM": ["Ponte en marcha"],
@@ -3167,6 +3167,7 @@
     "YSFv5w": ["No hay repositorio de git: compartir configuración no aplica aquí."],
     "YTLmTM": ["Eliminar la carpeta <0>.git</0> superior"],
     "YW7Q86": ["Los ajustes de búsqueda aún no se han cargado; inténtalo de nuevo en un momento"],
+    "YWK2zy": ["Diferencias del conflicto en ", ["fileName"]],
     "Y_GpJd": ["Se agotó el tiempo de la solicitud de descarga de ", ["0"], "."],
     "Y_ZQ6l": ["Instalando ", ["agentName"], "…"],
     "Y_iImT": ["No se puede resolver el archivo ", ["identity"], ". Ir a la referencia."],
@@ -3351,6 +3352,7 @@
       "Elegiste tu carpeta personal. OpenKnowledge indexará todo tu árbol personal: es grande y puede sacar a la luz archivos personales."
     ],
     "_SDGzH": ["Continuar en el navegador"],
+    "_SkqfM": ["Aceptar entrante"],
     "_TDESN": [
       "Error de red - ",
       ["kind"],
@@ -3921,7 +3923,6 @@
         }
       ]
     ],
-    "g3UF2V": ["Aceptar"],
     "g4WlQK": [
       "La gestión de herramientas de IA del proyecto solo está disponible en la aplicación de escritorio de OpenKnowledge."
     ],
@@ -3942,6 +3943,7 @@
     "gAhHu7": [
       "El arreglo automático solo se aplica a los problemas con un arreglo mecánico conocido."
     ],
+    "gBCeDq": ["Sin ancestro común: ambas ramas añadieron este archivo (conflicto add/add)."],
     "gBbxn_": ["Comprobando el estado de la sesión"],
     "gDkNHk": ["¿Seguro que quieres eliminar «", ["name"], "»?"],
     "gGVP4q": ["Haz clic en <0>+</0> <1/> <2>Crear habilidad</2> <3/> <4>Subir habilidad</4>."],
@@ -4034,6 +4036,7 @@
       "Deja constancia escrita de cómo se construye tu producto. Un sitio para proponer ideas, registrar decisiones, escribir especificaciones y anotar lo aprendido cuando algo falla."
     ],
     "hCattk": ["OpenKnowledge importó ", ["source"]],
+    "hCghAK": ["Este conflicto está resuelto."],
     "hDEaQu": ["Conecta OpenKnowledge con las demás herramientas que usas."],
     "hDKtoF": ["hace ", ["diffHrs"], " h"],
     "hDoLrm": ["Quitar ", ["projectName"], " de los proyectos recientes"],
@@ -4262,6 +4265,7 @@
       "Incrusta una página externa en un iframe en línea (documentación, demos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Activar Automático (solo Pull)"],
+    "jTdrn1": ["No se pudo comprobar si ", ["filePath"], " sigue en conflicto: reintentando."],
     "jWzDfC": ["Comprobando qué herramientas de IA tienes"],
     "jZ_E5M": ["Falló el fetch: consulta los registros del servidor para ver los detalles."],
     "j_Z6g7": ["Valor compartido por defecto"],
@@ -4461,7 +4465,6 @@
       "Una ruta dentro de la habilidad; cualquier carpeta sirve (p. ej. references/notes.md). Las carpetas de la ruta se crean automáticamente."
     ],
     "lPkjpD": ["Enviado ", ["pushed"]],
-    "lPzyrU": ["Todos los fragmentos resueltos"],
     "lS83Sg": ["No se pudo acceder al portapapeles."],
     "lScd1O": [
       "Las presentaciones de Slidev solo se abren en la aplicación de escritorio de OpenKnowledge."
@@ -4557,6 +4560,7 @@
       "Organiza mis especificaciones existentes en un índice enlazado y agrupado por área, y señala las que se hayan desincronizado del código actual."
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
+    "mR3uQg": ["Este archivo se eliminó en la rama actual (conflicto delete-modify)."],
     "mToVM9": ["Escribir a ", ["agentName"]],
     "mU3j1b": ["Quitar el elemento ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflicto)"],
@@ -4845,6 +4849,9 @@
       " porque contiene una carpeta .git"
     ],
     "pZAs1T": ["No se pudieron cargar los enlaces salientes"],
+    "pZaMLc": [
+      "Este archivo contiene líneas que parecen marcadores de conflicto, por lo que los límites del conflicto no se pueden leer de forma fiable. Resuélvelo a mano o con Preguntar a la IA."
+    ],
     "paCw0z": ["todo lo que hay en las carpetas ", ["0"], "/ dentro de ", ["1"], "/"],
     "pajIrl": ["No se pudo desactivar la terminal: ", ["0"]],
     "pbwTg6": ["hace ", ["seconds"], " s"],
@@ -5490,6 +5497,7 @@
     "wU8WyK": ["Campos del elemento"],
     "wVa83H": ["No se pudo crear el informe"],
     "wWtVYd": ["Introduce un puerto entre 1 y 65535."],
+    "wXFalZ": ["Vista previa de ", ["filename"]],
     "wXO4Tg": ["hace ", ["hrs"], " h"],
     "wXw19Y": [
       "Se quitó \"",
@@ -5611,6 +5619,7 @@
     "y46m5r": ["La aplicación de escritorio no responde. Actualiza e inténtalo de nuevo."],
     "y5FUYi": ["Menú de sugerencias abierto"],
     "y5UgU8": ["Desactivar ", ["0"]],
+    "y6HGwM": ["Conflictos restantes: ", ["liveRemaining"], "."],
     "y8B54M": ["No se pudo enviar tu prompt; inténtalo de nuevo."],
     "yCX4jp": [" No se pudo restaurar tu selección."],
     "yChG5C": ["Enter a positive whole number."],

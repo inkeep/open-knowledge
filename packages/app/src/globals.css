@@ -11,8 +11,8 @@
 /* --- Activity Panel unified-diff styling (react-diff-view) ---
    The library renders diff hunks with `.diff-code-insert`, `.diff-code-delete`,
    `.diff-gutter-insert`, `.diff-gutter-delete` class roots. Scoping under
-   `.activity-panel-diff` keeps the tokens from leaking into the main DiffView
-   (which uses @codemirror/merge, a different DOM entirely). */
+   `.activity-panel-diff` keeps the tokens from leaking into the main conflict
+   surface (a different DOM entirely). */
 .activity-panel-diff .diff {
   width: 100%;
   table-layout: fixed;
@@ -1126,15 +1126,25 @@
   padding-bottom: var(--ask-composer-height, 0px);
 }
 
-/* Conflict-mode DiffView scroller: same composer inset so the last hunks (and
+/* Conflict surface scroller: same composer inset so the last hunks (and
    their inline Accept/Reject controls) can scroll clear of the floating
-   composer. The content-side padding rule lives next to the
-   `.source-editor .cm-content` restore rule AFTER the `.cm-editor .cm-content`
-   padding reset (equal specificity — source order decides; see the comment
-   there). The conflict footer itself needs no inset — the composer anchors
+   composer. The conflict footer itself needs no inset — the composer anchors
    above it via `--conflict-footer-height` (see use-conflict-footer-height.ts). */
-.diff-view {
+.conflict-view {
   scroll-padding-bottom: var(--ask-composer-height, 0px);
+}
+
+/* `scroll-padding-bottom` above only moves the scroll ANCHOR; it adds no
+   scrollable space, so the last rows still sit under the floating composer with
+   no way to reach them. The room has to come from padding the CONTENT, which is
+   what the editor does via `.cm-content` / `.ProseMirror`. Pierre's equivalent
+   is the `<diffs-container>` host it renders into — the CodeMirror rule this
+   replaces (`.diff-view .cm-content`) went away with the merge view and had no
+   successor until now. The var is 0 when the composer is collapsed or hidden,
+   so the space is reclaimed on its own. */
+.conflict-view diffs-container {
+  display: block;
+  padding-bottom: var(--ask-composer-height, 0px);
 }
 
 /* Ease the inset + composer entrance so collapsing/expanding glides instead of a
@@ -1144,8 +1154,7 @@
    the conflict footer's height when conflict mode mounts/unmounts. Reduced-motion
    users get the instant change. */
 @media (prefers-reduced-motion: no-preference) {
-  .editor-doc-scroll :is(.ProseMirror, .cm-content),
-  .diff-view .cm-content {
+  .editor-doc-scroll :is(.ProseMirror, .cm-content) {
     transition: padding-bottom 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
   [data-testid="bottom-composer"] {
@@ -2619,15 +2628,14 @@ body[data-editor-tab-dragging] * {
   padding: 0;
 }
 
-/* Restore the floating Ask AI composer's bottom inset for full-page source mode
-   and the conflict-mode diff view. The `padding: 0` reset above ties on
-   specificity with the shared `.editor-doc-scroll :is(.ProseMirror, .cm-content)`
-   inset rule and, being later, zeroes it — so those surfaces' last lines would
-   sit under the composer while WYSIWYG clears. Scoped to `.source-editor` /
-   `.diff-view` (not `.cm-editor`) so nested code-block CM inside the WYSIWYG
-   body is never padded; declared after the reset so it wins the tie. */
-.source-editor .cm-content,
-.diff-view .cm-content {
+/* Restore the floating Ask AI composer's bottom inset for full-page source mode.
+   The `padding: 0` reset above ties on specificity with the shared
+   `.editor-doc-scroll :is(.ProseMirror, .cm-content)` inset rule and, being
+   later, zeroes it — so those surfaces' last lines would sit under the composer
+   while WYSIWYG clears. Scoped to `.source-editor` (not `.cm-editor`) so nested
+   code-block CM inside the WYSIWYG body is never padded; declared after the
+   reset so it wins the tie. */
+.source-editor .cm-content {
   padding-bottom: var(--ask-composer-height, 0px);
 }
 
@@ -3205,6 +3213,7 @@ button:active:not(:disabled) {
   --lint-error-color: oklch(55% 0.15 25);
   --diff-added: var(--color-green-800, #22863a);
   --diff-removed: var(--color-red-700, #b31d28);
+  --diff-modified: var(--color-blue-700, #005cc5);
 
   /*
     Terminal ANSI slots. The docked terminal reads these live, so a base16
@@ -3299,6 +3308,7 @@ button:active:not(:disabled) {
   --lint-error-color: oklch(72% 0.18 25);
   --diff-added: var(--color-green-300, #7ee787);
   --diff-removed: var(--color-red-300, #ffa198);
+  --diff-modified: var(--color-blue-300, #79c0ff);
 
   --ansi-black: #000000;
   --ansi-red: #cd3131;
@@ -6298,6 +6308,68 @@ html.electron-mode [data-slot="sidebar-inner"] {
 }
 [data-comment-reveal]::-moz-selection {
   background-color: var(--comment-reveal-fill);
+}
+
+/* Pierre conflict view CHROME — maps Pierre's --diffs-* custom properties to
+   the app's existing design tokens. These properties inherit through the open
+   shadow root of <diffs-container>, so no unsafeCSS injection is needed for
+   colour theming. The underlying --diff-added / --diff-removed tokens already
+   respond to .dark, so this single rule block covers both themes.
+
+   Chrome only — the SYNTAX colours inside a hunk come from the Shiki theme
+   (lib/ok-syntax-theme.ts), not from anything here. Four of the properties
+   below (--diffs-fg, --diffs-bg, --diffs-addition-color,
+   --diffs-deletion-color) are also written by Pierre at :host from that
+   theme's colors, and :host wins over this rule — the two are kept resolving
+   to the same tokens deliberately, so neither can silently take over. */
+.conflict-view {
+  --diffs-bg: var(--background);
+  --diffs-fg: var(--foreground);
+  --diffs-bg-context: var(--background);
+  --diffs-bg-context-gutter: var(--muted);
+  --diffs-fg-number: var(--muted-foreground);
+  --diffs-bg-addition: color-mix(in oklab, var(--diff-added) 15%, transparent);
+  --diffs-addition-color: var(--diff-added);
+  --diffs-bg-deletion: color-mix(in oklab, var(--diff-removed) 15%, transparent);
+  --diffs-deletion-color: var(--diff-removed);
+  /* Fills the incoming half of a merge conflict, against --diffs-addition-color
+     on the current half. Pierre routes the incoming side through its
+     "modified" channel, so this is a conflict-region fill, not a small status
+     indicator — it is why the value belongs here beside the other chrome
+     rather than inside the Shiki theme. */
+  --diffs-modified-color: var(--diff-modified);
+
+  /* Conflict-region wash strength — the one knob. Pierre mixes the colours
+     below into the surface itself (88% background for body rows, 78% for the
+     marker rows), so this pre-lightening compounds with that: the accents are
+     dark ramp steps chosen for TEXT, and at full strength they read as heavy
+     blocks rather than a tint behind readable prose. Raise toward 100% for a
+     stronger wash, lower for a fainter one.
+
+     Applied through Pierre's own `--conflict-bg-*-override` hooks, which
+     substitute the colour before its mix. The mix ratios themselves are set on
+     elements inside the shadow root and cannot be reached from out here. */
+  --ok-conflict-tint: 60%;
+  --ok-conflict-current: color-mix(
+    in oklab,
+    var(--diff-added) var(--ok-conflict-tint),
+    var(--background)
+  );
+  --ok-conflict-incoming: color-mix(
+    in oklab,
+    var(--diff-modified) var(--ok-conflict-tint),
+    var(--background)
+  );
+  --conflict-bg-current-override: var(--ok-conflict-current);
+  --conflict-bg-current-header-override: var(--ok-conflict-current);
+  --conflict-bg-current-number-override: var(--ok-conflict-current);
+  --conflict-bg-incoming-override: var(--ok-conflict-incoming);
+  --conflict-bg-incoming-header-override: var(--ok-conflict-incoming);
+  --conflict-bg-incoming-number-override: var(--ok-conflict-incoming);
+
+  --diffs-fg-conflict-marker: var(--muted-foreground);
+  --diffs-marker-bg: var(--muted);
+  --diffs-bg-separator: var(--muted);
 }
 
 /* Pointer marker drawn into the frame a bug-report screenshot is taken on.

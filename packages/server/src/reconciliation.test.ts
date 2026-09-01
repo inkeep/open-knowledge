@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   containsConflictMarkers,
+  containsUnresolvedConflictBlock,
   MAX_LCS_CELLS,
   reconcile,
   splitMarkdownBlocks,
@@ -249,5 +250,43 @@ describe('reconcile', () => {
       expect(out).toContain('Added by us.');
       expect(out).toContain('Added by them.');
     }
+  });
+});
+
+// ─── containsUnresolvedConflictBlock ─────────────────────────────────────────
+
+describe('containsUnresolvedConflictBlock', () => {
+  test('a complete unresolved block is detected', () => {
+    expect(
+      containsUnresolvedConflictBlock('<<<<<<< ours\nmine\n=======\ntheirs\n>>>>>>> theirs\n'),
+    ).toBe(true);
+  });
+
+  test('a half-resolved file with one block left is detected', () => {
+    expect(
+      containsUnresolvedConflictBlock(
+        'resolved prose\n\n<<<<<<< ours\nmine\n=======\ntheirs\n>>>>>>> theirs\n\ntail\n',
+      ),
+    ).toBe(true);
+  });
+
+  test('a setext H1 underline is not a conflict', () => {
+    expect(containsUnresolvedConflictBlock('Release Notes\n=======\n\nWe shipped it.\n')).toBe(
+      false,
+    );
+  });
+
+  test('an end marker with no start is not a conflict', () => {
+    expect(containsUnresolvedConflictBlock('prose\n>>>>>>> theirs\n')).toBe(false);
+  });
+
+  test('a start marker with no end is not a complete block', () => {
+    expect(containsUnresolvedConflictBlock('<<<<<<< ours\nmine\n')).toBe(false);
+  });
+
+  test('the loose predicate still flags the setext heading it always did', () => {
+    // Guards the split: `containsConflictMarkers` keeps its deliberately loose
+    // bias for the watcher, and only the write-refusal path uses the strict one.
+    expect(containsConflictMarkers('Release Notes\n=======\n')).toBe(true);
   });
 });

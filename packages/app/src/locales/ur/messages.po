@@ -524,10 +524,6 @@ msgstr "{boldName} اس پروجیکٹ سے باہر، <0>{source}</0> پر ہے
 msgid "{chars, plural, one {char} other {chars}}"
 msgstr "{chars, plural, one {حرف} other {حروف}}"
 
-#: src/components/DiffView.tsx
-msgid "{chunksRemaining, plural, one {# unresolved hunk} other {# unresolved hunks}}"
-msgstr "{chunksRemaining, plural, one {# غیر حل شدہ حصہ} other {# غیر حل شدہ حصے}}"
-
 #: src/editor/utils/editor-strings.ts
 msgid "{componentLabel} (empty)"
 msgstr "{componentLabel} (خالی)"
@@ -1331,9 +1327,32 @@ msgstr "{appName} کے بارے میں"
 msgid "Above"
 msgstr "اوپر"
 
-#: src/components/DiffView.tsx
-msgid "Accept"
-msgstr "قبول کریں"
+#: src/components/ConflictView.tsx
+msgid "Accept both"
+msgstr "دونوں قبول کریں"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept both versions for conflict {0}"
+msgstr "کنفلکٹ {0} کے لیے دونوں ورژن قبول کریں"
+
+#: src/components/ConflictView.tsx
+msgid "Accept current"
+msgstr "موجودہ قبول کریں"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept current version for conflict {0}"
+msgstr "کنفلکٹ {0} کے لیے موجودہ ورژن قبول کریں"
+
+#: src/components/ConflictView.tsx
+msgid "Accept incoming"
+msgstr "آنے والا قبول کریں"
+
+#. placeholder {0}: control.conflict.conflictIndex + 1
+#: src/components/ConflictView.tsx
+msgid "Accept incoming version for conflict {0}"
+msgstr "کنفلکٹ {0} کے لیے آنے والا ورژن قبول کریں"
 
 #: src/components/DiffViewBoundary.tsx
 msgid "Accept their deletion"
@@ -1675,6 +1694,10 @@ msgstr "{editor} کو ماخذ سے ہم آہنگ کر دیا گیا (اس کے 
 msgid "All"
 msgstr "سب"
 
+#: src/components/ConflictView.tsx
+msgid "All conflicts resolved. Apply changes to save."
+msgstr "تمام کنفلکٹس حل ہو گئے۔ محفوظ کرنے کے لیے تبدیلیاں لاگو کریں۔"
+
 #: src/components/FolderOverview.tsx
 msgid "All files"
 msgstr "تمام فائلیں"
@@ -1682,10 +1705,6 @@ msgstr "تمام فائلیں"
 #: src/components/FileTreeFilteredToZeroNotice.tsx
 msgid "All files are hidden by view filters."
 msgstr "تمام فائلیں ویو فلٹرز سے چھپی ہوئی ہیں۔"
-
-#: src/components/DiffView.tsx
-msgid "All hunks resolved"
-msgstr "تمام حصے حل ہو گئے"
 
 #: src/components/CommandPalette.tsx
 msgid "All tags"
@@ -1845,6 +1864,10 @@ msgstr "جب آپ یہ گفتگو دوبارہ شروع کریں گے تو لا�
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
 msgstr "لاگو کریں اور پروجیکٹ سرور دوبارہ شروع کریں"
+
+#: src/components/ConflictView.tsx
+msgid "Apply changes"
+msgstr "تبدیلیاں لاگو کریں"
 
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 msgid "Apply link"
@@ -3136,6 +3159,10 @@ msgstr "تصادم"
 msgid "Conflict"
 msgstr "تصادم"
 
+#: src/components/ConflictView.tsx
+msgid "Conflict diff for {fileName}"
+msgstr "{fileName} کے لیے کنفلکٹ ڈِف"
+
 #: src/components/ConflictsSection.tsx
 msgid "Conflicted files"
 msgstr "متضاد فائلیں"
@@ -3148,6 +3175,10 @@ msgstr "متصادم فائلیں: {0}۔"
 #: src/components/ConflictsSection.tsx
 msgid "Conflicts"
 msgstr "تنازعات"
+
+#: src/components/ConflictView.tsx
+msgid "Conflicts remaining: {liveRemaining}."
+msgstr "باقی کنفلکٹس: {liveRemaining}۔"
 
 #: src/components/AuthModal.tsx
 msgid "Connect"
@@ -3639,6 +3670,10 @@ msgstr "وہ تبصرہ شامل نہیں ہو سکا۔"
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "تبدیلی لاگو نہیں ہو سکی: {0}"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Couldn't check whether {filePath} is still conflicted — retrying."
+msgstr "{filePath} میں اب بھی کنفلکٹ ہے یا نہیں، جانچا نہ جا سکا — دوبارہ کوشش جاری۔"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Couldn't clear the key — please try again."
@@ -5464,10 +5499,6 @@ msgstr "باہر نکلیں"
 msgid "exit {0}"
 msgstr "{0} سے باہر نکلیں"
 
-#: src/components/DiffView.tsx
-msgid "Exit merge"
-msgstr "ضم کرنا ختم کریں"
-
 #: src/components/ArrayOfObjectsWidget.tsx
 #: src/components/ObjectWidget.tsx
 msgid "Expand {keyName}"
@@ -6583,6 +6614,10 @@ msgstr "فولڈر چھپائیں"
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Hide HTML preview"
 msgstr "HTML کا پیش منظر چھپائیں"
+
+#: src/components/ConflictView.tsx
+msgid "Hide original"
+msgstr "اصل چھپائیں"
 
 #: src/lib/native-menu-catalog.ts
 msgid "Hide Others"
@@ -8600,6 +8635,10 @@ msgstr "اس پروجیکٹ میں ابھی کوئی تبصرہ نہیں ہے۔ 
 msgid "No comments yet. Select text in the document to add one."
 msgstr "ابھی کوئی تبصرہ نہیں۔ ایک شامل کرنے کے لیے دستاویز میں متن منتخب کریں۔"
 
+#: src/components/ConflictView.tsx
+msgid "No common ancestor — both branches added this file (add/add conflict)."
+msgstr "کوئی مشترکہ سلف نہیں — دونوں برانچوں نے یہ فائل شامل کی (add/add تنازع)۔"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "اس ورژن میں مواد کی کوئی تبدیلی نہیں۔"
@@ -10188,6 +10227,10 @@ msgstr "اس تھیم کو استعمال کرنے کے لیے اوپر “حس�
 msgid "Preview browsers can't auto-copy. Use Cmd/Ctrl+C on the URL above, or open OK in the desktop app."
 msgstr "پیش منظر کے براؤزر خودکار نقل نہیں کر سکتے۔ اوپر دیے گئے URL پر Cmd/Ctrl+C استعمال کریں، یا OK کو ڈیسک ٹاپ ایپ میں کھولیں۔"
 
+#: src/components/ConflictFilePreview.tsx
+msgid "Preview of {filename}"
+msgstr "{filename} کا پیش منظر"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Preview of the screenshot"
 msgstr "اسکرین شاٹ کا پیش منظر"
@@ -10605,6 +10648,7 @@ msgid "Recycle Bin"
 msgstr "ری سائیکل بن"
 
 #: src/components/AppMenubar.tsx
+#: src/components/ConflictView.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Redo"
 msgstr "دوبارہ کریں"
@@ -10641,7 +10685,6 @@ msgid "Reinstalling"
 msgstr "دوبارہ نصب کیا جا رہا ہے"
 
 #: src/components/acp/PlanChecklist.tsx
-#: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "مسترد کریں"
 
@@ -10890,6 +10933,10 @@ msgstr "رینڈر شدہ"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "دوبارہ کھولیں"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Reopen {filePath} to keep editing."
+msgstr "ترمیم جاری رکھنے کے لیے {filePath} دوبارہ کھولیں۔"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11367,10 +11414,6 @@ msgstr "محفوظ کرنا ناکام: {error}"
 #: src/components/acp/ThreadView.tsx
 msgid "Save queued message"
 msgstr "قطار میں موجود پیغام محفوظ کریں"
-
-#: src/components/DiffView.tsx
-msgid "Save resolution"
-msgstr "حل محفوظ کریں"
 
 #: src/comments/ThreadCard.tsx
 msgid "Save this comment (Enter)"
@@ -12131,6 +12174,10 @@ msgstr "فائلیں دکھائیں یا چھپائیں"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Show or hide Terminal"
 msgstr "Terminal دکھائیں یا چھپائیں"
+
+#: src/components/ConflictView.tsx
+msgid "Show original"
+msgstr "اصل دکھائیں"
 
 #: src/components/AgentDiffPane.tsx
 #: src/components/EditorToolbar.tsx
@@ -13137,6 +13184,10 @@ msgstr "رپورٹ کا شکریہ!"
 msgid "That branch is already open in another worktree."
 msgstr "وہ برانچ پہلے سے کسی اور ورک ٹری میں کھلی ہے۔"
 
+#: src/components/ConflictView.tsx
+msgid "That conflict is no longer available."
+msgstr "وہ کنفلکٹ اب دستیاب نہیں ہے۔"
+
 #: src/components/SyncBlockingChanges.tsx
 msgid "That did not go through. Check the server logs and try again."
 msgstr "یہ مکمل نہیں ہوا۔ سرور لاگ دیکھیں اور دوبارہ کوشش کریں۔"
@@ -13607,6 +13658,10 @@ msgstr "یہ ترتیبات > AI ٹولز اور CLI میں مقرر کیا جا
 msgid "This comment is on the whole property"
 msgstr "یہ تبصرہ پوری خصوصیت پر ہے"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "This conflict is resolved."
+msgstr "یہ تنازع حل ہو گیا ہے۔"
+
 #: src/components/PanelScopeHeader.tsx
 msgid "This doc"
 msgstr "یہ دستاویز"
@@ -13647,6 +13702,10 @@ msgstr "اس فیلڈ میں اسکیما کے اضافی کلیدی الفاظ 
 msgid "This file can't be opened in the text editor."
 msgstr "یہ فائل ٹیکسٹ ایڈیٹر میں نہیں کھل سکتی۔"
 
+#: src/components/ConflictView.tsx
+msgid "This file contains lines that look like conflict markers, so the conflict boundaries can't be read reliably. Resolve it by hand or with Ask AI."
+msgstr "اس فائل میں ایسی سطریں ہیں جو کنفلکٹ مارکرز جیسی لگتی ہیں، اس لیے کنفلکٹ کی حدود بھروسے سے نہیں پڑھی جا سکتیں۔ اسے خود حل کریں یا AI سے پوچھیں استعمال کریں۔"
+
 #: src/components/use-viewer-text.ts
 msgid "This file could not be found."
 msgstr "یہ فائل نہیں مل سکی۔"
@@ -13658,6 +13717,14 @@ msgstr "یہ فائل بائنری ہے اور متن کے طور پر نہیں 
 #: src/components/use-viewer-text.ts
 msgid "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
 msgstr "یہ فائل بلٹ اِن ٹیکسٹ ایڈیٹر میں کھولنے کے لیے بہت بڑی ہے (حد 1 MB)۔ اسے کسی اور ایپ میں کھولنے کے لیے نیچے «فائل کھولیں» استعمال کریں۔"
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the current branch (delete-modify conflict)."
+msgstr "یہ فائل موجودہ برانچ پر حذف کر دی گئی تھی (delete-modify تنازع)۔"
+
+#: src/components/ConflictView.tsx
+msgid "This file was deleted on the incoming branch (modify-delete conflict)."
+msgstr "یہ فائل آنے والی برانچ پر حذف کر دی گئی تھی (modify-delete تنازع)۔"
 
 #: src/lib/share/receive-flow.ts
 msgid "This folder doesn't contain a git repository. Pick a different folder?"
@@ -14239,7 +14306,7 @@ msgstr "{docName} پر آخری ترمیم واپس لے لی گئی"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
-#: src/components/DiffView.tsx
+#: src/components/ConflictView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
@@ -14268,6 +14335,10 @@ msgstr "اپنی ترامیم واپس لیں یا دوبارہ کریں، سا�
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Undo to this edit?"
 msgstr "اس ترمیم تک واپس جائیں؟"
+
+#: src/components/ConflictView.tsx
+msgid "Undo your resolutions to change this."
+msgstr "اسے تبدیل کرنے کے لیے اپنی ریزولوشنز واپس لیں۔"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."

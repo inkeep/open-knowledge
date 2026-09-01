@@ -200,11 +200,12 @@ describe('ComposerMentionInput (component)', () => {
 
   test('setText replaces the field with plain text (read back via getContent)', () => {
     const ref = createRef<ComposerMentionInputHandle>();
+    const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
     render(
       <ComposerMentionInput
         ref={ref}
         ariaLabel="Describe"
-        onEmptyChange={() => {}}
+        onEmptyChange={onEmptyChange}
         onSubmit={() => {}}
       />,
     );
@@ -214,6 +215,27 @@ describe('ComposerMentionInput (component)', () => {
       mentions: [],
       attachments: [],
     });
+    // Same contract `appendText` holds below. The host gates send-enabled, its
+    // placeholder, and context-chip tracking on emptiness, so filling an empty
+    // field without announcing it leaves all three believing nothing was
+    // written — a dead send button over visible text.
+    expect(onEmptyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  test('setText announces emptiness when it clears the field', () => {
+    const ref = createRef<ComposerMentionInputHandle>();
+    const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
+    render(
+      <ComposerMentionInput
+        ref={ref}
+        ariaLabel="Describe"
+        onEmptyChange={onEmptyChange}
+        onSubmit={() => {}}
+      />,
+    );
+    ref.current?.setText('something');
+    ref.current?.setText('');
+    expect(onEmptyChange).toHaveBeenLastCalledWith(true);
   });
 
   test('appendText fills an empty field, mapping newlines to paragraphs', () => {

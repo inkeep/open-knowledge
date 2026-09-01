@@ -1,8 +1,8 @@
 import { SKILL_NAME_REGEX, type SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
+import { MultiFileDiff } from '@pierre/diffs/react';
 import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
-import { DiffView } from '@/components/DiffView';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { okPierreTheme } from '@/lib/pierre-theme';
 import { skillHostRootDir } from '@/lib/skill-scope';
 import { fetchSkillPreview, resolveSkillFork } from '@/lib/skills-api';
 
@@ -131,7 +132,7 @@ export function SkillForkDialog({
       {/* `w-full` so the dialog holds its max width even before/without the diff
           — otherwise it collapses to the placeholder's width and the footer
           buttons spread edge-to-edge. */}
-      <DialogContent className="flex max-h-[85vh] w-full max-w-3xl flex-col">
+      <DialogContent className="flex max-h-[85vh] w-full flex-col sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>
             <Trans>
@@ -147,7 +148,14 @@ export function SkillForkDialog({
         </DialogHeader>
         <DialogBody className="min-h-0 flex-1 overflow-auto">
           {canonicalBody !== null && forkBody !== null ? (
-            <DiffView oldContent={canonicalBody} newContent={forkBody} layout="unified" />
+            <MultiFileDiff
+              className="conflict-view"
+              oldFile={{ name: skill.name, contents: canonicalBody }}
+              newFile={{ name: skill.name, contents: forkBody }}
+              // Pierre's diff renderer defaults to `split`; prose skill bodies
+              // read better unified, and it matches the conflict surface.
+              options={{ overflow: 'wrap', diffStyle: 'unified', theme: okPierreTheme() }}
+            />
           ) : previewError ? (
             <div className="flex min-h-56 items-center justify-center px-6 text-center text-muted-foreground text-sm">
               <Trans>

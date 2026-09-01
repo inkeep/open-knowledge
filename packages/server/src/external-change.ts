@@ -34,6 +34,7 @@ import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import type { DocumentDurabilityState } from './document-durability-state.ts';
+import { takeExternalChangeAttribution } from './external-change-attribution.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -179,11 +180,21 @@ export function applyExternalChange(
   // recording here would manufacture a spurious "File System" row for a
   // trailing/duplicate event or a cross-branch reset.
   if (!bytesUnchanged) {
+    // A handler that made this write on a person's behalf (today: merge-conflict
+    // resolution) files a claim first, so the row credits them rather than
+    // "File System". Everything else — a real external edit, an editor saving
+    // through disk — has no claim and keeps the file-system attribution.
+    const claimed = takeExternalChangeAttribution(docName);
+    const writer = claimed ?? {
+      writerId: FILE_SYSTEM_WRITER.id,
+      displayName: FILE_SYSTEM_WRITER.name,
+      colorSeed: FILE_SYSTEM_WRITER.id,
+    };
     recordContributor(
       docName,
-      FILE_SYSTEM_WRITER.id,
-      FILE_SYSTEM_WRITER.name,
-      FILE_SYSTEM_WRITER.id,
+      writer.writerId,
+      writer.displayName,
+      writer.colorSeed,
       formatReconcileSubject(docName),
     );
   }

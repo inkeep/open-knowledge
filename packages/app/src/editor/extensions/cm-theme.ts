@@ -24,7 +24,12 @@ import { tags } from '@lezer/highlight';
  * source mode is the dominant surface; the general programming tags below it
  * cover fenced code blocks, which CM parses with a nested language.
  */
-const okSyntaxHighlight = HighlightStyle.define([
+/**
+ * Exported so the Shiki-side twin (`lib/ok-syntax-theme.ts`) can be held to
+ * it: `ok-syntax-parity.test.ts` highlights the same source with both engines
+ * and fails when a construct lands in different `--syntax-*` slots.
+ */
+export const okSyntaxHighlight = HighlightStyle.define([
   // --- markdown ---
   {
     tag: [tags.heading, tags.heading1, tags.heading2, tags.heading3],

@@ -1,0 +1,13 @@
+diff --git a/dist/renderers/UnresolvedFileHunksRenderer.js b/dist/renderers/UnresolvedFileHunksRenderer.js
+index 2b11e3982015a6583f8ba1e5ce77b72634ba8ed9..1326707982dada290cc5fc42d4708bba4363d724 100644
+--- a/dist/renderers/UnresolvedFileHunksRenderer.js
++++ b/dist/renderers/UnresolvedFileHunksRenderer.js
+@@ -97,7 +97,7 @@ var UnresolvedFileHunksRenderer = class extends DiffHunksRenderer {
+ 	getOptionsWithDefaults() {
+ 		const options = super.getOptionsWithDefaults();
+ 		options.diffStyle = "unified";
+-		options.lineDiffType = "none";
++		options.lineDiffType = this.options.lineDiffType ?? "none";
+ 		options.mergeConflictActionsType = this.options.mergeConflictActionsType ?? "default";
+ 		return options;
+ 	}

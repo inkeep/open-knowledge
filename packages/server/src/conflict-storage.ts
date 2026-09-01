@@ -13,11 +13,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
+import { ConflictMarkersInContentError, NoConflictTrackedError } from './conflict-errors.ts';
 import { isShareableOkArtifact } from './content-filter.ts';
 import { tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listNames } from './git-paths.ts';
 import { getLogger } from './logger.ts';
 import { isWithinDir } from './path-utils.ts';
+import { containsUnresolvedConflictBlock } from './reconciliation.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 
 const log = getLogger('conflict-storage');
@@ -149,7 +151,16 @@ export class ConflictStore {
   /** Remove all conflicts for the current branch. */
   clear(): void {
     this.conflicts = [];
-    this.save();
+    // Lower stakes than the resolve paths — a failed persist here leaves a
+    // ledger listing conflicts the branch no longer has — but the same
+    // discarded signal, so it completes the sweep rather than leaving one
+    // call site silently different from its siblings.
+    if (!this.save()) {
+      log.error(
+        { branch: this.branch },
+        '[conflicts] cleared conflicts in memory but conflicts.json persist failed — the ledger will resurrect them on restart',
+      );
+    }
   }
 
   /** Number of unresolved conflicts. */
@@ -192,7 +203,30 @@ export class ConflictStore {
   async resolveConflict(file: string, strategy: ResolveStrategy, content?: string): Promise<void> {
     const entry = this.conflicts.find((c) => c.file === file);
     if (!entry) {
-      throw new Error(`[conflicts] no conflict tracked for file: ${file}`);
+      throw new NoConflictTrackedError({ file });
+    }
+
+    // Content carrying conflict markers is a broken file, not a resolution, and
+    // this call would write it, commit it, and clear the tracked conflict — so
+    // the document keeps the markers as literal text while the UI reports the
+    // conflict solved. Observed from an agent handed an unsatisfiable
+    // instruction ("resolve only this region"), where emitting markers was the
+    // only way to obey. The refusal lives here rather than in a tool prompt
+    // because prompts are editable by the user and ignorable by the model,
+    // while every caller reaches this method.
+    //
+    // Order relative to the lookup above is deliberately NOT load-bearing. It
+    // was, while `!entry` threw bare: whichever check ran second lost, because
+    // a bare throw became a generic 500 that tells an agent to retry. Both are
+    // typed now, so each ordering reports something true — and this one reports
+    // the more useful thing first, since a caller with a stale path has no
+    // byte problem to fix.
+    if (
+      strategy === 'content' &&
+      content !== undefined &&
+      containsUnresolvedConflictBlock(content)
+    ) {
+      throw new ConflictMarkersInContentError({ file });
     }
 
     // Validate strategy-specific params before touching git
@@ -278,10 +312,27 @@ export class ConflictStore {
       }
     }
 
+    // Snapshot detection times BEFORE the removal below, so the commit-failure
+    // path can re-add these conflicts as the same ones rather than as newly
+    // detected. See the re-add in that catch.
+    const priorDetectedAt = new Map<string, string>(
+      this.list().map((entry) => [entry.file, entry.detectedAt] as const),
+    );
+
     // Remove from store — but defer final removal if this is the last conflict
     // so we can re-add on commit failure (prevents losing conflict from UI while
     // git is still in half-merged state).
-    this.removeConflict(file);
+    //
+    // Same persist divergence as the working-tree path, and the harder of the
+    // two to correlate from logs: this is the branch that goes on to run
+    // `git commit --no-edit`, so the generic `save()` warn lands amid commit
+    // noise with no file name on it.
+    if (!this.removeConflict(file)) {
+      log.error(
+        { file },
+        '[conflicts] resolve dropped the conflict in memory but conflicts.json persist failed — the ledger will resurrect this conflict on restart',
+      );
+    }
 
     // If all conflicts resolved, create the merge commit
     if (!this.hasConflicts()) {
@@ -292,7 +343,22 @@ export class ConflictStore {
         // Commit failed — the git index may still contain unmerged entries from
         // other files the user resolved earlier in this merge. Re-scan the
         // index so every unmerged file is visible again, not just `file`.
-        const detectedAt = new Date().toISOString();
+        // NOT COVERED BY A UNIT TEST. Reaching this branch needs a working git
+        // that then fails to commit; without git the resolve throws at `git
+        // add` and never arrives, and with only in-memory entries the commit is
+        // never attempted at all. Two attempts at a unit test passed whether or
+        // not the preservation below was present. It wants an integration
+        // fixture that stages a real merge and forces the commit to fail.
+        //
+        // Detection timestamps are PRESERVED across this re-add. A failed commit
+        // is not a new detection — these conflicts have been standing since
+        // they were first found. Re-minting `detectedAt` changed the identity
+        // the client keys its conflict-content fetch on, so an open resolution
+        // was torn down and its undo history discarded. Worse, the re-scan
+        // re-adds every unmerged file, so failing the commit on one file reset
+        // an open view on another, one CC1 cycle later and long enough after
+        // the toast that the two did not look related.
+        const fallbackDetectedAt = new Date().toISOString();
         let reAdded = false;
         try {
           // git-paths.ts has no runtime simple-git dependency, so this needs no
@@ -300,7 +366,10 @@ export class ConflictStore {
           // out of the CRUD-test module graph.
           const unmerged = await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']);
           for (const f of unmerged) {
-            this.addConflict({ file: f, detectedAt });
+            this.addConflict({
+              file: f,
+              detectedAt: priorDetectedAt.get(f) ?? fallbackDetectedAt,
+            });
           }
           reAdded = unmerged.length > 0;
         } catch (scanErr) {
@@ -313,7 +382,7 @@ export class ConflictStore {
           // Either the re-scan failed or reported no unmerged files but the
           // commit still failed — at minimum keep the file we just touched
           // visible so the user has something to act on.
-          this.addConflict({ file, detectedAt });
+          this.addConflict({ file, detectedAt: priorDetectedAt.get(file) ?? fallbackDetectedAt });
         }
         log.warn(
           { err: e },
@@ -369,6 +438,60 @@ export class ConflictStore {
       allowShareableOkArtifact: isShareableOkArtifact,
     });
 
+    // Drop the entry BEFORE touching disk. Writing first opens a window the
+    // file watcher can land in: it re-seeds the doc from disk, and
+    // `conflict-lifecycle-seed` re-marks `lifecycle.status = 'conflict'`
+    // because the store still lists this file. That re-mark can arrive after
+    // the resolve's own clear, leaving the doc permanently flagged as
+    // conflicted with no store entry behind it — the editor stays swapped to
+    // the conflict view, which then finds nothing to fetch.
+    //
+    // Unlike the merge-native path there is no commit to roll back here, so
+    // the only thing to undo is the removal itself if the write throws.
+    const restoreOnFailure = { ...entry };
+    // `removeConflict` returns false when the in-memory drop landed but the
+    // conflicts.json persist did not. `save()` already warns generically on
+    // that failure; what this adds is the file name and the consequence — after
+    // a restart the ledger still lists a file whose overlay is gone, so the
+    // editor swaps to a conflict view with nothing to fetch, the exact state
+    // the drop-before-write ordering exists to avoid. Message text is identical
+    // on the merge-native path so one grep finds both.
+    if (!this.removeConflict(entry.file)) {
+      log.error(
+        { file: entry.file },
+        '[conflicts] resolve dropped the conflict in memory but conflicts.json persist failed — the ledger will resurrect this conflict on restart',
+      );
+    }
+
+    try {
+      await this.applyWorkingTreeStrategy(absPath, projectRoot, entry, strategy, content);
+    } catch (err) {
+      // `addConflict` returns false when the in-memory upsert landed but the
+      // conflicts.json persist did not, and its contract puts the call on the
+      // caller. Ignored, that divergence survives a restart as a ledger that
+      // reads resolved over a working tree still holding the overlay — the
+      // user has no conflict left to act on.
+      if (!this.addConflict(restoreOnFailure)) {
+        log.error(
+          { file: entry.file, err },
+          '[conflicts] resolve rolled back in memory but conflicts.json persist failed — the ledger will lose this conflict on restart',
+        );
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * The disk half of `resolveWorkingTreeConflict`, split out so the store
+   * removal can be ordered ahead of it and restored if it throws.
+   */
+  private async applyWorkingTreeStrategy(
+    absPath: string,
+    projectRoot: string,
+    entry: ConflictEntry,
+    strategy: ResolveStrategy,
+    content: string | undefined,
+  ): Promise<void> {
     switch (strategy) {
       case 'mine':
         // The working tree already holds the overlay — keep it as-is.
@@ -412,7 +535,5 @@ export class ConflictStore {
         throw new Error(`[conflicts] unknown resolve strategy: ${exhaustive}`);
       }
     }
-
-    this.removeConflict(entry.file);
   }
 }

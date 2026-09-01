@@ -111,6 +111,12 @@ export {
   type StructuralFreshnessCheckerOptions,
 } from './structural-freshness.ts';
 export {
+  type SynthesisedConflictMarkers,
+  type SynthesisedConflictRegion,
+  synthesiseConflictMarkers,
+  synthesiseConflictMarkersWithRegions,
+} from './synthesise-conflict-markers.ts';
+export {
   classifySeverity,
   emitToleranceFire,
   findFirstDivergenceIndex,

@@ -15,7 +15,7 @@ import {
   PencilLine,
   Trash2,
 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { lazy, type ReactNode, Suspense, useState } from 'react';
 import { toast } from 'sonner';
 import { OpenInAgentContextSubmenu } from '@/components/handoff/OpenInAgentContextSubmenu';
 import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
@@ -37,7 +37,7 @@ import {
   SkillFileRenameDialog,
   type SkillFileRenameTarget,
 } from '@/components/SkillFileRenameDialog';
-import { SkillForkDialog, type SkillForkTarget } from '@/components/SkillForkDialog';
+import type { SkillForkTarget } from '@/components/SkillForkDialog';
 import {
   SKILL_INSTALL_MENU_WIDTH,
   SkillInstallMenuItems,
@@ -67,6 +67,15 @@ import {
   reimportSkillsBulk,
 } from '@/lib/skills-api';
 import { useWorkspace } from '@/lib/use-workspace';
+
+// Pulls `@pierre/diffs/react` with it. Gated on `forkTarget` as well as made
+// lazy: the dialog was mounted unconditionally and returned null without a
+// target, which kept its chunk eager. Mounting per fork also drops the stale
+// `toName` that used to carry a rename typed for one skill into the next.
+const LazySkillForkDialog = lazy(async () => {
+  const mod = await import('@/components/SkillForkDialog');
+  return { default: mod.SkillForkDialog };
+});
 
 /**
  * The shared per-skill action surface, reused by every place that acts on a
@@ -405,12 +414,16 @@ export function useSkillActions(): SkillActions {
           if (!open) setFileCreateTarget(null);
         }}
       />
-      <SkillForkDialog
-        target={forkTarget}
-        onOpenChange={(open) => {
-          if (!open) setForkTarget(null);
-        }}
-      />
+      {forkTarget ? (
+        <Suspense fallback={null}>
+          <LazySkillForkDialog
+            target={forkTarget}
+            onOpenChange={(open) => {
+              if (!open) setForkTarget(null);
+            }}
+          />
+        </Suspense>
+      ) : null}
     </>
   );
 

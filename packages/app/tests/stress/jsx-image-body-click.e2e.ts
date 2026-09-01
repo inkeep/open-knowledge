@@ -25,14 +25,14 @@
  * floating-ui chrome rendering, and the PM mousedown pipeline are not
  * faithful in happy-dom / jsdom.
  *
- * Excluded from CI's fixed `test:e2e` subset; runs under
- * `bunx playwright test` for pre-push coverage (mirrors
- * grip-click-nodeselect.e2e.ts policy).
+ * Runs in CI's fixed `test:e2e` subset (listed in packages/app/package.json),
+ * so it gates the merge queue — which is why its image bytes are stubbed
+ * rather than fetched.
  */
 
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { expect, stubRemoteImages, test } from './_helpers';
 
 interface ApiSeed {
   seedDocs: (docs: Array<{ name: string; markdown: string }>) => Promise<void>;
@@ -51,6 +51,11 @@ test('AC21/F4: img body-click does NOT NodeSelect (Zoom interception pin)', asyn
   page,
   api,
 }) => {
+  // The pin is about what a click on a *loaded* image does, so the bytes have
+  // to arrive — but they need not arrive over the network. Fetching them for
+  // real made a third-party CDN a required-gate dependency, and it failed two
+  // unrelated PRs and three merge-queue attempts in one morning.
+  await stubRemoteImages(page);
   await setupDoc(
     page,
     api,

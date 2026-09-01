@@ -244,6 +244,12 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   // doesn't track the requested file. HTTP-only (same surface as the rest
   // of /api/sync/*).
   'urn:ok:error:no-conflict-tracked',
+  // 422 from handleSyncResolveConflict when the submitted resolution still
+  // carries a `<<<<<<< … >>>>>>>` block. A permanent rejection of the
+  // caller's bytes rather than a failure of ours, which is why it is not the
+  // 500 the rest of that catch emits. HTTP-only (same surface as the rest of
+  // /api/sync/*).
+  'urn:ok:error:unresolved-conflict-markers',
   // 409 from handleSyncResolveBlocking when the engine is no longer paused on a
   // pre-merge overlap — a stale panel, or a second click after the first
   // cleared it. HTTP-only (same surface as the rest of /api/sync/*; there is no

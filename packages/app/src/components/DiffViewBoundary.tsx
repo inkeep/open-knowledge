@@ -16,9 +16,9 @@
  *      contains conflict markers — which happens on editor reopen because
  *      the file watcher seeds Y.Text with the disk's marker bytes.
  *      `theirs` always comes from `git show :3:`.
- *   3. Render `<DiffView conflictMode oldContent={theirs} newContent={ours}
- *      layout="unified" onResolve />`. Resolution dispatches the merged
- *      content via the DiffView's "Save resolution" button.
+ *   3. Render `<ConflictView ours theirs base onResolve />` for both-modified
+ *      conflicts. ConflictView owns a Pierre UnresolvedFile instance and
+ *      calls onResolve with the resolved content when all hunks are accepted.
  *   4. Emit `editor-area-swap-to-diffview` / `editor-area-swap-from-diffview`
  *      structured log events on mount / unmount.
  */
@@ -30,13 +30,21 @@ import { Button } from '@/components/ui/button';
 import { useConflictFooterHeightVar } from '@/hooks/use-conflict-footer-height';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { filePathToDocName } from '@/lib/doc-hash';
-import { DiffView } from './DiffView';
+import { ConflictFilePreview } from './ConflictFilePreview';
+import { ConflictView } from './ConflictView';
 import {
   resolveConflictContent,
   resolveConflictDelete,
   resolveConflictMine,
   resolveConflictTheirs,
 } from './resolve-conflict-dispatch';
+
+/**
+ * How long to keep deferring the conflict-content fetch while no conflict entry
+ * exists. Covers the CC1 `sync-status` catch-up window (~100ms observed) with
+ * room to spare; past it, the conflict is gone rather than late.
+ */
+const CONFLICT_ENTRY_GRACE_MS = 2_000;
 
 interface DiffViewBoundaryProps {
   docName: string;
@@ -141,11 +149,34 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
   // re-fetch `/api/sync/conflicts`. Without deferring, an `.mdx` doc in a
   // newly-detected conflict would fire a wrong-extension `.md` request
   // and flash the error fallback before the conflicts list catches up.
-  const { conflicts, loading: conflictsLoading } = useConflicts();
+  // `error` is destructured, not dropped: `useConflicts` returns an EMPTY list
+  // on a failed fetch, so discarding it makes "we could not ask" identical to
+  // "nothing is conflicted" — and the grace timer below then reports the
+  // conflict resolved, tearing down a mounted view and its undo stack.
+  const { conflicts, loading: conflictsLoading, error: conflictsError } = useConflicts();
   const conflictEntry = conflicts.find((entry) => filePathToDocName(entry.file) === docName);
   const filePath = conflictEntry?.file ?? `${docName}.md`;
   const [sides, setSides] = useState<ConflictSides | null>(null);
   const [fetchFailed, setFetchFailed] = useState(false);
+  // An absent conflict entry is ambiguous: it means "the CC1 signal has not
+  // caught up yet" for the ~100ms after this boundary swaps in, and it means
+  // "there is no longer a conflict" once one has been resolved. Waiting is
+  // right for the first and wrong for the second, and nothing in the entry
+  // itself distinguishes them — so bound the wait instead of guessing.
+  //
+  // This covers the resolve-while-open case AND the harder one: the resolve
+  // writes the file, the watcher reloads the doc, and this boundary REMOUNTS
+  // with no entry to find. A latch on "did we render a conflict before" misses
+  // that, because a remounted boundary never did.
+  const [waitedForEntry, setWaitedForEntry] = useState(false);
+  useEffect(() => {
+    if (conflictEntry !== undefined || conflictsLoading || conflictsError !== null) {
+      setWaitedForEntry(false);
+      return;
+    }
+    const timer = setTimeout(() => setWaitedForEntry(true), CONFLICT_ENTRY_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [conflictEntry, conflictsLoading, conflictsError]);
   // Guards the DU/UD resolve buttons against double-fire / cross-strategy
   // clicks while a dispatch is in flight — these run `git rm` + a commit,
   // so a second click (or clicking the sibling strategy) mid-request races
@@ -180,9 +211,26 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
   // wrong for `.mdx` docs. The deferral self-heals on the next CC1
   // `sync-status` signal; if the entry never arrives the user sees
   // the loading spinner and the documented recovery procedure applies.
+  // Identity of the CONFLICT, not just the file. A resolved-then-re-detected
+  // file keeps its path, so a path-only dependency leaves the fetched sides
+  // frozen on the previous conflict until something forces a remount — the
+  // document updates around a diff that no longer matches it.
+  const conflictSignature =
+    conflictEntry === undefined
+      ? null
+      : [
+          conflictEntry.detectedAt,
+          conflictEntry.baseSha ?? '',
+          conflictEntry.oursSha ?? '',
+          conflictEntry.theirsSha ?? '',
+        ].join('|');
+
   const deferFetch = conflictsLoading || conflictEntry === undefined;
   useEffect(() => {
-    if (deferFetch) return;
+    // Reading the signature here is load-bearing, not decoration: a dependency
+    // that never appears in the body is stripped by the exhaustive-deps
+    // autofix, which silently restores the stale-sides bug.
+    if (deferFetch || conflictSignature === null) return;
     let cancelled = false;
     setSides(null);
     setFetchFailed(false);
@@ -197,7 +245,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, deferFetch]);
+  }, [filePath, deferFetch, conflictSignature]);
 
   async function handleResolve(content: string) {
     const result = await resolveConflictContent(filePath, content);
@@ -230,6 +278,41 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     );
   }
 
+  // A conflict we were showing is no longer tracked, so it was resolved —
+  // here, or by an agent, or in another window. The doc's `lifecycle.status`
+  // is what swaps this boundary in, and it is cleared on a separate server
+  // path that does not fire for every resolve variant, so this boundary can
+  // outlive its conflict. Say so instead of deferring the fetch forever and
+  // showing a spinner that never resolves.
+  // An unreachable conflicts list is not an absent conflict. Say which one it
+  // is rather than asserting the work is done: the file still carries markers,
+  // the doc is still flagged, and the editor is still swapped out.
+  if (conflictsError !== null && conflictEntry === undefined) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+        <Trans>Couldn't check whether {filePath} is still conflicted — retrying.</Trans>
+      </div>
+    );
+  }
+
+  if (
+    waitedForEntry &&
+    !conflictsLoading &&
+    conflictsError === null &&
+    conflictEntry === undefined
+  ) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 p-6 text-sm text-muted-foreground">
+        <p>
+          <Trans>This conflict is resolved.</Trans>
+        </p>
+        <p className="text-xs">
+          <Trans>Reopen {filePath} to keep editing.</Trans>
+        </p>
+      </div>
+    );
+  }
+
   if (sides === null) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
@@ -254,7 +337,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
       // the inner editor.
       <div className="flex h-full flex-col bg-background">
         <div className="min-h-0 flex-1">
-          <DiffView oldContent="" newContent={sides.theirs} layout="unified" previewMode />
+          <ConflictFilePreview filename={filePath} content={sides.theirs} />
         </div>
         <div
           ref={duUdFooterRef}
@@ -301,7 +384,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
       // they'd lose if they accept the upstream deletion.
       <div className="flex h-full flex-col bg-background">
         <div className="min-h-0 flex-1">
-          <DiffView oldContent="" newContent={sides.ours} layout="unified" previewMode />
+          <ConflictFilePreview filename={filePath} content={sides.ours} />
         </div>
         <div
           ref={duUdFooterRef}
@@ -337,12 +420,15 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
   }
 
   return (
-    <DiffView
-      oldContent={sides.theirs}
-      newContent={sides.ours}
-      layout="unified"
-      conflictMode
-      onResolve={(content) => void handleResolve(content)}
+    <ConflictView
+      fileName={filePath}
+      ours={sides.ours}
+      base={sides.base}
+      theirs={sides.theirs}
+      // Passed by reference, NOT wrapped in `void`: ConflictView's Apply latch
+      // awaits whatever this returns, so discarding the promise released the
+      // latch on the next microtask instead of after the commit.
+      onResolve={handleResolve}
     />
   );
 }

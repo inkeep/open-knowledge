@@ -244,6 +244,7 @@ describe('base16ToTokens', () => {
       'link-color',
       'diff-added',
       'diff-removed',
+      'diff-modified',
       'syntax-bg',
     ]) {
       expect(t[name], name).toBeTruthy();

@@ -47,9 +47,6 @@ import {
   AgentWriteSuccessSchema,
   applyPatchToFm,
   type BatchEntryError,
-  BranchInfoResponseSchema,
-  CheckoutRequestSchema,
-  CheckoutResponseSchema,
   CONFIG_DOC_NAME_OKIGNORE,
   type ConfigDiagnosticsReport,
   changedBlockRange,
@@ -66,19 +63,15 @@ import {
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
   EmptyRequestSchema,
-  encodeShareUrl,
   estimateSkillCost,
   externalSkillLiveDocName,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
-  type GitWorktreeOpenTarget,
-  GitWorktreeStatusSuccessSchema,
   type HeadingEntry,
   type InlineAssetMediaKind,
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
-  InvalidShareUrlError,
   isManagedArtifactDocName,
   isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
@@ -116,7 +109,6 @@ import {
   PROJECT_SKILL_EDITOR_IDS,
   type Principal,
   type ProblemType,
-  parseCanonicalGitHubShareUrl,
   parseFrontmatterRecord,
   prependFrontmatter,
   projectSkillContentDocName,
@@ -126,14 +118,6 @@ import {
   readFmMap,
   SaveVersionRequestSchema,
   SaveVersionSuccessSchema,
-  ShareConstructUrlRequestSchema,
-  ShareConstructUrlResponseSchema,
-  SharePublishNameCheckResponseSchema,
-  SharePublishOwnersResponseSchema,
-  SharePublishRequestSchema,
-  SharePublishResponseSchema,
-  ShareTargetStatusRequestSchema,
-  ShareTargetStatusResponseSchema,
   SKILL_NAME_REGEX,
   SkillDeleteSuccessSchema,
   SkillDuplicateRequestSchema,
@@ -177,15 +161,6 @@ import {
   SkillUninstallRequestSchema,
   SkillUninstallSuccessSchema,
   SYSTEM_DOC_NAME,
-  SyncConflictContentSuccessSchema,
-  SyncConflictsSuccessSchema,
-  SyncResolveBlockingRequestSchema,
-  SyncResolveBlockingSuccessSchema,
-  SyncResolveConflictRequestSchema,
-  SyncResolveConflictSuccessSchema,
-  SyncStatusSchema,
-  SyncTriggerRequestSchema,
-  SyncTriggerSuccessSchema,
   scanHeadingLine,
   skillLiveDocName,
   stripFrontmatter,
@@ -256,7 +231,6 @@ import {
   type SummaryResponse,
 } from './agent-write-summary.ts';
 import { resolveBundledSkillDir } from './build-skill-zip.ts';
-import { createCommentApi } from './comments/comment-api.ts';
 import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
 import { CommentThreadStore } from './comments/thread-store.ts';
@@ -334,42 +308,8 @@ import {
   parseFrontmatterMetadata,
 } from './page-identity.ts';
 import type { RecentlyRemovedDocs } from './recently-removed-docs.ts';
-import {
-  buildGitHubBlobUrl,
-  buildGitHubTreeUrl,
-  emitShareConstructUrlLog,
-  isValidSharePath,
-  SHARE_BASE_URL,
-  SHARE_CONSTRUCT_URL_HANDLER_TAG,
-} from './share/construct-url.ts';
-import { computeShareFreshness } from './share/freshness.ts';
-import {
-  branchExistsOnOrigin,
-  originGitHubHost,
-  readGitHeadBranch,
-  readOriginGitHubRepo,
-} from './share/git-context.ts';
-import {
-  emitSharePublishLog,
-  isValidShareOwnerName,
-  isValidShareRepoName,
-  parseNameCheckEvent,
-  parseOwnersEvent,
-  parsePublishEvent,
-  pickTerminalJsonLine,
-  redactShareSubprocessStderr,
-  SHARE_PUBLISH_HANDLER_TAG,
-  SHARE_PUBLISH_KEY,
-  SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG,
-  SHARE_PUBLISH_NAME_CHECK_KEY,
-  SHARE_PUBLISH_OWNERS_HANDLER_TAG,
-  SHARE_PUBLISH_OWNERS_KEY,
-  SHARE_PUBLISH_TIMEOUT_MS,
-} from './share/publish.ts';
-import {
-  computeShareTargetStatus,
-  SHARE_TARGET_STATUS_HANDLER_TAG,
-} from './share/target-status.ts';
+import { originGitHubHost } from './share/git-context.ts';
+import { redactShareSubprocessStderr } from './share/publish.ts';
 import {
   BUNDLE_IDS,
   BUNDLE_SCOPE,
@@ -394,7 +334,6 @@ import {
   validateSkillForInstall,
 } from './skill-projection.ts';
 import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
-import { assertRealpathWithinDir } from './symlink-guard.ts';
 
 /** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
 function bundleSelfIdentifiesAsPack(dir: string): boolean {
@@ -429,14 +368,15 @@ import {
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
-import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
-import type { ResolveStrategy } from './conflict-storage.ts';
+import {
+  LOCAL_OP_PIPE_STDIO_OPTIONS,
+  withHiddenWindowsConsole,
+} from './child-process-windows-hide.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
 } from './content/managed-doc-enum.ts';
 import type { ContentFilter } from './content-filter.ts';
-import { isShareableOkArtifact } from './content-filter.ts';
 import { safeContentPath } from './content-path.ts';
 import {
   type DerivedDocumentIndexApiPort,
@@ -480,18 +420,11 @@ import {
   tracedRmSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
-import {
-  BRANCH_INFO_HANDLER_TAG,
-  computeBranchInfo,
-  isValidBranchInfoPath,
-  isValidBranchName,
-} from './git-branch-info.ts';
-import { CHECKOUT_HANDLER_TAG, runCheckoutFlow } from './git-checkout.ts';
-import { buildSyncCredentialConfig, withParentLock } from './git-handle.ts';
+import { withParentLock } from './git-handle.ts';
 import { writeGitIdentity } from './git-identity.ts';
-import { readWorktreeStatus } from './git-worktree-status.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { catchErrors } from './http/catch-errors.ts';
+import { createCommentRoutes } from './http/comment-routes.ts';
 import { createConfigSystemRoutes } from './http/config-system-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
 import {
@@ -506,6 +439,7 @@ import {
   type RenamedDocMapping,
 } from './http/file-ops-routes.ts';
 import { createFolderTemplateRoutes } from './http/folder-template-routes.ts';
+import { createGitRoutes } from './http/git-routes.ts';
 import { createHistoryRoutes } from './http/history-routes.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
@@ -516,9 +450,11 @@ import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
 import { withValidation } from './http/request-validation.ts';
 import { createSeedRoutes } from './http/seed-routes.ts';
+import { createShareRoutes } from './http/share-routes.ts';
 import { createSkillsReadRoutes } from './http/skills-read-routes.ts';
 import { createSkillsShRoutes } from './http/skills-sh-routes.ts';
 import { successResponse } from './http/success-response.ts';
+import { createSyncRoutes } from './http/sync-routes.ts';
 import { createSystemActionsRoutes } from './http/system-actions-routes.ts';
 import {
   createWorkspaceToolsRoutes,
@@ -609,7 +545,6 @@ import {
   shadowGit,
   type WriterIdentity,
 } from './shadow-repo.ts';
-import { shouldResetAmbientCredentials } from './share/git-context.ts';
 import { isDisallowedGitSpec, rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
 import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 import {
@@ -807,22 +742,6 @@ export const MANAGED_RENAME_ORIGIN = {
 } as const satisfies PairedWriteOrigin;
 
 const log = getLogger('api');
-
-/**
- * Detects git merge-conflict marker triples at start-of-line. Requires
- * ALL THREE sentinels (`<<<<<<< `, `=======`, `>>>>>>> `) to co-occur —
- * git always writes the trio together, so single-sentinel matching would
- * false-positive on legitimate user content (e.g., a CommonMark setext H1
- * underline of exactly 7 `=` characters: `My Title\n=======`).
- *
- * Used by the `?source=ytext` branch of the conflict-content handler to
- * decide whether the live Y.Text snapshot is usable as `ours` (no marker
- * triple → safe to surface live edits) or polluted by the file watcher's
- * reopen-time disk seed (triple present → fall back to git-index `ours`).
- */
-function ytextHasConflictMarkers(text: string): boolean {
-  return /^<{7} /m.test(text) && /^={7}$/m.test(text) && /^>{7} /m.test(text);
-}
 
 /** Validates a docName and builds a shadow-repo-safe path.
  * Uses the same traversal check as safeContentPath (reject `..` and null bytes)
@@ -2286,7 +2205,8 @@ export interface ApiExtensionOptions {
    * Closure-captured snapshot of `Y.Text('source').toString()` for a loaded
    * doc, returning `null` when the doc is not currently loaded server-side.
    * Threaded from `server-factory.ts` (where it lives alongside the bridge
-   * + persistence wiring) so `handleSyncConflictContent` can serve the
+   * + persistence wiring) so `handleSyncConflictContent` (now in
+   * `http/sync-routes.ts`) can serve the
    * `?source=ytext` override with the canonical
    * `prependFrontmatter(stripFrontmatter(ytext))` recompose. Optional —
    * when omitted, the `?source=ytext` branch falls back to `git show :2:`
@@ -7767,9 +7687,6 @@ export function createApiExtension(
   const LOCAL_OP_STDERR_ONLY_OPTIONS: { stdio: ['ignore', 'ignore', 'pipe'] } = {
     stdio: ['ignore', 'ignore', 'pipe'],
   };
-  const LOCAL_OP_PIPE_STDIO_OPTIONS: { stdio: ['ignore', 'pipe', 'pipe'] } = {
-    stdio: ['ignore', 'pipe', 'pipe'],
-  };
   const LOCAL_OP_IGNORED_STDIO_OPTIONS: Pick<SpawnOptions, 'stdio'> = {
     stdio: 'ignore',
   };
@@ -8309,6 +8226,17 @@ export function createApiExtension(
   const LOCAL_OP_AUTH_GH_LOGIN_KEY = '/api/local-op/auth/gh-login';
 
   /**
+   * Wall-clock bound for the short, non-interactive auth CLI probes
+   * (`auth status`, `auth signout`). Deliberately NOT `LOCAL_OP_TIMEOUT_MS`
+   * (10 min, sized for clone) — these spawn no device flow and normally
+   * return in milliseconds; the bound only exists to cut loose a wedged
+   * keychain read or a stalled GitHub API call (`auth status` round-trips to
+   * GitHub via octokit with no client timeout of its own; gh detection
+   * carries its own 5s bound).
+   */
+  const LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS = 30_000;
+
+  /**
    * Keepalive cadence for the two streaming auth flows. Between `verification`
    * and `complete` the device flow writes nothing for as long as the user takes
    * to authorize — up to the code's ~15-minute life — and a loopback connection
@@ -8718,28 +8646,49 @@ export function createApiExtension(
               env: { ...process.env },
             }),
           );
-          let timedOut = false;
+          // Settle AT the timer, not at 'close' — the package-wide timeout-kill
+          // shape (illustrative precedents: `rename-log.ts`, `acp/archive.ts`,
+          // `acp/login-shell-path.ts`; mirrored by `spawnShareSubprocess` in
+          // `http/share-routes.ts`, whose docblock asserts this mirror).
+          // Settlement must not depend on the child cooperating ('close' waits
+          // on shared stdio; SIGKILL cannot reap uninterruptible sleep), and
+          // the timeout must reject rather than resolve partial stdout: the
+          // downstream JSON parse would fall back to `{ authenticated: false }`,
+          // a wrong-result "not logged in" UX for an authenticated user.
+          // Surfaces as 500 `auth-failed` via the outer catch + Pino log, and
+          // frees the localOpGuard slot in the outer `finally`.
+          let settled = false;
           const killTimer = setTimeout(() => {
-            timedOut = true;
-            child.kill('SIGTERM');
-          }, 30_000);
+            if (settled) return;
+            settled = true;
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              // child may already be dead
+            }
+            // Tear the pipes down at settle: a D-state child (or a grandchild
+            // holding the write-ends) can keep streaming into our buffers
+            // after the response has already 500'd — destroy bounds that.
+            child.stdout.destroy();
+            child.stderr.destroy();
+            reject(
+              new Error(
+                `auth status subprocess timed out after ${LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS}ms`,
+              ),
+            );
+          }, LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS);
+          killTimer.unref?.();
           const chunks: Buffer[] = [];
           child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
           child.on('close', () => {
+            if (settled) return;
+            settled = true;
             clearTimeout(killTimer);
-            // Reject on timeout — without this, a hung subprocess (slow
-            // keychain probe, network stall) would resolve with whatever
-            // (empty / partial) stdout was buffered. The downstream JSON
-            // parse falls back to `{ authenticated: false }`, producing a
-            // wrong-result "not logged in" UX for an authenticated user.
-            // Surfaces as 500 `auth-failed` via the outer catch + Pino log.
-            if (timedOut) {
-              reject(new Error('auth status subprocess timed out after 30s'));
-              return;
-            }
             resolve(Buffer.concat(chunks).toString('utf-8'));
           });
           child.on('error', (err) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(killTimer);
             reject(err);
           });
@@ -8936,9 +8885,35 @@ export function createApiExtension(
       }),
     );
 
+    // The timer is a SETTLE branch (same latch discipline as the auth-status
+    // spawn): a child wedged past any signal must not leave the stream open
+    // and the guard slot held until the client happens to disconnect. SIGKILL
+    // is fire-and-forget hygiene; the stdio teardown bounds buffering from a
+    // D-state child or a grandchild holding the pipe write-ends. Repos keeps
+    // the 10-minute LOCAL_OP_TIMEOUT_MS its siblings dropped to 30s: `auth
+    // repos` paginates every repository visible to the token under GitHub
+    // rate limits, which legitimately runs minutes on large accounts.
     const killTimer = setTimeout(() => {
-      child.kill('SIGTERM');
+      if (settled) return;
+      settled = true;
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // child may already be dead
+      }
+      child.stdout.destroy();
+      child.stderr.destroy();
+      if (!res.writableEnded) {
+        writeStreamError(
+          500,
+          'urn:ok:error:auth-failed',
+          `Auth repos subprocess timed out after ${LOCAL_OP_TIMEOUT_MS}ms.`,
+        );
+      }
+      res.end();
+      localOpGuard.release(LOCAL_OP_AUTH_REPOS_KEY);
     }, LOCAL_OP_TIMEOUT_MS);
+    killTimer.unref?.();
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdoutBuffer += chunk.toString('utf-8');
@@ -8979,8 +8954,8 @@ export function createApiExtension(
     });
 
     // `localOpGuard.release()` lives INSIDE the `settled` guard at every
-    // exit branch (child close, child error, client disconnect) so the
-    // concurrency guard is released at most once. Releasing outside the
+    // exit branch (timeout, child close, child error, client disconnect) so
+    // the concurrency guard is released at most once. Releasing outside the
     // guard would double-release when one branch fires after another —
     // most reliably reproduced by client disconnect mid-subprocess, where
     // res.on('close') fires first, then the killed child triggers
@@ -9073,14 +9048,38 @@ export function createApiExtension(
               env: { ...process.env },
             }),
           );
+          // Settle AT the timer — same latch as the auth-status spawn above.
+          // The previous shape (SIGTERM-only timer, settle only on 'close')
+          // carried two defects: a wedged child never emits 'close', so the
+          // promise never settles and the `finally` never releases the guard
+          // slot (permanent 429); and with no timed-out flag, a child that
+          // DID close after the SIGTERM resolved as success. No stdio
+          // teardown needed — this spawn ignores all three streams.
+          let settled = false;
           const killTimer = setTimeout(() => {
-            child.kill('SIGTERM');
-          }, 30_000);
+            if (settled) return;
+            settled = true;
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              // child may already be dead
+            }
+            reject(
+              new Error(
+                `auth signout subprocess timed out after ${LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS}ms`,
+              ),
+            );
+          }, LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS);
+          killTimer.unref?.();
           child.on('close', () => {
+            if (settled) return;
+            settled = true;
             clearTimeout(killTimer);
             resolve();
           });
           child.on('error', (err) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(killTimer);
             reject(err);
           });
@@ -9185,683 +9184,6 @@ export function createApiExtension(
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_SET_IDENTITY }),
     },
   );
-
-  // ─── Security helpers for sync endpoints ────────────────────────────────────
-  // Sync endpoints reuse the shared loopback + origin check from local-op-security.ts
-  // to avoid duplicating the same logic (checkLocalOpSecurity already imported above).
-
-  // ─── Sync endpoints ──────────────────────────────────────────────────────────
-
-  async function handleSyncStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'sync-status' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'sync-status',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    try {
-      const engine = getSyncEngine?.();
-      if (!engine) {
-        // Shape must stay aligned with SyncStatus (see sync-engine.ts) — the UI
-        // reads these fields unconditionally. Dormant fallback when the engine
-        // isn't constructed (no remote, sync disabled at boot).
-        successResponse(
-          res,
-          200,
-          SyncStatusSchema,
-          {
-            state: 'dormant',
-            lastSyncUtc: null,
-            lastFetchUtc: null,
-            lastPushedSha: null,
-            ahead: 0,
-            behind: 0,
-            consecutiveFailures: 0,
-            conflictCount: 0,
-            hasRemote: false,
-            syncEnabled: false,
-            identityUnresolved: false,
-            remote: null,
-          },
-          { handler: 'sync-status' },
-        );
-        return;
-      }
-      // Lazy remote re-detection: if the user ran `git remote add origin <url>`
-      // after the server booted, refresh `hasRemote` so the Settings → Sync
-      // empty state and badge update without an app restart. No-op once a
-      // remote has been observed.
-      await engine.refreshRemote();
-      successResponse(res, 200, SyncStatusSchema, engine.getStatus(), {
-        handler: 'sync-status',
-      });
-    } catch (e) {
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'sync-status',
-        cause: e,
-      });
-    }
-  }
-
-  /**
-   * Where a project-relative working-tree path opens, or undefined when it
-   * opens nowhere. Resolves to the same two routes the Files sidebar uses, so
-   * a row in the sync popover behaves like the same file in the tree.
-   *
-   * Order is the whole design. File-index membership decides `doc` — the index
-   * holds exactly what the editor owns, so a gitignored `.md` falls through to
-   * the asset viewer rather than opening an editable surface it is not indexed
-   * for. Everything else that survives the filter's FLOORS is an `asset`: the
-   * text-view endpoint has no extension gate, so `.gitignore`, `opencode.json`
-   * and `.ok/config.yml` all render, and the viewer's own fallback pane covers
-   * whatever it cannot draw. `bypassFilters` + `showOk` reduce the filter to
-   * exactly those floors — secret-bearing files, `.git`, `node_modules`,
-   * `.ok/local`, reserved synthetic names — which is the same set the sidebar
-   * refuses to show under Show All Files. Without a content filter there is no
-   * floor to enforce, so nothing is offered.
-   */
-  function toOpenTarget(projectRelPath: string): GitWorktreeOpenTarget | undefined {
-    const absPath = join(projectDir ?? contentDir, projectRelPath);
-    const contentRelPath = toPosix(relative(contentDir, absPath));
-    if (!contentRelPath || contentRelPath.startsWith('..')) return undefined;
-    const docName = stripDocExtension(contentRelPath);
-    if (getFileIndex().has(docName)) return { kind: 'doc', docName };
-    if (!contentFilter) return undefined;
-    if (contentFilter.isExcluded(contentRelPath, { bypassFilters: true, showOk: true })) {
-      return undefined;
-    }
-    // A deletion, or an incoming file that has not landed yet: the viewer would
-    // open on nothing. Docs skip this check — index membership implies the file.
-    if (!existsSync(absPath)) return undefined;
-    return { kind: 'asset', path: contentRelPath };
-  }
-
-  /**
-   * `GET /api/git/worktree-status` — the `git status` view the sync popover
-   * renders under its action buttons.
-   *
-   * Kept off the `sync-status` payload deliberately: that one is pushed over
-   * CC1 on every engine transition, and a working-tree listing does not belong
-   * on a hot broadcast channel. This is polled by the popover while it is open.
-   */
-  async function handleGitWorktreeStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'git-worktree-status' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'git-worktree-status',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    try {
-      const engine = getSyncEngine?.();
-      // Without an engine there is no admission predicate to mark scope with.
-      // Report every path as out-of-scope rather than guessing in-scope: an
-      // unmarked path the user then watches Push ignore is the worse failure.
-      const isSyncScoped = engine
-        ? (relPath: string) => engine.isSyncScopedPath(relPath)
-        : () => false;
-      const status = await readWorktreeStatus(projectDir ?? contentDir, isSyncScoped, toOpenTarget);
-      successResponse(res, 200, GitWorktreeStatusSuccessSchema, status, {
-        handler: 'git-worktree-status',
-      });
-    } catch (e) {
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'git-worktree-status',
-        cause: e,
-      });
-    }
-  }
-
-  const handleSyncTrigger = withValidation(
-    SyncTriggerRequestSchema,
-    async (_req, res, body) => {
-      const engine = getSyncEngine?.();
-      if (!engine) {
-        // Race-window guard: the preBodyGate confirmed the engine was active,
-        // but it could have been torn down between gate and inner-handler
-        // invocation. Treat as 503 — same as the gate would have.
-        errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-          handler: 'sync-trigger',
-        });
-        return;
-      }
-      const op = body.op ?? 'sync';
-      // Fire-and-return: 202 Accepted immediately, trigger runs in background.
-      successResponse(res, 202, SyncTriggerSuccessSchema, { op }, { handler: 'sync-trigger' });
-      // `.catch` is mandatory on every fire-and-forget trigger: the response has
-      // already been sent, so a rejection has nowhere to go but the process.
-      void engine.trigger(op).catch((err) => {
-        log.error({ err, op }, '[sync] fire-and-forget trigger failed');
-      });
-    },
-    {
-      handler: 'sync-trigger',
-      method: 'POST',
-      preBodyGate: (req, res) => {
-        if (!checkLocalOpSecurity(req, res, { handler: 'sync-trigger' })) return false;
-        const engine = getSyncEngine?.();
-        if (!engine) {
-          errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-            handler: 'sync-trigger',
-          });
-          return false;
-        }
-        return true;
-      },
-    },
-  );
-
-  /**
-   * `POST /api/sync/resolve-blocking` — clear a pre-merge overlap pause by
-   * committing the local edits that caused it, then resume.
-   *
-   * The body names an ACTION and nothing else. The paths come from the
-   * engine's blocking set, so this cannot be aimed: a body-supplied path list
-   * would make `discard` a general-purpose "throw away this file's edits"
-   * endpoint reachable from any page the user's browser has open. Empty set →
-   * 409 rather than a silent success, because a UI offering these buttons
-   * against a pause that already cleared is showing the user stale state.
-   *
-   * The follow-up trigger is the point of the button: `commit` runs a full
-   * sync, because the commit it just authored is now outgoing work.
-   *
-   * `commit` is the only action the schema admits. A `discard` verb is
-   * deliberately withheld until a recoverable snapshot exists behind it —
-   * restoring the blocking paths leaves no reflog entry to recover from.
-   */
-  const handleSyncResolveBlocking = withValidation(
-    SyncResolveBlockingRequestSchema,
-    // `body` is unread: the schema admits exactly one action, and the paths come
-    // from engine state rather than the request (see the docblock above).
-    async (_req, res, _body) => {
-      const engine = getSyncEngine?.();
-      if (!engine) {
-        errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-          handler: 'sync-resolve-blocking',
-        });
-        return;
-      }
-      if (engine.getBlockingPaths().length === 0) {
-        errorResponse(
-          res,
-          409,
-          'urn:ok:error:no-blocking-changes',
-          'No local changes are blocking a merge.',
-          {
-            handler: 'sync-resolve-blocking',
-          },
-        );
-        return;
-      }
-      try {
-        // `commit` is the only action. A `discard` verb was deliberately not
-        // shipped: reverting uncommitted work is unrecoverable (git keeps no
-        // reflog for it), and the destructive verb waits on a recoverable
-        // snapshot landing first. The schema rejects anything else before this
-        // point, so there is no second branch to fall through to.
-        const paths = engine.getBlockingPaths();
-        const commitSha = await engine.commitBlockingPaths();
-        successResponse(
-          res,
-          200,
-          SyncResolveBlockingSuccessSchema,
-          { action: 'commit', paths, ...(commitSha !== null ? { commitSha } : {}) },
-          { handler: 'sync-resolve-blocking' },
-        );
-        void engine.trigger('sync').catch((err) => {
-          log.error({ err }, '[sync] resolve-blocking follow-up sync failed');
-        });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'sync-resolve-blocking',
-          cause: e,
-        });
-      }
-    },
-    {
-      handler: 'sync-resolve-blocking',
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: 'sync-resolve-blocking' }),
-    },
-  );
-
-  async function handleSyncConflicts(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'sync-conflicts' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'sync-conflicts',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    try {
-      const engine = getSyncEngine?.();
-      const conflicts = engine ? engine.getConflicts() : [];
-      successResponse(
-        res,
-        200,
-        SyncConflictsSuccessSchema,
-        { conflicts },
-        {
-          handler: 'sync-conflicts',
-        },
-      );
-    } catch (e) {
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'sync-conflicts',
-        cause: e,
-      });
-    }
-  }
-
-  const handleSyncResolveConflict = withValidation(
-    SyncResolveConflictRequestSchema,
-    async (_req, res, body) => {
-      const engine = getSyncEngine?.();
-      if (!engine) {
-        // Race-window guard — see HANDLE_SYNC_TRIGGER comment.
-        errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-          handler: 'sync-resolve-conflict',
-        });
-        return;
-      }
-      const { file, strategy, content } = body;
-      try {
-        await engine.resolveConflict(file, strategy as ResolveStrategy, content);
-        successResponse(
-          res,
-          200,
-          SyncResolveConflictSuccessSchema,
-          {},
-          {
-            handler: 'sync-resolve-conflict',
-          },
-        );
-      } catch (e) {
-        // Surface the underlying error (typically the git commit stderr
-        // wrapped by `ConflictStore.resolveConflict`) on the RFC 9457
-        // `detail` field so operators + UI toasts + agent tools have the
-        // diagnostic context — without this, every commit failure looks
-        // identical at the client.
-        const detail = e instanceof Error ? e.message : undefined;
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to resolve conflict.',
-          {
-            handler: 'sync-resolve-conflict',
-            cause: e,
-            detail,
-          },
-        );
-      }
-    },
-    {
-      handler: 'sync-resolve-conflict',
-      method: 'POST',
-      preBodyGate: (req, res) => {
-        if (!checkLocalOpSecurity(req, res, { handler: 'sync-resolve-conflict' })) return false;
-        const engine = getSyncEngine?.();
-        if (!engine) {
-          errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-            handler: 'sync-resolve-conflict',
-          });
-          return false;
-        }
-        return true;
-      },
-    },
-  );
-
-  async function handleSyncConflictContent(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'sync-conflict-content' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'sync-conflict-content',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    if (!projectDir) {
-      errorResponse(
-        res,
-        503,
-        'urn:ok:error:project-repo-not-configured',
-        'Project repo not configured.',
-        { handler: 'sync-conflict-content' },
-      );
-      return;
-    }
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const file = url.searchParams.get('file');
-    if (!file) {
-      errorResponse(
-        res,
-        400,
-        'urn:ok:error:invalid-request',
-        'Missing required query param: file.',
-        {
-          handler: 'sync-conflict-content',
-        },
-      );
-      return;
-    }
-    // Reject obvious path-traversal; git itself rejects paths outside the index.
-    if (file.includes('..') || file.startsWith('/')) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid file path.', {
-        handler: 'sync-conflict-content',
-      });
-      return;
-    }
-    // Refuse the request when no conflict is tracked for the path. Without
-    // this gate, the git stage reads silently return empty strings for
-    // untracked files, producing a 200 response with empty base/ours/theirs
-    // — misleading to agents that took the file path from a stale 409
-    // envelope or have inconsistent state. The tool description on
-    // `conflicts({ kind: 'content' })` documents this 404; the gate enforces it.
-    //
-    // Authority is split between two sources that normally agree but can
-    // diverge in tests / external-git scenarios: (a) ConflictStore via the
-    // SyncEngine — populated when SyncEngine merges; and (b) the doc's
-    // `lifecycle.status` Y.Map — set by the file-watcher's `case 'conflict'`
-    // branch even when SyncEngine wasn't involved (markers landed on disk
-    // via external git ops). Accept EITHER as authoritative tracking.
-    const trackedDocName = stripDocExtension(file);
-    const loadedDoc = hocuspocus.documents.get(trackedDocName);
-    const isConflictedByLifecycle = loadedDoc?.getMap('lifecycle').get('status') === 'conflict';
-    const engine = getSyncEngine?.();
-    const isTrackedByStore = engine ? engine.getConflicts().some((c) => c.file === file) : false;
-    if (!isConflictedByLifecycle && !isTrackedByStore) {
-      errorResponse(
-        res,
-        404,
-        'urn:ok:error:no-conflict-tracked',
-        'No conflict is tracked for this path.',
-        {
-          handler: 'sync-conflict-content',
-          extensions: { file },
-        },
-      );
-      return;
-    }
-    // Optional `?source=ytext` override: when the requested file maps to
-    // a loaded doc, serve `ours` from the live Y.Text snapshot rather
-    // than the git index. Covers the pre-conflict-unflushed-edits case
-    // where Y.Text holds bytes the user typed after the last persistence
-    // flush (persistence-during-conflict skip means those bytes don't
-    // reach disk during conflict). Any other value (or no value) falls
-    // back to the default `git show :2:` path so existing callers stay
-    // backward-compatible.
-    const source = url.searchParams.get('source');
-    const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
-
-    // Working-tree-variant conflicts (pull-only B1) have no git index stages:
-    // the branch already fast-forwarded to origin tip and the overlay rides
-    // uncommitted on top. Serve `theirs`/`base` from the pinned tip/base blobs
-    // and `ours` from the live doc (or disk when unloaded). The merge-native
-    // stage path below is untouched for git-merge conflicts.
-    const wtEntry = engine
-      ?.getConflicts()
-      .find((c) => c.file === file && c.variant === 'working-tree');
-    if (wtEntry) {
-      try {
-        // A pinned SHA that fails to read is an unexpected failure (the blob was
-        // reachable when the engine pinned it), NOT an absent blob. Returning ''
-        // would misread it downstream as origin-deleted (`kind: 'modify-delete'`)
-        // and steer the user into a `delete` resolution that removes their own
-        // doc. Discriminate: `undefined` sha = genuinely no pinned blob (the
-        // empty side of a delete/modify); a read failure on a present sha logs
-        // and rethrows to the outer catch → 500, matching the merge-native
-        // `showStage` discipline below.
-        const readBlob = async (sha: string | undefined): Promise<string> => {
-          if (!sha) return '';
-          try {
-            return await pg.raw(['cat-file', 'blob', sha]);
-          } catch (err) {
-            console.warn(
-              JSON.stringify({
-                event: 'conflict-content-readblob-failed',
-                file,
-                detail: err instanceof Error ? err.message : String(err),
-                handler: 'sync-conflict-content',
-              }),
-            );
-            throw err;
-          }
-        };
-        const theirs = await readBlob(wtEntry.theirsSha);
-        const base = await readBlob(wtEntry.baseSha);
-        const docName = stripDocExtension(file);
-        const loaded = hocuspocus.documents.get(docName);
-        let ours = '';
-        let oursPresent = false;
-        let lifecycleStatus: string | null = null;
-        if (loaded) {
-          const rawStatus = loaded.getMap('lifecycle').get('status');
-          lifecycleStatus =
-            typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
-          const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
-          if (ytextOurs !== null) {
-            ours = ytextOurs;
-            oursPresent = true;
-          }
-        } else {
-          // Unloaded doc: the overlay is on disk (absent for a delete overlay).
-          // Realpath-contain the read first — `file` is an origin-controlled
-          // tracked path that could be a symlink escaping the working tree,
-          // disclosing a foreign file. A SymlinkEscapeError propagates to the
-          // outer catch → 500; the inner catch still handles the benign ENOENT
-          // of a genuine delete overlay.
-          // `allowShareableOkArtifact` matches the write sites in conflict-storage.
-          // Without it a root-`.ok` conflict (now pinnable — `.ok/templates/*` is a
-          // shareable artifact) throws SymlinkEscapeError here and surfaces as a
-          // 500, wedging the project: the push gate holds while conflicts exist and
-          // the conflict cannot be inspected to resolve it. `docs/.ok/...` was
-          // unaffected, so a nested fixture would not have caught it.
-          assertRealpathWithinDir(join(projectDir, file), projectDir, {
-            allowShareableOkArtifact: isShareableOkArtifact,
-          });
-          try {
-            ours = readFileSync(join(projectDir, file), 'utf-8');
-            oursPresent = true;
-          } catch {
-            oursPresent = false;
-          }
-        }
-        // A locally-deleted file the tip modified is a delete/modify shape;
-        // otherwise both sides hold content.
-        const kind: 'both-modified' | 'delete-modify' | 'modify-delete' = !oursPresent
-          ? 'delete-modify'
-          : theirs.length === 0
-            ? 'modify-delete'
-            : 'both-modified';
-        successResponse(
-          res,
-          200,
-          SyncConflictContentSuccessSchema,
-          { file, base, ours, theirs, kind, lifecycleStatus },
-          { handler: 'sync-conflict-content' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read conflict content.',
-          { handler: 'sync-conflict-content', cause: e },
-        );
-      }
-      return;
-    }
-
-    // git stages: 1 = base, 2 = ours, 3 = theirs. Any may be missing for
-    // delete/edit or add/add conflicts. Return a discriminated shape so the
-    // caller can derive `kind` from stage presence — empty-string content is
-    // otherwise indistinguishable from a legitimately-empty file, and the
-    // earlier swallow-and-return-`''` shape silently mapped DU/UD into the
-    // both-modified path.
-    type StageResult = { present: false } | { present: true; content: string };
-    // Discriminate "stage genuinely absent" (expected for DU/UD) from
-    // "git subprocess failed" (transient: timeout, permissions, corruption).
-    // Both map to `{ present: false }` and the caller derives `kind` from
-    // it — without this discrimination, a transient git error silently
-    // sets `kind` to `'delete-modify'`, the UI renders "Keep deletion" for
-    // a file the user actually edited, and clicking it `git rm`s the file.
-    // Log unexpected errors loudly so "user lost work after resolution"
-    // incidents have a paper trail.
-    async function showStage(stage: 1 | 2 | 3): Promise<StageResult> {
-      try {
-        return { present: true, content: await pg.raw(['show', `:${stage}:${file}`]) };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Expected "stage absent" git error shapes from simple-git's stderr
-        // passthrough. Observed in practice:
-        //   - "pathspec '...' did not match any files known to git"
-        //   - "path '...' is in the index, but not at stage <N>"
-        //   - "path '...' exists on disk, but not in '<ref>'"
-        // Full-phrase matches only — short fragments like "but not in"
-        // alone could false-match unrelated git errors and silently
-        // return `{ present: false }` for a real failure (data-loss
-        // class). Locale-stable English fragments — git messages are
-        // English-only.
-        const isAbsent =
-          /pathspec|did not match|exists on disk, but not in|is in the index, but not at stage/i.test(
-            msg,
-          );
-        if (!isAbsent) {
-          // Unexpected git failure (timeout, object corruption, permission,
-          // EMFILE). Returning `{ present: false }` would drive `kind`
-          // derivation downstream silently — a transient stage-2 failure
-          // on a both-modified conflict would produce
-          // `kind: 'delete-modify'`, the UI would render "Keep file
-          // deleted" + "Restore with remote changes", and clicking
-          // "Keep file deleted" would `git rm` a file the user edited.
-          // Rethrow so the outer try converts to a 500;
-          // the UI's `fetchFailed` state ("Couldn't load conflict
-          // content — try reloading") handles it visibly.
-          console.warn(
-            JSON.stringify({
-              event: 'showstage-unexpected-error',
-              stage,
-              file,
-              detail: msg,
-              handler: 'sync-conflict-content',
-            }),
-          );
-          throw err;
-        }
-        return { present: false };
-      }
-    }
-    try {
-      const [baseResult, oursResult, theirsResult] = await Promise.all([
-        showStage(1),
-        showStage(2),
-        showStage(3),
-      ]);
-      const base = baseResult.present ? baseResult.content : '';
-      const theirs = theirsResult.present ? theirsResult.content : '';
-      // Derive the stage-presence discriminator. Reaching this handler
-      // requires the conflict-tracked guard above, so
-      // at least one of stages 2/3 is always present — `neither` is
-      // unreachable at runtime. The four branches are enumerated
-      // explicitly (rather than collapsed into a trailing else) so the
-      // `(false, false)` branch is self-documenting: it surfaces
-      // `'both-modified'` as a defensive default; the caller branches
-      // safely off that without a load-bearing assertNever.
-      const kind: 'both-modified' | 'delete-modify' | 'modify-delete' =
-        oursResult.present && theirsResult.present
-          ? 'both-modified'
-          : !oursResult.present && theirsResult.present
-            ? 'delete-modify'
-            : oursResult.present && !theirsResult.present
-              ? 'modify-delete'
-              : 'both-modified';
-      let ours = oursResult.present ? oursResult.content : '';
-      // Surface `lifecycleStatus` when the doc is loaded server-side so the
-      // MCP `conflicts({ kind: 'content' })` caller can detect post-resolution state
-      // (status === null after the conflict clears) without a second
-      // round-trip. Only meaningful in the `source=ytext` branch — the
-      // default `git show :2:` path is callable without a loaded doc.
-      let lifecycleStatus: string | null = null;
-      if (source === 'ytext') {
-        const docName = stripDocExtension(file);
-        const loaded = hocuspocus.documents.get(docName);
-        if (loaded) {
-          const rawStatus = loaded.getMap('lifecycle').get('status');
-          lifecycleStatus =
-            typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
-          // Gate the Y.Text substitution on the `kind` shape. The narrow
-          // risk that motivated the gate: for DU (delete-modify, stage 2
-          // absent), the file-watcher seeded Y.Text with `theirs` content
-          // from disk (git leaves the remote version in the working tree
-          // on modify/delete conflicts). Substituting Y.Text into `ours`
-          // would equal `theirs` and silently un-delete the local intent.
-          // Honest path for DU: leave `ours` empty; the `kind` discriminator
-          // drives the UI affordance.
-          //
-          // For every OTHER shape — both-modified (real merge), modify-
-          // delete (stage 2 present, only theirs absent), and the legacy
-          // filesystem-marker conflict path (neither stage in git index;
-          // `case 'conflict'` in the file-watcher fires on disk-markers
-          // without a real merge) — Y.Text substitution is correct and
-          // load-bearing. A previous `oursResult.present` gate over-
-          // restricted: it broke the filesystem-marker case where a
-          // mid-conflict Y.Text edit must surface despite no git stages
-          // existing in the index.
-          if (kind !== 'delete-modify') {
-            const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
-            if (ytextOurs !== null && !ytextHasConflictMarkers(ytextOurs)) {
-              ours = ytextOurs;
-            } else if (ytextOurs !== null) {
-              // Structured signal so triage can spot when the marker-triple
-              // detection fired and the handler fell back to git-index — the
-              // alternative is silent. Pairs with `doc.name` for the
-              // affected document.
-              console.warn(
-                JSON.stringify({
-                  event: 'ytext-conflict-marker-detected',
-                  'doc.name': docName,
-                  handler: 'sync-conflict-content',
-                }),
-              );
-            }
-          }
-        } else {
-          log.warn(
-            { docName },
-            `[conflict-content] doc ${docName} not loaded; lifecycleStatus unavailable`,
-          );
-        }
-      }
-      successResponse(
-        res,
-        200,
-        SyncConflictContentSuccessSchema,
-        { file, base, ours, theirs, kind, lifecycleStatus },
-        { handler: 'sync-conflict-content' },
-      );
-    } catch (e) {
-      errorResponse(
-        res,
-        500,
-        'urn:ok:error:internal-server-error',
-        'Failed to read conflict content.',
-        {
-          handler: 'sync-conflict-content',
-          cause: e,
-        },
-      );
-    }
-  }
 
   /**
    * `POST /api/install-skill` — build `openknowledge.skill` and open it via
@@ -16316,745 +15638,6 @@ export function createApiExtension(
   });
   searchService.prewarm();
 
-  /**
-   * `POST /api/share/construct-url` — read the project's local git state and
-   * emit a marketing-safe share URL (`https://openknowledge.ai/d/<base64url>`)
-   * pinned to HEAD branch + the focused doc. Read-only against the working
-   * tree: no commits, no pushes, no fetches, no `git ls-remote`.
-   * Branch-existence is checked locally against `refs/remotes/origin/<branch>`;
-   * the false-negative window (last fetch ran before the push) is acceptable;
-   * the toast prompts the user to
-   * push, the retry succeeds.
-   *
-   * Returns HTTP 200 with `{ok: false, error: code}` for the six business-
-   * logic failures (no-remote, detached-head, branch-not-on-origin,
-   * non-github-remote, invalid-path, unsupported-share-url) — DELIBERATE
-   * departure from RFC 9457 for these branches. The Share UI maps each code to a per-toast string;
-   * routing through 4xx would conflate share-flow outcomes with transport
-   * errors the client retries differently. Transport-class failures
-   * (loopback gate, payload-too-large, body-parse) still emit RFC 9457 via
-   * `errorResponse`.
-   */
-  const handleShareConstructUrl = withValidation(
-    ShareConstructUrlRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (!projectDir) {
-          emitShareConstructUrlLog('no-remote', { kind: body.kind });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'no-remote' },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        // Path validation is kind-specific: doc paths always name a file
-        // (non-empty); folder paths may target the content root (empty).
-        const sharePath = body.kind === 'doc' ? body.docPath : body.folderPath;
-        if (!isValidSharePath(sharePath, body.kind)) {
-          emitShareConstructUrlLog('invalid-path', { kind: body.kind });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'invalid-path' },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        const branch = readGitHeadBranch(projectDir);
-        if (branch === null) {
-          // Two upstream causes ride this branch: (a) detached HEAD — the
-          // sender must check out a branch; (b) no `.git/HEAD` at all (not a
-          // git repo) — also caught downstream by `readOriginGitHubRepo`
-          // returning `no-remote`. Disambiguate via the origin lookup so the
-          // toast says the right thing.
-          const originPeek = readOriginGitHubRepo(projectDir);
-          if (originPeek.kind === 'no-remote') {
-            emitShareConstructUrlLog('no-remote', { kind: body.kind });
-            successResponse(
-              res,
-              200,
-              ShareConstructUrlResponseSchema,
-              { ok: false, error: 'no-remote' },
-              { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-            );
-            return;
-          }
-          emitShareConstructUrlLog('detached-head', { kind: body.kind });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'detached-head' },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        const origin = readOriginGitHubRepo(projectDir);
-        if (origin.kind === 'no-remote') {
-          emitShareConstructUrlLog('no-remote', { kind: body.kind });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'no-remote' },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        // Known non-GitHub forges (gitlab, bitbucket) can't produce a GitHub
-        // share URL. GitHub hosts — github.com AND GHES — are supported: the
-        // builders below take `origin.host` and the receive side accepts the
-        // enterprise host behind its trust gate.
-        if (origin.kind === 'non-github') {
-          emitShareConstructUrlLog('non-github-remote', { kind: body.kind });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'non-github-remote' },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        const branchExists = branchExistsOnOrigin(projectDir, branch);
-        if (!branchExists) {
-          emitShareConstructUrlLog('branch-not-on-origin', {
-            branchExists: false,
-            kind: body.kind,
-          });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'branch-not-on-origin', branch },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        // content.dir relative to the repo root. `''` when `content.dir === '.'`
-        // (the dominant case). `null` (distinct from `''`) means contentDir
-        // escapes projectDir — a project misconfiguration that breaks the
-        // content-root invariant; fail loud via the outer catch (→ 500) rather
-        // than collapsing to `''`, which would silently mint a share link
-        // pointing at the repo root instead of the (broken) content dir.
-        const contentRel = toGitRelativePath(projectDir, contentDir);
-        if (contentRel === null) {
-          throw new Error('content dir is not contained within the project dir');
-        }
-        const repositorySharePath =
-          contentRel === ''
-            ? sharePath
-            : sharePath === ''
-              ? contentRel
-              : `${contentRel}/${sharePath}`;
-        let sharedUrl: string;
-        if (body.kind === 'doc') {
-          sharedUrl = buildGitHubBlobUrl(
-            origin.host,
-            origin.owner,
-            origin.repo,
-            branch,
-            repositorySharePath,
-          );
-        } else {
-          sharedUrl = buildGitHubTreeUrl(
-            origin.host,
-            origin.owner,
-            origin.repo,
-            branch,
-            repositorySharePath,
-          );
-        }
-        // Derive depth through the same canonical build + parse contract the
-        // reader uses. For valid contentRel values this count equals a raw
-        // slash split; the round-trip also validates the encoded URL before
-        // minting the token.
-        let shareUrl: string;
-        try {
-          const contentRootDepth =
-            contentRel === ''
-              ? 0
-              : parseCanonicalGitHubShareUrl(
-                  buildGitHubTreeUrl(origin.host, origin.owner, origin.repo, branch, contentRel),
-                ).targetSegments.length;
-          shareUrl = `${SHARE_BASE_URL}${encodeShareUrl(sharedUrl, contentRootDepth)}`;
-        } catch (err) {
-          if (!(err instanceof InvalidShareUrlError)) throw err;
-          emitShareConstructUrlLog('unsupported-share-url', { kind: body.kind });
-          successResponse(
-            res,
-            200,
-            ShareConstructUrlResponseSchema,
-            { ok: false, error: 'unsupported-share-url' },
-            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-          );
-          return;
-        }
-        const freshness = await computeShareFreshness(
-          projectDir,
-          branch,
-          repositorySharePath,
-          body.kind,
-        );
-        emitShareConstructUrlLog('ok', { branchExists: true, kind: body.kind, freshness });
-        successResponse(
-          res,
-          200,
-          ShareConstructUrlResponseSchema,
-          { ok: true, shareUrl, sharedUrl, branch, freshness },
-          { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
-        );
-      } catch (err) {
-        // Defensive: a future dependency change might add a throwing branch,
-        // and the structured 200 contract above would otherwise leak the throw as an
-        // unhandled-rejection 500. Generic title — raw `err.message` could
-        // include FS paths.
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: SHARE_CONSTRUCT_URL_HANDLER_TAG,
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: SHARE_CONSTRUCT_URL_HANDLER_TAG,
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG }),
-    },
-  );
-
-  /**
-   * `GET /api/git/branch-info?branch=<targetBranch>&path=<path>` — batched
-   * view of git state for the share-receive branch-switch dialog:
-   *   - `currentBranch` / `currentHeadSha` / `detached` — HEAD identity
-   *   - `shareTargetExists` — `git cat-file -e <ref>:<path>` against the
-   *     current ref (HEAD when detached)
-   *   - `dirtyConflicts` — `dirtyFilesOverlapWith(projectDir, targetBranch)`
-   *   - `branchIsLocal` — `git rev-parse --verify refs/heads/<targetBranch>`
-   *
-   * All four probes run in parallel via `Promise.all` to stay under the
-   * P99 < 500ms NFR. Read-only — does NOT acquire `withParentLock` so
-   * concurrent sync-engine writes don't serialize behind the dialog
-   * probe.
-   */
-  const handleBranchInfo = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        if (!projectDir) {
-          errorResponse(
-            res,
-            500,
-            'urn:ok:error:internal-server-error',
-            'projectDir is not configured for this server.',
-            { handler: BRANCH_INFO_HANDLER_TAG },
-          );
-          return;
-        }
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const branch = url.searchParams.get('branch');
-        const path = url.searchParams.get('path');
-        // `kind` defaults to 'doc' when absent — keeps the existing
-        // branch-info callers (which omit it) green until later stories
-        // thread it through the share-receive dialog.
-        const kindParam = url.searchParams.get('kind');
-        const kind: 'doc' | 'folder' = kindParam === 'folder' ? 'folder' : 'doc';
-        if (!isValidBranchName(branch)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'branch query param missing or malformed.',
-            { handler: BRANCH_INFO_HANDLER_TAG },
-          );
-          return;
-        }
-        if (!isValidBranchInfoPath(path, kind)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path query param missing or malformed.',
-            { handler: BRANCH_INFO_HANDLER_TAG },
-          );
-          return;
-        }
-        // The desktop sends the URL-derived repository coordinate explicitly.
-        // V1 has no mount metadata and must never be re-rooted from receiver
-        // config; v2 already projected its separate content target at decode.
-        const info = await computeBranchInfo(projectDir, branch, path, kind);
-        successResponse(res, 200, BranchInfoResponseSchema, info, {
-          handler: BRANCH_INFO_HANDLER_TAG,
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: BRANCH_INFO_HANDLER_TAG,
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: BRANCH_INFO_HANDLER_TAG,
-      method: 'GET',
-      skipBodyParse: true,
-    },
-  );
-
-  /**
-   * `POST /api/share/target-status` — receive-side verdict for a share link
-   * whose target is missing on the receiver's current ref. Runs a targeted
-   * `git fetch origin <branch>` (authenticated by the user's ambient git
-   * credential helper, same as checkout's fetch; no explicit token injection)
-   * bounded by a timeout, then classifies the miss from git's rename detection:
-   * on-origin (the local ref was stale) / renamed (+ a new path verified to
-   * resolve at the origin ref) / deleted / never-on-branch / unknown (fetch
-   * failed). Fail-open: any error returns `unknown`, and the caller falls back
-   * to today's guidance.
-   *
-   * Updates only remote-tracking refs, no CRDT mutation — so the
-   * attribution-sweep meta-test exempts it (see EXEMPT_HANDLERS).
-   */
-  function projectRenamedShareTarget(
-    repositoryPath: string,
-    renamedRepositoryPath: string,
-    contentRootDepth: number,
-  ): { verdict: 'renamed'; renamedTo: string } | { verdict: 'unknown' } {
-    const originalSegments = repositoryPath.split('/');
-    const renamedSegments = renamedRepositoryPath.split('/');
-    if (contentRootDepth >= originalSegments.length || contentRootDepth >= renamedSegments.length) {
-      return { verdict: 'unknown' };
-    }
-    for (let index = 0; index < contentRootDepth; index += 1) {
-      if (originalSegments[index] !== renamedSegments[index]) return { verdict: 'unknown' };
-    }
-    return { verdict: 'renamed', renamedTo: renamedSegments.slice(contentRootDepth).join('/') };
-  }
-
-  const handleShareTargetStatus = withValidation(
-    ShareTargetStatusRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (!projectDir) {
-          errorResponse(
-            res,
-            500,
-            'urn:ok:error:internal-server-error',
-            'projectDir is not configured for this server.',
-            { handler: SHARE_TARGET_STATUS_HANDLER_TAG },
-          );
-          return;
-        }
-        // Validate the path shape before it reaches git's `<ref>:<path>`
-        // ref-spec, mirroring the sibling share handlers (construct-url's
-        // `isValidSharePath`, branch-info's `isValidBranchInfoPath`) —
-        // precedent #55 content-scope predicate symmetry. Kind-aware: an empty
-        // path is the folder-root sentinel, invalid for a doc; `..`, `.git`,
-        // control chars, and backslashes are rejected so a malformed path can't
-        // reach git and degrade the verdict classification.
-        if (!isValidBranchInfoPath(body.path, body.kind)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'path is missing or malformed.', {
-            handler: SHARE_TARGET_STATUS_HANDLER_TAG,
-          });
-          return;
-        }
-        const status = await computeShareTargetStatus(
-          projectDir,
-          body.branch,
-          body.path,
-          body.kind,
-          {
-            credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
-              resetAmbient: shouldResetAmbientCredentials(projectDir),
-            }),
-          },
-        );
-        const contentStatus =
-          status.verdict !== 'renamed' || body.contentRootDepth === undefined
-            ? status
-            : projectRenamedShareTarget(body.path, status.renamedTo, body.contentRootDepth);
-        successResponse(res, 200, ShareTargetStatusResponseSchema, contentStatus, {
-          handler: SHARE_TARGET_STATUS_HANDLER_TAG,
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: SHARE_TARGET_STATUS_HANDLER_TAG,
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: SHARE_TARGET_STATUS_HANDLER_TAG,
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: SHARE_TARGET_STATUS_HANDLER_TAG }),
-    },
-  );
-
-  /**
-   * `POST /api/git/checkout` — share-receive branch-switch executor.
-   *
-   * Wrapped in `withParentLock` so checkout serializes against the
-   * sync-engine's parent-git writes (precedent: every other parent-git
-   * write goes through this primitive). The branch-info endpoint is
-   * read-only and lock-free; checkout is the matching writer.
-   *
-   * Identity is threaded through `extractActorIdentity` for observability
-   * only — checkout is a git-level operation with no CRDT mutation. The
-   * attribution-sweep meta-test exempts this handler explicitly.
-   *
-   * HEAD watcher is NOT coupled to this endpoint. The 200 response means
-   * `git checkout` completed; the CRDT transition (Y.Docs reset + CC1
-   * `branch-switched` broadcast) runs independently when the HEAD
-   * watcher's `onBatchBegin`/`onBatchEnd` cycle fires.
-   */
-  const handleCheckout = withValidation(
-    CheckoutRequestSchema,
-    async (_req, res, body) => {
-      const bodyObj = body as unknown as Record<string, unknown>;
-      const actor = extractActorIdentity(bodyObj, getPrincipal);
-      if (actor.kind === 'invalid-summary') {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-          handler: CHECKOUT_HANDLER_TAG,
-        });
-        return;
-      }
-
-      if (!projectDir) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'projectDir is not configured for this server.',
-          { handler: CHECKOUT_HANDLER_TAG },
-        );
-        return;
-      }
-
-      try {
-        const outcome = await withParentLock(() =>
-          runCheckoutFlow(projectDir, body.branch, {
-            fastForward: body.fastForward === true,
-            credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
-              resetAmbient: shouldResetAmbientCredentials(projectDir),
-            }),
-          }),
-        );
-        successResponse(res, 200, CheckoutResponseSchema, outcome, {
-          handler: CHECKOUT_HANDLER_TAG,
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: CHECKOUT_HANDLER_TAG,
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: CHECKOUT_HANDLER_TAG,
-      method: 'POST',
-    },
-  );
-
-  /**
-   * Spawn the share-flow CLI subcommand once, with a bounded timeout, and
-   * collect its stdout. Returns the captured text + exit code. Used by all
-   * three publish handlers; the shape mirrors `handleLocalOpAuthStatus`'s
-   * inline spawn so the route-shape meta-tests scan one consistent pattern.
-   *
-   * stderr is piped + collected; on non-zero exit, a redacted prefix is
-   * logged via the `api` logger (`[share] subprocess ...`) so production
-   * failures (git binary missing, keychain denied, Octokit auth error)
-   * leave a diagnostic trail. Credential URLs of the form
-   * `x-access-token:<token>@github.com` get the token replaced with `***`
-   * before logging — the CLI uses inline-token push URLs and a partial git
-   * error could otherwise leak the PAT.
-   *
-   * Throws on spawn-failure / timeout — the handlers map to `errorResponse`.
-   */
-  async function spawnShareSubprocess(
-    args: readonly string[],
-  ): Promise<{ stdout: string; code: number | null }> {
-    const [cmd, ...baseArgs] = localOpCliArgs;
-    const spawnArgs = [...baseArgs, ...args];
-    return await new Promise<{ stdout: string; code: number | null }>((resolveSpawn, reject) => {
-      const child = spawn(
-        cmd,
-        spawnArgs,
-        withHiddenWindowsConsole({
-          ...LOCAL_OP_PIPE_STDIO_OPTIONS,
-          env: { ...process.env },
-        }),
-      );
-      let timedOut = false;
-      const killTimer = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGTERM');
-      }, SHARE_PUBLISH_TIMEOUT_MS);
-      const stdoutChunks: Buffer[] = [];
-      const stderrChunks: Buffer[] = [];
-      child.stdout.on('data', (chunk: Buffer) => stdoutChunks.push(chunk));
-      child.stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
-      child.on('close', (code) => {
-        clearTimeout(killTimer);
-        if (timedOut) {
-          reject(new Error(`share subprocess timed out after ${SHARE_PUBLISH_TIMEOUT_MS}ms`));
-          return;
-        }
-        const stdout = Buffer.concat(stdoutChunks).toString('utf-8');
-        if (code !== 0) {
-          const stderr = Buffer.concat(stderrChunks).toString('utf-8');
-          const redacted = redactShareSubprocessStderr(stderr).slice(0, 500);
-          log.warn(
-            { code, stderr: redacted },
-            `[share] subprocess exited code=${code} stderr=${redacted}`,
-          );
-        }
-        resolveSpawn({ stdout, code });
-      });
-      child.on('error', (err) => {
-        clearTimeout(killTimer);
-        reject(err);
-      });
-    });
-  }
-
-  /**
-   * GET /api/share/publish/owners — list GitHub owners the user can host a
-   * new repo under (owner eligibility). Spawns `open-knowledge share owners --json` and
-   * returns one of:
-   *   { ok: true, owners: [...] }
-   *   { ok: false, error: 'auth-required' | 'network' }
-   *
-   * The owners endpoint is read-only and idempotent; the localOpGuard slot
-   * is shared with the wider publish flow so concurrent owner-list +
-   * publish-create can't race against the same OAuth flow.
-   */
-  const handleSharePublishOwners = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      if (!localOpGuard.tryAcquire(SHARE_PUBLISH_OWNERS_KEY)) {
-        errorResponse(
-          res,
-          429,
-          'urn:ok:error:concurrent-operation',
-          'A share owners operation is already in progress.',
-          { handler: SHARE_PUBLISH_OWNERS_HANDLER_TAG, extraHeaders: { 'Retry-After': '5' } },
-        );
-        return;
-      }
-      try {
-        const { stdout } = await spawnShareSubprocess(['share', 'owners', '--json']);
-        const event = pickTerminalJsonLine(stdout);
-        const body = parseOwnersEvent(event);
-        emitSharePublishLog(
-          'owners-list',
-          body.ok ? 'ok' : body.error,
-          body.ok ? { count: body.owners.length } : undefined,
-        );
-        successResponse(res, 200, SharePublishOwnersResponseSchema, body, {
-          handler: SHARE_PUBLISH_OWNERS_HANDLER_TAG,
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: SHARE_PUBLISH_OWNERS_HANDLER_TAG,
-          cause: err,
-        });
-      } finally {
-        localOpGuard.release(SHARE_PUBLISH_OWNERS_KEY);
-      }
-    },
-    {
-      handler: SHARE_PUBLISH_OWNERS_HANDLER_TAG,
-      method: 'GET',
-      skipBodyParse: true,
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: SHARE_PUBLISH_OWNERS_HANDLER_TAG }),
-    },
-  );
-
-  /**
-   * GET /api/share/publish/name-check?owner=<o>&name=<n> — pre-flight a repo
-   * name for conflict. Spawns `open-knowledge share name-check --json
-   * --owner X --name Y` and returns one of:
-   *   { ok: true, available: boolean }
-   *   { ok: false, error: 'auth-required' | 'network' }
-   *
-   * Query-param validation runs server-side: missing/invalid `owner` or
-   * `name` short-circuits to 400 invalid-request BEFORE the subprocess
-   * spawns. This keeps a malformed wizard call from triggering a CLI
-   * exec on every keypress.
-   */
-  const handleSharePublishNameCheck = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      const url = new URL(req.url ?? '', 'http://localhost');
-      const owner = url.searchParams.get('owner') ?? '';
-      const name = url.searchParams.get('name') ?? '';
-      if (!isValidShareOwnerName(owner) || !isValidShareRepoName(name)) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'owner and name query params must be valid GitHub identifiers.',
-          { handler: SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG },
-        );
-        return;
-      }
-      if (!localOpGuard.tryAcquire(SHARE_PUBLISH_NAME_CHECK_KEY)) {
-        errorResponse(
-          res,
-          429,
-          'urn:ok:error:concurrent-operation',
-          'A share name-check operation is already in progress.',
-          { handler: SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG, extraHeaders: { 'Retry-After': '5' } },
-        );
-        return;
-      }
-      try {
-        const { stdout } = await spawnShareSubprocess([
-          'share',
-          'name-check',
-          '--owner',
-          owner,
-          '--name',
-          name,
-          '--json',
-        ]);
-        const event = pickTerminalJsonLine(stdout);
-        const body = parseNameCheckEvent(event);
-        emitSharePublishLog(
-          'name-check',
-          body.ok ? 'ok' : body.error,
-          body.ok ? { available: body.available } : undefined,
-        );
-        successResponse(res, 200, SharePublishNameCheckResponseSchema, body, {
-          handler: SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG,
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG,
-          cause: err,
-        });
-      } finally {
-        localOpGuard.release(SHARE_PUBLISH_NAME_CHECK_KEY);
-      }
-    },
-    {
-      handler: SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG,
-      method: 'GET',
-      skipBodyParse: true,
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: SHARE_PUBLISH_NAME_CHECK_HANDLER_TAG }),
-    },
-  );
-
-  /**
-   * POST /api/share/publish — drive a no-remote project to first share (publish flow).
-   * Spawns `open-knowledge share publish --json --owner ... --name ...
-   * --visibility ... [--description ...] --project-dir <projectDir>` and
-   * returns one of:
-   *   { ok: true, ownerLogin, repoName, cloneUrl, defaultBranch }
-   *   { ok: false, error: <SharePublishErrorCode> }
-   *
-   * `projectDir` is sourced from the server's own `ApiExtensionOptions` —
-   * never trusted from the client — so a hostile caller can't redirect
-   * the publish flow at another project on disk. Absent `projectDir`
-   * surfaces as `no-project` (the editor's wizard knows what to do).
-   */
-  const handleSharePublish = withValidation(
-    SharePublishRequestSchema,
-    async (_req, res, body) => {
-      if (!projectDir) {
-        emitSharePublishLog('publish-create', 'no-project');
-        successResponse(
-          res,
-          200,
-          SharePublishResponseSchema,
-          { ok: false, error: 'no-project' },
-          { handler: SHARE_PUBLISH_HANDLER_TAG },
-        );
-        return;
-      }
-      if (!isValidShareOwnerName(body.owner) || !isValidShareRepoName(body.name)) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'owner and name must be valid GitHub identifiers.',
-          { handler: SHARE_PUBLISH_HANDLER_TAG },
-        );
-        return;
-      }
-      if (!localOpGuard.tryAcquire(SHARE_PUBLISH_KEY)) {
-        errorResponse(
-          res,
-          429,
-          'urn:ok:error:concurrent-operation',
-          'A share publish operation is already in progress.',
-          { handler: SHARE_PUBLISH_HANDLER_TAG, extraHeaders: { 'Retry-After': '5' } },
-        );
-        return;
-      }
-      try {
-        const args = [
-          'share',
-          'publish',
-          '--owner',
-          body.owner,
-          '--name',
-          body.name,
-          '--visibility',
-          body.visibility,
-          '--project-dir',
-          projectDir,
-          '--json',
-        ];
-        if (body.description !== undefined && body.description.length > 0) {
-          args.push('--description', body.description);
-        }
-        const { stdout } = await spawnShareSubprocess(args);
-        const event = pickTerminalJsonLine(stdout);
-        const responseBody = parsePublishEvent(event);
-        emitSharePublishLog('publish-create', responseBody.ok ? 'ok' : responseBody.error);
-        if (responseBody.ok) {
-          // A successful publish just added `origin` to the local repo (the
-          // CLI's runPublishFlow addRemote step). The sync engine snapshotted
-          // `hasRemote: false` at boot, so without a nudge the client keeps
-          // routing the Share button into THIS wizard — and the republish
-          // 422s on the repo that now exists. Fire-and-forget re-detection
-          // flips `hasRemote` and signals CC1 'sync-status' so the next Share
-          // click constructs the URL directly. Mirrors the set-identity
-          // handler's refreshIdentity nudge.
-          void getSyncEngine?.()
-            ?.refreshRemote()
-            .catch(() => {
-              /* best-effort — status catches up on next poll / restart */
-            });
-        }
-        successResponse(res, 200, SharePublishResponseSchema, responseBody, {
-          handler: SHARE_PUBLISH_HANDLER_TAG,
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: SHARE_PUBLISH_HANDLER_TAG,
-          cause: err,
-        });
-      } finally {
-        localOpGuard.release(SHARE_PUBLISH_KEY);
-      }
-    },
-    {
-      handler: SHARE_PUBLISH_HANDLER_TAG,
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: SHARE_PUBLISH_HANDLER_TAG }),
-    },
-  );
-
   // ───────────────────── Embeddings API key — Account control ─────────────────
   // Loopback + Origin gated (checkLocalOpSecurity) set/clear for the
   // machine-global embeddings key. The key travels renderer → loopback POST body
@@ -17801,28 +16384,7 @@ export function createApiExtension(
     { handler: 'lint-fix', method: 'POST' },
   );
 
-  // The comment store + service are constructed near `resolveDocPath` above so
-  // the rename walk can follow renames. Two dispatchers keep the surface to two
-  // paths; the mutating sub-handlers in `comment-api.ts` thread
-  // `extractActorIdentity` (same posture as the `handleSkill` / `handleTemplate`
-  // dispatchers in the attribution sweep).
-  const commentApi = createCommentApi({
-    service: commentService,
-    getPrincipal,
-    onChanged: () => signalChannel?.('comments'),
-  });
-  const handleCommentsRoute = methodRouter(
-    { GET: commentApi.list, POST: commentApi.create },
-    { handler: 'comments' },
-  );
-  const handleCommentRoute = methodRouter(
-    { GET: commentApi.read, POST: commentApi.mutate, DELETE: commentApi.remove },
-    { handler: 'comment' },
-  );
-
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
-    '/api/comments': handleCommentsRoute,
-    '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,
     '/api/asset-text': handleAssetText,
     '/api/skill': handleSkill,
@@ -17855,20 +16417,6 @@ export function createApiExtension(
     '/api/agent-burst-diff': handleAgentBurstDiff,
     '/api/save-version': handleSaveVersion,
     '/api/rollback': handleRollback,
-    '/api/share/construct-url': handleShareConstructUrl,
-    '/api/share/target-status': handleShareTargetStatus,
-    '/api/git/branch-info': handleBranchInfo,
-    '/api/git/worktree-status': handleGitWorktreeStatus,
-    '/api/git/checkout': handleCheckout,
-    '/api/share/publish/owners': handleSharePublishOwners,
-    '/api/share/publish/name-check': handleSharePublishNameCheck,
-    '/api/share/publish': handleSharePublish,
-    '/api/sync/status': handleSyncStatus,
-    '/api/sync/trigger': handleSyncTrigger,
-    '/api/sync/conflicts': handleSyncConflicts,
-    '/api/sync/conflict-content': handleSyncConflictContent,
-    '/api/sync/resolve-conflict': handleSyncResolveConflict,
-    '/api/sync/resolve-blocking': handleSyncResolveBlocking,
     '/api/local-op/clone': handleLocalOpClone,
     '/api/local-op/ok-init': handleLocalOpOkInit,
     '/api/local-op/auth/login': handleLocalOpAuthLogin,
@@ -17899,8 +16447,6 @@ export function createApiExtension(
   // UI can bootstrap against the collab server; mutations require a
   // loopback Host header. /api/workspace enforces this inline already.
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
-    '/api/comments',
-    '/api/comment',
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',
     '/api/lint/fix',
@@ -17912,10 +16458,6 @@ export function createApiExtension(
     '/api/agent-undo',
     '/api/save-version',
     '/api/rollback',
-    '/api/sync/trigger',
-    '/api/sync/resolve-conflict',
-    '/api/sync/resolve-blocking',
-    '/api/git/checkout',
     '/api/test-reset',
     '/api/test-flush-git',
     '/api/test-rescan-backlinks',
@@ -18075,6 +16617,41 @@ export function createApiExtension(
     getGeneratedIndexSettingsStatus,
     setGeneratedIndexEnabled,
   });
+  const commentRoutes = createCommentRoutes({
+    commentService,
+    getPrincipal,
+    signalChannel,
+  });
+  const syncRoutes = createSyncRoutes({
+    projectDir,
+    contentDir,
+    getPrincipal,
+    hocuspocus,
+    log,
+    checkLocalOpSecurity,
+    getSyncEngine,
+    serializeDoc,
+  });
+  const shareRoutes = createShareRoutes({
+    projectDir,
+    contentDir,
+    log,
+    checkLocalOpSecurity,
+    localOpCliArgs,
+    localOpGuard,
+    getSyncEngine,
+    toGitRelativePath,
+  });
+  const gitRoutes = createGitRoutes({
+    projectDir,
+    contentDir,
+    contentFilter,
+    getFileIndex,
+    checkLocalOpSecurity,
+    getSyncEngine,
+    getPrincipal,
+    localOpCliArgs,
+  });
   const fileOpsRoutes = createFileOpsRoutes({
     contentDir,
     projectDir,
@@ -18152,6 +16729,10 @@ export function createApiExtension(
     skillsReadRoutes,
     skillsShRoutes,
     workspaceToolsRoutes,
+    commentRoutes,
+    syncRoutes,
+    shareRoutes,
+    gitRoutes,
     fileOpsRoutes,
     seedRoutes,
     systemActionsRoutes,

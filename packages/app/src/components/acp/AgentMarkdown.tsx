@@ -143,8 +143,9 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         controls={{ code: { copy: true, download: false }, table: false, mermaid: false }}
         // Shiki-backed syntax highlighting via the in-house curated-grammar
         // plugin (not `@streamdown/code`, whose full-bundle shiki blows the
-        // all-chunks size budget). github-light/github-dark, follows the
-        // app's `.dark` variant; grammars load lazily on first code block.
+        // all-chunks size budget). Paints from the shared `--syntax-*` tokens,
+        // so it tracks the selected color theme the way the editor does;
+        // grammars load lazily on first code block.
         plugins={{ code: codeHighlighter }}
         // Plain hardened anchors instead of Streamdown's confirm-modal flow:
         // both shells already gate external opens (web: target=_blank +

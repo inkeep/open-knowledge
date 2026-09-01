@@ -315,6 +315,12 @@ export const ProblemTypeSchema = z.enum([
   // enum mirror) so agents can transition straight to `conflicts({ kind: 'content' })`
   // + `resolve_conflict` without parsing the detail string.
   'urn:ok:error:doc-in-conflict',
+  // `unresolved-conflict-markers` is the 422 for a resolution whose bytes still
+  // carry a complete `<<<<<<< … >>>>>>>` block. A permanent rejection of the
+  // caller's content, deliberately not the 500 the resolve handler used to
+  // give it: `resolve_conflict`'s own contract reads a 500 as a transient
+  // commit failure worth retrying, which this can never become.
+  'urn:ok:error:unresolved-conflict-markers',
   // `no-conflict-tracked` is the 404 surfaced by handleSyncConflictContent
   // when an agent asks for stages on a file the conflict store doesn't
   // track (stale 409 envelope, post-resolution retry, or wrong path).
