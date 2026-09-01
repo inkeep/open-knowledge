@@ -19,7 +19,7 @@
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { AlertCircleIcon, CheckIcon, CopyIcon, InfoIcon, MailIcon } from 'lucide-react';
+import { AlertCircleIcon, CheckIcon, CopyIcon, InfoIcon, MailIcon, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
@@ -82,9 +82,42 @@ export function BugReportSendToast({
   }
 }
 
-function ToastCard({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+/**
+ * Sonner renders its own close button only for a non-jsx toast, so a
+ * `toast.custom` body gets none however `<Toaster />` is configured. The gate
+ * is per-body, not per-layout, so the card supplies its own on every outcome.
+ *
+ * A 20px circle pinned to the inline-start corner and offset out over the
+ * border, matching where sonner puts its own at the time of writing, so this
+ * toast dismisses from the same place as the app's ordinary toasts. The offset
+ * is a negative logical margin rather than a translate: `buttonVariants` drives
+ * its press feedback through `translate-y`, and a positioning translate on the
+ * same custom property loses to the higher-specificity `:active` rule.
+ *
+ * First in source as well as first on screen, so the control at the reading
+ * origin is also the one focus reaches first.
+ */
+function ToastCard({
+  icon,
+  onDismiss,
+  children,
+}: {
+  icon: ReactNode;
+  onDismiss: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useLingui();
   return (
-    <div className="flex w-full gap-3 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg">
+    <div className="relative flex w-full gap-3 rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg">
+      <Button
+        type="button"
+        variant="ghost"
+        className="-ms-[0.4375rem] -mt-[0.4375rem] absolute start-0 top-0 size-5 rounded-full border-border bg-popover p-0 text-popover-foreground"
+        aria-label={t`Close`}
+        onClick={onDismiss}
+      >
+        <XIcon className="size-3" aria-hidden="true" />
+      </Button>
       {icon}
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">{children}</div>
     </div>
@@ -106,6 +139,7 @@ function SendingLayout({
   return (
     <ToastCard
       icon={<Spinner className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />}
+      onDismiss={actions.dismiss}
     >
       <div className="flex items-baseline gap-2">
         <p id={titleId} className="font-medium text-sm">
@@ -128,11 +162,6 @@ function SendingLayout({
         aria-labelledby={titleId}
         className="h-1.5 bg-secondary"
       />
-      <ActionRow>
-        <Button size="sm" variant="ghost" onClick={actions.dismiss}>
-          <Trans>Dismiss</Trans>
-        </Button>
-      </ActionRow>
     </ToastCard>
   );
 }
@@ -147,6 +176,7 @@ function SentLayout({
   return (
     <ToastCard
       icon={<CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />}
+      onDismiss={actions.dismiss}
     >
       <p className="font-medium text-sm">
         <Trans>Thanks for the report!</Trans>
@@ -184,6 +214,7 @@ function EmailDraftLayout({
   return (
     <ToastCard
       icon={<MailIcon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />}
+      onDismiss={actions.dismiss}
     >
       <p className="font-medium text-sm">
         <Trans>Send your report by email</Trans>
@@ -225,6 +256,7 @@ function FailedLayout({
       icon={
         <AlertCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden="true" />
       }
+      onDismiss={actions.dismiss}
     >
       <p className="font-medium text-sm">
         <Trans>Couldn't send the report</Trans>
@@ -257,6 +289,7 @@ function AlreadySendingLayout({ actions }: { actions: BugReportSendToastActions 
   return (
     <ToastCard
       icon={<InfoIcon className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />}
+      onDismiss={actions.dismiss}
     >
       <p className="font-medium text-sm">
         <Trans>Already sending this report</Trans>
@@ -269,11 +302,6 @@ function AlreadySendingLayout({ actions }: { actions: BugReportSendToastActions 
           This report is already on its way. Its result will appear in your bug report history.
         </Trans>
       </p>
-      <ActionRow>
-        <Button size="sm" variant="ghost" onClick={actions.dismiss}>
-          <Trans>Dismiss</Trans>
-        </Button>
-      </ActionRow>
     </ToastCard>
   );
 }

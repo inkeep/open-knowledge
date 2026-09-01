@@ -124,12 +124,16 @@ describe('while the send is in flight', () => {
     await settleWith(FAILED_RESULT);
   });
 
-  test('Dismiss asks the host to close the toast without touching the send', async () => {
+  test('Close asks the host to close the toast without touching the send', async () => {
     const manager = startOperation();
     const actions = makeActions();
     renderToast(manager, actions);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    // The corner button is the only dismiss affordance: a partial revert that
+    // brought the labelled one back alongside it would otherwise pass.
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(actions.dismiss).toHaveBeenCalledTimes(1);
     expect(manager.get(OPERATION_ID)?.status).toBe('sending');
@@ -269,5 +273,66 @@ describe('when the operation is unknown', () => {
     );
 
     expect(container.textContent).toBe('');
+  });
+});
+
+/**
+ * Pinned per outcome rather than on one representative status: the sonner gate
+ * that makes `ToastCard` supply its own close button (see that component's
+ * docblock) is per-body, but the wiring below is per-layout.
+ *
+ * The tab assertion guards the source order specifically. The button is
+ * absolutely positioned, so moving it back below the content column is
+ * visually free and would silently put every action button ahead of Close.
+ */
+describe('every outcome can be closed', () => {
+  const outcomes: ReadonlyArray<
+    readonly [label: string, settle: (() => Promise<void>) | undefined, marker: string]
+  > = [
+    ['sending', undefined, 'Sending report'],
+    ['sent', () => settleWith({ ok: true, reference: 'OK-1234-ABCD' }), 'Thanks for the report!'],
+    [
+      'email-draft',
+      () =>
+        settleWith({
+          ok: false,
+          reason: 'email-draft',
+          fallback: { mailtoUrl: MAILTO, zipPath: ZIP_PATH },
+        }),
+      'Send your report by email',
+    ],
+    ['failed', () => settleWith(FAILED_RESULT), "Couldn't send the report"],
+    [
+      'already-sending',
+      () =>
+        settleWith({
+          ok: false,
+          reason: 'send-in-flight',
+          fallback: { mailtoUrl: MAILTO, zipPath: ZIP_PATH },
+        }),
+      'Already sending this report',
+    ],
+  ];
+
+  test.each(outcomes)('%s offers Close', async (_label, settle, marker) => {
+    const manager = startOperation();
+    const actions = makeActions();
+    if (settle !== undefined) await settle();
+    renderToast(manager, actions);
+
+    // Guards the case where a layout renamed its copy and the assertion below
+    // would otherwise pass against whichever layout happened to render.
+    expect(screen.getByText(marker)).toBeTruthy();
+
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    await userEvent.tab();
+    expect(document.activeElement).toBe(close);
+
+    await userEvent.click(close);
+    expect(actions.dismiss).toHaveBeenCalledTimes(1);
+
+    if (settle === undefined) await settleWith(FAILED_RESULT);
   });
 });

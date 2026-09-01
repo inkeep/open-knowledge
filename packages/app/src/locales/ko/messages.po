@@ -2816,6 +2816,7 @@ msgstr "{repoName} 클론 중…"
 msgid "Cloning..."
 msgstr "클론 중…"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4771,7 +4772,6 @@ msgid "Disconnecting"
 msgstr "연결 해제 중"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx

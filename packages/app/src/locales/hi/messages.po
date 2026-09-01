@@ -2812,6 +2812,7 @@ msgstr "{repoName} क्लोन किया जा रहा है…"
 msgid "Cloning..."
 msgstr "क्लोन किया जा रहा है…"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4767,7 +4768,6 @@ msgid "Disconnecting"
 msgstr "कनेक्शन तोड़ा जा रहा है"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
