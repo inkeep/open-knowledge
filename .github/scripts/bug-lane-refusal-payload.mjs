@@ -26,8 +26,24 @@
  * chosen deliberately: over-reporting severity costs a human a minute of
  * reading, under-reporting it costs a bad release.
  *
+ * The page itself stays informational rather than alarming: no emoji, no
+ * shouty header block, and no per-file listing (CARRIES BEHAVIOR / INERT) in
+ * the channel. That per-path detail is genuinely not surfaced anywhere once
+ * this returns — `classifyRefs`'s `detail` strings are computed and then
+ * discarded, since nothing here writes to `console`, `::notice::`, or
+ * `$GITHUB_STEP_SUMMARY`. What IS still visible without opening this file's
+ * own output: the raw conflicting paths, which the pick loop already prints
+ * to the run log independently (the "Verify the synthetic tree" step's
+ * `--diff-filter=U` output), and the aggregate answer — config drift vs.
+ * behavior-carrying — via the reason phrase below. Slack section blocks have
+ * no expand/collapse control, so there is no way to fold the per-path detail
+ * into the message itself without either always showing it or never showing
+ * it; this file chooses never, on the belief that the aggregate answer is
+ * what the channel needs to decide "does this need a human," and an operator
+ * who needs the paths themselves is already going to open the run.
+ *
  * Usage:
- *   node bug-lane-refusal-payload.mjs --input <json> [--repo owner/name]
+ *   node bug-lane-refusal-payload.mjs --input <json>
  *
  * Emits the payload as JSON on stdout. Everything is assembled through
  * JSON.stringify, so a commit subject containing quotes cannot corrupt the
@@ -37,8 +53,6 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
-
-const DEFAULT_REPO = 'inkeep/open-knowledge';
 
 /**
  * Leaf keys whose divergence cannot change what a release does.
@@ -165,11 +179,6 @@ export function classifyRefs(refs, gitShow) {
 }
 
 /**
- * The headline has one job: let a reader scanning the channel tell a fix that
- * genuinely cannot ship from one that is only blocked by churn, without
- * opening the run.
- */
-/**
  * The classifier ran on this ref and found NO conflicting path.
  *
  * Deliberately `Array.isArray` and not `!r.files?.length`: the question is
@@ -178,233 +187,208 @@ export function classifyRefs(refs, gitShow) {
  */
 const classifiedWithNoPaths = (r) => Array.isArray(r.files) && r.files.length === 0;
 
-export function describeRefusal({ verdict, refs }) {
-  if (verdict === 'could-not-verify') {
-    return {
-      // Deliberately not "failed": the tiers ran out of budget, so there is no
-      // result to report about the batch either way. Every clause of the `fail`
-      // wording below would be false here, and the one an operator acts on
-      // ("not a retry candidate") would be the exact inverse of the truth.
-      headline: 'Bug lane: could not verify the synthetic tree',
-      meaning:
-        'The fast tiers ran out of their time budget rather than finishing. Nothing was verified, so this says nothing about the queued fixes.',
-    };
-  }
-  if (verdict === 'fail') {
-    return {
-      headline: 'Bug lane: verification failed on the synthetic tree',
-      // Says what is known and stops there. This used to assert "a real
-      // conflict with the stable", which is one of two causes and not the one
-      // that actually happened: the tiers can be red because the STABLE's own
-      // tree is red, in which case every fix refuses and none of them is at
-      // fault. Reading a base failure as an incompatible fix is how a lane-wide
-      // outage looks like a run of bad luck with the fixes.
-      meaning:
-        'The fast tiers went red on BOTH attempts, or the install failed. Past flake-class, so either the fix depends on something the stable lacks or the stable is red on its own.',
-    };
-  }
-  if (refs.length > 0 && refs.every((r) => r.inert)) {
-    return {
-      headline: 'Bug lane: point release blocked by config drift, not by the fix',
-      meaning:
-        'Every collision is in a path that neither ships nor gates verification. The fix itself applies cleanly to the stable.',
-    };
-  }
-  // No recorded conflicting path anywhere. The severe headline below asserts
-  // "at least one collision carries behavior", and with zero paths there is no
-  // collision to say that about — saying it anyway is how a pick that applied
-  // EMPTY (the stable already had the fix) got reported as a fix that depends
-  // on later work. The verify stage now routes empty picks away from here
-  // entirely, so reaching this branch means the pick failed some third way;
-  // report the uncertainty instead of inventing a cause for it.
-  if (refs.length > 0 && refs.every(classifiedWithNoPaths)) {
-    return {
-      headline: 'Bug lane: the pick failed without a conflicting path',
-      meaning:
-        'The cherry-pick exited non-zero but left no conflicting file, so its cause is not visible from here. Read the run log before concluding anything about the fix.',
-    };
-  }
-  return {
-    headline: 'Bug lane: the fix does not apply to the current stable',
-    meaning:
-      'At least one collision is in a path that carries behavior, so the fix depends on something that landed after the stable was cut.',
-  };
+/**
+ * The one thing worth telling a reader who is only scanning the channel: why
+ * this did not ship, in three words or fewer, phrased as a noun so it reads
+ * after "due to". Everything else — which files, which tests — lives in the
+ * run, one click away, not in the page.
+ */
+export function reasonPhrase({ verdict, refs }) {
+  if (verdict === 'could-not-verify') return 'verification timeout';
+  // Deliberately does not say WHOSE verification is red. The tiers run on
+  // the SYNTHETIC tree (stable + picked fixes), so a red run means either the
+  // fix depends on something the stable lacks, or the stable is red on its
+  // own — asserting either one here would be the exact over-claim the
+  // two-cause hedge in `actionLine`'s `fail` branch exists to avoid.
+  if (verdict === 'fail') return 'red verification';
+  if (refs.length > 0 && refs.every((r) => r.inert)) return 'config drift';
+  // No recorded conflicting path anywhere. Calling this a "conflict" would
+  // assert a collision the classifier has no evidence for — the same
+  // over-claim that once reported an empty pick (the stable already had the
+  // fix) as a fix depending on later work.
+  if (refs.length > 0 && refs.every(classifiedWithNoPaths)) return 'unclear pick failure';
+  return 'behavior-carrying conflict';
 }
 
 /**
- * What an operator can actually do. Deliberately does not offer
- * `resolve_paths` for the inert case: its allowlist is code and covers only
- * `pnpm-workspace.yaml`, so naming a package manifest refuses with
- * `resolve-path-not-allowlisted` before the tree is touched. Sending someone
- * to a door that is locked is worse than saying it is locked.
+ * Scoped to the FIX, never the lane. On every verdict but `fail` that
+ * distinction is academic — but a `fail` can mean the stable itself is red,
+ * in which case the lane refuses every fix until that is repaired (see
+ * `actionLine`'s `fail` branch), so an unscoped "no action needed" here would
+ * assert the lane is fine on the one verdict where it might not be.
  */
-export function optionsFor({ verdict, refs }) {
+function noActionSentence(verdict) {
   if (verdict === 'could-not-verify') {
-    return [
-      'Nothing here is evidence about the fixes — the tiers did not finish, so no test passed or failed on their account.',
-      'The batch stays pending and the next tick retries it. Unlike a red verification, this IS a retry candidate.',
-      'If this keeps happening the runner or the budget is the thing to look at — but identical refusals stay silent, so check the lane\u2019s recent runs rather than waiting to be paged again.',
-    ];
+    return 'No action needed — the lane retries this batch automatically on its next tick.';
   }
   if (verdict === 'fail') {
-    return [
-      'Check the failures above against the fixes first — a failure in code no fix touches means the STABLE is red, which no amount of re-running or re-picking will clear.',
-      'If the failures do sit in code a fix touches, that fix depends on later work. Either way it is not a retry candidate.',
-      'The fixes ride their cycle’s stable. Forcing them past a red verification is not an option this lane offers.',
-    ];
+    return 'The fix itself needs nothing — it ships in the normal 24h soak lane in a future version.';
   }
-  if (refs.length > 0 && refs.every(classifiedWithNoPaths)) {
-    return [
-      'Open the run log and read the cherry-pick output — the failure left no conflicting path, so the log is the only place the cause exists.',
-      'Do not hand-cut a point release off this page alone. Confirm what actually failed first; the fix may already be in the stable.',
-    ];
-  }
-  const allInert = refs.length > 0 && refs.every((r) => r.inert);
-  if (allInert) {
-    return [
-      'Do nothing — the fix ships with its cycle’s stable on the ordinary soak. Since the collision carries no behavior, waiting costs only time.',
-      'If the fix is urgent enough to hand-cut: it IS self-contained over the stable, so the usual "pick a smaller commit" advice does not apply. `resolve_paths` does not cover this path (allowlist is code, `pnpm-workspace.yaml` only), so it needs a human decision — see RELEASES.md, "When the conflict is config drift, not a dependency".',
-    ];
-  }
+  // Not "in a future version": on an evidence-free pick (`unclear pick
+  // failure`) the likelier reading is the fix already shipped, so nothing
+  // new is coming — `rides its cycle's stable` holds under either reading.
+  return "No action needed — it rides its cycle's stable.";
+}
+
+function refLabel(entry) {
+  const tickets = (entry.tickets ?? []).join(', ');
+  return [`\`${entry.ref.slice(0, 9)}\``, tickets && `(${tickets})`].filter(Boolean).join(' ');
+}
+
+/** Who the headline is about. Only `conflict` has a specific ref to name. */
+function headlineSubject({ verdict, refs }) {
+  if (verdict !== 'conflict' || refs.length === 0) return 'The queued fix(es)';
+  const [first, ...rest] = refs;
+  const label = refLabel(first);
+  return rest.length > 0 ? `${label} and ${rest.length} more` : label;
+}
+
+/**
+ * The whole first line a reader needs: what failed to ship, why (three words
+ * or fewer), what the stable is now, and that nothing is owed in response.
+ */
+export function buildHeadline({ verdict, refs, stable }) {
   return [
-    'Let it ride its cycle’s stable. A behavior-carrying collision means the fix genuinely depends on later work.',
-    'If it must ship sooner, the answer is a smaller self-contained commit, not a forced pick — see RELEASES.md, "When a guard refuses".',
-  ];
+    `Bug lane: ${headlineSubject({ verdict, refs })} did not ship in the fast lane due to ${reasonPhrase({ verdict, refs })}.`,
+    `Latest stable remains \`${stable}\`.`,
+    noActionSentence(verdict),
+  ].join(' ');
 }
 
 const MAX_REFS_SHOWN = 5;
-const MAX_FILES_SHOWN = 8;
 
-function refLines(refs) {
-  const lines = [];
-  for (const entry of refs.slice(0, MAX_REFS_SHOWN)) {
-    const tickets = (entry.tickets ?? []).join(', ');
-    const label = [`\`${entry.ref.slice(0, 9)}\``, tickets && `(${tickets})`]
-      .filter(Boolean)
-      .join(' ');
-    const shown = entry.files.slice(0, MAX_FILES_SHOWN);
-    // "conflicted in 0 files:" followed by nothing is the shape that made a
-    // page unreadable — it states a conflict and then lists no evidence for
-    // it, while the line below cheerfully reports every file applying cleanly.
-    // Say the actual fact instead.
-    if (entry.files.length === 0) {
-      const total = Number(entry.totalFiles);
-      lines.push(
-        `${label} — the pick failed but git reported no conflicting file` +
-          `${Number.isFinite(total) && total > 0 ? `; all ${total} file${total === 1 ? '' : 's'} in the commit applied cleanly` : ''}.`,
-      );
-      continue;
-    }
-    lines.push(
-      `${label} — conflicted in ${entry.files.length} file${entry.files.length === 1 ? '' : 's'}:`,
+/**
+ * One line per ref: the count of conflicting files and how many applied
+ * cleanly, never the paths or the per-file INERT/CARRIES-BEHAVIOR verdict —
+ * see the top-of-file docstring for where that detail actually goes.
+ */
+function refSummaryLine(entry) {
+  const label = refLabel(entry);
+  const total = Number(entry.totalFiles);
+  if (entry.files.length === 0) {
+    return (
+      `${label} — the pick failed but git reported no conflicting file` +
+      `${Number.isFinite(total) && total > 0 ? `; all ${total} file${total === 1 ? '' : 's'} applied cleanly` : ''}.`
     );
-    for (const f of shown) {
-      lines.push(`    • \`${f.path}\` — ${f.inert ? 'INERT' : 'CARRIES BEHAVIOR'} (${f.detail})`);
-    }
-    if (entry.files.length > shown.length) {
-      lines.push(`    • …and ${entry.files.length - shown.length} more`);
-    }
-    // The reassurance that makes an inert verdict legible: naming what DID
-    // apply is what separates "one line drifted" from "this fix is broken".
-    const clean = Number(entry.totalFiles) - entry.files.length;
-    if (Number.isFinite(clean) && clean > 0) {
-      lines.push(`    ${clean} other file${clean === 1 ? '' : 's'} in the commit applied cleanly.`);
-    }
   }
+  const clean = Number.isFinite(total) ? total - entry.files.length : Number.NaN;
+  return (
+    `${label} — conflicted in ${entry.files.length} file${entry.files.length === 1 ? '' : 's'}` +
+    `${Number.isFinite(clean) && clean > 0 ? `; ${clean} applied cleanly` : ''}.`
+  );
+}
+
+function refSummaryLines(refs) {
+  const lines = refs.slice(0, MAX_REFS_SHOWN).map(refSummaryLine);
   if (refs.length > MAX_REFS_SHOWN) {
     lines.push(`…and ${refs.length - MAX_REFS_SHOWN} more ref(s); see the run.`);
   }
   return lines;
 }
 
-const MAX_FAILURES_SHOWN = 8;
-
 /**
- * "Why it refused", for a red tier.
- *
- * A `fail` verdict has no conflicting paths among the refs that REACHED the
- * tiers — every survivor cherry-picked cleanly, which is the only way it got
- * there — so `refLines` had nothing to say about the failure itself and the
- * section rendered as a bare heading above an instruction to go read the log.
- * That is the most severe verdict the lane has and it was carrying the least
- * information of any of them. (`refs` can still be non-empty on a `fail`: it
- * holds refs DROPPED before the tiers ran, which `buildSlackPayload` renders
- * under its own heading rather than as the reason the tiers went red.)
- *
- * Naming the failures is also what lets a reader tell the two causes apart
- * without opening anything: a failing test in a package the fixes never touched
- * is the stable being red on its own, not a fix that depends on later work.
+ * "Why it refused", for a red tier. Names at most the first failure and a
+ * count — the full list is what the run log is for.
  */
-function failureLines(failures, verdict) {
+function failureSummaryLines(failures, verdict) {
   if (verdict === 'could-not-verify') {
-    // No lead line: the bullet already carries the budget and the exit code,
-    // and a heading restating it was the redundancy the previous commit set out
-    // to remove. The `fail` arm's lead earns its place by adding the attempt
-    // count; there is nothing equivalent to add here.
-    //
-    // Which attempt ran out is deliberately not claimed. A first-attempt blow
-    // is never retried, but the RETRY can blow its own budget too, so "there
-    // was no second attempt" holds on one path and not the other.
     if (failures.length === 0) {
-      return ['The tiers ran out of their time budget. Read the run log for where the time went.'];
+      return [
+        'The tiers ran out of their time budget, so nothing was verified about the queued fixes — see the run for where the time went.',
+      ];
     }
-    return failures.map((f) => `    • ${f}`);
+    // Which attempt ran out is deliberately not claimed: a first-attempt blow
+    // is never retried, but the retry can blow its own budget too. Does not
+    // restate "the tiers did not finish" — in production `failures[0]` always
+    // opens with exactly that phrase already, followed by the budget and
+    // exit code (the workflow overwrites it unconditionally for this
+    // verdict).
+    const rest = failures.length > 1 ? ` and ${failures.length - 1} more` : '';
+    return [`\`${failures[0]}\`${rest} — nothing was verified about the queued fixes.`];
   }
   if (failures.length === 0) {
-    // Hedged, because `verdict=fail` has two sites in the workflow: the
-    // retry-exhausted tier path, and the `pnpm install --frozen-lockfile`
-    // failure that exits BEFORE either attempt runs and so can never populate
-    // this list. Asserting "both attempts" would be false in exactly the case
-    // that reaches this branch most reliably, which is the same
-    // cause-conflation this page is being fixed to stop doing.
+    // Hedged: `verdict=fail` has two sites in the workflow, and the
+    // `pnpm install --frozen-lockfile` failure exits BEFORE either attempt
+    // runs, so it never populates `failures`.
     return [
-      'The tiers went red on both attempts, or the install itself failed before either ran. This run captured no failing test or task name — read the run log directly.',
+      'Both attempts went red, or the install itself failed before either ran — see the run log.',
     ];
   }
-  const shown = failures.slice(0, MAX_FAILURES_SHOWN);
-  const lines = ['Failing on the second attempt, so not flake-class:'];
-  for (const failure of shown) lines.push(`    • \`${failure}\``);
-  if (failures.length > shown.length) {
-    lines.push(`    • …and ${failures.length - shown.length} more`);
-  }
-  lines.push(
-    'If none of these sit in code the fixes touch, the stable is red on its own and the lane will refuse every fix until that is repaired.',
-  );
-  return lines;
+  const rest = failures.length > 1 ? ` and ${failures.length - 1} more` : '';
+  // The two-cause hedge lives in `actionLine`'s `fail` branch, which renders
+  // on every `fail` including the zero-failures case this array never
+  // reaches, rather than here.
+  return [`\`${failures[0]}\`${rest} — not flake-class, failing on the second attempt too.`];
 }
 
-export function buildSlackPayload({
-  verdict,
-  stable,
-  refs,
-  runUrl,
-  failures = [],
-  repo = DEFAULT_REPO,
-}) {
-  const { headline, meaning } = describeRefusal({ verdict, refs });
-  const summary = `⛔ ${headline}`;
+/**
+ * What an operator can actually do, in one line. Branches verdict-first,
+ * mirroring `reasonPhrase` — a `fail` or `could-not-verify` batch's `refs`
+ * holds only refs DROPPED before the tiers ran, which is unrelated evidence
+ * to the reason the batch itself refused, so those two verdicts must resolve
+ * before any refs-based branching runs.
+ *
+ * Deliberately does not offer `resolve_paths` for the inert case: its
+ * allowlist is code and covers only `pnpm-workspace.yaml` (the only path
+ * `classifyConflictPath` ever marks inert is a `package.json`, which the
+ * allowlist does not cover), so naming a package manifest refuses with
+ * `resolve-path-not-allowlisted` before the tree is touched. Sending someone
+ * to a door that is locked is worse than saying it is locked — this line
+ * keeps that disqualifier inline rather than only implying it.
+ */
+export function actionLine({ verdict, refs }) {
+  // "Identical refusals stay silent" is not repeated here — the unconditional
+  // footer below already states it once, for every verdict.
+  if (verdict === 'could-not-verify') {
+    return "If this keeps happening, check the lane's recent runs.";
+  }
+  // A red tier's `refs` (if any) are dropped-before-the-tiers-ran evidence,
+  // not the reason THIS batch refused — advising on them here would be the
+  // exact cause-conflation the headline's cause-neutral reason phrase exists
+  // to avoid. Phrased conditionally ("if a failure is named above") because
+  // `failureSummaryLines` renders no named failure when the install itself
+  // fails before either attempt runs, so this line still has to hold on that
+  // path. Says "a failure", not "a failing test", because the verify step
+  // falls back to turbo's failed-task lines when what went red is a
+  // typecheck, which prints no per-test name at all.
+  if (verdict === 'fail') {
+    return 'If a failure is named above, check it against the fixes — one in code no fix touches means the stable is red on its own, which no re-run or smaller commit will clear; one a fix does touch means that fix depends on later work.';
+  }
+  if (refs.length > 0 && refs.every((r) => r.inert)) {
+    return 'The collision is config drift, not a dependency, so the fix is already self-contained. `resolve_paths` does not cover this path, so hand-cutting needs a human decision — see RELEASES.md, "When the conflict is config drift, not a dependency".';
+  }
+  // No recorded conflicting path anywhere — the likeliest cause is that the
+  // stable already shipped the fix, not that the commit needs re-cutting.
+  // Confidently recommending a smaller commit here would assert the fix is
+  // NOT self-contained over the stable, the opposite of what `apply-conflict`
+  // (RELEASES.md) means for this class.
+  if (refs.length > 0 && refs.every(classifiedWithNoPaths)) {
+    return 'Read the cherry-pick output in the run before concluding anything — the fix may already be in the stable.';
+  }
+  return 'If it must ship sooner, the answer is a smaller self-contained commit, not a forced pick — see RELEASES.md, "When a guard refuses".';
+}
+
+export function buildSlackPayload({ verdict, stable, refs, runUrl, failures = [] }) {
+  const headline = buildHeadline({ verdict, refs, stable });
   const body = [
-    `*Over \`${stable}\` on \`${repo}\`.* ${meaning}`,
+    headline,
     '',
     '*Why it refused*',
     ...(verdict === 'fail' || verdict === 'could-not-verify'
-      ? failureLines(failures, verdict)
-      : refLines(refs)),
+      ? failureSummaryLines(failures, verdict)
+      : refSummaryLines(refs)),
     // A red tier does not imply an empty `refs`. The pick loop writes its
     // `conflicts` output for every DROPPED ref and then lets the survivors run
     // the tiers, so a partial drop followed by a red tier arrives here with
-    // real drop evidence. `refLines` used to render it, badly labelled; the
-    // partial-drop page cannot cover the gap because its own step is gated on
-    // `verdict == 'pass'`. Losing the labelling problem must not also lose the
-    // information, so the drops keep their own heading.
+    // real drop evidence, under its own heading rather than as the reason the
+    // tiers went red.
     ...((verdict === 'fail' || verdict === 'could-not-verify') && refs.length > 0
-      ? ['', '*Also dropped from this batch, before the tiers ran*', ...refLines(refs)]
+      ? ['', '*Also dropped from this batch, before the tiers ran*', ...refSummaryLines(refs)]
       : []),
     '',
-    '*What you can do*',
-    ...optionsFor({ verdict, refs }).map((o, i) => `${i + 1}. ${o}`),
+    actionLine({ verdict, refs }),
     '',
-    // Only the run link is conditional; the blank separators above are
+    // Only the run link is conditional; the blank separator above is
     // deliberate and must survive.
     ...(runUrl ? [`<${runUrl}|Run log>`] : []),
     '_Further identical refusals stay silent; the lane pages again only if the refusal changes._',
@@ -412,11 +396,11 @@ export function buildSlackPayload({
 
   return {
     // `text` is the notification / a11y fallback Slack recommends alongside blocks.
-    text: summary,
-    blocks: [
-      { type: 'header', text: { type: 'plain_text', text: summary, emoji: true } },
-      { type: 'section', text: { type: 'mrkdwn', text: body } },
-    ],
+    text: headline,
+    // A single section block, no `header` block: the header rendered its text
+    // large and bold, which is exactly the alarm the plain, lower-case
+    // headline above is meant to defuse.
+    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: body } }],
   };
 }
 
@@ -442,7 +426,6 @@ export function parseArgs(argv) {
       ? parsed.failures.filter((entry) => typeof entry === 'string' && entry.trim() !== '')
       : [],
     runUrl: parsed.runUrl || '',
-    repo: args.repo || parsed.repo || DEFAULT_REPO,
   };
 }
 
