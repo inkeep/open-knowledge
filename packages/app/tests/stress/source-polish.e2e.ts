@@ -281,3 +281,82 @@ test.describe('§6.7 Cross-cutting', () => {
     expect(clipboard).toBe(docState);
   });
 });
+
+test.describe('Mouse selection', () => {
+  async function pointAt(page: Page, needle: string): Promise<{ x: number; y: number }> {
+    const found: { x: number; y: number }[] = [];
+    await expect
+      .poll(
+        async () => {
+          const point = await page.evaluate((text) => {
+            const content = Array.from(document.querySelectorAll('.cm-content')).find(
+              (el) => el.getClientRects().length > 0,
+            );
+            if (!content) return null;
+            const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+            for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+              const offset = (node.textContent ?? '').indexOf(text);
+              if (offset === -1) continue;
+              const range = document.createRange();
+              range.setStart(node, offset);
+              range.setEnd(node, offset + text.length);
+              const rect = range.getBoundingClientRect();
+              if (rect.width === 0) continue;
+              return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+            }
+            return null;
+          }, needle);
+          if (point) found.push(point);
+          return found.length > 0;
+        },
+        { message: `"${needle}" never laid out in the source view` },
+      )
+      .toBe(true);
+    const point = found[0];
+    if (!point) throw new Error(`"${needle}" never laid out in the source view`);
+    return point;
+  }
+
+  const editorSelection = (page: Page) =>
+    page.evaluate(() => {
+      const handle = Array.from(document.querySelectorAll('.cm-content')).find(
+        (el) => el.getClientRects().length > 0,
+      ) as
+        | (Element & {
+            cmTile?: { root?: { view?: unknown } };
+            cmView?: { rootView?: { view?: unknown } };
+          })
+        | undefined;
+      const view = (handle?.cmTile?.root?.view ?? handle?.cmView?.rootView?.view) as
+        | {
+            state: {
+              selection: { main: { from: number; to: number } };
+              sliceDoc: (f: number, t: number) => string;
+            };
+          }
+        | undefined;
+      if (!view) throw new Error('no visible CodeMirror view');
+      const { from, to } = view.state.selection.main;
+      return view.state.sliceDoc(from, to);
+    });
+
+  test('double-click selects the word under the pointer', async ({ page, api }) => {
+    await seedMarkdown(api, testDocName, 'alpha bravo charlie\n');
+    await switchToSource(page);
+
+    const point = await pointAt(page, 'bravo');
+    await page.mouse.dblclick(point.x, point.y);
+
+    await expect.poll(() => editorSelection(page)).toBe('bravo');
+  });
+
+  test('triple-click selects the whole line', async ({ page, api }) => {
+    await seedMarkdown(api, testDocName, 'alpha bravo charlie\n\nsecond paragraph\n');
+    await switchToSource(page);
+
+    const point = await pointAt(page, 'bravo');
+    await page.mouse.click(point.x, point.y, { clickCount: 3 });
+
+    await expect.poll(async () => (await editorSelection(page)).trim()).toBe('alpha bravo charlie');
+  });
+});

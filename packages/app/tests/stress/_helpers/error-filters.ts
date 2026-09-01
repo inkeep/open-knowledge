@@ -5,6 +5,9 @@ export interface LogEntry {
   line?: number;
 }
 
+const LOAD_FAILURE =
+  /Failed to load resource|net::ERR_|Failed to fetch|error loading dynamically imported module|status of \d{3}/i;
+
 const BENIGN_PREDICATES: Array<(e: LogEntry) => boolean> = [
   (e) => e.text.includes('favicon'),
   (e) => e.text.includes('HMR'),
@@ -13,10 +16,10 @@ const BENIGN_PREDICATES: Array<(e: LogEntry) => boolean> = [
   (e) => !!e.url?.endsWith('.map'),
   (e) => !!e.url?.includes('.hot-update.'),
 
-  (e) => !!e.url?.includes('/@vite/'),
-  (e) => !!e.url?.includes('/@fs/'),
-  (e) => !!e.url?.includes('/@id/'),
-  (e) => !!e.url?.includes('/node_modules/.vite/'),
+  (e) => !!e.url?.includes('/@vite/') && LOAD_FAILURE.test(e.text),
+  (e) => !!e.url?.includes('/@fs/') && LOAD_FAILURE.test(e.text),
+  (e) => !!e.url?.includes('/@id/') && LOAD_FAILURE.test(e.text),
+  (e) => !!e.url?.includes('/node_modules/.vite/') && LOAD_FAILURE.test(e.text),
 
   (e) => e.text.includes('WebSocket is closed before the connection is established'),
   (e) =>

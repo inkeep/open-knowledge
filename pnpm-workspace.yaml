@@ -35,6 +35,11 @@ overrides:
   # patch advisory on the same line self-heals without another override edit,
   # and nothing floats to a new minor as a side effect of a security fix.
   #
+  # A `~` is a CEILING as well as a floor, and these are NOT covered by
+  # `scripts/check-override-floors.mjs`, which reasons only about exact pins.
+  # `@opentelemetry/core@2` sits under packages/app's `^2.9.0` today for that
+  # reason. Check by hand when adding one.
+  #
   # THREE entries deliberately cross a breaking boundary, because the vulnerable
   # version is the last release on its line and there is no in-line fix at all:
   #   nanoid@4  -> 5.x   (4.0.2 is the final 4.x; consumer
@@ -87,11 +92,23 @@ overrides:
   'tar@7': ~7.5.21
   'undici@6': ~6.28.0
   'undici@7': ~7.29.0
-  # CodeMirror is the source-mode editor core, held at the same bun baseline as
-  # the `@tiptap/*` + `prosemirror-*` pins further down this block; a fresh pnpm
-  # resolution otherwise floats it within the app's `^6.6.0`/`^6.43.3` carets
-  # (view 6.43.6 / state 6.7.1).
-  '@codemirror/state': 6.6.0
+  # CodeMirror is the source-mode editor core. Freezing `view` is the point of
+  # this pair, for the same reason the `@tiptap/*` + `prosemirror-*` pins below
+  # exist: an unpinned editor core floats on every install. `state` is pinned
+  # alongside it only to keep the pair explicit, so it carries whatever version
+  # the frozen `view` requires rather than a stale one of its own.
+  #
+  # That version has a hard floor of 6.7.0. Both `@codemirror/view@6.43.3` and
+  # `@codemirror/commands@6.10.4` declare `"@codemirror/state": "^6.7.0"`, and
+  # view calls `EditorSelection.undirectionalRange`, which 6.6.0 does not define.
+  # pnpm applies an out-of-range override silently, so pinning under that floor
+  # throws `TypeError: undirectionalRange is not a function` at runtime on every
+  # mouse-selection path (double-click word select, triple-click line select,
+  # atomic-range selection filter, widget dragstart) in every CodeMirror-backed
+  # surface in the app. `scripts/check-override-floors.mjs` now fails the build
+  # rather than letting that recur. When `view` is bumped, re-read its declared
+  # `@codemirror/state` range and raise this to match.
+  '@codemirror/state': 6.7.1
   '@codemirror/view': 6.43.3
   # Radix UI graph pinned to the versions the bun lockfile resolved. A fresh
   # pnpm resolution floats the whole @radix-ui/* + floating-ui graph past the

@@ -6,14 +6,36 @@ settings:
 
 overrides:
   '@babel/core@7': ~7.29.6
-  '@codemirror/state': 6.6.0
+  '@hono/node-server@1': ~1.19.15
+  '@opentelemetry/core@2': ~2.8.0
+  brace-expansion@1: ~1.1.18
+  brace-expansion@2: ~2.1.4
+  builder-util-runtime@9: ~9.7.0
+  dompurify@3: ~3.4.13
+  esbuild@0.27: ~0.28.1
+  fast-uri@3: ~3.1.5
+  fast-xml-parser@5: ~5.10.1
+  hono@4: ~4.12.34
+  ip-address@10: ~10.3.1
+  js-yaml@3: ~3.15.1
+  js-yaml@4: ~4.3.1
+  lodash-es@4: ~4.18.0
+  mermaid@11: ~11.16.1
+  nanoid@3: ~3.3.18
+  nanoid@4: ~5.1.16
+  nanoid@5: ~5.1.16
+  next@16: ~16.2.11
+  postcss@8: ~8.5.23
+  sharp@0.34: ~0.35.0
+  tar@7: ~7.5.21
+  undici@6: ~6.28.0
+  undici@7: ~7.29.0
+  '@codemirror/state': 6.7.1
   '@codemirror/view': 6.43.3
   '@floating-ui/core': 1.7.5
   '@floating-ui/dom': 1.7.6
   '@floating-ui/react-dom': 2.1.8
   '@floating-ui/utils': 0.2.11
-  '@hono/node-server@1': ~1.19.15
-  '@opentelemetry/core@2': ~2.8.0
   '@radix-ui/number': 1.1.1
   '@radix-ui/primitive': 1.1.4
   '@radix-ui/react-accessible-icon': 1.1.7
@@ -113,35 +135,13 @@ overrides:
   '@tiptap/starter-kit': 3.22.3
   '@tiptap/suggestion': 3.22.3
   '@types/node': ^24.7.0
-  brace-expansion@1: ~1.1.18
-  brace-expansion@2: ~2.1.4
-  builder-util-runtime@9: ~9.7.0
-  dompurify@3: ~3.4.13
-  esbuild@0.27: ~0.28.1
-  fast-uri@3: ~3.1.5
-  fast-xml-parser@5: ~5.10.1
-  hono@4: ~4.12.34
-  ip-address@10: ~10.3.1
-  js-yaml@3: ~3.15.1
-  js-yaml@4: ~4.3.1
-  lodash-es@4: ~4.18.0
   mdast-util-mdx-jsx: 3.2.0
-  mermaid@11: ~11.16.1
-  nanoid@3: ~3.3.18
-  nanoid@4: ~5.1.16
-  nanoid@5: ~5.1.16
-  next@16: ~16.2.11
-  postcss@8: ~8.5.23
   prosemirror-model: 1.25.4
   prosemirror-view: 1.41.8
   radix-ui: 1.4.3
   react: 19.2.5
   react-dom: 19.2.5
   react-lite-youtube-embed: 3.5.1
-  sharp@0.34: ~0.35.0
-  tar@7: ~7.5.21
-  undici@6: ~6.28.0
-  undici@7: ~7.29.0
 
 patchedDependencies:
   '@handlewithcare/remark-prosemirror@0.1.5':
@@ -385,8 +385,8 @@ importers:
         specifier: ^6.6.0
         version: 6.7.1
       '@codemirror/state':
-        specifier: 6.6.0
-        version: 6.6.0
+        specifier: 6.7.1
+        version: 6.7.1
       '@codemirror/view':
         specifier: 6.43.3
         version: 6.43.3
@@ -653,7 +653,7 @@ importers:
         version: 8.21.0
       y-codemirror.next:
         specifier: ^0.3.5
-        version: 0.3.5(@codemirror/state@6.6.0)(@codemirror/view@6.43.3)(yjs@13.6.31)
+        version: 0.3.5(@codemirror/state@6.7.1)(@codemirror/view@6.43.3)(yjs@13.6.31)
       y-indexeddb:
         specifier: 9.0.12
         version: 9.0.12(patch_hash=bc95fab9af70f704280673eafabcb5a40cc180fd5122d62e6c44cac2f7076245)(yjs@13.6.31)
@@ -1783,8 +1783,8 @@ packages:
   '@codemirror/search@6.7.1':
     resolution: {integrity: sha512-uMe5UO6PamJtSHrXhhHOzSX3ReWtiJrva6GnPMwSOrZtiExb5X5eExhr2OUZQVvdxPsKpY3Ro2mFbQadpPWmHA==}
 
-  '@codemirror/state@6.6.0':
-    resolution: {integrity: sha512-4nbvra5R5EtiCzr9BTHiTLc+MLXK2QGiAVYMyi8PkQd3SR+6ixar/Q/01Fa21TBIDOZXgeWV4WppsQolSreAPQ==}
+  '@codemirror/state@6.7.1':
+    resolution: {integrity: sha512-9QzNDgE4EYDnAHfrTlR2lwiPciiOymLtwKK+8yHQzCc7GXhAP9xdEbEJFy2IWB1j9UGUl9BsgMmTo/ImA02T7A==}
 
   '@codemirror/view@6.43.3':
     resolution: {integrity: sha512-MwEwCAr/o0agJefhC2+reBv5kfOQpMcDRUNQrRYZgWlhH8IwQcerMZrpqWyUFSyO0ebgN2cnh/w87F7G4BGSng==}
@@ -11554,7 +11554,7 @@ packages:
   y-codemirror.next@0.3.5:
     resolution: {integrity: sha512-VluNu3e5HfEXybnypnsGwKAj+fKLd4iAnR7JuX1Sfyydmn1jCBS5wwEL/uS04Ch2ib0DnMAOF6ZRR/8kK3wyGw==}
     peerDependencies:
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       yjs: ^13.5.6
 
@@ -12141,14 +12141,14 @@ snapshots:
   '@codemirror/autocomplete@6.20.3':
     dependencies:
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       '@lezer/common': 1.5.2
 
   '@codemirror/commands@6.10.4':
     dependencies:
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       '@lezer/common': 1.5.2
 
@@ -12156,7 +12156,7 @@ snapshots:
     dependencies:
       '@codemirror/autocomplete': 6.20.3
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@lezer/common': 1.5.2
       '@lezer/css': 1.3.4
 
@@ -12166,7 +12166,7 @@ snapshots:
       '@codemirror/lang-css': 6.3.1
       '@codemirror/lang-javascript': 6.2.5
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       '@lezer/common': 1.5.2
       '@lezer/css': 1.3.4
@@ -12177,7 +12177,7 @@ snapshots:
       '@codemirror/autocomplete': 6.20.3
       '@codemirror/language': 6.12.4
       '@codemirror/lint': 6.9.7
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       '@lezer/common': 1.5.2
       '@lezer/javascript': 1.5.4
@@ -12192,7 +12192,7 @@ snapshots:
       '@codemirror/autocomplete': 6.20.3
       '@codemirror/lang-html': 6.4.11
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       '@lezer/common': 1.5.2
       '@lezer/markdown': 1.7.1
@@ -12201,7 +12201,7 @@ snapshots:
     dependencies:
       '@codemirror/autocomplete': 6.20.3
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@lezer/common': 1.5.2
       '@lezer/python': 1.1.19
 
@@ -12214,7 +12214,7 @@ snapshots:
     dependencies:
       '@codemirror/autocomplete': 6.20.3
       '@codemirror/language': 6.12.4
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@lezer/common': 1.5.2
       '@lezer/highlight': 1.2.3
       '@lezer/lr': 1.4.10
@@ -12222,7 +12222,7 @@ snapshots:
 
   '@codemirror/language@6.12.4':
     dependencies:
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       '@lezer/common': 1.5.2
       '@lezer/highlight': 1.2.3
@@ -12235,23 +12235,23 @@ snapshots:
 
   '@codemirror/lint@6.9.7':
     dependencies:
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       crelt: 1.0.7
 
   '@codemirror/search@6.7.1':
     dependencies:
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       crelt: 1.0.7
 
-  '@codemirror/state@6.6.0':
+  '@codemirror/state@6.7.1':
     dependencies:
       '@marijn/find-cluster-break': 1.0.3
 
   '@codemirror/view@6.43.3':
     dependencies:
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       crelt: 1.0.7
       style-mod: 4.1.3
       w3c-keyname: 2.2.8
@@ -17159,7 +17159,7 @@ snapshots:
       '@codemirror/language': 6.12.4
       '@codemirror/lint': 6.9.7
       '@codemirror/search': 6.7.1
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
 
   collapse-white-space@2.1.0: {}
@@ -23095,9 +23095,9 @@ snapshots:
     optionalDependencies:
       sleep: 6.1.0
 
-  y-codemirror.next@0.3.5(@codemirror/state@6.6.0)(@codemirror/view@6.43.3)(yjs@13.6.31):
+  y-codemirror.next@0.3.5(@codemirror/state@6.7.1)(@codemirror/view@6.43.3)(yjs@13.6.31):
     dependencies:
-      '@codemirror/state': 6.6.0
+      '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.3
       lib0: 0.2.117
       yjs: 13.6.31

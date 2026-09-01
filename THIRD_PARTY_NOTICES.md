@@ -1316,8 +1316,8 @@ Homepage: https://code.haverbeke.berlin/codemirror/search
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/state@6.6.0`
-Homepage: https://github.com/codemirror/state
+### `@codemirror/state@6.7.1`
+Homepage: https://code.haverbeke.berlin/codemirror/state
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
