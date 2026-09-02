@@ -5,9 +5,27 @@ import { isAbsolute, resolve } from 'node:path';
  * root fails containment on Windows. Keep the range in package.json at or above
  * it.
  */
-import { Bash, ReadWriteFs } from 'just-bash';
+import { Bash, OverlayFs } from 'just-bash';
 
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
+
+const PROJECT_MOUNT = '/home/user/project';
+
+export type ErofsCheck = { blocked: false } | { blocked: true; target: string | null };
+
+export function erofsTarget(source: unknown): ErofsCheck {
+  const message = source instanceof Error ? source.message : String(source);
+  if (!message.includes('EROFS: read-only file system')) return { blocked: false };
+  for (const match of message.matchAll(/'([^']+)'/g)) {
+    const raw = match[1];
+    if (raw === '<path>') continue;
+    const rel = raw.startsWith(`${PROJECT_MOUNT}/`) ? raw.slice(PROJECT_MOUNT.length + 1) : raw;
+    const clean = rel.startsWith('./') ? rel.slice(2) : rel;
+    if (clean !== '' && clean !== '.' && clean !== PROJECT_MOUNT)
+      return { blocked: true, target: clean };
+  }
+  return { blocked: true, target: null };
+}
 
 export { shellEscape } from './shell-escape.ts';
 
@@ -35,8 +53,13 @@ export function createBashInstance(cwd: string): Bash {
     throw new Error(`createBashInstance: cwd must be absolute (got: ${cwd})`);
   }
   return new Bash({
-    cwd: '/',
-    fs: new ReadWriteFs({ root: resolve(cwd), allowSymlinks: false }),
+    cwd: PROJECT_MOUNT,
+    fs: new OverlayFs({
+      root: resolve(cwd),
+      mountPoint: PROJECT_MOUNT,
+      allowSymlinks: false,
+      readOnly: true,
+    }),
   });
 }
 

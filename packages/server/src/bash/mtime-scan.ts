@@ -2,8 +2,13 @@ import type { Dirent } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
-import { argsOf, nonFlagArgs } from './extract-paths.ts';
-import { isRecursiveGrepFlag, type Stage } from './parse-command.ts';
+import { argsOf } from './extract-paths.ts';
+import {
+  attachedValueMayNamePath,
+  classifyArgs,
+  isRecursiveGrepFlag,
+  type Stage,
+} from './parse-command.ts';
 
 export const SCAN_CAP = 1000;
 
@@ -28,6 +33,7 @@ interface SnapshotResult {
 }
 
 const GLOB_RE = /[*?[]/;
+const NUMERIC_RE = /^[+-]?\d+$/;
 
 function literalDirPrefix(token: string): string {
   const idx = token.search(GLOB_RE);
@@ -57,53 +63,29 @@ export function deriveScanRoots(stages: Stage[]): string[] {
   const roots = new Set<string>();
   for (const stage of stages) {
     const args = argsOf(stage);
-    const positional = nonFlagArgs(args);
-    let candidates: string[];
-    switch (stage.command) {
-      case 'grep': {
-        let patternViaFlag = false;
-        const patternValues = new Set<string>();
-        for (let i = 0; i < args.length; i++) {
-          const a = args[i];
-          if (a === '-e' || a === '--regexp') {
-            patternViaFlag = true;
-            const value = args[i + 1];
-            if (value !== undefined) patternValues.add(value);
-          } else if (a.startsWith('--regexp=')) {
-            patternViaFlag = true;
-          }
-        }
-        const operands = positional.filter((p) => !patternValues.has(p));
-        candidates = patternViaFlag ? operands : operands.slice(1);
-        if (candidates.length === 0 && args.some(isRecursiveGrepFlag)) {
-          roots.add(SCAN_WHOLE_TREE);
-        }
-        break;
+    const classified = classifyArgs(stage);
+    const paths = classified.filter((a) => a.role === 'path');
+    const operands = paths.filter((a) => a.flag === undefined).map((a) => a.value);
+
+    const ambiguous = classified
+      .filter(
+        (a) =>
+          a.role === 'attached-value' &&
+          a.flag !== undefined &&
+          carriesPathValue(a.flag) &&
+          attachedValueMayNamePath(stage.command, a.flag),
+      )
+      .map((a) => a.value)
+      .filter((v) => v.length > 0 && !NUMERIC_RE.test(v) && !GLOB_RE.test(v) && !isScanBase(v));
+
+    if (operands.length === 0) {
+      const bare = stage.command === 'ls' || stage.command === 'find';
+      if (bare || (stage.command === 'grep' && args.some(isRecursiveGrepFlag))) {
+        roots.add(SCAN_WHOLE_TREE);
       }
-      case 'find': {
-        const firstFlag = args.findIndex((a) => a.startsWith('-'));
-        const pathRoots = firstFlag === -1 ? args : args.slice(0, firstFlag);
-        const predicateValues =
-          firstFlag === -1
-            ? []
-            : args.slice(firstFlag).filter((a) => !a.startsWith('-') && !GLOB_RE.test(a));
-        candidates = [...pathRoots, ...predicateValues];
-        if (pathRoots.length === 0) roots.add(SCAN_WHOLE_TREE);
-        break;
-      }
-      case 'ls': {
-        candidates = positional;
-        if (positional.length === 0) roots.add(SCAN_WHOLE_TREE);
-        break;
-      }
-      default:
-        candidates = positional;
     }
-    const attached = args
-      .filter((a) => a.startsWith('-') && a.length > 2 && carriesPathValue(a))
-      .map((a) => (a.includes('=') ? a.slice(a.indexOf('=') + 1) : a.slice(2)))
-      .filter((v) => v.length > 0 && !GLOB_RE.test(v) && !isScanBase(v));
-    for (const c of [...candidates, ...attached]) {
+
+    for (const c of [...paths.map((a) => a.value), ...ambiguous]) {
       roots.add(GLOB_RE.test(c) ? literalDirPrefix(c) : c);
     }
   }
