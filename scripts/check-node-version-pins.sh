@@ -4,20 +4,14 @@
 # version instead of reading the repo's `.node-version` pin.
 #
 # Why this exists:
-#   `.node-version` (24.18.0) is documented as the single source of truth for
-#   the toolchain — .npmrc says so, CONTRIBUTING.md says so, and `engine-strict`
-#   is described as the containment that keeps everyone on it. But engine-strict
-#   only enforces the `engines.node` FLOOR (>=24): it never fires on a Node that
-#   is NEWER than the pin. Nothing else read the pin either — every workflow
-#   hardcoded `node-version: "24"` (resolving to whatever the latest 24.x was on
-#   the day the job ran), and the PR bridge hardcoded 22, below the floor. So the
-#   pin governed nothing, in CI or locally, and the three could drift apart
-#   silently for as long as nobody looked.
-#
-#   Pinning via `node-version-file: .node-version` makes the file authoritative
-#   in CI. This guard keeps it that way: a literal version reintroduced in a
-#   future workflow edit fails `pnpm run check` rather than quietly re-opening
-#   the drift.
+#   `.node-version` is the single source of truth for the toolchain — .npmrc and
+#   CONTRIBUTING.md both say so — but nothing enforces it on its own.
+#   `engine-strict` only enforces the `engines.node` FLOOR (>=24) and never
+#   fires on a Node NEWER than the pin, and a workflow that hardcodes
+#   `node-version: "24"` floats across whatever 24.x is latest on the day the
+#   job runs. `node-version-file: .node-version` is what makes the file
+#   authoritative in CI; this guard is what keeps a literal version from
+#   re-opening the drift, by failing `pnpm run check` instead.
 #
 # Scope: workflows and local composite actions. Both are invoked with the repo
 # checked out at $GITHUB_WORKSPACE (composite actions here are all referenced as

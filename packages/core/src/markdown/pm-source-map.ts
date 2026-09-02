@@ -65,7 +65,7 @@ export interface PmSourceSpan {
  */
 export type PmSourceMapPrecision = 'full' | 'block';
 
-/** Both directions of the map, plus the block table Phase 1's splice indexes. */
+/** Both directions of the map, plus the block table the splice path indexes. */
 export interface PmSourceMap {
   /** See `PmSourceMapPrecision`. */
   readonly precision: PmSourceMapPrecision;

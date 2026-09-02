@@ -456,10 +456,7 @@ export function loadManagedArtifactDoc(
   if (extParsed && externalSkillAbsPath(extParsed.name, extParsed.rel) === null) return;
 
   // Seed only a document that is empty. `Y.Text` is the source of truth
-  // (precedent #38) and now the only surface, so it is the whole test. The
-  // paired fragment check that stood here guarded against seeding from disk on
-  // top of live content whose fragment had not been derived yet — a race that
-  // cannot happen once nothing derives a fragment at all.
+  // (precedent #38) and the only surface, so it is the whole test.
   const ytext = document.getText('source');
   if (ytext.length > 0) return;
 

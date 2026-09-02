@@ -5,10 +5,10 @@
  * extends Y.Doc). This avoids openDirectConnection's connection-count increment
  * which would prevent documents from unloading during server shutdown.
  *
- * The markdown bridge is NOT attached: every client derives its ProseMirror
+ * The markdown bridge is not attached: every client derives its ProseMirror
  * document locally from `Y.Text`, so the `Y.XmlFragment` has no readers. What
- * survives here is the per-document quiescence tracker, which persistence needs
- * and which was never bridge logic — it reads `Y.Doc` transactions only.
+ * this extension does attach is the per-document quiescence tracker, which
+ * persistence needs and which reads `Y.Doc` transactions only.
  */
 import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
@@ -97,32 +97,29 @@ export interface ServerObserverExtensionOptions {
 }
 
 /**
- * Create a Hocuspocus extension that attaches server observers per-document.
+ * The bridge never runs. Clients derive their ProseMirror document from
+ * `Y.Text` (see `projection-binding.ts`), so nothing reads the
+ * `Y.XmlFragment`; attaching the bridge would have Observer A serialize a
+ * fragment nobody updates and line-diff it back over `Y.Text`, reverting edits.
  *
- * - afterLoadDocument: attaches observers using the Document from the hook payload
- * - afterUnloadDocument: detaches observers (clears debounces)
- * - Skips __system__ doc (CC1 broadcast pseudo-doc)
- */
-/**
- * The markdown bridge no longer runs. `Y.Text` is the only live CRDT.
- *
- * Kept as a named constant rather than deleted inline because the observer
- * machinery it gates is being removed in stages, and a single named seam makes
- * each stage's remaining arm obvious. It goes when the last one does.
- *
- * Every client derives its ProseMirror document locally from `Y.Text` (see
- * `projection-binding.ts`), so nothing reads the `Y.XmlFragment` any more.
- * Leaving the bridge attached would be actively harmful, not merely wasteful:
- * Observer A serializes a fragment nobody updates and line-diffs it back over
- * `Y.Text`, silently reverting edits.
+ * A named constant rather than an inline deletion: the observer machinery it
+ * gates comes out in stages, and one named seam keeps each stage's remaining
+ * arm obvious. It goes with the last of them.
  */
 const BRIDGE_DISABLED = true;
 
+/**
+ * Create the Hocuspocus extension that manages per-document server state.
+ *
+ * - afterLoadDocument: attaches the quiescence tracker using the Document from
+ *   the hook payload; the bridge observers are gated off by `BRIDGE_DISABLED`
+ * - afterUnloadDocument: detaches the tracker and any observer cleanup
+ * - Skips __system__ doc (CC1 broadcast pseudo-doc) for the observer arm
+ */
 export function createServerObserverExtension(opts: ServerObserverExtensionOptions): Extension {
-  // Say so, once per server, while the machinery is still present but inert.
-  // Silence here would be indistinguishable from the bridge running normally,
-  // and telling those two apart has already cost this branch several sessions.
-  // Drop this line with the rest of the observer machinery.
+  // Once per server, while the machinery is present but inert: an inert bridge
+  // and a working one are otherwise indistinguishable from the logs. Drop this
+  // line with the rest of the observer machinery.
   log.info({}, '[ServerObserverExtension] markdown bridge not attached — Y.Text is the only CRDT');
 
   const cleanups = new Map<string, () => void>();
@@ -139,16 +136,13 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
 
   return {
     async afterLoadDocument({ documentName, document }) {
-      // Quiescence tracking comes FIRST, and is deliberately outside every skip
-      // below.
+      // Quiescence tracking comes FIRST, and stays outside every skip below.
       //
       // It reads `Y.Doc` transactions only — nothing about the fragment — but
       // persistence gates every write on `isDocQuiescent`, and the counters
       // start equal, so a doc with no tracker reports `settledGen >
-      // lastUserTxGen` as false forever and never persists. It used to be
-      // attached from inside `setupServerObservers`, which made "the bridge
-      // declined this doc" silently mean "this doc never settles" — the app
-      // came up and then stalled with `OK_DISABLE_BRIDGE=1`.
+      // lastUserTxGen` as false forever and never persists. Any skip that
+      // swallowed it would mean "this doc never settles".
       //
       // Detached on unload via its own map, whose lifetime differs from the
       // observer cleanups'.

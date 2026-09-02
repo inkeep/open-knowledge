@@ -58,8 +58,8 @@ interface BufferedReplayUpdate {
   /**
    * Document content at the last server `synced` — the acked base this buffer
    * was captured against. See `ReplayOutboxEntry.base`: it is the surface
-   * attribution's only witness once the fragment stops being written, and null
-   * means "cannot attribute", never "no divergence".
+   * attribution's only witness, and null means "cannot attribute", never "no
+   * divergence".
    */
   readonly base: string | null;
   /**
@@ -3137,24 +3137,14 @@ export class ProviderPool {
       let ours: string;
       let surface: 'fragment' | 'ytext';
       if (projectionBindingEnabled()) {
-        // Single-surface attribution, against the recorded acked base.
+        // Single-surface attribution, against the acked base recorded at
+        // `synced` and carried on the buffer. Three arms: base === ours is
+        // "nothing to restore", base === theirs is "the server has not moved,
+        // splice ours", and neither is undecidable — an aged buffer must not
+        // splice over content the server rebuilt from disk, so decline.
         //
-        // With two surfaces the fragment answered "has the server moved past
-        // what this buffer was captured against?" — not because it was a second
-        // opinion about the edit, but because only the server's Observer B ever
-        // wrote it, which made it a standing record of the acked base. Under
-        // the projection binding nothing writes it, so the base is recorded
-        // deliberately at `synced` and carried on the buffer instead.
-        //
-        // The three arms survive the change of witness intact: base === ours is
-        // "nothing to restore", base === theirs is "server has not moved, splice
-        // ours", and neither is the same ambiguity the fragment path bails on.
-        // Dropping the third arm rather than re-witnessing it would not make it
-        // unreachable — it would make it undecidable, and an aged buffer would
-        // splice straight over content the server rebuilt from disk.
-        //
-        // The fragment rebuild is skipped entirely, so this path also drops a
-        // PM tree build and a whole-document serialize per recycle.
+        // Nothing here rebuilds the fragment, so a recycle costs no PM tree
+        // build and no whole-document serialize.
         if (base === null) {
           // No witness: a buffer captured before a first `synced`, or read back
           // from a record predating the base field. Decline rather than splice

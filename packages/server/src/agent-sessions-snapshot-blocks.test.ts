@@ -1,11 +1,10 @@
 /**
  * `snapshotBlocks` reads `Y.Text`, not the `Y.XmlFragment`.
  *
- * This is the assertion the first Phase 3 port exists to make. The block
- * ordinals stamped into an `agent-flash` entry are consumed by a client that
- * indexes its own ProseMirror document by them, and under the projection
- * binding that document is derived from `Y.Text` — so a snapshot taken from the
- * fragment would be answering about a structure no one is looking at any more.
+ * The block ordinals stamped into an `agent-flash` entry are consumed by a
+ * client that indexes its own ProseMirror document by them, and that document
+ * is derived from `Y.Text` — so a snapshot taken from the fragment would be
+ * answering about a structure nobody is looking at.
  *
  * The fragment is deliberately populated with DIFFERENT content in the
  * divergence row below. That is not a realistic document state; it is the only

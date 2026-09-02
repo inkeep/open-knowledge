@@ -3028,11 +3028,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // metric-export time, so the observer hot path stays untouched.
   const unregisterDirtyProbe = registerBridgeDirtyProbe(() => xmlDirty || textDirty);
   // Quiescence tracking is attached by `createServerObserverExtension`, NOT
-  // here. It reads only `Y.Doc` transactions — it has nothing to do with the
-  // fragment — but persistence gates every write on `isDocQuiescent`, so a doc
-  // the bridge declines still needs it. Attaching it from inside the bridge
-  // made "no bridge" mean "never quiescent" (the counters start equal, and
-  // `settledGen > lastUserTxGen` is false), which deferred every store forever.
+  // here. It reads only `Y.Doc` transactions and persistence gates every write
+  // on it, so it has to cover documents this bridge declines too.
 
   // ─── Pre-drain controller ──────────────────────────────────
   // Flush a discriminator-proven non-overlapping pending keystroke into Y.Text

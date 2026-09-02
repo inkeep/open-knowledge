@@ -332,13 +332,12 @@ describe('map-driven Observer A — default Path A behavior', () => {
       cleanup();
     });
 
-    test('a comment-block drain now takes the splice path instead of missing-position', () => {
+    test('a comment-block drain takes the splice path, not missing-position', () => {
       // A `commentBlock` is minted by the comment promoter rather than by
-      // remark, so it used to reach this guard with no `position` and send the
-      // whole drain down the fallback. The mdast→PM position work (single-CRDT
-      // Phase 0) mints it, so a document that opens with a comment now splices
-      // like any other — asserted here because this file is where that guard's
-      // real-world trigger lived.
+      // remark, so it is the one top-level block whose `position` has to be
+      // stamped by hand (`spanOver` in `comment-promoter.ts`). Without that
+      // stamp a document opening with a comment sends the whole drain down the
+      // missing-position fallback.
       const raw = '<!-- note -->\n\nOriginal.\n';
       const { doc, xmlFragment, ytext } = createTestDoc();
       const cleanup = setupServerObservers({ doc, xmlFragment, ytext, mdManager, schema });
@@ -436,11 +435,10 @@ describe('map-driven Observer A — default Path A behavior', () => {
     });
 
     test('an offset-less block reports missing-position through the pure computer', () => {
-      // No input the parser accepts still yields a position-less top-level
-      // block — the last one, `commentBlock`, is minted with a span now — so
-      // the guard is driven directly. It must stay: it is the last thing
-      // standing between an offset-less block and an offset arithmetic throw
-      // inside the drain.
+      // No input the parser accepts yields a position-less top-level block —
+      // `commentBlock`, the only hand-minted one, carries a span — so the guard
+      // is driven directly. It must stay: it is the last thing standing between
+      // an offset-less block and an offset arithmetic throw inside the drain.
       const stripPositions = {
         parseToEditorMdast: (body: string) => {
           const tree = mdManager.parseToEditorMdast(body);

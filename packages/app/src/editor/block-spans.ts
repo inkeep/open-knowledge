@@ -2,23 +2,19 @@
  * Top-level block-ordinal coordinate substrate shared by the WYSIWYG lint
  * decorations and cross-mode position mapping.
  *
- * The parse half — `computeSourceBlocks` and the block-kind vocabulary — now
- * lives in core (`markdown/source-blocks.ts`) because the server needs the same
- * ordinals to stamp an agent write's changed-block range, and the single-CRDT
- * migration takes away the `Y.XmlFragment` it used to count instead. It is
- * re-exported here so this module stays the one import site for the coordinate
- * system; what remains local is the half that needs a ProseMirror document.
+ * The parse half — `computeSourceBlocks` and the block-kind vocabulary — lives
+ * in core (`markdown/source-blocks.ts`), because the server indexes the same
+ * ordinals to stamp an agent write's changed-block range and the two must not
+ * drift. It is re-exported here so this module stays the one import site for
+ * the coordinate system; what remains local is the half that needs a
+ * ProseMirror document.
  *
  * Both surfaces need the same primitive: the alignment between the body's mdast
  * top-level blocks and the PM doc's top-level nodes. That alignment is NOT
- * guaranteed. The bridge invariant is a byte check on the serialize side only,
- * and on the WYSIWYG write path the fragment is the mutated structure — it is
- * never re-derived via parse. Because `serialize` is non-injective at the top
- * level, a WYSIWYG-authored fragment can hold shapes markdown cannot spell —
- * adjacent same-kind `list` siblings, interior empty paragraphs — which
- * `parse` merges or drops, shifting every ordinal after the collapse. Such
- * divergence is PERSISTENT (it survives Observer A and persistence), not a
- * mid-drain transient.
+ * guaranteed. `serialize` is non-injective at the top level, so an
+ * editor-authored document can hold shapes markdown cannot spell — adjacent
+ * same-kind `list` siblings, interior empty paragraphs — which a parse of the
+ * bytes then merges or drops, shifting every ordinal after the collapse.
  *
  * The count-equality tripwire (`comparableChildCount`) detects a shifted count
  * but is necessary, not sufficient: equal counts do not prove identity

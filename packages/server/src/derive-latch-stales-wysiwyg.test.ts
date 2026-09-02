@@ -9,20 +9,16 @@
  * the `freeze scope` / `typing during a freeze` rows). Both are about bytes not
  * being destroyed.
  *
- * This suite asserts the complementary, previously unpinned property: while
+ * This suite asserts the complementary property: while
  * either mechanism holds, a source-mode edit is present in Y.Text but ABSENT
  * from the fragment — so the WYSIWYG surface, which renders nothing but that
  * fragment, displays stale content.
  *
- * PROVENANCE — this suite was written while investigating a report of
- * "switched to WYSIWYG and my source-mode edits were not there". It does NOT
- * reproduce that incident: the defer-hold arm requires a node whose `sourceRaw`
- * stamp holds a whole block's raw text (an MDX component), and the reported
- * document had none. That incident was traced to cross-mode undo corruption
- * instead — see `cross-mode-undo-partial-retraction.test.ts` and
- * `cross-mode-undo-redo-table-anchor.test.ts` in `packages/app`. What this
- * suite pins is a real and separate defect of the same shape, on its own
- * merit.
+ * Scope: the defer-hold arm requires a node whose `sourceRaw` stamp holds a
+ * whole block's raw text (an MDX component), so a document without one cannot
+ * reach this shape. `cross-mode-undo-partial-retraction.test.ts` and
+ * `cross-mode-undo-redo-table-anchor.test.ts` in `packages/app` pin a separate
+ * defect with the same user-facing symptom.
  *
  * The third row is the one that explains why the symptom does not clear itself.
  * `setupServerObservers`' attach-time work records settlement baselines FROM

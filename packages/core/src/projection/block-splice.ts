@@ -9,10 +9,9 @@
  *
  * ## Why block-scoped rather than whole-document
  *
- * The server-side bridge re-serializes the entire document per drain and
- * line-diffs the result. That is measured at 181 ms on a 488 KB document and
- * 368 ms at 977 KB, against 0.05 ms — flat at every size — for a single block.
- * Scoping is therefore a requirement, not an optimisation.
+ * Serializing the whole document and line-diffing the result costs 181 ms on a
+ * 488 KB document and 368 ms at 977 KB, against 0.05 ms — flat at every size —
+ * for a single block. Scoping is therefore a requirement, not an optimisation.
  *
  * It is also *better for byte stability*, which is the less obvious half. A
  * whole-document serialize renormalizes blocks the user never touched
@@ -329,9 +328,8 @@ export function computeBlockSplice(
   // still has one entry per document block) and writes nothing. The block
   // materializes into real bytes the moment it gets content.
   //
-  // Silently dropping this case instead is what made Enter appear to do nothing:
-  // the empty paragraph could not be placed, the projection rebuilt from the
-  // unchanged markdown, and the user's new line vanished as they made it.
+  // Dropping the case instead leaves the paragraph unplaceable, so the
+  // projection rebuilds from unchanged markdown and Enter appears to do nothing.
   if (text === '') {
     const point = shift(anchor?.point ?? 0);
     return { from: point, to: point, text: '' };
@@ -471,9 +469,9 @@ function gapWrite(
  *
  * `follows` means the point was taken from the END of a preceding block, so the
  * text comes after the separator; otherwise it was taken from the START of a
- * following block and the separator comes after the text. Returning them
- * together is the point of this helper — they were separate once, and the text
- * landed on the wrong side of the gap.
+ * following block and the separator comes after the text. They are one decision
+ * and so are returned together: a separator chosen against a different
+ * neighbour than the point lands the text inside that neighbour's gap.
  *
  * Blocks that emit nothing are skipped on both scans: they hold no bytes to
  * anchor against, so anchoring to one would place the write at an offset that

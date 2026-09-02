@@ -2,24 +2,18 @@
  * One `Y.UndoManager` per document, over `Y.Text('source')`, shared by both
  * editing surfaces.
  *
- * This is the fix the migration exists for. Today there are two undo stacks
- * over two CRDT types — `Y.UndoManager` on `Y.Text` for source mode, another on
- * the XmlFragment for WYSIWYG — so undo only ever retracts edits made in the
- * view you are undoing from, and the bridge's own rewrites are tracked by
- * NEITHER (they run under `OBSERVER_SYNC_ORIGIN`), which is how a bridge
- * rewrite can silently split a user's frame in half.
- *
- * Once WYSIWYG writes `Y.Text` under its own tracked origin
- * (`projection-binding.ts`), a single manager sees every local edit from both
- * surfaces in one global LIFO: the most recent edit retracts, whichever view
- * made it. There is nothing to coordinate between two stacks because there is
- * one stack.
+ * Both surfaces write `Y.Text` under origins this manager tracks — source mode
+ * through `yCollab`, WYSIWYG under `PROJECTION_WRITE_ORIGIN` — so every local
+ * edit lands in one global LIFO and the most recent one retracts, whichever
+ * view made it. A second manager over the same document would reintroduce the
+ * cross-mode defect in a new shape: two stacks cannot agree on what "most
+ * recent" means.
  *
  * `y-codemirror.next` adds its own sync config to `trackedOrigins` when it
  * installs, so handing this manager to `yCollab` is all source mode needs. The
- * `null` origin is tracked to match what `yCollab` would have created on its
- * own (`new Y.UndoManager(ytext)` defaults to `{ null }`), so a build with the
- * projection flag off behaves exactly as before.
+ * `null` origin is tracked because that is what an unconfigured
+ * `new Y.UndoManager(ytext)` defaults to, and what `yCollab` assumes when it
+ * dispatches undoable transactions of its own.
  */
 
 import type * as Y from 'yjs';

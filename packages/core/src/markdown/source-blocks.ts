@@ -4,11 +4,9 @@
  * A "block ordinal" is an index into the document's top-level children, and it
  * is the coordinate three unrelated features speak in: WYSIWYG lint
  * decorations, cross-mode position mapping, and the agent write-flash range
- * (`changedBlockRange`). Historically each derived it from whatever structure
- * it happened to be holding — the app from an mdast parse, the server from the
- * `Y.XmlFragment`'s children. Those are two definitions of the same coordinate,
- * and the single-CRDT migration deletes the fragment, so this module is the
- * surviving one.
+ * (`changedBlockRange`). All three index through this module, so there is one
+ * definition of the coordinate and the app and the server cannot drift apart on
+ * it.
  *
  * The parse is `parseToEditorMdast`, not `parseToMdast`: the editor view is
  * what the ordinals must align with, and it differs from the CommonMark one by
@@ -43,9 +41,9 @@ export interface SourceBlock {
    * is positioned and zero-width — it genuinely occupies no bytes — while an
    * unpositioned block is one whose bytes cannot be named at all. Slicing on a
    * sentinel would hand back the wrong bytes rather than none, so the
-   * distinction is carried rather than collapsed. Phase 0's `commentBlock` mint
-   * removed the last real-world top-level block without a position, so in
-   * practice this is null only for nodes synthesized outside remark.
+   * distinction is carried rather than collapsed. In practice only nodes
+   * synthesized outside remark land here; everything remark parses is
+   * positioned.
    */
   sourceStart: number | null;
   sourceEnd: number | null;
@@ -123,10 +121,9 @@ export function computeSourceBlocks(
   // mismatched JSX tag) — a routine transient state while editing raw source.
   // Every consumer (the lint decorations, the mode-switch resolver and the
   // agent write-flash range) already treats an empty block list as "no anchor",
-  // so degrading to no blocks reproduces the pre-feature no-op flip. A
-  // synchronous throw would be worse than a lost anchor: the toggle captures
-  // the source block before the mode flips, so it would abort the flip and
-  // strand the user in the mode they were leaving.
+  // so degrading to no blocks costs only the anchor. A synchronous throw would
+  // be worse: the toggle captures the source block before the mode flips, so it
+  // would abort the flip and strand the user in the mode they were leaving.
   try {
     const blocks = md.parseToEditorMdast(body).children.map((child) => {
       const startOffset = child.position?.start.offset;
@@ -146,9 +143,8 @@ export function computeSourceBlocks(
     // genuinely empty body downstream, and a systematic parse regression on
     // valid markdown would silently send every mode switch to the top of the
     // document with nothing to find. Raw `performance.mark` rather than the
-    // `mark()` helper keeps this leaf free of the perf module's graph; the name
-    // predates the move out of the app's `block-spans` and is kept so existing
-    // traces stay searchable.
+    // `mark()` helper keeps this leaf free of the perf module's graph, and the
+    // mark name is the one existing traces search for.
     performance.mark('ok/block-spans/parse-failed');
     return { blocks: [], fmLineCount };
   }

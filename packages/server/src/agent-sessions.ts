@@ -338,21 +338,16 @@ export function applyAgentMarkdownWrite(
  * synchronously, so after `applyAgentMarkdownWrite` `Y.Text` already holds the
  * new bytes.
  *
- * Taken from `Y.Text`, not from the XmlFragment's children. Those agree today
- * and the fragment reading was the cheaper of the two, but the single-CRDT
- * migration deletes the fragment, and this was one of the four consumers
- * holding it up. Parsing the source is what the client under the projection
- * binding does to build the very document these ordinals index into, so this
- * is also the more direct answer of the two.
+ * Taken from `Y.Text`: the client parses the same bytes to build the very
+ * document these ordinals index into, so both ends read one definition of the
+ * coordinate (`sourceBlockSnapshot`, `core/markdown/source-blocks.ts`).
  *
- * The cost is a parse per snapshot where the fragment read was a walk. It is
- * bounded: this runs twice per agent thread write, a path that already parses
- * the payload, and never on a keystroke.
+ * Costs a parse per snapshot, bounded by where it runs: twice per agent thread
+ * write, a path that already parses the payload, and never on a keystroke.
  *
- * Degradation is unchanged in kind. `computeSourceBlocks` answers no blocks for
- * a body that does not parse (a transiently unclosed JSX tag), and
- * `changedBlockRange` reads an empty AFTER as "nothing to flash" — so a write
- * landing mid-edit costs the flash animation, never correctness.
+ * Degrades to no flash, never to incorrectness. `computeSourceBlocks` answers
+ * no blocks for a body that does not parse (a transiently unclosed JSX tag),
+ * and `changedBlockRange` reads an empty AFTER as "nothing to flash".
  */
 export function snapshotBlocks(document: Document): string[] {
   return sourceBlockSnapshot(document.getText('source').toString(), mdManager);

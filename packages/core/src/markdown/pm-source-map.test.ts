@@ -1,9 +1,7 @@
 /**
- * Phase 0 of the single-CRDT migration: the byte map the local WYSIWYG
- * projection will splice and place cursors through.
+ * The byte map the local WYSIWYG projection splices and places cursors through.
  *
- * The properties under test are the ones Phase 1 depends on, in the order it
- * depends on them:
+ * Four properties, in the order the write path depends on them:
  *
  *  - the block table is index-aligned with the PM doc's top-level children, so
  *    a PM transaction's changed-block ordinal indexes it directly;
@@ -11,13 +9,13 @@
  *    and slicing the source by it yields exactly that block;
  *  - spans nest and siblings stay disjoint, so the deepest-container search
  *    both directions rely on is well-defined;
- *  - and building a map does not change what `parse()` produces — Phase 0 is
- *    explicitly a no-behaviour-change step.
+ *  - and building a map does not change what `parse()` produces.
  *
- * Per the spike's oracle trap, block correctness is asserted as *containment*
- * (nothing outside the edited block's range moves) rather than against a
- * whole-document re-serialize, which renormalizes untouched blocks and would
- * score a correct implementation as a partial failure.
+ * Block correctness is asserted as *containment* (nothing outside the edited
+ * block's range moves) rather than against a whole-document re-serialize, which
+ * renormalizes untouched blocks and would score a correct implementation as a
+ * partial failure. See §4's oracle trap in
+ * `feature-specs/single-crdt-migration.md`.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -141,11 +139,10 @@ describe('parseWithSourceMap — block table', () => {
 
 describe('minting commentBlock positions', () => {
   it('lets the blank-run materializer see the gaps around a comment block', () => {
-    // A `commentBlock` is synthesized by the promoter, so before Phase 0 it
-    // reached `insertInteriorBlankRunParagraphs` with no `position` — and that
-    // pass skips any pair of siblings it cannot measure the gap between, so a
-    // preserved blank run beside a comment was silently dropped on the way to
-    // disk. Minting the span fixes the byte stability as a side effect.
+    // A `commentBlock` is synthesized by the promoter, so its span is minted
+    // rather than parsed. `insertInteriorBlankRunParagraphs` skips any pair of
+    // siblings it cannot measure the gap between, so without that span a
+    // preserved blank run beside a comment is dropped on the way to disk.
     for (const source of [
       '# H\n\n\n\n%%\nnote\n%%\n\n\n\nAfter\n',
       '# H\n\n\n\n<!-- a -->\n\n\n\nB\n',

@@ -8,8 +8,8 @@
  * instead is the pair of properties the migration actually needs:
  *
  *  - CONTAINMENT: every byte outside the edited block's line range is identical
- *    before and after. This is strictly stronger than what today's bridge
- *    provides, which line-diffs a whole re-serialized document.
+ *    before and after — strictly stronger than line-diffing a whole
+ *    re-serialized document, which rewrites bytes the user never touched.
  *  - FIDELITY: re-projecting the spliced source yields the document the user
  *    edited into being — the edit landed, and nothing else moved.
  */

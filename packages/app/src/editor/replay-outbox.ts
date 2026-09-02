@@ -175,17 +175,13 @@ export interface ReplayOutboxEntry {
    * The document content as of the last server `synced` — the ACKED BASE the
    * buffer was captured against.
    *
-   * Under the projection binding this is the only witness the replay's surface
-   * attribution has. With two CRDT surfaces the fragment played this role
-   * implicitly, because only the server's Observer B ever wrote it; a
-   * single-surface client has no such by-product and has to record the base on
-   * purpose. Without it "our content differs from the server" cannot be told
-   * apart from "the server moved on", and an aged buffer splices over live
-   * content.
+   * The only witness the replay's surface attribution has. Without it, "our
+   * content differs from the server" cannot be told apart from "the server
+   * moved on", and an aged buffer splices over live content.
    *
-   * Absent (`undefined`) on records written before the base was carried, and
-   * on entries whose doc never reached a `synced` event. Readers must treat
-   * that as "cannot attribute" rather than "no divergence".
+   * Absent (`undefined`) on entries whose doc never reached a `synced` event,
+   * and on records written by a version that did not carry the field. Readers
+   * must treat that as "cannot attribute" rather than "no divergence".
    */
   readonly base?: string | undefined;
 }

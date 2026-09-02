@@ -203,34 +203,21 @@ describe('content-level replay of an edit the comparator cannot see', () => {
  * The same attribution under the projection binding, where there is only one
  * CRDT surface to attribute to.
  *
- * A WYSIWYG edit under the flag is a `Y.Text` splice like any other, so the
- * fragment is no longer written by the client and stops being available as a
- * witness. What it was actually supplying was not a second opinion about the
- * edit — it was a standing record of the ACKED BASE, because only the server's
- * Observer B ever wrote it. That is what made "the server has moved past this
- * buffer" decidable.
+ * A WYSIWYG edit is a `Y.Text` splice like any other, so the client never
+ * writes the fragment and it cannot serve as a witness. The acked base is
+ * therefore recorded on purpose — snapshotted at each `synced`, carried on the
+ * buffer and through the durable outbox — and it is what makes "has the server
+ * moved past this buffer?" decidable.
  *
- * So the base is recorded deliberately instead: snapshotted at each `synced`
- * and carried on the buffer (and through the durable outbox). All three arms
- * survive the change of witness, which is what these rows pin — including the
- * refusal, which would otherwise have become undecidable rather than
- * unnecessary, and let an aged buffer splice over content the server rebuilt
- * from disk.
+ * All three arms are pinned here, the refusal included: without a witness that
+ * arm is undecidable rather than unnecessary, and an aged buffer would splice
+ * over content the server rebuilt from disk.
  */
 describe('content-level replay under the projection binding', () => {
-  // This suite runs without a DOM, so the flag comes from the env channel
-  // rather than the `window.__okProjectionBinding` one.
-  beforeEach(() => {
-    vi.stubEnv('VITE_OK_PROJECTION_BINDING', '1');
-  });
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it('attributes to Y.Text without consulting the fragment', async () => {
-    // The buffer's fragment sits at BASE and its Y.Text at BUFFERED. Under the
-    // flag only the latter is read, so the edit is recovered on the strength of
-    // the Y.Text comparison against the recorded base alone.
+    // The buffer's fragment sits at BASE and its Y.Text at BUFFERED. Only the
+    // latter is read, so the edit is recovered on the strength of the Y.Text
+    // comparison against the recorded base alone.
     const { ytext } = armReplay(BASE_MD, { base: BASE_MD });
 
     await vi.waitFor(() => {

@@ -336,9 +336,7 @@ export function SourceEditor({
               // origins it tracks, undo is a single global LIFO and the most
               // recent edit retracts whichever view made it. `yCollab` adds its
               // own sync config to the tracked origins when it installs, so
-              // source-mode edits are tracked here exactly as before — and with
-              // the projection flag off, the tracked set is identical to the
-              // manager `yCollab` would have built.
+              // source-mode edits are tracked without any extra wiring here.
               yCollab(ytext, provider.awareness, { undoManager: sharedUndoManagerFor(ytext) }),
               // Route Mod-z/Mod-y to the y-codemirror Y.UndoManager (origin-aware,
               // remote/agent writes excluded) instead of CodeMirror's native

@@ -471,11 +471,9 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
     // Use yCursorPlugin from @tiptap/y-tiptap directly (same module
     // as Collaboration v3) to avoid ySyncPluginKey mismatch. Dropped on the
     // projection path: the plugin resolves remote positions through
-    // `ySyncPluginKey`'s binding, which does not exist there. Remote WYSIWYG
-    // cursors are therefore absent under the flag — no regression against
-    // today, where cross-mode cursors are dropped in both directions anyway,
-    // but the reason they come back is `Y.Text` relative positions, not this
-    // plugin.
+    // `ySyncPluginKey`'s binding, which does not exist there, so remote WYSIWYG
+    // cursors are absent. Restoring them means `Y.Text` relative positions, not
+    // this plugin — see §9.3 of `feature-specs/single-crdt-migration.md`.
     ...(projection
       ? []
       : [
@@ -499,10 +497,9 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
     // Staleness guard for the y-sync binding: gates PM→Y
     // publication while the binding's Y→PM apply half is wedged and reports
     // the wedge so the pool entry can be recycled. Binds the same fragment
-    // Collaboration binds (provider.document field 'default').
-    // Guards the y-sync binding's Y→PM apply half. There is no such half on
-    // the projection path — the document is re-derived from `Y.Text`, so it
-    // cannot wedge in the way this detects.
+    // Collaboration binds (provider.document field 'default'). Dropped on the
+    // projection path, which has no Y→PM apply half to wedge — the document is
+    // re-derived from `Y.Text`.
     ...(projection
       ? []
       : [

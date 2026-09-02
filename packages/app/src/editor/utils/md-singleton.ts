@@ -32,20 +32,15 @@ export function getSharedMarkdownManager(): MarkdownManager {
  * freshness derive is what notices the children have diverged and re-derives
  * instead of emitting the stale slice.
  *
- * Under the bridge this was covered: the SERVER serialized the fragment, and
- * the server's `mdManager` has always had the flag on. The projection moves
- * that serialize onto the client, where no manager had it — so the coverage was
- * lost with the move rather than never having existed.
- *
  * Kept separate from `buildClipboardState`'s manager rather than flipping the
  * flag there, because that one also backs the clipboard's copy/cut/paste/drop
  * serializers, and re-deriving is not obviously wanted for a copied slice. This
- * is the one place the projection writes bytes.
+ * is the one place the projection writes bytes, so it is the one place that
+ * needs the derive.
  *
  * Note the derive re-indents a component's body to its canonical form rather
- * than reproducing the captured bytes, which is a byte-level change for a
- * component whose children were edited. That is the same output the server
- * already produced for the same edit, so it matches what is on disk today.
+ * than reproducing the captured bytes: editing a component's children is a
+ * byte-level change to its indentation as well as to its content.
  */
 let projectionManager: MarkdownManager | null = null;
 

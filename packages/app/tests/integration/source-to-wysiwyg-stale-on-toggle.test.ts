@@ -40,14 +40,11 @@
  * checkpoint-then-repair arm and the fragment is rebuilt on the next store. A
  * backstop freeze is therefore NOT a candidate for this symptom.
  *
- * PROVENANCE — this suite was written while investigating a report of
- * "switched to WYSIWYG and my source-mode edits were not there". It does NOT
- * reproduce that incident: the defer-hold staging needs a node whose
- * `sourceRaw` stamp holds a whole block's raw text (an MDX component), and the
- * reported document had none. That incident was traced to cross-mode undo
- * corruption instead — see `cross-mode-undo-partial-retraction.test.ts` and
- * `cross-mode-undo-redo-table-anchor.test.ts`. What this suite pins is a real
- * and separate defect of the same shape, on its own merit.
+ * Scope: the defer-hold staging needs a node whose `sourceRaw` stamp holds a
+ * whole block's raw text (an MDX component), so a document without one cannot
+ * reach this shape. The neighbouring cross-mode undo suites pin a different
+ * defect with the same user-facing symptom; see §5 of
+ * `feature-specs/single-crdt-migration.md` for how the two were told apart.
  *
  * Note for a future fix: the repair primitive already works. A fresh observer
  * closure over a diverged doc reconciles on its next fragment-dirtying drain

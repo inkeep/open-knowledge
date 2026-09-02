@@ -665,11 +665,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       //
       // `Y.UndoManager` merges transactions by ELAPSED TIME alone — there is no
       // origin check — so a source edit and a WYSIWYG edit landing inside the
-      // 500ms capture window become ONE stack item, and undo retracts both. Now
-      // that both surfaces write the same `Y.Text` under tracked origins
-      // (Phase 2), that pairing is reachable by switching modes quickly, and
-      // "undo took back an edit I made in the other view too" is precisely the
-      // cross-mode defect this migration exists to remove.
+      // 500ms capture window become ONE stack item, and undo retracts both.
+      // Both surfaces write the same `Y.Text` under tracked origins, so a quick
+      // mode switch is all it takes to reach that pairing.
       //
       // A mode switch is a natural boundary for the user, so closing the frame
       // here costs nothing and makes the merge unreachable across surfaces.

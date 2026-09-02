@@ -5,8 +5,7 @@
  * per-client *projection* of the markdown: derived on read, never synced, and
  * rebuilt when the markdown changes underneath it. A local edit is translated
  * back into one `Y.Text` splice under the user's own origin. There is no second
- * replica, so there is nothing to reconcile — none of the bridge's guards,
- * kill-switches or circuit breakers has a counterpart on this side.
+ * replica, so there is nothing to reconcile and no staleness to guard against.
  *
  * Two properties are load-bearing and easy to lose:
  *
@@ -48,29 +47,11 @@ import type * as Y from 'yjs';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
 /**
- * Emergency kill switch for the projection path. `false` keeps every editor on
- * the XmlFragment binding; nothing below runs. Flip to `true` to derive the
- * WYSIWYG document from `Y.Text` instead.
+ * Always true: the projection is the only WYSIWYG binding.
  *
- * Both paths coexist deliberately during the migration — the fragment binding
- * is still what production uses, and is not removed until the bridge is (Phase
- * 3). A build with this on must not also be running the server-side bridge
- * observers against the same document: two writers on `Y.Text`, one of them
- * deriving from a fragment the client no longer updates, converge on the
- * fragment's stale content.
- */
-/**
- * Whether this editor binds the projection or the fragment.
- *
- * ALWAYS the projection on this branch. The fragment binding and the
- * server-side bridge that maintained it are gone, so there is no second path
- * to select — this survives only as the seam the fragment arms are being
- * deleted through, and goes with the last of them.
- *
- * The dev-only override channels (`VITE_OK_PROJECTION_BINDING`,
- * `window.__okProjectionBinding`) are removed with the constant they gated:
- * there is nothing left to turn on. `OK_DISABLE_BRIDGE` on the server side is
- * likewise obsolete — the bridge is not attached at all.
+ * The seam its call sites still branch on, kept until the last of them is
+ * inlined; it goes with them. Nothing turns it off — there is no second path
+ * to select.
  */
 export function projectionBindingEnabled(): boolean {
   return true;
@@ -331,34 +312,28 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           }
 
           const nextSource = applySplice(projection.source, splice);
-          // A zero-width empty splice means the document changed but the bytes
-          // did not — the edit produced a block markdown cannot spell, an empty
-          // paragraph from Enter being the everyday case. Skip the CRDT write
-          // entirely (an empty transaction would still wake every observer and
-          // land a stack item that undoes nothing) and rebase, which records the
-          // block with a zero-width span so the table keeps one entry per
-          // document block. The block reaches the markdown as soon as it holds
-          // content.
-          // Compare against the bytes ALREADY THERE, not merely against the
-          // splice's shape. A block can be rebuilt without its markdown
-          // changing — the render-time attrs on links, wiki links, images and
-          // JSX components are configured per document and updated after mount,
-          // which makes a block unequal to its predecessor while serializing
-          // byte-for-byte the same. `changedProjectionBlocks` correctly reports
-          // a change (the nodes differ), and the splice correctly describes the
-          // replacement; what would be wrong is performing it.
+          // Write only when the bytes actually differ from the ones already
+          // there — the test is on the bytes, not on the splice's shape.
           //
-          // Writing bytes equal to the ones present is not a harmless no-op:
-          // the transaction is tracked, so it CLEARS THE REDO STACK and pushes
-          // an undo item that retracts nothing. It also replaces the CRDT items
-          // for that range, disturbing other clients' cursors and the undo
-          // manager's attribution for text nobody edited.
+          // A document can change without its markdown changing. An empty
+          // paragraph (what Enter produces) has no markdown spelling, and a
+          // block carrying links, wiki links, images or JSX components is
+          // rebuilt when their render-time attrs are configured after mount, so
+          // it is unequal to its predecessor while serializing byte-for-byte
+          // the same. Both reach here as a real change with a correct splice
+          // that must not be performed.
           //
-          // The symptom is remote from the cause and document-shaped: redo
-          // stops working after a mode switch, but only on documents holding
-          // one of those node types — a document of plain paragraphs cannot
-          // reproduce it. The gap-rewrite path already declines for the same
-          // reason; this extends the rule to the replacement path.
+          // Writing equal bytes is not a harmless no-op: the transaction is
+          // tracked, so it clears the redo stack and pushes an undo item that
+          // retracts nothing, and it replaces the CRDT items for that range,
+          // disturbing other clients' cursors and undo attribution for text
+          // nobody edited. The symptom is document-shaped and lands far from
+          // the cause — redo stops working after a mode switch, but only on
+          // documents holding one of those node types.
+          //
+          // Skipping the write still rebases: that records the block with a
+          // zero-width span, so the table keeps one entry per document block and
+          // the block reaches the markdown as soon as it holds content.
           const writesBytes = projection.source.slice(splice.from, splice.to) !== splice.text;
           if (writesBytes) {
             const doc = ytext.doc;
