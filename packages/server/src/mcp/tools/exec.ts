@@ -6,8 +6,14 @@ import {
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
-import { argsOf, extractReferencedPaths, nonFlagArgs } from '../../bash/extract-paths.ts';
-import { createBashInstance, execBash, StdoutOverflowError } from '../../bash/index.ts';
+import { expandGlobStages } from '../../bash/expand-globs.ts';
+import { extractReferencedPaths, pathArgs } from '../../bash/extract-paths.ts';
+import {
+  createBashInstance,
+  erofsTarget,
+  execBash,
+  StdoutOverflowError,
+} from '../../bash/index.ts';
 import {
   deriveScanRoots,
   diffMtimes,
@@ -31,6 +37,7 @@ import {
   fetchCommentCountsBatch,
   pathToDocName,
 } from '../../content/enrichment.ts';
+import { getLogger } from '../../logger.ts';
 import { resolveWithinRoot } from './path-safety.ts';
 import { buildListResolver, docNameFromPath, type PreviewUrlSource } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
@@ -40,6 +47,8 @@ import {
   resolveProjectServerContext,
   textPlusStructured,
 } from './shared.ts';
+
+const log = getLogger('mcp:exec');
 
 const SOFT_CAP_LINES = 500;
 export const WIRE_BODY_COPIES = 2;
@@ -57,11 +66,11 @@ export const DESCRIPTION = [
   '',
   '`⚠ N unresolved comment(s)` = open human review requests — factor in before editing, and report them.',
   '',
-  'Allowlist: cat, ls, grep, find, head, tail, wc, sort, uniq, cut. One command or a pipe (|) per call — NOT a shell: `&&`, `;`, redirections, subshells, and writes are rejected. To do several things, make separate exec calls or pass multiple paths to one command (e.g. `ls -A a b c`, `cat a b c`).',
+  'Allowlist: cat, ls, grep, find, head, tail, wc, sort, uniq, cut. One command or a pipe (|) per call — NOT a shell: `&&`, `;`, subshells, writes, and ALL redirection are rejected, `<` too (read via `cat a.md`, not `< a.md`). For several things use separate exec calls or multiple paths (`cat a b c`).',
   '',
   "cwd: the command runs in the explicit absolute `cwd` you pass, or in the MCP client's only advertised root when there is exactly one. If the client has zero or multiple roots, pass `cwd` explicitly. Paths inside the command resolve relative to that cwd; traversal above it is rejected.",
   '',
-  'Stdout provenance headers (GNU-style): `ls <dir>/` prepends `<dir>/:`, single-file `cat`/`head`/`tail` prepends `==> <path> <==`, so the subject of the command is visible in raw output. Multi-file `cat a b` emits no header — the `enrichedPaths` array still lists every file. `head`/`tail` used as pipe trimmers (no file arg) defer to the upstream producer.',
+  'Stdout provenance headers (GNU-style): `ls <dir>/` prepends `<dir>/:`, single-file `cat`/`head`/`tail` prepends `==> <path> <==`. Multi-file `cat a b` emits no header — the `enrichedPaths` array still lists every file. `head`/`tail` used as pipe trimmers (no file arg) defer to the upstream producer.',
   '',
   'Examples:',
   '- `exec({ command: "cat articles/auth.md" })` — file contents + full enrichment',
@@ -312,17 +321,17 @@ function buildStdoutProvenance(
       stage = s;
       break;
     }
-    if ((cmd === 'head' || cmd === 'tail') && nonFlagArgs(argsOf(s)).length > 0) {
+    if ((cmd === 'head' || cmd === 'tail') && pathArgs(s).length > 0) {
       stage = s;
       break;
     }
   }
   if (!stage) return '';
 
-  const pathArgs = nonFlagArgs(argsOf(stage));
+  const operands = pathArgs(stage);
 
   if (stage.command === 'ls') {
-    const dirArg = pathArgs[pathArgs.length - 1];
+    const dirArg = operands[operands.length - 1];
     if (!dirArg || dirArg === '.') return '';
     let n = dirArg.replace(/\/+/g, '/');
     if (n.startsWith('./')) n = n.slice(2);
@@ -333,7 +342,7 @@ function buildStdoutProvenance(
     return `${key}/:\n`;
   }
 
-  const wikiFiles = pathArgs.filter((p) => /\.(md|mdx)$/.test(p) && fileByPath.has(rebase(p)));
+  const wikiFiles = operands.filter((p) => /\.(md|mdx)$/.test(p) && fileByPath.has(rebase(p)));
   if (wikiFiles.length !== 1) return '';
   return `==> ${rebase(wikiFiles[0])} <==\n`;
 }
@@ -394,6 +403,15 @@ function withPreviewUrls(
   });
 }
 
+function writeBlockedResult(target: string | null) {
+  if (target === null) log.warn({}, 'the engine refused a write without naming the file');
+  const named = target === null ? 'a file' : `'${target}'`;
+  return errorCategoryResult(
+    'write_blocked',
+    `Write operation blocked: the command tried to write ${named}. exec is read-only. For document changes, use the \`write\` or \`edit\` tool.`,
+  );
+}
+
 export async function buildExecResult(
   args: { command: string; cwd?: string },
   deps: ExecDeps,
@@ -429,7 +447,11 @@ export async function buildExecResult(
   if ('error' in parsed) {
     return errorCategoryResult(parsed.error.category, parsed.error.message);
   }
-  const stages = augmentStagesWithExcludes(parsed.stages);
+  const expanded = await expandGlobStages(parsed.stages, executionCwd);
+  if ('error' in expanded) {
+    return errorCategoryResult(expanded.error.category, expanded.error.message);
+  }
+  const stages = augmentStagesWithExcludes(expanded.stages);
   const effectiveCommand = serializeStages(stages);
 
   const scanRoots = [
@@ -447,6 +469,10 @@ export async function buildExecResult(
   let stderr = '';
   try {
     const result = await execBash(bash, effectiveCommand);
+    if (result.exitCode !== 0) {
+      const refused = erofsTarget(result.stderr);
+      if (refused.blocked) return writeBlockedResult(refused.target);
+    }
     stdout = result.stdout;
     stderr = result.stderr;
   } catch (err) {
@@ -456,6 +482,9 @@ export async function buildExecResult(
         `Output exceeded 16 MB buffer. Narrow the command (e.g., add a more specific grep pattern, use head, restrict the path).`,
       );
     }
+    const refused = erofsTarget(err);
+    if (refused.blocked) return writeBlockedResult(refused.target);
+    log.warn({ err, command: args.command }, 'exec failed');
     return errorCategoryResult(
       'shell_construct_blocked',
       `exec failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -465,9 +494,10 @@ export async function buildExecResult(
   const post = await snapshotMtimesForRoots(executionCwd, scanRoots);
   const mtimeDiff = diffMtimes(pre.snapshot, post.snapshot);
   if (mtimeDiff.changed.length > 0) {
+    log.error({ command: args.command, changed: mtimeDiff.changed }, 'files changed during exec');
     return errorCategoryResult(
       'security_invariant_violation',
-      `Security invariant violated: file(s) in the content directory were modified during a read-only exec call: ${mtimeDiff.changed.join(', ')}. This indicates a parser bug; the command has been logged.`,
+      `Security invariant violated: file(s) in the content directory were modified during a read-only exec call: ${mtimeDiff.changed.join(', ')}. Either the read-only mount let a write through, or another writer (the live server, a human editor) touched these files at the same time. Logged.`,
     );
   }
   const sweepPartial = pre.truncated || post.truncated;

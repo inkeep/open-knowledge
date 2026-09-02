@@ -60,6 +60,47 @@ function stage(...args: string[]): Stage {
 }
 
 describe('deriveScanRoots', () => {
+  test.each([
+    'find -newer ref.md',
+    'find -anewer ref.md',
+    'find -cnewer ref.md',
+    'find -mtime 7',
+    'find -mmin 5',
+    'find -atime 3',
+    'find -amin 3',
+    'find -ctime 3',
+    'find -cmin 3',
+    'find -perm 644',
+    'find -links 2',
+    'find -inum 12345',
+    'find -user root',
+    'find -group staff',
+    'find -size 1k',
+    'find -type f',
+    'find -maxdepth 2',
+    'find -mindepth 1',
+  ])('%s walks the tree, so the sweep watches all of it', (command) => {
+    const args = command.split(/\s+/);
+    expect(deriveScanRoots([stage(...args)])).toEqual([SCAN_WHOLE_TREE]);
+  });
+
+  test.each([
+    ['grep -f pats*.txt', [SCAN_WHOLE_TREE]],
+    ['sort -T logs* data.txt', [SCAN_WHOLE_TREE]],
+    ['find docs -newer other/*.md', ['docs', 'other']],
+  ])('%s — a glob a flag supplies is still swept', (command, expected) => {
+    const args = command.split(/\s+/);
+    expect(deriveScanRoots([stage(...args)]).sort()).toEqual([...expected].sort());
+  });
+
+  test('a flag value never narrows the sweep away from the whole tree', () => {
+    expect(deriveScanRoots([stage('grep', '-r', '-f', 'pats.txt')])).toEqual([SCAN_WHOLE_TREE]);
+    expect(deriveScanRoots([stage('find', '.', '-newer', 'ref.md')]).sort()).toEqual([
+      '.',
+      'ref.md',
+    ]);
+  });
+
   test('cat file operands become roots', () => {
     expect(deriveScanRoots([stage('cat', 'a.md', 'sub/b.md')]).sort()).toEqual([
       'a.md',

@@ -2,7 +2,37 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createBashInstance, execBash, StdoutOverflowError, shellEscape } from './index.ts';
+import {
+  createBashInstance,
+  erofsTarget,
+  execBash,
+  StdoutOverflowError,
+  shellEscape,
+} from './index.ts';
+
+describe('erofsTarget', () => {
+  it('names the file from the engine refusal', () => {
+    expect(
+      erofsTarget("write: EROFS: read-only file system, open '/home/user/project/a.md'"),
+    ).toEqual({
+      blocked: true,
+      target: 'a.md',
+    });
+  });
+
+  it('reports a refusal the engine did not attach a file to', () => {
+    expect(erofsTarget("sort: EROFS: read-only file system, write '<path>'")).toEqual({
+      blocked: true,
+      target: null,
+    });
+  });
+
+  it('is not fooled by a read failure whose path contains EROFS', () => {
+    expect(erofsTarget("cat: ENOENT: no such file or directory, open 'missing-EROFS.md'")).toEqual({
+      blocked: false,
+    });
+  });
+});
 
 describe('shellEscape', () => {
   it('leaves safe characters alone', () => {
@@ -22,7 +52,7 @@ describe('shellEscape', () => {
   });
 });
 
-describe('just-bash + ReadWriteFs (per-call cwd)', () => {
+describe('just-bash + OverlayFs (per-call cwd)', () => {
   let root: string;
 
   beforeAll(() => {
@@ -37,7 +67,7 @@ describe('just-bash + ReadWriteFs (per-call cwd)', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  describe('ReadWriteFs sandbox boundary', () => {
+  describe('OverlayFs sandbox boundary', () => {
     it('rejects path traversal via `..`', async () => {
       const bash = createBashInstance(root);
       const result = await execBash(bash, 'cat ../outside.txt');
