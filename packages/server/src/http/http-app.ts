@@ -8,6 +8,7 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
   tripsForwardedHeaderTripwire,
+  warnForwardedHeaderRefusalOnce,
 } from '../ingress-policy.ts';
 import type { PinoLogger } from '../logger.ts';
 import { errorResponse } from './error-response.ts';
@@ -32,8 +33,12 @@ export function admitRequestSurface(
   res: ServerResponse,
   policy: IngressPolicy,
   handler: SurfaceAdmissionCaller,
+  log?: PinoLogger,
 ): boolean {
   if (tripsForwardedHeaderTripwire(req, policy)) {
+    if (log !== undefined) {
+      warnForwardedHeaderRefusalOnce(log, handler);
+    }
     errorResponse(
       res,
       403,
@@ -171,7 +176,7 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
         opts.legacyDispatch(req, res);
         return RESPONSE_ALREADY_SENT;
       }
-      if (!admitRequestSurface(req, res, ingressPolicy, 'native-mcp-surface')) {
+      if (!admitRequestSurface(req, res, ingressPolicy, 'native-mcp-surface', opts.log)) {
         return RESPONSE_ALREADY_SENT;
       }
       mcpDispatch(req, res);
@@ -185,7 +190,7 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
       app.all(path, async (c) => {
         const req = c.env.incoming;
         const res = c.env.outgoing;
-        if (!admitRequestSurface(req, res, ingressPolicy, 'native-api-surface')) {
+        if (!admitRequestSurface(req, res, ingressPolicy, 'native-api-surface', opts.log)) {
           return RESPONSE_ALREADY_SENT;
         }
         try {

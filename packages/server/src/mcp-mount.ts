@@ -22,6 +22,7 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
   tripsForwardedHeaderTripwire,
+  warnForwardedHeaderRefusalOnce,
 } from './ingress-policy.ts';
 import type { PinoLogger } from './logger.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
@@ -83,7 +84,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
 
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
-    if (!admitRequestSurface(req, res, ingressPolicy, 'mcp-mount')) return;
+    if (!admitRequestSurface(req, res, ingressPolicy, 'mcp-mount', log)) return;
     if (url?.startsWith('/api/')) {
       hocuspocus
         // biome-ignore lint/suspicious/noExplicitAny: Hocuspocus `hooks()` has no exported payload type for onRequest
@@ -195,6 +196,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
         { url: req.url, host: req.headers.host },
         '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
       );
+      warnForwardedHeaderRefusalOnce(log, 'ws-upgrade');
     }
     socket.destroy();
   };

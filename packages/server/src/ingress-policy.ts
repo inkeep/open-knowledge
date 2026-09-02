@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { isAllowedApiOrigin } from './api-origin.ts';
+import type { PinoLogger } from './logger.ts';
 import { isAllowedWorkspaceHostHeader, isLoopbackAddress } from './loopback.ts';
 
 export function normalizeHostHeader(host: string): string {
@@ -135,6 +136,31 @@ export function tripsForwardedHeaderTripwire(
   policy: IngressPolicy,
 ): boolean {
   return !policy.tolerateForwardedHeaders && hasForwardingHeaders(req);
+}
+
+export type ForwardedRefusalCaller =
+  | 'mcp-mount'
+  | 'native-api-surface'
+  | 'native-mcp-surface'
+  | 'collab-upgrade'
+  | 'ws-upgrade';
+
+let warnedForwardedHeaderRefusal = false;
+
+export function __resetWarnedForwardedHeaderRefusalForTests(): void {
+  warnedForwardedHeaderRefusal = false;
+}
+
+export function warnForwardedHeaderRefusalOnce(
+  log: PinoLogger,
+  handler: ForwardedRefusalCaller,
+): void {
+  if (warnedForwardedHeaderRefusal) return;
+  warnedForwardedHeaderRefusal = true;
+  log.warn(
+    { handler },
+    '[ingress] refused a request carrying a forwarding header (X-Forwarded-For etc.) — without external-exposure consent, every surface except the /healthz + /readyz probes refuses proxied requests (APIs 403, /collab upgrades dropped). To front this server with a proxy, set server.externalUrl to the public origin in .ok/config.yml (or OK_EXTERNAL_URL) AND consent with server.allowExternal: true in .ok/local/config.yml (or OK_ALLOW_EXTERNAL=1) — the keys live in different files because consent is per-machine and never travels. allowExternal consents to exposure on a server with NO authentication — restrict access at the edge. Removing server.externalUrl does not lift this refusal (it fires on the header, not the URL) and would un-admit that Host/Origin everywhere else. Warned once per process; every refusal is still logged at warn level (HTTP refusals additionally as api.error, counted in ok.api.error.count).',
+  );
 }
 
 export interface IngressRequestContext {

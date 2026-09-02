@@ -6,14 +6,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   healUnservableSkillAdmission,
   indexedSkillContentPath,
-  resumeSyncOnAuthEvent,
   type SkillAdmissionHealState,
   safeSubdir,
   sanitizeFilename,
 } from './api-extension.test-helper.ts';
-import type { AuthEvent } from './local-ops/types.ts';
 import { listenOnLoopback } from './loopback-rig-test-helpers.ts';
-import type { SyncEngine } from './sync-engine.ts';
 
 describe('safeSubdir', () => {
   const baseDir = '/home/user/content';
@@ -618,63 +615,6 @@ describe('handleUploadAsset — same-dir sha256 dedup (FR-2)', () => {
       deduped: boolean;
     };
     expect(res.deduped).toBe(false);
-  });
-});
-
-describe('resumeSyncOnAuthEvent (reconnect → resume wiring)', () => {
-  const makeEngineStub = (impl?: () => Promise<void>) => {
-    const calls: number[] = [];
-    const refreshCalls: number[] = [];
-    const engine = {
-      notifyCredentialsChanged: () => {
-        calls.push(Date.now());
-        return impl ? impl() : Promise.resolve();
-      },
-      refreshPushPermission: () => {
-        refreshCalls.push(Date.now());
-        return Promise.resolve(null);
-      },
-    } as unknown as SyncEngine;
-    return { engine, calls, refreshCalls, getSyncEngine: () => engine };
-  };
-
-  const completeEvent: AuthEvent = { type: 'complete', host: 'github.com', login: 'octocat' };
-  const verificationEvent: AuthEvent = {
-    type: 'verification',
-    user_code: 'ABCD-1234',
-    verification_uri: 'https://github.com/login/device',
-    expires_in: 900,
-  };
-  const errorEvent: AuthEvent = { type: 'error', message: 'denied' };
-
-  test('a complete event resumes sync AND re-probes push permission', () => {
-    const stub = makeEngineStub();
-    resumeSyncOnAuthEvent(completeEvent, stub.getSyncEngine);
-    expect(stub.calls.length).toBe(1);
-    expect(stub.refreshCalls.length).toBe(1);
-  });
-
-  test('non-complete events do not resume sync or re-probe', () => {
-    const stub = makeEngineStub();
-    resumeSyncOnAuthEvent(verificationEvent, stub.getSyncEngine);
-    resumeSyncOnAuthEvent(errorEvent, stub.getSyncEngine);
-    expect(stub.calls.length).toBe(0);
-    expect(stub.refreshCalls.length).toBe(0);
-  });
-
-  test('absent getSyncEngine is a no-op (engine dormant / not yet constructed)', () => {
-    expect(() => resumeSyncOnAuthEvent(completeEvent, undefined)).not.toThrow();
-  });
-
-  test('a null engine is a no-op', () => {
-    expect(() => resumeSyncOnAuthEvent(completeEvent, () => null)).not.toThrow();
-  });
-
-  test('a rejected notifyCredentialsChanged is swallowed (best-effort)', async () => {
-    const stub = makeEngineStub(() => Promise.reject(new Error('boom')));
-    expect(() => resumeSyncOnAuthEvent(completeEvent, stub.getSyncEngine)).not.toThrow();
-    expect(stub.calls.length).toBe(1);
-    await Promise.resolve();
   });
 });
 

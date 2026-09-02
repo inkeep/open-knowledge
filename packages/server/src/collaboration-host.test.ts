@@ -1,9 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { createServer } from 'node:http';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { createCollaborationHost } from './collaboration-host.ts';
-import { buildIngressPolicy } from './ingress-policy.ts';
+import {
+  __resetWarnedForwardedHeaderRefusalForTests,
+  buildIngressPolicy,
+} from './ingress-policy.ts';
 
 function createLog() {
   return {
@@ -60,6 +63,10 @@ const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
   await Promise.allSettled(closers.splice(0).map((close) => close()));
   vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  __resetWarnedForwardedHeaderRefusalForTests();
 });
 
 describe('createCollaborationHost', () => {
@@ -171,6 +178,10 @@ describe('createCollaborationHost', () => {
     expect(log.warn).toHaveBeenCalledWith(
       { url: '/collab', host: 'localhost' },
       '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
+    );
+    expect(log.warn).toHaveBeenCalledWith(
+      { handler: 'collab-upgrade' },
+      expect.stringContaining('server.allowExternal'),
     );
   });
 
