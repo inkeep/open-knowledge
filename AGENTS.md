@@ -35,6 +35,14 @@ cd docs
 pnpm run dev
 ```
 
+## Running Desktop With Browser Access
+
+`pnpm --dir packages/desktop run dev` starts the desktop app but cannot serve a
+browser client — `electron-vite dev` sets `ELECTRON_RENDERER_URL`, and the main
+process omits the React shell whenever that is set. For step-by-step instructions
+on running the desktop app so a browser can reach the same server, see
+[README.md](./README.md#running-desktop-with-browser-access).
+
 ## Repo Layout
 
 - `packages/app` - web app and editor UI
