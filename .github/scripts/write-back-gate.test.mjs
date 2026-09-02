@@ -6,8 +6,6 @@ import {
   evaluateFanIn,
   isOriginRepliableFrom,
   highestVersion,
-  markerSuffixFor,
-  originAlreadyNotified,
   partitionAttachments,
 } from './write-back-gate.mjs';
 
@@ -255,10 +253,10 @@ describe('fan-in gate', () => {
 });
 
 describe('reply composition', () => {
-  const CHANGESET = {
-    title: 'Honor backslash escapes in the markdown promoters',
-    body: 'Typing `\\==not a highlight\\==` now stays literal instead of turning into a highlight.',
-  };
+  const CHANGESET_BODY =
+    'Honor backslash escapes in the markdown promoters.\n\nTyping `\\==not a highlight\\==` now stays literal instead of turning into a highlight.';
+  const changesetFrom = (body) => ({ title: body.split('\n')[0].trim(), body });
+  const CHANGESET = changesetFrom(CHANGESET_BODY);
 
   const compose = (overrides = {}) =>
     composeReply({ changeset: CHANGESET, version: 'v0.36.0', originChannel: 'github-issue', ...overrides });
@@ -267,30 +265,26 @@ describe('reply composition', () => {
     expect(compose()).toContain('v0.36.0');
   });
 
-  test('the reply carries the changeset prose', () => {
-    expect(compose()).toContain('stays literal instead of turning into a highlight');
-  });
-
-  test('a multi-paragraph changeset that fits the bound is quoted in full', () => {
-    const text = compose({
-      changeset: {
-        title: 'Message actions',
-        body: 'Messages you send now carry their own actions:\n\n- Resend to a different agent.\n- Copy and edit.',
-      },
-    });
-    expect(text).toContain('Messages you send now carry their own actions:');
-    expect(text).toContain('Resend to a different agent.');
-  });
-
-  test('quote: false omits the changeset prose but keeps the rest of the reply', () => {
-    const text = compose({ quote: false });
+  test('the changeset prose is never quoted into the reply', () => {
+    const text = compose();
     expect(text).not.toContain('stays literal instead of turning into a highlight');
-    expect(text).toContain('v0.36.0');
-    expect(text).toContain('update to the latest desktop app');
+    expect(text).not.toContain(CHANGESET.title);
   });
 
-  test('quote: false still refuses to compose from an empty changeset', () => {
-    expect(compose({ quote: false, changeset: { title: '', body: '' } })).toBeNull();
+  test('a multi-paragraph changeset reaches the reader as a link, not as paragraphs', () => {
+    const text = compose({
+      changeset: changesetFrom(
+        'Messages you send now carry their own actions:\n\n- Resend to a different agent.\n- Copy and edit.'
+      ),
+    });
+    expect(text).not.toContain('Messages you send now carry their own actions:');
+    expect(text).not.toContain('Resend to a different agent.');
+    expect(text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+  });
+
+  test('the reply links the releases index, never a tag page still in draft when it posts', () => {
+    expect(compose()).not.toContain('/releases/tag/');
+    expect(compose({ channel: 'beta', version: 'v0.36.0-beta.1' })).not.toContain('/releases/tag/');
   });
 
   test('the reply lists every contributing ticket in sorted order', () => {
@@ -300,6 +294,13 @@ describe('reply composition', () => {
 
   test('a single-ticket report still gets its coverage line', () => {
     expect(compose({ coverage: ['PRD-7539'] })).toContain('Covers PRD-7539.');
+  });
+
+  test('the stable instruction hedges on the draft window the reply posts inside', () => {
+    expect(compose()).toContain('once the release finishes publishing');
+    expect(compose({ channel: 'beta', version: 'v0.36.0-beta.1' })).toContain(
+      "once the beta's installers have finished uploading"
+    );
   });
 
   test('the update instruction is channel-appropriate', () => {
@@ -317,9 +318,10 @@ describe('reply composition', () => {
     }
   });
 
-  test('an empty changeset body falls back to the changeset title', () => {
-    const text = compose({ changeset: { title: 'Fix the thing', body: '   ' } });
-    expect(text).toContain('Fix the thing');
+  test('a one-line changeset still composes, since a changeset is what gates the reply', () => {
+    const text = compose({ changeset: changesetFrom('Fix the thing') });
+    expect(text).not.toBeNull();
+    expect(text).not.toContain('Fix the thing');
   });
 
   test('an empty body and title refuses to compose rather than emitting a blank reply', () => {
@@ -332,31 +334,10 @@ describe('reply composition', () => {
     expect(() => compose({ version: 'latest' })).toThrow(/derived version/);
   });
 
-  test('pathological changeset prose is bounded so the reply fits a Discord message', () => {
-    const text = compose({ changeset: { title: 't', body: 'x'.repeat(5000) }, coverage: ['PRD-1'] });
+  test('a pathological changeset body cannot inflate the reply past a Discord message', () => {
+    const text = compose({ changeset: changesetFrom('x'.repeat(5000)), coverage: ['PRD-1'] });
     expect(text.length).toBeLessThan(2000);
-    expect(text).toContain('...');
-  });
-
-  test('a body exactly at the bound is quoted whole, not truncated', () => {
-    const body = 'x'.repeat(1200);
-    const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
-    expect(text).toContain(body);
-    expect(text).not.toContain('...');
-  });
-
-  test('one character past the bound is truncated', () => {
-    const body = 'x'.repeat(1201);
-    const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
-    expect(text).toContain(`${'x'.repeat(1200)}...`);
-    expect(text).not.toContain(body);
-  });
-
-  test('a realistic multi-word body is cut mid-word with the trailing space trimmed', () => {
-    const body = `${'word '.repeat(240)}tail`;
-    const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
-    expect(text).toContain('word...');
-    expect(text).not.toContain('word ...');
+    expect(text).not.toContain('xxx');
   });
 
   test('no internal ticket detail reaches the composed reply', () => {
@@ -432,34 +413,6 @@ describe('origin remit', () => {
   });
 });
 
-describe('repeat-reply detection', () => {
-  const ORIGIN = 'https://github.com/inkeep/open-knowledge/issues/1414';
-  const marker = (version, originUrl = ORIGIN) =>
-    `https://github.com/inkeep/open-knowledge/releases/tag/v${version}${markerSuffixFor(originUrl)}`;
-
-  test('no marker for this origin at all means no earlier reply', () => {
-    expect(originAlreadyNotified([], ORIGIN)).toBe(false);
-    expect(originAlreadyNotified([marker('0.59.0')], 'https://github.com/other/repo/issues/1')).toBe(
-      false,
-    );
-  });
-
-  test('a marker for a DIFFERENT version on this origin means an earlier reply already quoted it', () => {
-    expect(originAlreadyNotified([marker('0.59.0-beta.2')], ORIGIN)).toBe(true);
-  });
-
-  test('an origin carrying its own query string still gets an unambiguous suffix', () => {
-    const trickyOrigin = 'https://github.com/inkeep/open-knowledge/issues/1?notified=x';
-    expect(originAlreadyNotified([marker('0.59.0')], trickyOrigin)).toBe(false);
-    expect(originAlreadyNotified([marker('0.59.0', trickyOrigin)], trickyOrigin)).toBe(true);
-    expect(originAlreadyNotified([marker('0.59.0', trickyOrigin)], ORIGIN)).toBe(false);
-  });
-
-  test('the suffix must be at the tail, not merely present', () => {
-    expect(originAlreadyNotified([`${marker('0.59.0')}&ref=slack`], ORIGIN)).toBe(false);
-  });
-});
-
 describe('prerelease ordering', () => {
   test('a beta ranks below the stable that supersedes it', () => {
     expect(compareVersions('0.59.0-beta.9', '0.59.0')).toBeLessThan(0);
@@ -499,7 +452,7 @@ describe('the two channels say different things', () => {
     expect(text).toContain('going out now on the Open Knowledge beta channel');
     expect(text).toContain('follow up here');
     expect(text).not.toContain('update to the latest');
-    expect(text).toContain('download the v0.59.0-beta.2 beta');
+    expect(text).toContain('download the beta');
     expect(text).not.toMatch(/available now|download it now/i);
     expect(text).toContain('installers have finished uploading');
   });

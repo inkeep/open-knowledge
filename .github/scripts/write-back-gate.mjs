@@ -9,7 +9,6 @@ const LINEAR_UPLOAD_RE = /^https?:\/\/uploads\.linear\.app\//i;
 const RELEASE_VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
 
 const RELEASES_URL = 'https://github.com/inkeep/open-knowledge/releases';
-const MAX_PROSE_CHARS = 1200;
 
 export function classifyAttachment(rawUrl) {
   const url = String(rawUrl ?? '').trim();
@@ -98,11 +97,6 @@ export function isOriginRepliableFrom(origin, selfRepo) {
 
 export function markerSuffixFor(originUrl) {
   return `?notified=${encodeURIComponent(String(originUrl ?? ''))}`;
-}
-
-export function originAlreadyNotified(attachmentUrls, originUrl) {
-  const suffix = markerSuffixFor(originUrl);
-  return (attachmentUrls ?? []).some((u) => String(u ?? '').endsWith(suffix));
 }
 
 export function compareVersions(a, b) {
@@ -213,7 +207,6 @@ export function composeReply({
   originChannel,
   coverage = [],
   channel = 'stable',
-  quote = true,
 }) {
   const normalizedVersion = String(version ?? '')
     .trim()
@@ -232,31 +225,28 @@ export function composeReply({
 
   const lines = [openingLine(channel, normalizedVersion)];
 
-  if (quote) {
-    const trimmedProse =
-      prose.length > MAX_PROSE_CHARS ? `${prose.slice(0, MAX_PROSE_CHARS).trimEnd()}...` : prose;
-    lines.push('', trimmedProse);
-  }
-
   if (coverage.length > 0) {
     lines.push('', `Covers ${[...coverage].sort().join(', ')}.`);
   }
 
-  lines.push('', updateInstruction(originChannel, channel, normalizedVersion));
+  lines.push('', updateInstruction(originChannel, channel));
 
   return lines.join('\n');
 }
 
-function updateInstruction(originChannel, channel = 'stable', version = '') {
-  const action =
+function updateInstruction(originChannel, channel = 'stable') {
+  const lead =
     channel === 'beta'
-      ? `To try it ahead of that, download the v${version} beta from`
-      : 'To pick it up, update to the latest desktop app from';
-  const tail = channel === 'beta' ? ' once its installers have finished uploading' : '';
+      ? 'Read the notes and download the beta on'
+      : 'To pick it up, update to the latest desktop app. The notes are on';
+  const tail =
+    channel === 'beta'
+      ? " once the beta's installers have finished uploading."
+      : ' once the release finishes publishing.';
   if (originChannel === 'discord-thread') {
-    return `${action} <${RELEASES_URL}>${tail}.`;
+    return `${lead} <${RELEASES_URL}>${tail}`;
   }
-  return `${action} [the releases page](${RELEASES_URL})${tail}.`;
+  return `${lead} [the releases page](${RELEASES_URL})${tail}`;
 }
 
 function openingLine(channel, version) {
