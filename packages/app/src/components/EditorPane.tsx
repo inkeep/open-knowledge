@@ -21,6 +21,7 @@ import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw
 import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
 import { requestPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 import { getSelectionContext, subscribeSelectionContext } from '@/editor/selection-context';
+import { sharedUndoManagerFor } from '@/editor/shared-undo-manager';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
 import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
@@ -660,6 +661,20 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         docName: activeDocName,
         ytext: activeProvider.document.getText('source'),
       });
+      // Close the open undo frame at the mode boundary.
+      //
+      // `Y.UndoManager` merges transactions by ELAPSED TIME alone — there is no
+      // origin check — so a source edit and a WYSIWYG edit landing inside the
+      // 500ms capture window become ONE stack item, and undo retracts both. Now
+      // that both surfaces write the same `Y.Text` under tracked origins
+      // (Phase 2), that pairing is reachable by switching modes quickly, and
+      // "undo took back an edit I made in the other view too" is precisely the
+      // cross-mode defect this migration exists to remove.
+      //
+      // A mode switch is a natural boundary for the user, so closing the frame
+      // here costs nothing and makes the merge unreachable across surfaces.
+      // Undo granularity WITHIN a surface is untouched.
+      sharedUndoManagerFor(activeProvider.document.getText('source')).stopCapturing();
       // Flipping a doc's mode is committing to it, so a previewed doc stops
       // being provisional. Only this path promotes: the tool-driven flips
       // (raw-MDX nav, view-in-source) call `setEditorMode` directly and stay a

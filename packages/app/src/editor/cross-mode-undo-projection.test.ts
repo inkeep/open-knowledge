@@ -197,3 +197,53 @@ describe('one undo stack across both surfaces', () => {
     rig.destroy();
   });
 });
+
+/**
+ * Frames merge across surfaces when nothing closes them.
+ *
+ * `Y.UndoManager` decides whether a transaction joins the open stack item by
+ * ELAPSED TIME alone — `captureTimeout`, 500ms, Yjs's default. There is no
+ * origin check, so once both surfaces write the same `Y.Text` under tracked
+ * origins (Phase 2) a source edit and a WYSIWYG edit inside that window become
+ * ONE stack item, and a single undo retracts both.
+ *
+ * Every other row in this file calls `breakFrame()` between edits and so cannot
+ * see this. The product had nothing playing that role until the mode switch
+ * started closing the frame (`EditorPane.handleModeChange`), which is what
+ * makes the pairing unreachable across surfaces in practice: reaching the other
+ * view requires passing through it.
+ *
+ * "Undo took back an edit I made in the other view too" is exactly the
+ * cross-mode defect this migration exists to remove, so it is pinned rather
+ * than left to the capture window.
+ */
+describe('undo frames across surfaces', () => {
+  it('merges a source and a WYSIWYG edit when no boundary closes the frame', () => {
+    const rig = createCrossModeRig(DOC);
+    typeInSource(rig.source, rig.ytext.length, 'source');
+    // Deliberately NO breakFrame here — this is the unguarded shape.
+    typeInWysiwyg(rig.wysiwyg, 1, 'wysiwyg');
+
+    expect(rig.undoManager.undoStack).toHaveLength(1);
+    rig.undoManager.undo();
+    // One undo, both edits gone: the defect.
+    expect(rig.ytext.toString()).not.toContain('source');
+    expect(rig.ytext.toString()).not.toContain('wysiwyg');
+    rig.destroy();
+  });
+
+  it('keeps them separate once the boundary closes the frame', () => {
+    const rig = createCrossModeRig(DOC);
+    typeInSource(rig.source, rig.ytext.length, 'source');
+    // What `handleModeChange` now does on every mode switch.
+    rig.breakFrame();
+    typeInWysiwyg(rig.wysiwyg, 1, 'wysiwyg');
+
+    expect(rig.undoManager.undoStack).toHaveLength(2);
+    rig.undoManager.undo();
+    // The most recent edit retracts, and only that one.
+    expect(rig.ytext.toString()).not.toContain('wysiwyg');
+    expect(rig.ytext.toString()).toContain('source');
+    rig.destroy();
+  });
+});

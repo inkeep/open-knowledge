@@ -109,6 +109,7 @@ import {
 import { TableCellHandles } from './table-controls/TableCellHandles';
 import { attachTypingBurstDetector } from './typing-burst-detector';
 import { getEditorView } from './utils/get-editor-view';
+import { getProjectionMarkdownManager } from './utils/md-singleton';
 import { walkCurrencyExtension } from './walk-currency-extension';
 
 /**
@@ -669,7 +670,12 @@ export function buildPatternDConstructorOptions(
   if (projectionBindingEnabled()) {
     const projection = createProjectionBinding({
       ytext: provider.document.getText('source'),
-      md: clipboard.mdManager,
+      // NOT `clipboard.mdManager`: the projection is the one client path that
+      // writes bytes, so it needs the structural-freshness derive that keeps a
+      // WYSIWYG edit inside a JSX component from serializing that component's
+      // stale `sourceRaw` and discarding the edit. See
+      // `getProjectionMarkdownManager`.
+      md: getProjectionMarkdownManager(),
     });
     const baseOptions = buildEditorOptions({
       provider,
