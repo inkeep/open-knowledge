@@ -831,6 +831,12 @@ export {
   SAFE_URL_SCHEMES,
 } from './markdown/safe-url.ts';
 export {
+  canonicalBlockKind,
+  computeSourceBlocks,
+  type SourceBlock,
+  sourceBlockSnapshot,
+} from './markdown/source-blocks.ts';
+export {
   createTagInTextRegex,
   INLINE_TAG_VALUE_RE,
   TAG_IN_TEXT_PATTERN_SOURCE,
@@ -856,6 +862,7 @@ export {
   resetParseHealth,
 } from './metrics/parse-health.ts';
 export {
+  alignProjectionToDoc,
   applySplice,
   type BlockRange,
   buildProjection,

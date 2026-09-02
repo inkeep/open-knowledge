@@ -98,6 +98,77 @@ export function buildProjection(source: string, md: MarkdownManager): Projection
 }
 
 /**
+ * Give the editor's trailing "type here" paragraph a place in the block table.
+ *
+ * ProseMirror renders an empty paragraph below a document whose last block is
+ * not one — a heading, a list, a table, a fence — so the user has somewhere to
+ * click. The source does not spell it: a single trailing empty is below
+ * `MIN_CARRIED_EDGE_EMPTIES` and is deliberately never written, because at one
+ * paragraph it cannot be told apart from this affordance.
+ *
+ * So a parse of the very bytes the editor is showing yields one block FEWER
+ * than the editor holds, and `map.blocks.length === doc.childCount` — the
+ * invariant every splice indexes through — is false from the moment such a
+ * document is projected. The consequences are both silent and severe: every
+ * edit at the tail is unplaceable and gets discarded, and `rebaseProjection`
+ * refuses outright, so each keystroke falls back to a whole-document parse.
+ *
+ * The fix is the one the empty-paragraph case already uses: hold the block with
+ * a ZERO-WIDTH span, anchored at the end of the body, so the table keeps one
+ * entry per document block and the block materializes into bytes as soon as it
+ * has content.
+ *
+ * Only trailing EMPTY PARAGRAPHS are held. Any other shortfall is a genuine
+ * divergence between the table and the document, and papering over it would
+ * write at offsets that no longer describe anything — so it is left alone for
+ * the caller's null-splice net to catch.
+ */
+export function alignProjectionToDoc(projection: Projection, doc: PmNode): Projection {
+  const old = projection.map.blocks;
+  if (old.length === doc.childCount) return { ...projection, doc };
+  // More table entries than blocks is the other direction of divergence and is
+  // not this function's to repair.
+  if (old.length > doc.childCount) return { ...projection, doc };
+  for (let i = old.length; i < doc.childCount; i++) {
+    const child = doc.child(i);
+    if (child.type.name !== 'paragraph' || child.content.size !== 0) {
+      return { ...projection, doc };
+    }
+  }
+
+  // Body coordinates: the map is body-relative, and a held block owns no bytes,
+  // so both ends sit at the body's end.
+  const bodyEnd = projection.map.sourceLength;
+  const blocks: PmSourceSpan[] = [];
+  let pos = 0;
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i);
+    const from = pos;
+    pos += child.nodeSize;
+    const prior = old[i];
+    blocks.push(
+      prior !== undefined
+        ? { ...prior, from, to: pos, type: child.type.name }
+        : {
+            from,
+            to: pos,
+            sourceStart: bodyEnd,
+            sourceEnd: bodyEnd,
+            type: child.type.name,
+            depth: 1,
+            // Not a parse fact: nothing in the source produced this block.
+            mapped: false,
+          },
+    );
+  }
+  return {
+    ...projection,
+    doc,
+    map: buildBlockSourceMap(blocks, bodyEnd, doc.content.size),
+  };
+}
+
+/**
  * The top-level block ordinals that differ between two revisions.
  *
  * Null when the documents' top levels are identical — the common case for a
