@@ -57,7 +57,6 @@ import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-ti
 // to read a top-level child's node shape for the duplication gate.
 import * as Y from 'yjs';
 import { detectApplyArmDrop } from './bridge-loss-detector.ts';
-import { attachQuiescenceTracker } from './bridge-quiescence.ts';
 import {
   assertBridgeInvariant,
   type BridgeSplitBrainSite,
@@ -3028,11 +3027,12 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // Pull-based backlog probe for the workload gauges: sampled only at
   // metric-export time, so the observer hot path stays untouched.
   const unregisterDirtyProbe = registerBridgeDirtyProbe(() => xmlDirty || textDirty);
-  // Quiescence tracking lives in its own module to avoid `Date.now()` /
-  // `setTimeout` here (precedent #13(b) — bridge-no-wallclock guard).
-  // `attachQuiescenceTracker` hooks `afterTransaction` + `afterAllTransactions`
-  // and exposes `isDocQuiescent(doc)` for the persistence quiescence gate.
-  const detachQuiescence = attachQuiescenceTracker(doc);
+  // Quiescence tracking is attached by `createServerObserverExtension`, NOT
+  // here. It reads only `Y.Doc` transactions — it has nothing to do with the
+  // fragment — but persistence gates every write on `isDocQuiescent`, so a doc
+  // the bridge declines still needs it. Attaching it from inside the bridge
+  // made "no bridge" mean "never quiescent" (the counters start equal, and
+  // `settledGen > lastUserTxGen` is false), which deferred every store forever.
 
   // ─── Pre-drain controller ──────────────────────────────────
   // Flush a discriminator-proven non-overlapping pending keystroke into Y.Text
@@ -3134,7 +3134,6 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // ─── Cleanup ───────────────────────────────────────────────
   return () => {
     unregisterDirtyProbe();
-    detachQuiescence();
     preDrainControllers.delete(doc);
     convergedFragmentWitnesses.delete(doc);
     doc.off('afterAllTransactions', afterAll);

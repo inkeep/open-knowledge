@@ -1434,6 +1434,17 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   // Show All Files toggle. Separated from `isReservedDocName`
   // so the STOP-rule gate stays untouchable.
   function isRejectedByConfigurableRules(relativePath: string): boolean {
+    // The content root itself. `relative(contentDir, contentDir)` is `''`, and
+    // a raw watcher event on the root reaches here that way — `ignore` THROWS
+    // on an empty path ("path must not be empty"), which aborts the whole
+    // parcel batch and silently drops every other event in it.
+    //
+    // The root is not a file the configurable rules can have an opinion about,
+    // so it is not rejected by them. Callers that must not treat it as content
+    // reject it on their own terms — `isPathIgnored` below, and asset-serve's
+    // existing `!rel` check. `contentRelativePath` already guards the same case
+    // for the folder-index path.
+    if (relativePath === '') return false;
     // BUILTIN_SKIP_DIRS — must mirror isDirExcluded. The seed walk skips
     // these dirs at boot, but watcher events for files born inside them
     // (e.g. a file written into `node_modules/`, or a non-carve-out `.ok`
@@ -1690,6 +1701,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     },
 
     isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
+      // The content root is not addressable content, so nothing may admit it:
+      // asset-serve already rejects it via its own `!rel` check, and a watcher
+      // event on the root indexes nothing. Answered here rather than left to
+      // the rules below so every caller agrees.
+      if (relativePath === '') return true;
       // Same shape as `isExcluded` for the STOP gate + bypass branch but
       // without the sibling-asset admission step — admits referenced assets
       // in directories that happen to have no sibling `.md`.
@@ -2262,6 +2278,17 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     return isReservedForUserTree(docName);
   }
   function isRejectedByConfigurableRules(relativePath: string): boolean {
+    // The content root itself. `relative(contentDir, contentDir)` is `''`, and
+    // a raw watcher event on the root reaches here that way — `ignore` THROWS
+    // on an empty path ("path must not be empty"), which aborts the whole
+    // parcel batch and silently drops every other event in it.
+    //
+    // The root is not a file the configurable rules can have an opinion about,
+    // so it is not rejected by them. Callers that must not treat it as content
+    // reject it on their own terms — `isPathIgnored` below, and asset-serve's
+    // existing `!rel` check. `contentRelativePath` already guards the same case
+    // for the folder-index path.
+    if (relativePath === '') return false;
     for (const segment of relativePath.split('/')) {
       if (BUILTIN_SKIP_DIRS.has(segment)) return true;
     }
@@ -2490,6 +2517,11 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     },
 
     isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
+      // The content root is not addressable content, so nothing may admit it:
+      // asset-serve already rejects it via its own `!rel` check, and a watcher
+      // event on the root indexes nothing. Answered here rather than left to
+      // the rules below so every caller agrees.
+      if (relativePath === '') return true;
       if (isReservedDocName(relativePath)) return true;
       // Secret-bearing floor (see sync variant). Mirrored so `kind:'file'`
       // admission going through the async factory inherits the same egress
