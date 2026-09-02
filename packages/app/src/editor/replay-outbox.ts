@@ -171,6 +171,23 @@ function isReplayOutboxSupported(): boolean {
 export interface ReplayOutboxEntry {
   readonly delta: Uint8Array;
   readonly fullState: Uint8Array;
+  /**
+   * The document content as of the last server `synced` — the ACKED BASE the
+   * buffer was captured against.
+   *
+   * Under the projection binding this is the only witness the replay's surface
+   * attribution has. With two CRDT surfaces the fragment played this role
+   * implicitly, because only the server's Observer B ever wrote it; a
+   * single-surface client has no such by-product and has to record the base on
+   * purpose. Without it "our content differs from the server" cannot be told
+   * apart from "the server moved on", and an aged buffer splices over live
+   * content.
+   *
+   * Absent (`undefined`) on records written before the base was carried, and
+   * on entries whose doc never reached a `synced` event. Readers must treat
+   * that as "cannot attribute" rather than "no divergence".
+   */
+  readonly base?: string | undefined;
 }
 
 /**
@@ -270,7 +287,7 @@ export async function writeReplayOutboxEntry(
         await new Promise<void>((resolve, reject) => {
           const tx = db.transaction(ENTRY_STORE_NAME, 'readwrite');
           tx.objectStore(ENTRY_STORE_NAME).put(
-            { delta: entry.delta, fullState: entry.fullState },
+            { delta: entry.delta, fullState: entry.fullState, base: entry.base },
             ENTRY_KEY,
           );
           tx.oncomplete = () => resolve();
@@ -317,13 +334,20 @@ export async function readReplayOutboxEntry(
           get.onerror = () => reject(get.error);
         });
         if (value === undefined || value === null) return null;
-        const record = value as { delta?: unknown; fullState?: unknown };
+        const record = value as { delta?: unknown; fullState?: unknown; base?: unknown };
         // A truncated/foreign record must read as "nothing to replay" rather
         // than feed garbage bytes into the Y.Doc apply.
         if (!(record.delta instanceof Uint8Array) || !(record.fullState instanceof Uint8Array)) {
           return null;
         }
-        return { delta: record.delta, fullState: record.fullState };
+        // A record predating the base field, or one whose `base` is not a
+        // string, yields `undefined` — "cannot attribute", which the replay
+        // treats as a reason to decline rather than to splice blind.
+        return {
+          delta: record.delta,
+          fullState: record.fullState,
+          base: typeof record.base === 'string' ? record.base : undefined,
+        };
       } finally {
         db.close();
       }

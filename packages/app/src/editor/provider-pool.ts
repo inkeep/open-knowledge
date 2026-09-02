@@ -32,6 +32,7 @@ import { sharedExtensions } from './extensions/shared.ts';
 import { isSystemDoc } from './is-system-doc';
 import { getMountId } from './mount-id-registry';
 import { setupObservers } from './observers';
+import { projectionBindingEnabled } from './projection-binding';
 import {
   consumeReplayOutboxEntry,
   ReplayOutboxTimeoutError,
@@ -54,6 +55,13 @@ export const TAB_REPLAY_ORIGIN = Object.freeze({ kind: 'tab-replay' } as const);
 interface BufferedReplayUpdate {
   readonly delta: Uint8Array;
   readonly fullState: Uint8Array | null;
+  /**
+   * Document content at the last server `synced` — the acked base this buffer
+   * was captured against. See `ReplayOutboxEntry.base`: it is the surface
+   * attribution's only witness once the fragment stops being written, and null
+   * means "cannot attribute", never "no divergence".
+   */
+  readonly base: string | null;
   /**
    * The branch this buffer was captured under — one component of the outbox
    * key, alongside the project namespace and the docName. Deliberately not
@@ -174,6 +182,21 @@ interface PoolEntryBase {
    * `lastDiskAckedSV` is null (no disk-ack received yet).
    */
   lastServerSyncedSV: Uint8Array | null;
+  /**
+   * Document content captured at the same instant as `lastServerSyncedSV` —
+   * what the server is known to have held at the last sync.
+   *
+   * Snapshotted here and not beside `lastDiskAckedSV`, even though that is the
+   * stricter watermark, because a disk-ack arrives asynchronously and describes
+   * an EARLIER state than the doc holds when it lands: reading the text there
+   * would record content the server never acked. `synced` is the one moment the
+   * two are known to agree.
+   *
+   * Being the coarser of the two only ever costs a conservative refusal — the
+   * replay declines and falls back to the delta apply — which is the direction
+   * this witness exists to fail in.
+   */
+  lastServerSyncedContent: string | null;
   /**
    * Stricter watermark advanced by the server's CC1 `disk-ack` channel
    * after L1 markdown flush ("server has durably persisted your update
@@ -2036,6 +2059,7 @@ export class ProviderPool {
       provider,
       persistence,
       lastServerSyncedSV: null,
+      lastServerSyncedContent: null,
       lastDiskAckedSV: null,
       observerCleanup: null,
       observerFireCounterCleanup: installProviderObserverCounter(provider.document, docName),
@@ -2074,6 +2098,7 @@ export class ProviderPool {
       // the delta between this and the doc's current state is what the
       // `server-instance-mismatch` recycle buffers before calling clearData.
       entry.lastServerSyncedSV = captureStateVector(provider.document);
+      entry.lastServerSyncedContent = provider.document.getText('source').toString();
       // Record the lineage epoch this client just synced. The epoch rides
       // in-band on the doc's `lifecycle` map (minted server-side at
       // seed-from-disk), so by the time `synced` fires it is present for
@@ -2484,7 +2509,7 @@ export class ProviderPool {
 
       // Prefer the RAM buffer (no IDB read); fall back to the durable outbox,
       // the only carrier after a tab crash.
-      let source: { delta: Uint8Array; fullState: Uint8Array | null };
+      let source: { delta: Uint8Array; fullState: Uint8Array | null; base: string | null };
       // The outbox key this replay's token lives under, and whether a token
       // exists at all. A RAM buffer with no durable mirror (over-cap doc,
       // failed write, engine without `databases()`) has nothing to claim.
@@ -2520,7 +2545,14 @@ export class ProviderPool {
             namespace: this.storageNamespace,
           });
           if (durable === null) return;
-          source = durable;
+          // A record written before the base was carried reads `undefined`;
+          // normalize to null, which the attribution treats as "cannot
+          // attribute" rather than as an absence of divergence.
+          source = {
+            delta: durable.delta,
+            fullState: durable.fullState,
+            base: durable.base ?? null,
+          };
           tokenBacked = true;
         } catch (err: unknown) {
           this.emitStructuredClientRecoveryEvent({
@@ -2601,7 +2633,7 @@ export class ProviderPool {
       try {
         if (
           source.fullState !== null &&
-          this.replayBufferedContent(docName, provider, source.fullState)
+          this.replayBufferedContent(docName, provider, source.fullState, source.base)
         ) {
           return;
         }
@@ -2882,6 +2914,7 @@ export class ProviderPool {
         const buffered: BufferedReplayUpdate = {
           delta: unsynced,
           fullState: fullStateForBuffer,
+          base: poolEntry.lastServerSyncedContent,
           branch: recoveryBranch,
           durable: false,
         };
@@ -2898,7 +2931,11 @@ export class ProviderPool {
           outboxWrites.push(
             writeReplayOutboxEntry(
               { branch: recoveryBranch, docName, namespace: this.storageNamespace },
-              { delta: unsynced, fullState: fullStateForBuffer },
+              {
+                delta: unsynced,
+                fullState: fullStateForBuffer,
+                base: poolEntry.lastServerSyncedContent ?? undefined,
+              },
             )
               .then((persisted) => {
                 if (persisted) buffered.durable = true;
@@ -3080,17 +3117,12 @@ export class ProviderPool {
     docName: string,
     provider: HocuspocusProvider,
     fullState: Uint8Array,
+    base: string | null,
   ): boolean {
     const replica = new Y.Doc();
     try {
       Y.applyUpdate(replica, fullState);
       const oursYtext = replica.getText('source').toString();
-      const fragJson = yXmlFragmentToProseMirrorRootNode(
-        replica.getXmlFragment('default'),
-        getEditorSchema(),
-      ).toJSON();
-      const mdMgr = new MarkdownManager({ extensions: sharedExtensions });
-      const oursFragBody = mdMgr.serialize(fragJson);
       const { frontmatter: oursFm, body: oursYtextBody } = stripFrontmatter(oursYtext);
       const theirs = provider.document.getText('source').toString();
       const { body: theirsBody } = stripFrontmatter(theirs);
@@ -3099,29 +3131,84 @@ export class ProviderPool {
       // collapses blank runs on both sides, so buffered blank lines the
       // server's rebuilt state lacks would read as "nothing to restore" and
       // the recycle would discard them.
-      const ytextClean =
-        normalizeBridge(oursYtextBody) === theirsNorm && !addsBlankLines(theirsBody, oursYtextBody);
-      const fragClean =
-        normalizeBridge(oursFragBody) === theirsNorm && !addsBlankLines(theirsBody, oursFragBody);
-      if (ytextClean && fragClean) return true;
+      const matchesServer = (body: string): boolean =>
+        normalizeBridge(body) === theirsNorm && !addsBlankLines(theirsBody, body);
+      const ytextClean = matchesServer(oursYtextBody);
       let ours: string;
-      if (ytextClean) {
-        // Un-drained WYSIWYG edit: the fragment moved while Y.Text stayed
-        // at the acked base the server rebuilt from disk.
-        // The only serialize-composed writer outside the server. Without the
-        // guard, an un-drained doc-start rule pair replayed through the recycle
-        // re-mints the collision server-side after every server writer is
-        // fixed.
-        ours = composeWithDerivedBody(oursFm, oursFragBody).md;
-      } else if (fragClean) {
-        // Unacked source-mode edit: Y.Text moved, fragment still at base.
+      let surface: 'fragment' | 'ytext';
+      if (projectionBindingEnabled()) {
+        // Single-surface attribution, against the recorded acked base.
+        //
+        // With two surfaces the fragment answered "has the server moved past
+        // what this buffer was captured against?" — not because it was a second
+        // opinion about the edit, but because only the server's Observer B ever
+        // wrote it, which made it a standing record of the acked base. Under
+        // the projection binding nothing writes it, so the base is recorded
+        // deliberately at `synced` and carried on the buffer instead.
+        //
+        // The three arms survive the change of witness intact: base === ours is
+        // "nothing to restore", base === theirs is "server has not moved, splice
+        // ours", and neither is the same ambiguity the fragment path bails on.
+        // Dropping the third arm rather than re-witnessing it would not make it
+        // unreachable — it would make it undecidable, and an aged buffer would
+        // splice straight over content the server rebuilt from disk.
+        //
+        // The fragment rebuild is skipped entirely, so this path also drops a
+        // PM tree build and a whole-document serialize per recycle.
+        if (base === null) {
+          // No witness: a buffer captured before a first `synced`, or read back
+          // from a record predating the base field. Decline rather than splice
+          // blind — the delta fallback merges, this would replace.
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-diverged',
+            ...this.recoveryTelemetryBase(docName),
+          });
+          return false;
+        }
+        const { body: baseBody } = stripFrontmatter(base);
+        if (matchesServer(baseBody) === false) {
+          // The server holds something other than the base this buffer was
+          // captured against — it was rebuilt from a disk state authored
+          // elsewhere. Splicing would overwrite live content with an aged
+          // snapshot.
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-diverged',
+            ...this.recoveryTelemetryBase(docName),
+          });
+          return false;
+        }
+        if (ytextClean) return true;
         ours = oursYtext;
+        surface = 'ytext';
       } else {
-        this.emitStructuredClientRecoveryEvent({
-          event: 'ok-buffer-replay-diverged',
-          ...this.recoveryTelemetryBase(docName),
-        });
-        return false;
+        const fragJson = yXmlFragmentToProseMirrorRootNode(
+          replica.getXmlFragment('default'),
+          getEditorSchema(),
+        ).toJSON();
+        const mdMgr = new MarkdownManager({ extensions: sharedExtensions });
+        const oursFragBody = mdMgr.serialize(fragJson);
+        const fragClean = matchesServer(oursFragBody);
+        if (ytextClean && fragClean) return true;
+        if (ytextClean) {
+          // Un-drained WYSIWYG edit: the fragment moved while Y.Text stayed
+          // at the acked base the server rebuilt from disk.
+          // The only serialize-composed writer outside the server. Without the
+          // guard, an un-drained doc-start rule pair replayed through the recycle
+          // re-mints the collision server-side after every server writer is
+          // fixed.
+          ours = composeWithDerivedBody(oursFm, oursFragBody).md;
+          surface = 'fragment';
+        } else if (fragClean) {
+          // Unacked source-mode edit: Y.Text moved, fragment still at base.
+          ours = oursYtext;
+          surface = 'ytext';
+        } else {
+          this.emitStructuredClientRecoveryEvent({
+            event: 'ok-buffer-replay-diverged',
+            ...this.recoveryTelemetryBase(docName),
+          });
+          return false;
+        }
       }
       if (ours !== theirs) {
         // Minimal splice (common prefix/suffix trim) keeps untouched bytes
@@ -3146,7 +3233,7 @@ export class ProviderPool {
       this.emitStructuredClientRecoveryEvent({
         event: 'ok-buffer-replay-content-applied',
         ...this.recoveryTelemetryBase(docName),
-        surface: ytextClean ? 'fragment' : 'ytext',
+        surface,
       });
       return true;
     } catch (err: unknown) {
@@ -3534,11 +3621,17 @@ export class ProviderPool {
   __test_seedBufferedUpdate(
     docName: string,
     update: Uint8Array,
-    options: { fullState?: Uint8Array; durable?: boolean; branch?: string } = {},
+    options: {
+      fullState?: Uint8Array;
+      durable?: boolean;
+      branch?: string;
+      base?: string;
+    } = {},
   ): void {
     this.bufferedUpdates.set(docName, {
       delta: update,
       fullState: options.fullState ?? null,
+      base: options.base ?? null,
       branch: options.branch ?? this.normalizedObservedBranch(),
       durable: options.durable ?? false,
     });

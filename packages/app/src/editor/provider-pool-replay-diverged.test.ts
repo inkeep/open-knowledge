@@ -107,8 +107,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** Open a doc, seed the provider's live `Y.Text`, and arm the RAM replay buffer. */
-function armReplay(serverContent: string): { docName: string; ytext: Y.Text } {
+/**
+ * Open a doc, seed the provider's live `Y.Text`, and arm the RAM replay buffer.
+ *
+ * `base` is the acked base recorded on the buffer. The fragment-path rows leave
+ * it unset — that path attributes through the fragment and never reads it — so
+ * only the projection rows pass one.
+ */
+function armReplay(
+  serverContent: string,
+  opts: { base?: string | undefined } = {},
+): { docName: string; ytext: Y.Text } {
   const docName = `pp-diverged-${randomUUID()}`;
   const { delta, fullState } = buildTwoSurfaceState(BASE_MD, BUFFERED_MD);
   pool = new ProviderPool(3, DUMMY_WS);
@@ -117,7 +126,11 @@ function armReplay(serverContent: string): { docName: string; ytext: Y.Text } {
   entry.observerCleanup = () => {};
   const ytext = entry.provider.document.getText('source');
   ytext.insert(0, serverContent);
-  pool.__test_seedBufferedUpdate(docName, delta, { fullState, durable: false });
+  pool.__test_seedBufferedUpdate(docName, delta, {
+    fullState,
+    durable: false,
+    ...(opts.base !== undefined ? { base: opts.base } : {}),
+  });
   entry.provider.emit('synced', { state: true });
   return { docName, ytext };
 }
@@ -183,5 +196,84 @@ describe('content-level replay of an edit the comparator cannot see', () => {
     });
     expect(ytext.toString()).toContain('# Notes\n\n\n\nSettled paragraph.');
     expect(emittedEvents(warn)).not.toContain('ok-buffer-replay-diverged');
+  });
+});
+
+/**
+ * The same attribution under the projection binding, where there is only one
+ * CRDT surface to attribute to.
+ *
+ * A WYSIWYG edit under the flag is a `Y.Text` splice like any other, so the
+ * fragment is no longer written by the client and stops being available as a
+ * witness. What it was actually supplying was not a second opinion about the
+ * edit — it was a standing record of the ACKED BASE, because only the server's
+ * Observer B ever wrote it. That is what made "the server has moved past this
+ * buffer" decidable.
+ *
+ * So the base is recorded deliberately instead: snapshotted at each `synced`
+ * and carried on the buffer (and through the durable outbox). All three arms
+ * survive the change of witness, which is what these rows pin — including the
+ * refusal, which would otherwise have become undecidable rather than
+ * unnecessary, and let an aged buffer splice over content the server rebuilt
+ * from disk.
+ */
+describe('content-level replay under the projection binding', () => {
+  // This suite runs without a DOM, so the flag comes from the env channel
+  // rather than the `window.__okProjectionBinding` one.
+  beforeEach(() => {
+    vi.stubEnv('VITE_OK_PROJECTION_BINDING', '1');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('attributes to Y.Text without consulting the fragment', async () => {
+    // The buffer's fragment sits at BASE and its Y.Text at BUFFERED. Under the
+    // flag only the latter is read, so the edit is recovered on the strength of
+    // the Y.Text comparison against the recorded base alone.
+    const { ytext } = armReplay(BASE_MD, { base: BASE_MD });
+
+    await vi.waitFor(() => {
+      expect(emittedEvents(warn)).toContain('ok-buffer-replay-content-applied');
+    });
+    expect(ytext.toString()).toContain(BUFFERED_MARKER);
+    expect(emittedEvents(warn)).not.toContain('ok-buffer-replay-diverged');
+  });
+
+  it('refuses the splice when the server has moved past the recorded base', async () => {
+    // The row the base witness exists for. Identical to the fragment path's
+    // refusal: the server was rebuilt from a disk state authored elsewhere, so
+    // the buffer's base no longer describes it and the edit cannot be placed.
+    const { ytext } = armReplay(MOVED_MD, { base: BASE_MD });
+
+    await vi.waitFor(() => {
+      expect(replaySettled()).toBe(true);
+    });
+
+    expect(emittedEvents(warn)).toContain('ok-buffer-replay-diverged');
+    expect(emittedEvents(warn)).not.toContain('ok-buffer-replay-content-applied');
+    // The live content survives — this is the whole point of the arm.
+    expect(ytext.toString()).toContain(MOVED_MARKER);
+    expect(emittedEvents(info)).toContain('ok-pool-buffer-replay-delta-applied');
+  });
+
+  it('refuses rather than splicing blind when no base was recorded', async () => {
+    // A buffer captured before the doc ever reached `synced`, or read back from
+    // an outbox record written before the base field existed. "No witness" must
+    // decline, not fall through to an unconditional splice — the delta fallback
+    // merges, where this would replace.
+    armReplay(BASE_MD, { base: undefined });
+
+    await vi.waitFor(() => {
+      expect(replaySettled()).toBe(true);
+    });
+
+    expect(emittedEvents(warn)).toContain('ok-buffer-replay-diverged');
+    expect(emittedEvents(warn)).not.toContain('ok-buffer-replay-content-applied');
+    // Declining is not the same as losing the edit: the caller falls through to
+    // the delta apply, which MERGES rather than replaces. That is the whole
+    // reason declining is safe — assert the fallback ran, not that nothing
+    // landed.
+    expect(emittedEvents(info)).toContain('ok-pool-buffer-replay-delta-applied');
   });
 });
