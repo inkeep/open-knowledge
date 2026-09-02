@@ -2,6 +2,13 @@
  * Top-level block-ordinal coordinate substrate shared by the WYSIWYG lint
  * decorations and cross-mode position mapping.
  *
+ * The parse half — `computeSourceBlocks` and the block-kind vocabulary — now
+ * lives in core (`markdown/source-blocks.ts`) because the server needs the same
+ * ordinals to stamp an agent write's changed-block range, and the single-CRDT
+ * migration takes away the `Y.XmlFragment` it used to count instead. It is
+ * re-exported here so this module stays the one import site for the coordinate
+ * system; what remains local is the half that needs a ProseMirror document.
+ *
  * Both surfaces need the same primitive: the alignment between the body's mdast
  * top-level blocks and the PM doc's top-level nodes. That alignment is NOT
  * guaranteed. The bridge invariant is a byte check on the serialize side only,
@@ -23,120 +30,23 @@
  */
 
 import {
+  computeSourceBlocks,
   type MarkdownManager,
   MIN_CARRIED_EDGE_EMPTIES,
-  stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
+
+export {
+  canonicalBlockKind,
+  computeSourceBlocks,
+  type SourceBlock,
+} from '@inkeep/open-knowledge-core';
 
 /** 1-based inclusive line spans of top-level body blocks, in full-source coordinates. */
 export interface SourceBlockSpans {
   spans: { start: number; end: number }[];
   /** Lines the frontmatter region occupies at the top of the source (0 when none). */
   fmLineCount: number;
-}
-
-/** A top-level source block enriched with the fields the position resolver grades on. */
-export interface SourceBlock {
-  /** 1-based inclusive line span in full-source coordinates. */
-  start: number;
-  end: number;
-  /** Canonical block kind, normalized across the mdast and PM vocabularies. */
-  kind: string;
-  /** Plain text content (markdown syntax stripped), for content-equality checks. */
-  text: string;
-}
-
-/**
- * Normalize a mdast or ProseMirror node-type name to a shared block-kind
- * vocabulary so a block captured in one representation can be type-matched
- * against the other. mdast and PM disagree on several names for the same
- * construct (`list` vs `bulletList`/`orderedList`, `code` vs `codeBlock`,
- * `thematicBreak` vs `horizontalRule`); unknown names pass through unchanged so
- * an exact name match still counts.
- */
-export function canonicalBlockKind(typeName: string): string {
-  switch (typeName) {
-    case 'bulletList':
-    case 'orderedList':
-    case 'taskList':
-    case 'list':
-      return 'list';
-    case 'codeBlock':
-    case 'code':
-      return 'code';
-    case 'horizontalRule':
-    case 'thematicBreak':
-      return 'thematicBreak';
-    case 'jsxComponent':
-    case 'mdxJsxFlowElement':
-    case 'mdxJsxTextElement':
-      return 'jsx';
-    case 'htmlBlock':
-    case 'html':
-      return 'html';
-    default:
-      return typeName;
-  }
-}
-
-/**
- * Concatenate the visible text of an mdast node (its descendant literal values),
- * the mdast counterpart of ProseMirror's `node.textContent`. Kept structural
- * (walks `value`/`children` without an mdast type import) so this leaf module
- * stays free of the `mdast` dependency.
- */
-function mdastText(node: unknown): string {
-  if (typeof node !== 'object' || node === null) return '';
-  if ('value' in node && typeof node.value === 'string') return node.value;
-  if ('children' in node && Array.isArray(node.children)) {
-    return node.children.map(mdastText).join('');
-  }
-  return '';
-}
-
-/**
- * Top-level body blocks for a full `Y.Text('source')` snapshot. The body region
- * (after the FM fence) is parsed to mdast; line spans are shifted back into
- * full-source coordinates so full-source line numbers index into them directly.
- * The single positioned parse the resolver relies on.
- */
-export function computeSourceBlocks(
-  source: string,
-  md: MarkdownManager,
-): { blocks: SourceBlock[]; fmLineCount: number } {
-  const { frontmatter, body } = stripFrontmatter(source);
-  const fmLineCount = frontmatter === '' ? 0 : frontmatter.split('\n').length - 1;
-  // The editor view, not the CommonMark one: a preserved blank line is a
-  // paragraph in the PM doc, and this array is index-aligned with those
-  // children. Losing the alignment silently disables every decoration and
-  // strands the count tripwire.
-  //
-  // `parseToEditorMdast` throws on structurally invalid MDX (an unclosed or mismatched
-  // JSX tag) — a routine transient state while editing raw source. Every consumer
-  // (the lint decorations and the mode-switch resolver) already treats an empty
-  // block list as "no anchor", so degrading to no blocks reproduces the
-  // pre-feature no-op flip. A synchronous throw would be worse than a lost anchor:
-  // the toggle captures the source block before the mode flips, so it would abort
-  // the flip and strand the user in the mode they were leaving.
-  try {
-    const blocks = md.parseToEditorMdast(body).children.map((child) => ({
-      start: (child.position?.start.line ?? Number.POSITIVE_INFINITY) + fmLineCount,
-      end: (child.position?.end.line ?? Number.NEGATIVE_INFINITY) + fmLineCount,
-      kind: canonicalBlockKind(child.type),
-      text: mdastText(child),
-    }));
-    return { blocks, fmLineCount };
-  } catch {
-    // Leave a breadcrumb: the no-blocks degradation is indistinguishable from a
-    // genuinely empty body downstream, and a systematic parse regression on
-    // valid markdown would silently send every mode switch to the top of the
-    // document with nothing to find. Raw `performance.mark` rather than the
-    // `mark()` helper keeps this leaf free of the perf module's graph; the name
-    // follows the same ok/<subsystem>/<event> convention.
-    performance.mark('ok/block-spans/parse-failed');
-    return { blocks: [], fmLineCount };
-  }
 }
 
 /**

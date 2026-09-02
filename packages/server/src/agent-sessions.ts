@@ -23,6 +23,7 @@ import {
   detectFmRegion,
   parseFrontmatterYaml,
   prependFrontmatter,
+  sourceBlockSnapshot,
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
@@ -54,6 +55,7 @@ import { getDocExtension, stripDocExtension } from './doc-extensions.ts';
 import { FrontmatterMalformedError } from './frontmatter-malformed-error.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
+import { mdManager } from './md-manager.ts';
 import { incrementAgentSessionEvictions } from './metrics.ts';
 import { precomputeParse } from './parse-pool.ts';
 import { getPreDrainController, type PairedWriteOrigin } from './server-observers.ts';
@@ -327,20 +329,33 @@ export function applyAgentMarkdownWrite(
 }
 
 /**
- * Serialize the doc's top-level blocks — one string per XmlFragment child, in
- * order. Follow mode diffs a before/after pair of these (via
- * `changedBlockRange`) around an agent write to record which blocks changed, so
- * an editor that becomes active only AFTER the write applied can still flash +
- * scroll to the changed section instead of missing the moment. XmlFragment
- * children map 1:1 to PM top-level nodes, so a block index is a PM node index.
- * Call inside the write's transact (after `applyAgentMarkdownWrite` the
- * fragment is already updated — the paired-write primitives run synchronously).
+ * One identity string per top-level block of the doc, in order. Follow mode
+ * diffs a before/after pair of these (via `changedBlockRange`) around an agent
+ * write to record which blocks changed, so an editor that becomes active only
+ * AFTER the write applied can still flash + scroll to the changed section
+ * instead of missing the moment. A block index is a PM top-level node index.
+ * Call inside the write's transact — the paired-write primitives run
+ * synchronously, so after `applyAgentMarkdownWrite` `Y.Text` already holds the
+ * new bytes.
+ *
+ * Taken from `Y.Text`, not from the XmlFragment's children. Those agree today
+ * and the fragment reading was the cheaper of the two, but the single-CRDT
+ * migration deletes the fragment, and this was one of the four consumers
+ * holding it up. Parsing the source is what the client under the projection
+ * binding does to build the very document these ordinals index into, so this
+ * is also the more direct answer of the two.
+ *
+ * The cost is a parse per snapshot where the fragment read was a walk. It is
+ * bounded: this runs twice per agent thread write, a path that already parses
+ * the payload, and never on a keystroke.
+ *
+ * Degradation is unchanged in kind. `computeSourceBlocks` answers no blocks for
+ * a body that does not parse (a transiently unclosed JSX tag), and
+ * `changedBlockRange` reads an empty AFTER as "nothing to flash" — so a write
+ * landing mid-edit costs the flash animation, never correctness.
  */
 export function snapshotBlocks(document: Document): string[] {
-  return document
-    .getXmlFragment('default')
-    .toArray()
-    .map((child) => child.toString());
+  return sourceBlockSnapshot(document.getText('source').toString(), mdManager);
 }
 
 /**
