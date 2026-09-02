@@ -1,12 +1,3 @@
-/**
- * Behavioral tests for the Settings → Terminal section: the per-project shell
- * opt-out toggle and the per-machine "auto-approve OpenKnowledge tools" toggle.
- *
- * The system boundaries (the CRDT-backed consent hook, the user ConfigBinding)
- * are mocked; the real shadcn Switch is rendered. Two switches now exist, so
- * every query is scoped by test id.
- */
-
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
@@ -164,11 +155,6 @@ describe('TerminalSection (auto-approve OpenKnowledge tools toggle)', () => {
   });
 });
 
-/**
- * The codex-can't-honor signal. Codex only receives the `-c` auto-approve
- * override once OK's server entry exists in its config; without the note, a user
- * who turns the toggle on watches codex prompt anyway with no explanation.
- */
 type CodexReadiness = { onPath: string; okServerConfigured?: boolean };
 
 function stubDesktopBridge(readiness: CodexReadiness | Error): void {
@@ -238,16 +224,11 @@ describe("TerminalSection (codex-can't-honor note)", () => {
     expect(codexNote()).toBeNull();
   });
 
-  // The split badge is the pattern the whole section exists to demonstrate: one
-  // heading cannot speak for two storage locations, so the control that differs
-  // states its own. Without this, either badge could be deleted silently.
   test('the heading is badged per-machine while the user-scope auto-approve toggle badges itself', async () => {
     render(<TerminalSection />);
     await waitFor(() => expect(autoApproveSwitch()).not.toBeNull());
 
-    // The heading covers the shell toggle, which is project-local.
     expect(screen.getByTestId('settings-scope-badge-project-local')).not.toBeNull();
-    // Auto-approve spans every project on this machine, so it says so itself.
     expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
   });
 });

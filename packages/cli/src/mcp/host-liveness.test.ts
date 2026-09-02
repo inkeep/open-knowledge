@@ -1,11 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { type HostLivenessScheduler, startHostLivenessWatch } from './host-liveness.ts';
 
-/**
- * A scheduler that captures the tick callback so the test drives it manually.
- * A `tick()` after `clearInterval` is a no-op — faithful to real `setInterval`,
- * so tests can assert that `stop()` (which clears) actually halts polling.
- */
 function manualScheduler(): {
   scheduler: HostLivenessScheduler;
   tick: () => void;
@@ -47,17 +42,17 @@ describe('startHostLivenessWatch', () => {
       scheduler: m.scheduler,
     });
 
-    m.tick(); // parent still alive
+    m.tick();
     expect(reasons).toHaveLength(0);
 
-    ppid = 1; // reparented to launchd
+    ppid = 1;
     m.tick();
     expect(reasons).toHaveLength(1);
     expect(reasons[0]).toContain('4242');
     expect(reasons[0]).toContain('1');
     expect(m.cleared()).toBe(true);
 
-    m.tick(); // timer cleared → no further fires
+    m.tick();
     expect(reasons).toHaveLength(1);
   });
 
@@ -80,14 +75,14 @@ describe('startHostLivenessWatch', () => {
     const m = manualScheduler();
     let fired = 0;
     const handle = startHostLivenessWatch({
-      getPpid: () => 1, // already orphaned / launched by init
+      getPpid: () => 1,
       onHostGone: () => {
         fired++;
       },
       scheduler: m.scheduler,
     });
-    expect(m.registered()).toBe(false); // never schedules a poll
-    handle.stop(); // safe to call
+    expect(m.registered()).toBe(false);
+    handle.stop();
     expect(fired).toBe(0);
   });
 
@@ -104,8 +99,8 @@ describe('startHostLivenessWatch', () => {
     });
     handle.stop();
     expect(m.cleared()).toBe(true);
-    ppid = 1; // host dies after we stopped watching
-    m.tick(); // no-op (timer cleared)
+    ppid = 1;
+    m.tick();
     expect(fired).toBe(0);
   });
 });

@@ -1,17 +1,3 @@
-/**
- * `ok diagnose health` runHealthChecks() contract tests — exercises:
- *   - all-pass → exit 0, footer 'All checks passed'
- *   - any-fail → exit 1
- *   - --check unknown → exit 2 with stderr
- *   - --check git → only the named check runs
- *   - --quiet → no stdout, exit code only
- *   - --json → NDJSON output
- *   - --verbose → detail lines surfaced
- *
- * Each scenario uses an inline check registry so no real subprocess /
- * filesystem state is required.
- */
-
 import { describe, expect, test } from 'vitest';
 import { runHealthChecks } from './diagnose-health.ts';
 import type { CheckDefinition, CheckResult } from './diagnose-health-checks/index.ts';
@@ -239,10 +225,7 @@ describe('runHealthChecks', () => {
         checks: [
           {
             name: 'git',
-            run: async () =>
-              new Promise(() => {
-                // never resolves
-              }),
+            run: async () => new Promise(() => {}),
           },
         ],
         timeoutMs: 50,

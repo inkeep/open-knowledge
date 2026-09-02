@@ -1,15 +1,3 @@
-/**
- * Pool-level contract for the background-flush / resync-on-visible
- * mechanism: `flushOnHide()` pushes each pending doc's work to the server
- * and commits its IDB cache; `resyncOnVisible()` re-runs the sync
- * handshake; the `bridge.flushOnHide.enabled` kill-switch makes both inert.
- *
- * `forceSync` (server round-trip) and `flushFullState` (IDB commit) are the
- * two outgoing boundary commands the mechanism issues, so they are the
- * spy targets here. The real "delta reaches the SERVER" outcome is proven
- * end-to-end against a live server in the integration tier; this suite pins
- * the pool's gating logic deterministically without wall-clock waits.
- */
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -62,9 +50,6 @@ describe('ProviderPool background flush-on-hide', () => {
     pool.setActive(docName);
     const persistence = await awaitPersistence(entry);
 
-    // A local WYSIWYG-shaped edit bumps unsyncedChanges (the "pending delta"
-    // precondition) — the provider is never connected on DUMMY_WS, so the
-    // edit stays unacked.
     entry.provider.document.getText('source').insert(0, 'pending edit');
     expect(entry.provider.unsyncedChanges).toBeGreaterThan(0);
 
@@ -102,7 +87,6 @@ describe('ProviderPool background flush-on-hide', () => {
     const docName = uniqueDocName();
     const entry = openEntry(pool, docName);
     pool.setActive(docName);
-    // No edit — unsyncedChanges stays 0.
     expect(entry.provider.unsyncedChanges).toBe(0);
 
     const forceSyncSpy = vi.spyOn(entry.provider, 'forceSync').mockImplementation(() => {});
@@ -117,8 +101,6 @@ describe('ProviderPool background flush-on-hide', () => {
     const entry = openEntry(pool, docName);
     pool.setActive(docName);
     entry.provider.emit('synced', { state: true });
-    // resync pulls server-side changes the tab may have missed while hidden,
-    // so it fires regardless of local pending state.
     const forceSyncSpy = vi.spyOn(entry.provider, 'forceSync').mockImplementation(() => {});
 
     pool.resyncOnVisible();
@@ -134,11 +116,6 @@ describe('ProviderPool background flush-on-hide', () => {
     entry.provider.emit('synced', { state: true });
     entry.provider.emit('status', { status: 'disconnected' });
 
-    // Precondition: the doc is CLEAN. The real `forceSync()` runs
-    // `resetUnsyncedChanges()`, which sets unsyncedChanges to 1 unconditionally
-    // and only returns to 0 when the server answers — so calling it here would
-    // pin a clean doc dirty for the whole disconnect. Un-mocked on purpose:
-    // the latch is the behavior under test, not the call.
     expect(entry.provider.unsyncedChanges).toBe(0);
 
     pool.resyncOnVisible();
@@ -172,9 +149,6 @@ describe('ProviderPool background flush-on-hide', () => {
     expect(entry.provider.unsyncedChanges).toBeGreaterThan(0);
 
     vi.spyOn(entry.provider, 'forceSync').mockImplementation(() => {});
-    // The unload path's effective durability is this IDB commit; a rejection
-    // here (quota, aborted tx) loses edits, so it must be observable — not
-    // swallowed by an empty catch.
     vi.spyOn(persistence, 'flushFullState').mockRejectedValue(
       new Error('flushFullState transaction aborted'),
     );
@@ -190,7 +164,6 @@ describe('ProviderPool background flush-on-hide', () => {
     warnSpy.mockRestore();
 
     expect(emitted).toBeDefined();
-    // Content-free breadcrumb: names the doc + error name, never document content.
     expect(emitted).toContain(docName);
     expect(emitted).toContain('flushFullState transaction aborted');
   });
@@ -207,16 +180,11 @@ describe('ProviderPool background flush-on-hide', () => {
     const forceSyncSpy = vi.spyOn(entry.provider, 'forceSync').mockImplementation(() => {});
     const flushSpy = vi.spyOn(persistence, 'flushFullState').mockResolvedValue(undefined);
 
-    // Planted positive: this doc IS flush-eligible right now, so a later
-    // "not called" can only come from the recycle guard.
     pool.flushOnHide();
     expect(forceSyncSpy).toHaveBeenCalledTimes(1);
     forceSyncSpy.mockClear();
     flushSpy.mockClear();
 
-    // Open the recycle window. The mismatch flow captures this delta into the
-    // durable outbox and owns re-delivery; a concurrent forceSync would race
-    // the very epoch being recycled away.
     entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
 
     pool.flushOnHide();
@@ -237,7 +205,6 @@ describe('ProviderPool background flush-on-hide', () => {
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     let reachedSecond = 0;
-    // Insertion order is iteration order, so the thrower runs first.
     const offA = pool.addUnsyncedWorkListener(() => {
       throw new Error('ipc boom');
     });
@@ -246,10 +213,8 @@ describe('ProviderPool background flush-on-hide', () => {
     });
 
     try {
-      // Driven the way production drives it: a provider unsynced-work edge.
       expect(() => entry.provider.emit('unsyncedChanges', { number: 1 })).not.toThrow();
       expect(reachedSecond).toBe(1);
-      // Reported, not swallowed.
       expect(
         warn.mock.calls.some(([arg]) =>
           String(arg).includes('ok-pool-unsynced-work-listener-threw'),
@@ -273,14 +238,10 @@ describe('ProviderPool background flush-on-hide', () => {
 
     const forceSyncSpy = vi.spyOn(entry.provider, 'forceSync').mockImplementation(() => {});
 
-    // Planted positive: this doc IS resync-eligible right now, so a later
-    // "not called" can only come from the recycle guard.
     pool.resyncOnVisible();
     expect(forceSyncSpy).toHaveBeenCalledTimes(1);
     forceSyncSpy.mockClear();
 
-    // Open the recycle window. Re-syncing here races the epoch being recycled
-    // away and latches unsyncedChanges on a provider about to be destroyed.
     entry.provider.emit('authenticationFailed', { reason: 'server-instance-mismatch' });
 
     pool.resyncOnVisible();

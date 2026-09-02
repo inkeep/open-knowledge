@@ -1,9 +1,3 @@
-/**
- * Partition rules for `git status --porcelain -z` records.
- *
- * Pure given parsed records, so these pin the rules without spawning git; the
- * real-git path is exercised through the API-level suites.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,8 +30,6 @@ describe('parsePorcelainEntries', () => {
   });
 
   test('consumes a rename origin as origPath rather than a separate entry', () => {
-    // `XY<space>NEW\0OLD\0` — reading the origin as its own record would
-    // surface the pre-rename name as a phantom changed path.
     const out = parsePorcelainEntries('R  new.md\0old.md\0M  other.md\0');
     expect(out).toEqual([
       { x: 'R', y: ' ', path: 'new.md', origPath: 'old.md' },
@@ -46,7 +38,6 @@ describe('parsePorcelainEntries', () => {
   });
 
   test('preserves non-ASCII path bytes', () => {
-    // The whole point of `-z`: git would C-quote this in its default output.
     const out = parsePorcelainEntries('M  hyvää yötä.md\0');
     expect(out[0]?.path).toBe('hyvää yötä.md');
   });
@@ -93,8 +84,6 @@ describe('partitionPorcelainEntries', () => {
   });
 
   test('marks each entry with the caller-supplied sync scope', () => {
-    // The predicate is the sync engine's own admission check — the UI dims what
-    // Push would skip, so a wrong answer here is a file the user watches not move.
     const out = partition(parsePorcelainEntries('M  docs/a.md\0 M src/main.ts\0'), (p) =>
       p.startsWith('docs/'),
     );
@@ -103,8 +92,6 @@ describe('partitionPorcelainEntries', () => {
   });
 
   test('caps each list independently and reports the truncation', () => {
-    // Per-list so a huge untracked set cannot crowd out the staged entries the
-    // user actually acted on.
     const many = Array.from({ length: WORKTREE_STATUS_LIST_CAP + 5 }, (_, i) => ({
       x: '?',
       y: '?',
@@ -122,7 +109,6 @@ describe('partitionPorcelainEntries', () => {
   });
 
   test('an unrecognized status letter degrades to M rather than escaping the enum', () => {
-    // The wire enum is bounded so the UI letter to label map stays total.
     const out = partition([{ x: 'X', y: ' ', path: 'weird.md' }]);
     expect(out.staged[0]?.code).toBe('M');
   });
@@ -138,7 +124,6 @@ describe('readIncomingEntries', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /** A project tracking a bare origin that a sister has already advanced. */
   async function projectBehindOrigin() {
     const bare = join(dir, 'bare.git');
     await simpleGit().init(true, [bare]);
@@ -164,13 +149,6 @@ describe('readIncomingEntries', () => {
   }
 
   test('a branch that is only AHEAD has nothing incoming', async () => {
-    // Regression: two-dot (`HEAD..@{upstream}`) is a symmetric tree diff, so a
-    // local-only commit rendered as an incoming DELETION — a file you just
-    // added showed under "Pull brings in" with a destructive "Deleted" badge,
-    // for a pull that would touch nothing. It also poisoned `clean`, so
-    // "working tree clean" could never render while ahead. Being ahead is the
-    // steady state for a follower and after any failed push, so this was not a
-    // corner case. Three-dot asks merge-base..upstream, which is the real set.
     const { pg } = await projectBehindOrigin();
     writeFileSync(join(await pg.revparse('--show-toplevel'), 'mine.md'), 'local\n');
     await pg.add('.');
@@ -191,8 +169,6 @@ describe('readIncomingEntries', () => {
     const incoming = await readIncomingEntries(pg);
     const byPath = Object.fromEntries(incoming.map((e) => [e.path, e.code]));
     expect(byPath).toEqual({ 'kept.md': 'M', 'added.md': 'A' });
-    // Pull is unscoped — git merges whatever the remote carries — so the
-    // "would Push send this" flag is meaningless and never marks a row skipped.
     expect(incoming.every((e) => e.syncScoped)).toBe(true);
   });
 
@@ -216,7 +192,6 @@ describe('readIncomingEntries', () => {
   });
 
   test('returns empty rather than throwing when there is no upstream', async () => {
-    // A local-only branch is a normal state, not an error the panel should show.
     const solo = join(dir, 'solo');
     const git = simpleGit();
     await git.init(false, [solo]);
@@ -241,10 +216,6 @@ describe('readWorktreeStatus open-target stamping', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /**
-   * Stand-in for the real resolver: markdown under `notes/` is a doc, any other
-   * json is an asset, everything else opens nowhere.
-   */
   const notesAndJson = (projectRelPath: string): GitWorktreeOpenTarget | undefined => {
     if (projectRelPath.startsWith('notes/') && projectRelPath.endsWith('.md')) {
       return { kind: 'doc', docName: projectRelPath.slice(0, -'.md'.length) };
@@ -273,8 +244,6 @@ describe('readWorktreeStatus open-target stamping', () => {
     const note = status.notStaged.find((e) => e.path === 'notes/cadence.md');
     const config = status.notStaged.find((e) => e.path === 'opencode.json');
     expect(note?.open).toEqual({ kind: 'doc', docName: 'notes/cadence' });
-    // A config file is not a document, but the asset viewer still renders it —
-    // the same thing clicking it in the Files sidebar does.
     expect(config?.open).toEqual({ kind: 'asset', path: 'opencode.json' });
   });
 
@@ -306,10 +275,6 @@ describe('readWorktreeStatus — an unreadable tree is representable', () => {
   });
 
   test('a directory that is not a git repo reports readable: false, not a clean tree', async () => {
-    // Regression: the rejected branch returned all-empty lists, which is
-    // byte-identical on the wire to a genuinely clean tree — so the popover
-    // stated "Nothing to commit, working tree clean" about a tree it could not
-    // read. The lists being empty is NOT the signal; `readable` is.
     const status = await readWorktreeStatus(dir, () => true);
 
     expect(status.readable).toBe(false);
@@ -318,8 +283,6 @@ describe('readWorktreeStatus — an unreadable tree is representable', () => {
   });
 
   test('a real repo reports readable: true', async () => {
-    // The control: without it the assertion above passes on a function that
-    // always returns false.
     const g = simpleGit(dir);
     await g.init(['--initial-branch=main']);
     await g.raw('config', 'user.email', 't@e.com');

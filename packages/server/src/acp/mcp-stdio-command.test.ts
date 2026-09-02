@@ -2,19 +2,6 @@ import { describe, expect, test, vi } from 'vitest';
 import type { PinoLogger } from '../logger.ts';
 import { buildOkMcpStdioCommand } from './thread-manager.ts';
 
-/**
- * The stdio `ok mcp` command is the fallback that carries OK MCP tools to
- * agents whose ACP adapter doesn't advertise HTTP-MCP support. It must pin to a
- * specific server port (`--port`) so the shim proxies to THIS server rather
- * than auto-discovering some other install, and it must hand the harness an
- * absolute command whenever one can be resolved — the harness spawns this child
- * with a PATH of its own choosing, and a bare name dies under a minimal one.
- *
- * Every case injects `resolveCommand`: the real lookup reads the developer's
- * own PATH, so a test that let it run would assert on whether this machine
- * happens to have the OK CLI installed.
- */
-
 const unresolvable = { resolveCommand: () => null };
 
 describe('buildOkMcpStdioCommand', () => {
@@ -26,7 +13,6 @@ describe('buildOkMcpStdioCommand', () => {
       command: '/usr/bin/ok-bin',
       args: ['/app/cli.js', 'mcp', '--port', '5174'],
     });
-    // A path-qualified command is the host's own answer — no PATH lookup at all.
     expect(resolveCommand).not.toHaveBeenCalled();
   });
 

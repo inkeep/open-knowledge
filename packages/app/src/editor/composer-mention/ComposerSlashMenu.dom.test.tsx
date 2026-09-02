@@ -1,12 +1,3 @@
-/**
- * Tier-3 tests for the composer's `/` slash-command dropdown: row layout,
- * selection affordances, and — load-bearing — the three DISTINCT empty states.
- * "Hasn't announced yet" (null corpus), "advertised zero" (empty corpus), and
- * "no match for this query" are different answers, and the picker must never
- * imply support that isn't there (nor "unsupported" while the handshake is
- * still resolving).
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ComposerSlashMenu } from './ComposerSlashMenu';

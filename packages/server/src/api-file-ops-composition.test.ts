@@ -15,29 +15,6 @@ import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 import { tmpUploadDir } from './upload-streaming.ts';
 
-/**
- * Characterization: the natively-routed file-ops group (`create-page`,
- * `create-folder`, `duplicate-path`, `rename-path`, `delete-path`,
- * `trash/cleanup`, multipart `upload`) over a REAL socket through the
- * composed `bootServer` stack: verb gating (405 + `Allow: POST` on every
- * path), the shared admission posture on a whole-family-mutating group, and
- * `/api/upload`'s multipart body handling — including two load-bearing
- * behaviors:
- *
- *   - a client that disconnects mid-multipart must not wedge the request
- *     (the `readUploadBody` `req.complete` close-guard settles the parse
- *     promise when busboy never reaches its closing boundary);
- *   - an oversized JSON body on the family's ordinary routes lands as the
- *     shared body-reader's clean 413 (`payload-too-large`), while
- *     `/api/upload` deliberately has NO equivalent byte cap — its bound is
- *     the storage layer, so the happy path streams arbitrary sizes.
- *
- * The wire cannot distinguish the mutating gate from the read gate (both
- * apply the same loopback + workspace-Host checks), so the mutating
- * DECLARATION is pinned at the table tier in `http/file-ops-routes.test.ts`;
- * the rebound-Host pins here hold the admission outcome itself.
- */
-
 const FAMILY_PATHS = [
   '/api/create-page',
   '/api/create-folder',
@@ -107,11 +84,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('create-page rejects non-canonical `.`/empty segments (intentional tightening)', async () => {
-    // Routing containment through `resolveContentEntryPath` (vs the old
-    // `path.resolve` + prefix pair) tightened create-page to reject a `.`
-    // segment or an empty (`//`) segment, which `path.resolve` used to
-    // normalize away. This is the safer default and matches the sibling
-    // routes; pin it so the behavior is deliberate rather than incidental.
     for (const path of ['./notes/x.md', 'notes//x.md']) {
       const res = await postJson('/api/create-page', { path });
       expect(res.status, path).toBe(400);
@@ -120,9 +92,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('create-page refuses a path routed through a symlinked directory escaping the content root', async () => {
-    // The lexical checks pass ('sneaky/escaped.md' contains no '..'), so only
-    // the realpath symlink-escape refusal inside `resolveContentEntryPath`
-    // stands between this request and a write outside the content root.
     const outside = mkdtempSync(resolve(tmpRoot, 'outside-'));
     symlinkSync(outside, resolve(contentDir, 'sneaky'), 'dir');
     const res = await postJson('/api/create-page', { path: 'sneaky/escaped.md' });
@@ -132,14 +101,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('create-page drops a template symlinked outside the content root from the menu', async () => {
-    // `.ok/templates/*.md` are enumerated via `statSync` (follows links), so a
-    // template symlinked to a file outside the content root would otherwise
-    // inline that file's bytes into the new doc. Containment lives in the
-    // resolver (`collectFromFolder`), so the escaping entry never enters the
-    // menu — the template simply does not resolve, and create-page returns the
-    // ordinary "does not resolve" 400 rather than reading the foreign file. The
-    // fixture is scoped under `leaky/` so the shared root template menu that
-    // every other test in this rig sees stays clean.
     const secretDir = mkdtempSync(resolve(tmpRoot, 'secret-'));
     writeFileSync(resolve(secretDir, 'secret.txt'), 'TOP SECRET', 'utf-8');
     const tplDir = resolve(contentDir, 'leaky', '.ok', 'templates');
@@ -155,11 +116,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('create-page refuses a target routed into .ok through a symlinked directory', async () => {
-    // `resolveContentEntryPath` uses `path.resolve`, which does not follow
-    // symlinks, so `escape-hatch/skills/phantom.md` — where `escape-hatch` is a
-    // symlink to `.ok` — carries no `.ok` segment lexically and stays inside the
-    // content root (so it does NOT trip symlink-escape). The reserved-path check
-    // must run on the CANONICAL path and refuse the write into `.ok/skills`.
     symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'escape-hatch'), 'dir');
     const res = await postJson('/api/create-page', {
       path: 'escape-hatch/skills/phantom.md',
@@ -169,17 +125,7 @@ describe('file-ops group over the composed listener — served natively', () => 
     expect(existsSync(resolve(contentDir, '.ok', 'skills', 'phantom.md'))).toBe(false);
   });
 
-  // The canonical reserved-path guard is shared across every mutating file-op,
-  // not just create-page: a symlinked directory that routes a lexically-clean
-  // path into `.ok`/`.git` must be refused by create-folder, duplicate-path,
-  // rename-path, and — most importantly — delete-path, whose recursive rm would
-  // otherwise resolve through the junction and destroy OK/git bookkeeping. Each
-  // case plants its own uniquely-named `.ok` symlink so the tests stay independent.
   test('delete-path refuses a recursive delete routed into .ok through a symlink', async () => {
-    // The witness must be the exact subtree the recursive rm would destroy —
-    // `esc-del/local` resolves to `.ok/local`, so seed a file there and assert
-    // it survives (a sibling like `.ok/config.yml` would survive even a
-    // regression that follows the junction).
     mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
     writeFileSync(resolve(contentDir, '.ok', 'local', 'survivor-marker'), 'still here', 'utf-8');
     symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-del'), 'dir');
@@ -202,9 +148,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('rename-path refuses a SOURCE routed into .ok through a symlink', async () => {
-    // The mirror of the destination case with its own damage profile: renaming
-    // FROM `esc-ren-src/local` would move `.ok/local` (server.lock,
-    // principal.json, cache) out of `.ok` into the synced content tree.
     mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
     symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-ren-src'), 'dir');
     const res = await postJson('/api/rename-path', {
@@ -233,9 +176,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('upload refuses a parentDocName inside .ok, no symlink needed', async () => {
-    // `.ok` sits INSIDE the content root, so the upload path's escape checks
-    // (`..`/`/`/NUL lexically, symlink-escape in storeUpload) all pass for a
-    // literal `.ok/...` parent — the reserved-subtree gate is the only refusal.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
       method: 'POST',
       body: uploadForm(
@@ -249,12 +189,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('upload refuses a parentDocName routed into .ok through a symlink', async () => {
-    // `esc-upload/skills` carries no reserved segment lexically, so
-    // `isReservedProjectStatePath` alone would admit it — only realpath-based
-    // canonicalization sees the planted directory link. This pins the UNION of
-    // the two canonical gates (the route's fast fail and `storeUpload`'s
-    // destination-side check): deleting either alone keeps this green because
-    // the other still refuses; deleting both goes red.
     symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-upload'), 'dir');
     const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
       method: 'POST',
@@ -269,11 +203,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('upload refuses a ./-prefixed parentDocName with the same precondition as its siblings', async () => {
-    // A `.` segment defeats BOTH reserved disjuncts (`isReservedProjectStatePath`
-    // splits to ['.','esc',...]; `canonicalTargetIsReserved` swallows the
-    // resolution throw), so the gate is only sound when `isValidRelativeContentPath`
-    // runs first on the directory component — this pins that precondition.
-    // Self-contained: no planted symlink is needed, the `.` segment alone must refuse.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
       method: 'POST',
       body: uploadForm(
@@ -287,12 +216,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('upload accepts a parentDocName whose basename carries a backslash', async () => {
-    // The precondition validates only the DIRECTORY component: the basename is
-    // a raw OS filename on the sidebar external-file-drop path (the client
-    // splices `file.name` verbatim), and backslash is a legal filename
-    // character on macOS/Linux. The server discards the basename — only
-    // `dirname(parentDocName)` reaches `resolveUploadDestDir` — so this must
-    // upload, not 400.
     const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
       method: 'POST',
       body: uploadForm(
@@ -304,11 +227,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('create-folder maps a symlink escape OUT of the content root to a 400, not a 500', async () => {
-    // `escape-out/foo` passes the lexical check; the service's
-    // `resolveContentEntryPath` then throws the containment rejection. The
-    // route must classify that as the caller's 400 path-escape (matching
-    // create-page and rename-path), never the generic 500 that would tag the
-    // infra-error dashboard for a client mistake.
     const outsideTarget = mkdtempSync(resolve(tmpRoot, 'escape-out-'));
     symlinkSync(outsideTarget, resolve(contentDir, 'escape-out'), 'dir');
     const res = await postJson('/api/create-folder', { path: 'escape-out/foo' });
@@ -317,10 +235,6 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('duplicate-path maps a symlink escape OUT of the content root to a 400, not a 500', async () => {
-    // Same shape as the create-folder case above: the escape clears the lexical
-    // check, the reserved gate swallows, and the service's resolution throws the
-    // containment rejection — duplicate-path's own `isContainmentRejection` arm
-    // must classify it as the caller's 400.
     const outsideTarget = mkdtempSync(resolve(tmpRoot, 'escape-dup-out-'));
     symlinkSync(outsideTarget, resolve(contentDir, 'escape-dup-out'), 'dir');
     const res = await postJson('/api/duplicate-path', {
@@ -431,26 +345,11 @@ describe('file-ops group over the composed listener — served natively', () => 
   });
 
   test('a client that disconnects mid-multipart does not wedge the server (req.complete guard)', async () => {
-    // Open a raw socket, start a multipart body whose file part never reaches
-    // the closing boundary, and drop the connection. busboy never reaches
-    // `_final`, so only readUploadBody's `req.on('close')` + `!req.complete`
-    // guard settles the parse promise. The guard's cleanup is the observable:
-    // `fail()` unlinks the minted tempfile, so the staging dir drains back to
-    // empty after each abort — without the guard the parse promise hangs and
-    // the orphan stays (the trailing healthy upload would succeed either way,
-    // so it alone cannot pin the guard). Note this pins the `req.complete`
-    // CLOSE-guard, not the `writeStream.destroy()` fd hygiene: `unlink` drops
-    // the directory entry regardless of open fds, so the drain assertion goes
-    // red only if `fail()` never runs at all.
     const stagingDir = tmpUploadDir(contentDir);
     const stagedUploads = () =>
       existsSync(stagingDir)
         ? readdirSync(stagingDir).filter((name) => name.startsWith('upload-'))
         : [];
-    // Deadline sized so `6 × deadline` (three iterations × two waits) stays well
-    // under this test's explicit 45s budget — a genuinely stuck poll fires its
-    // own named diagnostic before vitest's generic timeout can mask which wait
-    // hung. The drain is sub-second when healthy.
     const waitFor = async (what: string, predicate: () => boolean): Promise<void> => {
       const deadline = Date.now() + 4_000;
       while (!predicate()) {
@@ -475,18 +374,12 @@ describe('file-ops group over the composed listener — served natively', () => 
             'partial-bytes-then-gone',
           ].join('\r\n');
           sock.write(partial);
-          // Abort only once the server has demonstrably dispatched into the
-          // write pipeline (a staged tempfile appeared) — a fixed-delay abort
-          // could beat dispatch on a loaded runner and silently degrade the
-          // whole loop to no-ops.
           waitFor('a staged tempfile', () => stagedUploads().length > 0).then(() => {
             sock.destroy();
             resolveAbort();
           }, rejectAbort);
         });
-        sock.on('error', () => {
-          // Expected teardown noise from the destroyed socket.
-        });
+        sock.on('error', () => {});
       });
       await waitFor('the staging dir to drain', () => stagedUploads().length === 0);
     }
@@ -517,8 +410,6 @@ describe('file-ops group over the composed listener — served natively', () => 
       });
       expect(res.status, path).toBe(403);
       expect(parseProblem(res.body).type, path).toBe('urn:ok:error:host-not-allowed');
-      // Gate-before-405: the refusal happens before verb dispatch, so no
-      // Allow header leaks from the method router.
       expect(res.headers.allow, path).toBeUndefined();
     }
   });

@@ -1,32 +1,3 @@
-/**
- * Managed language runtimes for ACP agents — the "works even without system
- * npx/uvx" path.
- *
- * Most registry agents distribute through `npx <pkg>` (npm) or `uvx <pkg>`
- * (uv). Those interpreters are absent on plenty of machines: OK Desktop
- * bundles Electron's Node runtime but NOT npm, and a fresh macOS/Windows box
- * rarely has uv. Rather than fail the launch (see `preflightLaunch` in
- * `launch.ts`), OK can download an official, pinned copy of the runtime the
- * agent needs into a private per-user cache and launch through that — the
- * same approach Zed's `node_runtime` crate takes.
- *
- * Two hard rules distinguish this from Zed's implementation:
- *
- *   1. **Consent.** Nothing downloads without the user's explicit go-ahead,
- *      asked per launch and never persisted — a stored "no" has no UI to undo
- *      it, and a stored "yes" would authorize a later download the user never
- *      saw. The gate + prompt live in the thread manager; this module only does
- *      the download once told to.
- *   2. **Verification.** Every archive is checked against the publisher's
- *      SHA-256 (Node's `SHASUMS256.txt`, uv's per-asset `.sha256`) before it
- *      is trusted — an unverified download is discarded.
- *
- * Nothing here ships in OK artifacts: the runtimes are fetched at launch time
- * into `~/.ok/runtimes/`, so OK's own distribution stays free of Node/uv
- * redistribution. Extraction + the escape guard are shared with the binary
- * agent path via `archive.ts`.
- */
-
 import { randomUUID } from 'node:crypto';
 import { access, constants, readdir, stat } from 'node:fs/promises';
 import { arch, homedir, platform } from 'node:os';
@@ -47,51 +18,36 @@ import { cleanupStaleInstallArtifacts, stagedInstall } from './staged-install.ts
 
 export type ManagedRuntimeKind = 'node' | 'uv';
 
-/**
- * Pinned runtime versions. Bumping is a one-line change here; both hosts keep
- * every historical version, and the SHA-256 is fetched + verified at download
- * time, so no in-repo checksum table needs maintaining.
- */
-const PINNED_NODE_VERSION = 'v24.18.0'; // current LTS line ("Krypton")
+const PINNED_NODE_VERSION = 'v24.18.0';
 const PINNED_UV_VERSION = '0.11.28';
 
 const NODE_DIST_BASE = 'https://nodejs.org/dist';
 const UV_RELEASE_BASE = 'https://github.com/astral-sh/uv/releases/download';
 
-/** Approximate compressed download sizes (MB), for the consent prompt only. */
 const APPROX_SIZE_MB: Record<ManagedRuntimeKind, number> = { node: 45, uv: 20 };
 
 interface ManagedNode {
   kind: 'node';
-  /** Prepended to PATH so `npx`/`npm` resolve their sibling `node`. */
   binDir: string;
-  /** The `npx` launcher (`npx.cmd` on Windows). */
   npxBin: string;
-  /** Private npm cache so package installs never touch the user's `~/.npm`. */
   cacheDir: string;
 }
 
 interface ManagedUv {
   kind: 'uv';
   binDir: string;
-  /** The `uvx` launcher (`uvx.exe` on Windows). */
   uvxBin: string;
-  /** Private uv cache dir. */
   cacheDir: string;
 }
 
 export type ManagedRuntime = ManagedNode | ManagedUv;
 
-/** Consent-prompt payload: what the user is agreeing to download. */
 export interface RuntimeDescriptor {
   kind: ManagedRuntimeKind;
-  /** Human name — "Node.js" / "uv". */
   displayName: string;
-  /** The interpreter this unlocks — "npx" / "uvx". */
   provides: string;
   version: string;
   approxSizeMB: number;
-  /** Download host, surfaced so the user sees where bytes come from. */
   sourceHost: string;
 }
 
@@ -119,12 +75,10 @@ export function describeRuntime(kind: ManagedRuntimeKind): RuntimeDescriptor {
       };
 }
 
-/** `~/.ok` — the user-level OK home shared across projects. */
 function okHomeDir(): string {
   return join(homedir(), OK_DIR);
 }
 
-/** Root under which each runtime's per-version tree + private caches live. */
 function defaultRuntimeRoot(): string {
   return join(okHomeDir(), 'runtimes');
 }
@@ -146,7 +100,6 @@ interface ArtifactSpec {
   isZip: boolean;
 }
 
-/** Node dist naming: `node-<version>-<os>-<arch>.<ext>`. */
 function nodeArtifact(): ArtifactSpec | null {
   const os = platform();
   const cpu = arch();
@@ -165,7 +118,6 @@ function nodeArtifact(): ArtifactSpec | null {
   };
 }
 
-/** uv release naming: `uv-<target-triple>.<ext>` with a sibling `.sha256`. */
 function uvArtifact(): ArtifactSpec | null {
   const key = `${platform()}-${arch()}`;
   const triple: Record<string, string> = {
@@ -193,7 +145,6 @@ function artifactFor(kind: ManagedRuntimeKind): ArtifactSpec | null {
   return kind === 'node' ? nodeArtifact() : uvArtifact();
 }
 
-/** True when this host has a download target for `kind` (else the user must install it manually). */
 export function runtimeDownloadSupported(kind: ManagedRuntimeKind): boolean {
   return artifactFor(kind) !== null;
 }
@@ -210,11 +161,6 @@ async function isExecutable(path: string): Promise<boolean> {
   }
 }
 
-/**
- * Depth-bounded search for a launcher (`npx`/`uvx`) inside an extracted tree.
- * Node ships it two levels down (`node-v…/bin/npx`, a symlink), uv one level
- * (`uv-<triple>/uvx`) or at the root (Windows zip) — one search covers all.
- */
 async function findLauncher(
   dir: string,
   names: string[],
@@ -249,11 +195,6 @@ function toRuntime(kind: ManagedRuntimeKind, launcher: string, root: string): Ma
     : { kind: 'uv', binDir, uvxBin: launcher, cacheDir };
 }
 
-/**
- * Locate an already-installed managed runtime for the pinned version, or null.
- * Cheap: a directory stat plus a bounded launcher search — the fast path every
- * launch takes once a runtime is installed.
- */
 export async function findManagedRuntime(
   kind: ManagedRuntimeKind,
   root: string = defaultRuntimeRoot(),
@@ -273,11 +214,8 @@ export interface EnsureRuntimeOptions {
   root?: string;
   onProgress?: (p: DownloadProgress) => void;
   signal?: AbortSignal;
-  /** Test seam — defaults to global `fetch`. */
   fetchImpl?: typeof fetch;
-  /** Test seam for synchronizing concurrent installers immediately before commit. */
   beforeCommit?: () => Promise<void>;
-  /** Test seam — defaults to the production commit-lock timeout. */
   commitLockTimeoutMs?: number;
 }
 
@@ -296,19 +234,6 @@ export async function cleanupManagedRuntimeStaging(
   await cleanupStaleInstallArtifacts(join(root, kind), log, '[managed-runtime]');
 }
 
-/**
- * Move a damaged install out of the way so the next `ensureManagedRuntime`
- * re-downloads instead of adopting it. Renamed rather than deleted: the rename
- * is atomic and safe while another agent still holds files open inside the
- * tree, and the `.install-` prefix hands the leftover to the same stale-staging
- * sweep that collects crashed downloads. Deletion is best-effort after that.
- *
- * Returns false when the tree is still in place — a Windows rename fails with
- * EBUSY/EPERM while another agent has the launcher open. The caller MUST NOT
- * treat that as "replaced": re-downloading finds the damaged copy on the
- * fast path and hands it back, so a failure reported as a fresh install would
- * name the wrong culprit.
- */
 export async function quarantineManagedRuntime(
   kind: ManagedRuntimeKind,
   log: PinoLogger,
@@ -327,21 +252,10 @@ export async function quarantineManagedRuntime(
     return false;
   }
   log.info({ kind, versionDir }, '[managed-runtime] quarantined damaged runtime');
-  await tracedRm(quarantined, { recursive: true, force: true }).catch(() => {
-    // The stale-staging sweep collects it later.
-  });
+  await tracedRm(quarantined, { recursive: true, force: true }).catch(() => {});
   return true;
 }
 
-/**
- * Download + verify + install a managed runtime once per pinned version;
- * later launches reuse the extracted tree. Verified against the publisher's
- * SHA-256 before it is trusted. The commit machinery (beside-destination
- * staging, single-filesystem atomic rename, commit lock, stale sweeps) is the
- * shared `stagedInstall`.
- *
- * The CALLER is responsible for consent — this only runs once told to.
- */
 export async function ensureManagedRuntime(
   kind: ManagedRuntimeKind,
   log: PinoLogger,

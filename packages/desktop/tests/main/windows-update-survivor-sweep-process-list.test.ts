@@ -2,18 +2,6 @@ import { execFileSync } from 'node:child_process';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { sweepWindowsUpdateSurvivors } from '../../src/main/windows-update-survivor-sweep.ts';
 
-/**
- * Coverage for the PowerShell JSON the sweep actually parses. Every case in
- * `windows-update-survivor-sweep.test.ts` injects already-typed `listProcesses`
- * values, so the parse — the boundary where another process's bytes become
- * typed records — never runs there. These tests omit the injection so the
- * default path runs, and mock `execFileSync` as the seam: the scan is a
- * synchronous Win32/WMI query that cannot be produced on a non-Windows host.
- *
- * The mock answers the scan and the batched revalidation with the same output,
- * so a record that survives the parse is proven twice and terminated, and a
- * record the parse drops is simply absent from both.
- */
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
   execFileSync: vi.fn(),
@@ -25,10 +13,8 @@ const INSTALL_TREE = 'C:\\Program Files\\Open Knowledge\\resources';
 const WIN_ENV = { SystemRoot: 'C:\\Windows' };
 const BOM = '\uFEFF';
 
-/** One owned console host, as `ConvertTo-Json -Compress` writes it. */
 const OWNED_HOST = String.raw`{"processId":101,"name":"OpenConsole.exe","executablePath":"C:\\Program Files\\Open Knowledge\\resources\\node-pty\\OpenConsole.exe","commandLine":null,"creationDate":"2026-08-25T12:00:00.0000000Z"}`;
 
-/** Runs a sweep whose scan and revalidation both read `output`. */
 function sweepProcessListOutput(output: string) {
   execFileSyncMock.mockReturnValue(output);
   const terminated: number[] = [];
@@ -106,9 +92,6 @@ describe('sweepWindowsUpdateSurvivors reading a real PowerShell process list', (
       `[${OWNED_HOST},${nullCreationDate},${noCreationDate}]`,
     );
 
-    // A host whose creation date the query could not stamp has no identity to
-    // re-prove across the scan-to-kill window, so it is left alone. Dropping
-    // that one record must not cost the sweep the hosts it can prove.
     expect(terminated).toEqual([101]);
     expect(result).toEqual({
       candidateCount: 1,
@@ -153,9 +136,6 @@ describe('sweepWindowsUpdateSurvivors reading a real PowerShell process list', (
   });
 
   test('abandons the sweep when the output is not a JSON array', () => {
-    // Without the query's `@()` wrapper PowerShell writes a lone object for a
-    // lone match. Guessing a shape for output that broke its own contract would
-    // aim `process.kill` at whatever the guess produced, so the scan is failed.
     const { result, terminated, warnings } = sweepProcessListOutput(OWNED_HOST);
 
     expect(terminated).toEqual([]);
@@ -184,8 +164,6 @@ describe('sweepWindowsUpdateSurvivors reading a real PowerShell process list', (
         scanFailed: false,
         revalidationFailed: false,
       });
-      // Distinguishes "no console host survived" from the failed scan above,
-      // which reports the same counts.
       expect(info).toContainEqual({
         event: 'windows-update-survivor-sweep',
         candidateCount: 0,

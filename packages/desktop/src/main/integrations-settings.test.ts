@@ -20,7 +20,6 @@ import type { McpStatusMarker, McpWiringFsOps } from './mcp-wiring.ts';
 const HOME = '/test-home';
 const MARKER_PATH = `${HOME}/.ok/mcp-status.json`;
 
-/** In-memory FsOps for the mcp-status marker. */
 function memFs(initial: Record<string, string> = {}): McpWiringFsOps & {
   files: Map<string, string>;
 } {
@@ -183,8 +182,6 @@ function setup(overrides: Partial<RegisterIntegrationsSettingsOpts> = {}) {
     path,
     skills,
     fs,
-    // Default: `claude` resolvable on PATH, nothing else. Individual tests pass
-    // their own `probeEditorPresence` to vary it.
     probeEditorPresence: async () => ({ cliOnPath: { claude: true }, schemeHandler: {} }),
     now: () => new Date('2026-07-07T00:00:00.000Z'),
     logger: { warn: () => {}, error: () => {}, event: () => {} },
@@ -219,8 +216,6 @@ describe('detectedEditorsFromProbes', () => {
   });
 
   test('the Claude desktop scheme detects both Claude rows', () => {
-    // The CLI and the desktop app are separate installs, and either proves the
-    // user has Claude — but only the scheme proves the desktop app.
     const got = detectedEditorsFromProbes({ ...none, schemeHandler: { 'claude-code': true } });
     expect([...got].sort()).toEqual(['claude', 'claude-desktop']);
   });
@@ -236,9 +231,6 @@ describe('detectedEditorsFromProbes', () => {
   });
 
   test('lm-studio is never detected — it has no honest probe', () => {
-    // No CLI and no scheme OK can ask about. It reports undetected rather than
-    // falling back to the config-directory check that made this whole surface
-    // untrustworthy; under-claiming is the safe direction.
     const got = detectedEditorsFromProbes({
       cliOnPath: { 'lm-studio': true } as Record<string, boolean>,
       schemeHandler: { 'lm-studio': true },
@@ -247,9 +239,6 @@ describe('detectedEditorsFromProbes', () => {
   });
 
   test('a config directory cannot manufacture detection', () => {
-    // The regression this replaces: OK creates `~/.copilot` during consent, the
-    // user removes the entry, and the row kept reporting Copilot as detected.
-    // Nothing in the probe surface can express that state any more.
     const got = detectedEditorsFromProbes({
       cliOnPath: { copilot: false },
       schemeHandler: {},
@@ -341,11 +330,6 @@ describe('ok:integrations:dispatch — status', () => {
   });
 
   test('a throwing presence probe degrades to undetected, not to a dead section', async () => {
-    // `probeEditorPresence` is injected and shells out (login-shell `command -v`,
-    // the OS scheme-handler lookup), so a throw is a live possibility rather than
-    // a hypothetical. Unknown must under-claim: no row may report detected, and
-    // the rest of the snapshot has to survive — narrowing or dropping the catch
-    // would take the whole AI-tools section down with it.
     const { status } = setup({
       probeEditorPresence: async () => {
         throw new Error('spawn failed');
@@ -354,8 +338,6 @@ describe('ok:integrations:dispatch — status', () => {
     const snapshot = await status();
     expect(snapshot.detectedEditorIds).toEqual([]);
     expect(snapshot.editors.every((e) => e.detected === false)).toBe(true);
-    // Still usable: rows are present and classified, and the sibling surfaces
-    // are untouched by the probe failure.
     expect(snapshot.editors.length).toBeGreaterThan(0);
     expect(snapshot.editors.map((e) => e.state)).not.toContain(undefined);
     expect(snapshot.path.installed).toBe(false);
@@ -363,9 +345,6 @@ describe('ok:integrations:dispatch — status', () => {
   });
 
   test('one status pass probes presence exactly once', async () => {
-    // The editor rows and `detectedEditorIds` answer the same question, so they
-    // must come from the same pass: the probe is uncached, and two passes can
-    // straddle an install or a removal and disagree inside one snapshot.
     let probeCalls = 0;
     const { status } = setup({
       probeEditorPresence: async () => {
@@ -406,18 +385,12 @@ describe('ok:integrations:dispatch — set editor', () => {
   });
 
   test('an undetected self-probing editor says the tool is missing, not that OK failed', async () => {
-    // Cursor's config dir doubles as its detection probe, so the CLI refuses
-    // the write rather than creating the dir OK would later read back as
-    // "installed". Settings rows keep a live checkbox regardless of detection,
-    // so this outcome is reachable here — and before it was handled it fell to
-    // the generic branch and blamed OK for a tool the user never installed.
     const { set } = setup({ cli: makeCli({ writeAction: 'skipped-missing' }) });
     const result = await set({ component: { kind: 'editor', id: 'cursor' }, enabled: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toContain("Cursor wasn't found on this machine");
       expect(result.error).not.toContain("Couldn't add OpenKnowledge");
-      // No dangling empty parenthetical — `skipped-missing` carries no `error`.
       expect(result.error).not.toContain('()');
     }
   });
@@ -458,7 +431,6 @@ describe('ok:integrations:dispatch — set editor', () => {
     const marker = JSON.parse(markerFs.files.get(MARKER_PATH) ?? 'null');
     expect(marker.configured).toBe(true);
     expect(marker.editors).toEqual(['claude', 'cursor']);
-    // Original decision timestamp is preserved.
     expect(marker.configuredAt).toBe('2026-01-01T00:00:00.000Z');
 
     const withoutMarker = setup();
@@ -523,7 +495,6 @@ describe('ok:integrations:dispatch — gates and serialization', () => {
     const { set } = setup({ path });
     const first = set({ component: { kind: 'path' }, enabled: true });
     const second = set({ component: { kind: 'path' }, enabled: false });
-    // Give the first mutation a tick to start, then release it.
     await new Promise((resolve) => setTimeout(resolve, 10));
     releaseFirst();
     await Promise.all([first, second]);

@@ -5,11 +5,6 @@ import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
 import type { McpHttpHandler } from '../mcp-http.ts';
 import { createMcpDispatch } from './mcp-route.ts';
 
-// The dispatch is fire-and-forget, so its `.catch()` is the ONLY error
-// surface for the leg — a rejected `handle` must terminate the response on
-// every branch (typed 500 before any write, plain end after a partial write,
-// log-only after a completed one) or the client hangs until requestTimeout.
-
 const log = {
   error: vi.fn(),
   warn: () => {},
@@ -68,7 +63,6 @@ describe('createMcpDispatch rejected-handle error surface', () => {
       throw new Error('sdk exploded mid-write');
     });
 
-    // A hang here would leave the fetch pending until the abort fires.
     const res = await fetch(`${baseUrl}/mcp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

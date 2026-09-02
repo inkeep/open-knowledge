@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { type ReactNode, useEffect } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
-// Opt-in per test: only the bulk-install test wants the bundle banner disclosed.
 const previewMeta: { pluginBundle?: { plugin: string | null; bundledSkills: string[] } } = {};
 
 vi.doMock('@/components/SkillBundlePreview', () => ({
@@ -46,8 +45,6 @@ vi.doMock('@/components/SkillBundlePreview', () => ({
   },
 }));
 
-// The bulk import runs inside the real banner; this stands in for "the user
-// finished the picker and these skills landed".
 vi.doMock('@/components/SkillPluginBundleBanner', () => ({
   SkillPluginBundleBanner: ({
     onInstalled,
@@ -66,15 +63,11 @@ vi.doMock('@/components/SkillPluginBundleBanner', () => ({
 vi.doMock('@/components/SkillInstallMenu', () => ({
   SkillInstallMenuItems: () => <div data-testid="destination-choices">Destinations</div>,
   SKILL_INSTALL_MENU_WIDTH: 'min-w-[24rem]',
-  // The bundle picker reached through the plugin banner reads the editor list
-  // from this module too, so the mock has to carry it or the tree fails to load.
   INSTALL_EDITORS: ['claude', 'cursor', 'codex'],
 }));
 vi.doMock('@/components/skill-actions', () => ({
   SkillPlaceDialog: () => null,
 }));
-// The redirect waits for the skill to appear in the list, since that is what
-// `useOpenSkill` resolves the doc from.
 vi.doMock('@/hooks/use-skills', () => ({
   useSkills: () => ({
     status: 'ready',
@@ -110,8 +103,6 @@ vi.doMock('@/lib/skill-scope', () => ({
 vi.doMock('@/lib/skills-api', () => ({
   fetchSkillDetail: vi.fn(),
   placeSkill: vi.fn(),
-  // A website preview enumerates the source's siblings for the bundle
-  // disclosure; the picker it opens imports + installs the selection.
   discoverSkillsInSource: vi.fn(async () => ({ ok: false, error: 'not in this test' })),
   importSkillsBulk: vi.fn(),
   installSkill: vi.fn(),
@@ -158,8 +149,6 @@ describe('SkillPreviewTab plugin copy', () => {
     await user.click(screen.getByTestId('skill-preview-edit-a-copy'));
 
     expect(await screen.findByText('Where')).toBeTruthy();
-    // The scope switch answers the user's actual question in their own words;
-    // the consequence line says what the choice changes.
     expect(screen.getByText('This project')).toBeTruthy();
     expect(screen.getByText('This machine')).toBeTruthy();
     expect(screen.getByTestId('skill-scope-consequence').textContent).toContain('home folder');
@@ -222,14 +211,10 @@ describe('SkillPreviewTab bulk plugin install', () => {
       />,
     );
 
-    // The bundle picker imports every skill itself, so this tab only ever hears
-    // about its own arrival through the banner's callback.
     await user.click(await screen.findByTestId('bulk-install-finished'));
 
     expect(openSkill).toHaveBeenCalledWith('global', 'grill-me', {
       replaceActive: true,
-      // This open supersedes the preview the user is standing on, so it takes
-      // that history entry rather than stacking a second one for the same skill.
       replaceHistory: true,
     });
     previewMeta.pluginBundle = undefined;

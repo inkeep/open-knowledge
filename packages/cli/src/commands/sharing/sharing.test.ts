@@ -1,13 +1,3 @@
-/**
- * Integration tests for `ok config-sharing share` / `ok config-sharing unshare` /
- * `ok config-sharing status`. Drives the Commander commands via `parseAsync` so
- * the same code path that hits the user's terminal is exercised.
- *
- * The refusal path and the `git rm --cached` recovery path live here;
- * the module-level
- * mechanics are pinned in `../../sharing/git-exclude.test.ts`.
- */
-
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,15 +29,6 @@ function writeExclude(dir: string, content: string): void {
   writeFileSync(join(dir, '.git', 'info', 'exclude'), content, 'utf-8');
 }
 
-/**
- * Capture stdout + stderr while a Promise runs. Each `process.stdout.write`
- * and `process.stderr.write` is intercepted; the originals are restored
- * after. Returns the captured strings + the promise's resolved value.
- *
- * The sharing commands write a mix of human-readable lines to stderr and
- * JSON payloads to stdout (matching the ok clone --json convention), so we
- * need both streams.
- */
 async function capture<T>(fn: () => Promise<T>): Promise<{
   result: T;
   stdout: string;
@@ -95,14 +76,11 @@ describe('ok config-sharing unshare → share round-trip', () => {
     expect(exclude).toContain('.ok/');
     expect(exclude).toContain('.mcp.json');
     expect(exclude).toContain('.claude/launch.json');
-    // The built-in project-skill projection is NEVER in the sharing toggle — it
-    // is always excluded via the committed `.gitignore` block instead.
     expect(exclude).not.toContain('.claude/skills/open-knowledge/');
     expect(process.exitCode).not.toBe(1);
   });
 
   it('share removes OK artifact paths and leaves the rest byte-identical', async () => {
-    // Seed: write a user-authored exclude with an OK line mixed in.
     const original = '# user header\n*.tmp\n';
     writeFileSync(join(dir, '.git', 'info', 'exclude'), original, 'utf-8');
     await capture(async () => {
@@ -115,7 +93,6 @@ describe('ok config-sharing unshare → share round-trip', () => {
     await capture(async () => {
       await sharingShareCommand().parseAsync(['node', 'share', '--project', dir]);
     });
-    // After share, the user's two lines survive byte-identical, OK lines gone.
     expect(readExclude(dir)).toBe(original);
   });
 
@@ -139,9 +116,6 @@ describe('ok config-sharing unshare → share round-trip', () => {
 });
 
 describe('draining a stale skill exclude is reported, never silently written', () => {
-  // Nothing in this file previously seeded an installed-skills marker, so
-  // `result.removed` was `[]` in every existing case and none of the drain
-  // reporting was exercised end to end.
   let dir: string;
   beforeEach(() => {
     dir = uniqueDir('sharing-drain-test');
@@ -169,9 +143,6 @@ describe('draining a stale skill exclude is reported, never silently written', (
   });
 
   it('unshare that BOTH appends and drains reports both halves', async () => {
-    // The migration population: the artifact set grew across releases, so an
-    // older local-only project appends the newer config paths and clears its
-    // stale skill line in the same pass.
     writeExclude(dir, '.ok/\n.claude/skills/trip-log/\n');
     const { stderr } = await capture(async () => {
       await sharingUnshareCommand().parseAsync(['node', 'unshare', '--project', dir]);
@@ -183,8 +154,6 @@ describe('draining a stale skill exclude is reported, never silently written', (
   });
 
   it('share on an already-shared project that still drains does not claim "nothing to do"', async () => {
-    // `readSharingMode` no longer consults skill paths, so a file carrying only
-    // a skill line reads `shared` — and the remove pass still rewrites it.
     writeExclude(dir, '.claude/skills/trip-log/\n');
     const { stderr } = await capture(async () => {
       await sharingShareCommand().parseAsync(['node', 'share', '--project', dir]);
@@ -222,8 +191,6 @@ describe('ok config-sharing unshare — §5.5 tracked-files refusal', () => {
     expect(stderr).toContain('git rm --cached .mcp.json');
     expect(stderr).toContain('your teammates will see a deletion on their next pull');
 
-    // Critically: no OK paths landed in the exclude file (git init seeds
-    // its own default template, so we assert the OK markers are absent).
     const after = readExclude(dir);
     expect(after).not.toContain('.ok/');
     expect(after).not.toContain('.mcp.json');

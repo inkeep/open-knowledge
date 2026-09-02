@@ -106,8 +106,6 @@ beforeEach(() => {
   originalInnerWidth = window.innerWidth;
   originalMatchMedia = window.matchMedia;
   originalUserAgent = window.navigator.userAgent;
-  // Keep the production global and window storage references aligned so the
-  // no-arg storage default exercises the real jsdom storage.
   (globalThis as { localStorage?: Storage }).localStorage = window.localStorage;
   window.localStorage.clear();
 });
@@ -168,8 +166,6 @@ describe('SidebarProvider — partition × pin resolution at mount (FR-1, FR-3, 
   });
 
   test('absent slot for current partition falls back to smart default', () => {
-    // Only the above slot is populated; mounting below-threshold consults the
-    // below slot (absent) and falls back to smartDefault('below') = collapsed.
     window.localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify({ left: { above: 'open' } }));
     setInnerWidth(900);
     installMatchMedia(false);
@@ -188,18 +184,15 @@ describe('SidebarProvider — partition × pin resolution at mount (FR-1, FR-3, 
 
 describe('SidebarProvider — matchMedia re-resolution (FR-3, FR-6)', () => {
   test('above → below: above slot does not apply to below; below smart default applies', () => {
-    // Above-partition slot: open. Mount above-threshold → effective open.
     window.localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify({ left: { above: 'open' } }));
     setInnerWidth(1280);
     const mql = installMatchMedia(true);
     render(<Fixture />);
     expect(getSidebarState()).toBe('expanded');
-    // Narrow the viewport across the threshold: below slot is absent.
     setInnerWidth(900);
     act(() => {
       mql.__setMatches(false);
     });
-    // Below smart default applies (collapsed) — the above slot is independent.
     expect(getSidebarState()).toBe('collapsed');
   });
 
@@ -216,13 +209,11 @@ describe('SidebarProvider — matchMedia re-resolution (FR-3, FR-6)', () => {
   });
 
   test('above → below with same-partition slot: slot for the NEW partition is respected', () => {
-    // Below-partition slot: open. Mount above-threshold (above slot absent) → expanded smart default.
     window.localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify({ left: { below: 'open' } }));
     setInnerWidth(1280);
     const mql = installMatchMedia(true);
     render(<Fixture />);
     expect(getSidebarState()).toBe('expanded');
-    // Narrow across threshold: below slot now matches current partition.
     setInnerWidth(900);
     act(() => {
       mql.__setMatches(false);
@@ -275,7 +266,6 @@ describe('SidebarProvider — focus safety on auto-collapse (FR-9 left side)', (
     });
 
     expect(getSidebarState()).toBe('collapsed');
-    // Focus is preserved on the outside element; the auto-collapse must not steal it.
     expect(document.activeElement).toBe(outside);
   });
 });
@@ -300,9 +290,6 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
   });
 
   test('click in below partition PRESERVES the existing above slot (D13 — slots are independent)', () => {
-    // Pre-seed an above slot; mount below-threshold so it does not apply
-    // (smart default `collapsed` wins at first paint — the above slot
-    // is consulted only when the partition becomes 'above').
     window.localStorage.setItem(SIDEBAR_PINS_KEY, JSON.stringify({ left: { above: 'open' } }));
     setInnerWidth(900);
     installMatchMedia(false);
@@ -316,16 +303,12 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
     });
 
     expect(getSidebarState()).toBe('expanded');
-    // Per-Partition Pins: the explicit toggle writes the `below` slot
-    // and the previously-existing `above` slot is preserved. Both coexist.
     expect(readPins(window.localStorage)).toEqual({
       left: { above: 'open', below: 'open' },
     });
   });
 
   test('matchMedia re-resolution followed by click writes the NEW partition slot (closure freshness)', () => {
-    // Start above-threshold, then narrow across the boundary, then click.
-    // The slot must record the NEW partition, not the partition at mount.
     setInnerWidth(1280);
     const mql = installMatchMedia(true);
     render(<Fixture />);
@@ -335,7 +318,6 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
     act(() => {
       mql.__setMatches(false);
     });
-    // matchMedia re-resolved: still no pin, below smart default applies.
     expect(getSidebarState()).toBe('collapsed');
 
     const trigger = document.querySelector<HTMLElement>('[data-sidebar="trigger"]');
@@ -343,7 +325,6 @@ describe('SidebarProvider — trigger click writes the current-partition slot (F
       fireEvent.click(trigger as HTMLElement);
     });
 
-    // Slot under `below` (the partition the click happened in), not stale `above`.
     expect(readPins(window.localStorage)).toEqual({
       left: { below: 'open' },
     });

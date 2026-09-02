@@ -39,7 +39,6 @@ describe('recordContributor', () => {
     recordContributor('a.md', 'agent-alice', 'Alice');
     recordContributor('a.md', 'agent-alice', 'Alice');
     const output = formatContributorsForTest();
-    // Only one "a.md" entry
     expect((output.match(/a\.md/g) ?? []).length).toBe(1);
   });
 
@@ -96,7 +95,6 @@ describe('formatContributors / formatContributorsFrom', () => {
     recordContributor('live.md', 'agent-live', 'Live');
     const snapshot = swapContributors();
     recordContributor('after-swap.md', 'agent-new', 'New');
-    // snapshot has only 'agent-live'; live map has 'agent-new'
     const fromSnapshot = formatContributorsFrom(snapshot);
     expect(fromSnapshot).toContain('agent-live');
     expect(fromSnapshot).not.toContain('agent-new');
@@ -116,16 +114,14 @@ describe('swapContributors + restoreContributors (swap-and-drain pattern)', () =
     const snapshot = swapContributors();
     recordContributor('b.md', 'agent-bob', 'Bob');
     expect(snapshot.has('agent-bob')).toBe(false);
-    expect(contributorCount()).toBe(1); // agent-bob in live map
+    expect(contributorCount()).toBe(1);
   });
 
   test('restoreContributors merges snapshot back on failure', () => {
     recordContributor('a.md', 'agent-alice', 'Alice');
     const snapshot = swapContributors();
-    // Simulate a new contribution arriving during the failed commit
     recordContributor('b.md', 'agent-bob', 'Bob');
     restoreContributors(snapshot);
-    // Both alice and bob should now be in the live map
     expect(contributorCount()).toBe(2);
     const output = formatContributorsForTest();
     expect(output).toContain('agent-alice');
@@ -135,12 +131,11 @@ describe('swapContributors + restoreContributors (swap-and-drain pattern)', () =
   test('restoreContributors merges docs when same agent in both snapshot and live map', () => {
     recordContributor('a.md', 'agent-alice', 'Alice');
     const snapshot = swapContributors();
-    recordContributor('b.md', 'agent-alice', 'Alice'); // same agent, new doc
+    recordContributor('b.md', 'agent-alice', 'Alice');
     restoreContributors(snapshot);
     const output = formatContributorsForTest();
     expect(output).toContain('"a.md"');
     expect(output).toContain('"b.md"');
-    // Still one entry for agent-alice
     const lines = output.split('\n').filter((l) => l.includes('agent-alice'));
     expect(lines).toHaveLength(1);
   });
@@ -148,7 +143,6 @@ describe('swapContributors + restoreContributors (swap-and-drain pattern)', () =
   test('restoreContributors on empty live map fully restores snapshot', () => {
     recordContributor('a.md', 'agent-alice', 'Alice');
     const snapshot = swapContributors();
-    // no new contributions
     restoreContributors(snapshot);
     expect(contributorCount()).toBe(1);
   });
@@ -157,13 +151,11 @@ describe('swapContributors + restoreContributors (swap-and-drain pattern)', () =
     recordContributor('a.md', 'agent-alice', 'Alice');
     const snapshot = swapContributors();
     recordContributor('b.md', 'agent-bob', 'Bob');
-    // On success: discard snapshot; live map has agent-bob
-    // (no restoreContributors call)
     expect(contributorCount()).toBe(1);
     const output = formatContributorsForTest();
     expect(output).toContain('agent-bob');
     expect(output).not.toContain('agent-alice');
-    void snapshot; // explicitly unused
+    void snapshot;
   });
 });
 
@@ -311,7 +303,6 @@ describe('restoreContributors preserves summaries (D16 failure recovery)', () =>
       'Snapshot-2',
     );
     const snapshot = swapContributors();
-    // Simulate summaries arriving while the commit was failing
     recordContributor('a.md', 'agent-alice', 'Alice', undefined, undefined, undefined, 'Live-1');
     restoreContributors(snapshot);
     const output = formatContributorsForTest();

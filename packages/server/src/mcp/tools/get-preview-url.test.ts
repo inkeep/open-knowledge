@@ -1,15 +1,3 @@
-/**
- * Unit tests for the `preview_url` MCP tool.
- *
- * `preview_url` is the one tool that hands an agent the browser-reachable
- * preview URL — per-response `previewUrl` fields are route-only. Branches:
- *   - UI running (ui-capable `server.lock` bound) → composed full URL.
- *   - No UI + registration has server authority → backend demand-ensure
- *     (auto-spawn via the `serverUrl` resolver), bounded UI-bind wait.
- *   - Still no UI → `{ url: null, running: false }` + a state-accurate
- *     recovery hint keyed on `server.lock` liveness + ui capability.
- */
-
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -113,15 +101,10 @@ describe('preview_url tool — UI running', () => {
       const text = result.content[0]?.text ?? '';
       expect(text).toContain('ok open specs/foo/SPEC');
       expect(text).toMatch(/Don't navigate the URL|reference only/);
-      // The URL is still present (reference); the command is also machine-readable.
       expect(result.structuredContent?.running).toBe(true);
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo/SPEC');
     });
 
-    // The reported failure was not a bad URL — it was a correct URL pasted
-    // into the reply of an agent sitting inside the app the URL points at.
-    // "don't navigate" alone left that reading open, so the steer has to
-    // close it explicitly.
     test('document: steer tells the agent not to paste the URL into its reply', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
       bindTestUiServerLock(cwd);
@@ -174,20 +157,16 @@ describe('preview_url tool — UI running', () => {
       const handler = captureRegistration(cwd);
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.content[0]?.text ?? '').not.toContain('ok open');
-      // No steer command in structured output either.
       expect(result.structuredContent?.okOpenCommand ?? null).toBeNull();
     });
 
     test('hosted agent + no UI running: steer + okOpenCommand still fire (ok open does not need the UI)', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      // No bindTestUiServerLock / bindTestServerLock — nothing is running.
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.structuredContent?.running).toBe(false);
       expect(result.structuredContent?.okOpenCommand).toBe('ok open specs/foo/SPEC');
       expect(result.content[0]?.text ?? '').toContain('ok open specs/foo/SPEC');
-      // The steer rides the no-UI payload too — without this assertion,
-      // dropping it from that branch would pass every other test here.
       expect(result.content[0]?.text ?? '').toContain('paste the URL into your reply');
     });
 
@@ -204,13 +183,11 @@ describe('preview_url tool — UI running', () => {
       bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: "Q&A/what's new" });
-      // POSIX single-quote escape: close-quote, escaped-quote, reopen → '\''
       expect(result.structuredContent?.okOpenCommand).toBe("ok open 'Q&A/what'\\''s new'");
     });
 
     test('hosted agent + no UI + folder: okOpenCommand still fires', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      // No bindTestUiServerLock — nothing running.
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.structuredContent?.running).toBe(false);
@@ -287,7 +264,6 @@ describe('preview_url tool — no UI running', () => {
     expect(result.structuredContent?.autoOpen).toBe(true);
     expect(result.content[0]?.text).toContain('No OpenKnowledge server is running');
     expect(result.content[0]?.text).toContain('`ok start`');
-    // `ok ui` alone would produce a backend-less UI shell in this state.
     expect(result.content[0]?.text).not.toContain('`ok ui`');
   });
 
@@ -302,12 +278,6 @@ describe('preview_url tool — no UI running', () => {
 
   test('draining ui-capable server: transient retry hint, no spawn advice', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    // Single-listener teardown: the pid is still alive and the port still bound
-    // (isServerLive), but the lock is draining so no UI is reachable. The right
-    // hint is the transient "retry" — a fresh holder may bind shortly — not the
-    // permanent no-ui-mounted or no-server advice. This is the only remaining
-    // way to reach the transient hint now that a live ui-capable lock always
-    // resolves to a URL (server-liveness and UI-availability are one signal).
     bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
     markServerLockDraining(resolveLockDir(cwd));
     const handler = captureRegistration(cwd);
@@ -320,26 +290,19 @@ describe('preview_url tool — no UI running', () => {
 
   test('--only server (capabilities omit ui): permanent hint, no "Retry" (UI never binds on its own)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    // A live server advertising http+ws but NOT ui — the `--only server` shape.
     bindTestServerLock(cwd, 4321, ['http', 'ws']);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.structuredContent?.running).toBe(false);
     expect(result.content[0]?.text).toContain('no preview UI is mounted');
     expect(result.content[0]?.text).toContain('--only server');
-    // Steer to restarting with plain `ok start` (serves the editor).
     expect(result.content[0]?.text).toContain('Restart it with plain `ok start`');
     expect(result.content[0]?.text).not.toContain('`ok ui`');
-    // The whole point: "retry" would loop forever against a UI-less server.
     expect(result.content[0]?.text).not.toContain('Retry');
   });
 
   test('ui-capable server.lock resolves directly (single-listener): running, own origin, no ui.lock needed', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    // The default flip: a server advertising `ui` IS the preview surface at its
-    // own origin — resolveUiInfo returns it without any separate ui.lock. This
-    // is why the permanent "no UI mounted" hint keys on the ABSENCE of the ui
-    // capability, not merely on a missing ui.lock.
     bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
@@ -357,9 +320,6 @@ describe('preview_url tool — backend demand-ensure', () => {
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         resolverCalls += 1;
-        // Single-listener spawn: `ok start` brings up one ui-capable server that
-        // serves the shell at its own origin — no separate ui.lock to wait on,
-        // so the ui-capable server.lock resolves directly.
         uiBase = bindTestUiServerLock(cwd, 4321);
         return 'http://localhost:4321';
       },
@@ -403,8 +363,6 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.structuredContent?.url).toBeNull();
     expect(result.content[0]?.text).toContain('`ok start`');
     expect(result.content[0]?.text).toContain('OK_MCP_AUTOSTART=0');
-    // `ok ui` alone would produce a backend-less UI shell in this state — same
-    // wrong-state guard as the no-server and bind-timeout branches.
     expect(result.content[0]?.text).not.toContain('`ok ui`');
   });
 
@@ -424,9 +382,6 @@ describe('preview_url tool — backend demand-ensure', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
-        // The spawned server is already tearing down (draining): live pid + bound
-        // port, but no reachable UI. The bounded wait polls, never resolves, and
-        // falls through to the transient "retry" hint (a fresh holder may bind).
         bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
         markServerLockDraining(resolveLockDir(cwd));
         return 'http://localhost:4321';
@@ -438,8 +393,6 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.structuredContent?.running).toBe(false);
     expect(result.content[0]?.text).toContain('OK server is running');
     expect(result.content[0]?.text).toContain('Retry in a few seconds');
-    // Symmetric with the no-server branch: a hint-selector regression that
-    // emitted the wrong-state message would advise `ok start` here.
     expect(result.content[0]?.text).not.toContain('`ok start`');
   });
 
@@ -667,8 +620,6 @@ describe('preview_url tool — file branch boot-on-demand', () => {
     expect(result.content[0]?.text).toContain('absolute');
   });
   test('boot reports success but the session is not discoverable → falls back to the hint', async () => {
-    // ensure claims it booted, but discovery never sees the session (it vanished
-    // or never registered) — the second resolve still misses, so we hint.
     const empty: OffCwdResolverDeps = {
       discover: async () => [],
       inspect: async () => null,

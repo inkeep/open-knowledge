@@ -14,39 +14,14 @@ import { buildStarterFolderFrontmatterYaml, DEFAULT_PACK_ID, resolvePack } from 
 import type { ApplyError, ApplyResult, FileEntry, ScaffoldPlan, SeedOptions } from './types.ts';
 import { SeedRootDirError } from './types.ts';
 
-/**
- * Resolve the content for a `FileEntry` from the selected pack. Three template
- * id shapes:
- *   - `<rootFileKey>` (e.g. `log.md`, or a folder-prefixed `wiki/OVERVIEW.md`)
- *     — looked up in `pack.rootFiles`
- *   - `<folder>/.ok/frontmatter.yml` — built from `pack.folders`
- *   - `<folder>/.ok/templates/<name>.md` — looked up in `pack.templates`
- *
- * Both the `<folder>` segment and a rootFile key may be nested
- * (`wiki/architecture`, `wiki/OVERVIEW.md`) so a pack can scaffold under a
- * subfolder without `--root`. The rootFiles exact-key lookup runs FIRST: it
- * cannot false-positive, so checking it before the folder-id regexes makes the
- * disambiguation structural rather than convention-dependent — a rootFile key
- * resolves directly and never falls into a regex, even an unusual one that
- * happens to contain `/.ok/`. The folder-id regexes then match a slash-bearing
- * folder segment, with the exact `pack.folders` lookup as the real validator.
- *
- * Returns `undefined` when no content can be resolved — apply() converts that
- * into an `ApplyError` rather than writing an empty file.
- */
 function resolveFileContent(
   templateId: string,
   pack: ReturnType<typeof resolvePack>,
 ): string | undefined {
-  // Root files — exact key lookup (e.g. `log.md`, `wiki/OVERVIEW.md`). First so
-  // a rootFile key can never be mis-claimed by the folder-id regexes.
   if (pack.rootFiles?.[templateId] !== undefined) {
     return pack.rootFiles[templateId];
   }
 
-  // Frontmatter writes: `<folder>/.ok/frontmatter.yml` (folder may be nested).
-  // The exact `pack.folders` match means an over-greedy capture simply fails to
-  // resolve rather than mis-resolving to the wrong folder.
   const fmMatch = /^(.+)\/\.ok\/frontmatter\.yml$/.exec(templateId);
   if (fmMatch) {
     const folder = pack.folders.find((f) => f.path === fmMatch[1]);
@@ -54,8 +29,6 @@ function resolveFileContent(
     return buildStarterFolderFrontmatterYaml(folder);
   }
 
-  // Template writes: `<folder>/.ok/templates/<name>.md` (folder may be nested;
-  // the template name is the final path segment).
   const tplMatch = /^(.+)\/\.ok\/templates\/([^/]+)\.md$/.exec(templateId);
   if (tplMatch) {
     const templateName = tplMatch[2] ?? '';
@@ -65,21 +38,6 @@ function resolveFileContent(
   return undefined;
 }
 
-/**
- * Apply a ScaffoldPlan to disk. Creates folders + writes files.
- *
- * The pack to apply is selected via `opts.packId` (default `'knowledge-base'`).
- * The plan was already computed against the same pack — apply just resolves
- * template content from the pack's `templates` and `rootFiles` maps.
- *
- * Folder defaults land as nested `<folder>/.ok/frontmatter.yml` files, and
- * starter templates land as nested `<folder>/.ok/templates/<name>.md`. There is
- * no longer a `config.yml folders:` write step.
- *
- * Rollback semantics: not atomic. On partial failure (EACCES mid-write),
- * successfully-written entries remain on disk; `errors` lists what failed.
- * Folder writes are ordered first so files have parents to land in.
- */
 export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Promise<ApplyResult> {
   const started = Date.now();
   const projectDir = resolve(opts.projectDir ?? process.cwd());
@@ -87,11 +45,6 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
 
   let applied = 0;
   const errors: ApplyError[] = [];
-  // Containment guard for every plan entry (lexical + realpath). Plan paths
-  // come across a trust boundary (HTTP /api/seed/apply, IPC payload); a
-  // malicious `..` segment or a symlinked ancestor would otherwise escape
-  // projectDir at writeFileSync time. Rejected entries are recorded as errors
-  // and skipped — apply is best-effort and continues with the rest.
   const safeEntries: Array<{ entry: FileEntry; absPath: string }> = [];
   for (const entry of plan.created) {
     try {
@@ -110,7 +63,6 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     }
   }
 
-  // 1. Folders first — files need their parent dirs to exist.
   for (const { entry, absPath } of safeEntries.filter(
     (e): e is { entry: FileEntry & { kind: 'folder' }; absPath: string } =>
       e.entry.kind === 'folder',
@@ -123,8 +75,6 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     }
   }
 
-  // 2. Files — only write if absent (defense-in-depth; plan should already
-  //    have excluded existing ones, but a race could slip through).
   for (const { entry, absPath } of safeEntries.filter(
     (e): e is { entry: FileEntry & { kind: 'file' }; absPath: string } => e.entry.kind === 'file',
   )) {
@@ -138,7 +88,6 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
       continue;
     }
     if (existsSync(absPath)) {
-      // Already present — plan was stale, skip silently (not an error).
       continue;
     }
     try {
@@ -149,27 +98,8 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     }
   }
 
-  // Author + install the pack's project-local skills IN PLACE (the default
-  // skill home — same landing as creates/imports; store retirement) + fan out
-  // to each set-up editor. Single site for every seed entry point (CLI /
-  // desktop IPC / HTTP), since they all call applySeed. No-op when no editor
-  // is set up or the pack ships no skill.
   const packSkillInstall = await installPackSkill(projectDir, pack.id);
 
-  // `installPackSkill` logs and skips a skill whose source it could not author,
-  // so a decomposed pack can land some skills and drop others while still
-  // reporting the editors it reached. Surface the gap on the same `errors`
-  // channel as file entries: a partial install must not read as a clean seed.
-  // The skill can live at ANY root under the in-place model — the scan is the
-  // presence truth (a legacy `.ok/skills` resident counts too).
-  //
-  // Skipped entirely when the project has no usable skill home (no adopted
-  // agent host — OK never creates one on the user's behalf — or a home
-  // symlinked out of the project), so `installPackSkill` deliberately no-ops.
-  // That consented refusal is not an authoring failure — reporting it per skill
-  // turned a clean seed into N user-facing `✗ … skill source could not be
-  // authored` lines on the CLI. Same resolver `planSeed` previews with, so plan
-  // and apply cannot disagree about whether a skill is installable.
   if (!('refusal' in resolvePackSkillHome(projectDir))) {
     const presentNames = new Set(scanInPlaceSkills(projectDir).map((sk) => sk.name));
     for (const { name } of resolvePackSkillSources(pack.id)) {
@@ -180,18 +110,10 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
     }
   }
 
-  // Turn on the plugins the pack requires. Unconditional by design: a user who
-  // had one off gets it back on, because a pack that cannot keep its own
-  // scaffold conformant is not delivering what it promised. What makes that
-  // acceptable is disclosure — the plan named the plugin before this ran — and
-  // reversibility: Settings can turn it straight back off, and nothing here
-  // re-asserts it later.
   let pluginsEnabled: LintPluginId[] = [];
   try {
     pluginsEnabled = enableRequiredPlugins(projectDir, pack.requiredPlugins ?? []);
   } catch (err) {
-    // Same channel as a failed file write: a seed that scaffolded the content
-    // but could not enable the plugin is partial, not clean.
     errors.push({
       path: `.ok/${CONFIG_FILENAME}`,
       error: `could not enable required plugin(s): ${err instanceof Error ? err.message : String(err)}`,

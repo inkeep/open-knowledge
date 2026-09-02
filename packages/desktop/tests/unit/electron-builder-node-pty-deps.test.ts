@@ -4,45 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 
-/**
- * Regression guard for node-pty packaging on the desktop builds.
- *
- * node-pty ships its native addons under `prebuilds/<platform>-<arch>/`;
- * Darwin also carries an extensionless `spawn-helper`. These invariants must
- * hold together or the in-app terminal is dead on arrival in the packaged app:
- *
- *   1. node-pty is the upstream package, pinned in optionalDependencies — NOT
- *      `@lydell/node-pty`, whose per-arch optionalDependency layout recreates
- *      the keyring universal-merge hazard that forced this build arm64-only.
- *      optionalDependencies placement is itself load-bearing in the other
- *      direction: node-pty's node-gyp build needs a C toolchain, and a failed
- *      optional install is dropped by pnpm instead of failing the whole
- *      workspace install when a host has no native toolchain.
- *      electron-builder packs installed optional production deps the same as
- *      regular ones, so the packaged app is unaffected on the macOS build
- *      host.
- *   2. `**\/node-pty/prebuilds/**` is in asarUnpack. The generic `**\/*.node`
- *      rule unpacks `pty.node` but NOT `spawn-helper` (no `.node` extension);
- *      node-pty resolves the helper from `app.asar.unpacked` at runtime, so it
- *      must be on the real filesystem or `pty.fork()` throws "posix_spawnp
- *      failed".
- *   3. afterPack.mjs chmods the unpacked spawn-helper to 0755 — node-pty ships
- *      it 0644 (node-pty#850) and asarUnpack preserves that mode. Behavior of
- *      that chmod is covered by ensure-node-pty-exec.test.ts; this guard only
- *      pins that the call site still exists alongside the unpack rule.
- *   4. Linux packages retain both ELF addons while excluding foreign-platform
- *      prebuilds and Windows debug symbols.
- *   5. Windows packages retain BOTH win32 PE prebuilds (runtime selects by
- *      process.arch) while excluding POSIX prebuilds, .pdb debug symbols, and
- *      the build/ + third_party/ source trees; node-pty's lib/ and package.json
- *      are asar-unpacked (the ConPTY conout worker runs on a worker thread,
- *      which cannot load JS from inside an asar); and the Microsoft-signed
- *      conpty.dll + OpenConsole.exe pair is excluded from our signing pass.
- *
- * The build also stays arm64-only (no universal target) — node-pty would add a
- * second per-arch native into any universal lipo-merge.
- */
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, '../..');
 const builderYml = resolve(desktopRoot, 'electron-builder.yml');
@@ -240,16 +201,6 @@ describe('node-pty desktop packaging config', () => {
 });
 
 describe('node-pty electron-vite externalization', () => {
-  /**
-   * electron-vite's `externalizeDeps: true` externalizes ONLY `dependencies` —
-   * optionalDependencies are never consulted. With node-pty pinned in
-   * optionalDependencies (load-bearing, see above), it MUST be named as an
-   * explicit rollup external in the main build, or rolldown bundles node-pty's
-   * JS into out/main/chunks/ and its __dirname-relative native loader can no
-   * longer reach app.asar.unpacked/node_modules/node-pty/ — every terminal
-   * create then fails with spawn-error ("The terminal stopped unexpectedly.",
-   * v0.25.0 stable regression).
-   */
   test('node-pty is externalized in the main build despite optionalDependencies placement', async () => {
     const config = (await import('../../electron.vite.config.ts')).default as {
       main?: { build?: { rollupOptions?: { external?: unknown } } };

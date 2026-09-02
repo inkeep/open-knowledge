@@ -1,13 +1,3 @@
-/**
- * Unit tests for the bug-report sidecar store — write/read/list/delete,
- * retention, forgiving reads, containment, the in-flight lock, and the
- * send-path state transitions — all against a temp bug-reports directory.
- *
- * The filesystem IS the contract here: every assertion reads the on-disk
- * sidecar (or the presence/absence of the zip) rather than a recording double,
- * so the state machine and retention invariants are proven against real files.
- */
-
 import {
   chmodSync,
   existsSync,
@@ -45,11 +35,6 @@ import {
   MAX_UNSENT_REPORT_COUNT,
 } from './ipc/bug-report.ts';
 
-/**
- * Test projection: the sidecar's value, or `null` when it is absent or
- * unreadable. The tests below assert on stored VALUES; the absent-vs-unreadable
- * distinction is exercised directly against `readReportSidecar` instead.
- */
 async function readSidecarValue(path: string) {
   const result = await readReportSidecar(path);
   return result.kind === 'ok' ? result.sidecar : null;
@@ -70,20 +55,17 @@ afterEach(() => {
   tmpDirs.length = 0;
 });
 
-/** Indexed access that asserts presence (tests control the arrays). */
 function nth<T>(arr: readonly T[], index: number): T {
   const value = arr.at(index);
   if (value === undefined) throw new Error(`no element at index ${index}`);
   return value;
 }
 
-/** A valid report id (timestamp-basename shape) whose seconds/counter order it. */
 function rid(seconds: number, counter?: number): string {
   const ss = String(seconds).padStart(2, '0');
   return `2026-07-15T18-30-${ss}-000Z-bugreport${counter ? `-${counter}` : ''}.zip`;
 }
 
-/** The ISO createdAt that matches an `rid(seconds)` so on-disk order is deterministic. */
 function ridCreatedAt(seconds: number): string {
   return `2026-07-15T18:30:${String(seconds).padStart(2, '0')}.000Z`;
 }
@@ -93,12 +75,6 @@ function seedZip(dir: string, id: string, bytes = 128): void {
   writeFileSync(path, Buffer.alloc(bytes));
 }
 
-/**
- * Seed a report whose zip *reports* `bytes` to `stat` without occupying them:
- * `truncate` extends the file sparsely, so the byte-budget cap can be driven
- * past its 1 GiB threshold without writing a gigabyte to a temp dir. Retention
- * sizes bundles from `stat().size`, which counts the sparse length.
- */
 async function seedSparseReport(
   dir: string,
   seconds: number,
@@ -143,7 +119,6 @@ async function seedReport(
   return id;
 }
 
-/** Collects a store's warn calls so a skipped or deduplicated write can be inspected. */
 function makeWarnRecorder() {
   const warns: { data: unknown; message: string }[] = [];
   return {
@@ -156,10 +131,6 @@ function makeWarnRecorder() {
   };
 }
 
-/**
- * Write a `sent` marker by hand — the shape a terminal write that could not
- * touch the sidecar leaves beside it.
- */
 function seedSentMarker(dir: string, id: string, reference: string, sentAt?: string): void {
   writeFileSync(
     sentMarkerPathForId(dir, id),
@@ -175,7 +146,6 @@ describe('writeReportSidecar / readReportSidecar', () => {
 
     expect(existsSync(sidecarPathForId(dir, id))).toBe(true);
     const raw = await readFile(sidecarPathForId(dir, id), 'utf-8');
-    // A YAML document, not JSON — the reader parses it back.
     expect(raw).toContain('state: generated');
 
     const parsed = await readSidecarValue(sidecarPathForId(dir, id));
@@ -229,11 +199,6 @@ describe('writeReportSidecar / readReportSidecar', () => {
   });
 });
 
-/**
- * A YAML alias bomb ("billion laughs"). `parseDocument` accepts it with an
- * EMPTY `doc.errors`, and the throw only lands on `doc.toJSON()`, so it is the
- * one input that can break a reader which trusts `doc.errors` alone.
- */
 const ALIAS_BOMB_YAML = [
   'a: &a ["x","x","x","x","x","x","x","x","x"]',
   'b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a]',
@@ -258,15 +223,11 @@ describe('readReportSidecar — absent is not the same as unreadable', () => {
   test('a real IO error reports `unreadable`, and never throws', async () => {
     const dir = makeTmpDir();
     const id = rid(1);
-    // A directory where the sidecar file should be: reading it fails with
-    // EISDIR — a genuine non-ENOENT IO error. Unlike chmod, this is not ignored
-    // when the suite runs as root and behaves the same on Windows.
     mkdirSync(sidecarPathForId(dir, id));
 
     const read = await readReportSidecar(sidecarPathForId(dir, id));
     expect(read.kind).toBe('unreadable');
     expect(read.kind === 'unreadable' && read.reason).toBe('io-error');
-    // The cause is carried, not discarded — the silence was the worst part.
     expect(read.kind === 'unreadable' && read.err).toBeDefined();
   });
 
@@ -295,7 +256,6 @@ describe('readReportSidecar — absent is not the same as unreadable', () => {
     const id = rid(1);
     writeFileSync(sidecarPathForId(dir, id), ALIAS_BOMB_YAML);
 
-    // `doc.errors` is empty here; the failure only surfaces from `toJSON()`.
     const read = await readReportSidecar(sidecarPathForId(dir, id));
     expect(read.kind).toBe('unreadable');
     expect(read.kind === 'unreadable' && read.reason).toBe('parse-error');
@@ -308,7 +268,6 @@ describe('listReports — states and ordering', () => {
     await seedReport(dir, 1, { state: 'upload-failed', lastError: { reason: 'offline', at: 'x' } });
     await seedReport(dir, 3, { state: 'generated' });
     const sentId = rid(2);
-    // A sent tombstone: sidecar present, zip already reclaimed.
     await writeReportSidecar(
       dir,
       makeSidecar({
@@ -369,7 +328,6 @@ describe('listReports — forgiving reads (FR9)', () => {
     const goodId = await seedReport(dir, 2, { state: 'generated' });
     const badId = rid(1);
     seedZip(dir, badId);
-    // A sidecar file present but neither valid YAML for the schema nor parseable.
     writeFileSync(sidecarPathForId(dir, badId), 'id: [unterminated\n  : : :');
 
     const result = await listReports(dir);
@@ -396,7 +354,6 @@ describe('listReports — forgiving reads (FR9)', () => {
     if (!result.ok) throw new Error('expected ok');
     expect(result.reports.find((r) => r.id === unknownId)?.state).toBe('unknown');
     expect(result.reports.find((r) => r.id === unknownId)?.degraded).toBe(true);
-    // Newer version still parses and renders its known state.
     expect(result.reports.find((r) => r.id === newerId)?.state).toBe('generated');
   });
 });
@@ -450,9 +407,6 @@ describe('listReports — one bad file must never break the list', () => {
 
     const result = await listReports(dir);
 
-    // The whole point: the scan survives. Before the `toJSON` guard this
-    // rejected `scanReports`'s `Promise.all` and took the entire history with
-    // it, which is the invariant the module header states.
     expect(result.ok).toBe(true);
     const rows = result.ok ? result.reports : [];
     expect(rows.map((r) => r.id).sort()).toEqual([goodId, bombId].sort());
@@ -464,20 +418,15 @@ describe('listReports — one bad file must never break the list', () => {
 
   test('retention still does its work with an alias-bomb sidecar present', async () => {
     const dir = makeTmpDir();
-    // An orphan sidecar (no zip) the sweep is supposed to reclaim...
     const orphanId = rid(1);
     writeFileSync(sidecarPathForId(dir, orphanId), 'id: [unterminated\n  : : :');
     const liveId = await seedReport(dir, 2, { state: 'generated' });
-    // ...and an alias bomb sharing the directory with it.
     const bombId = rid(3);
     seedZip(dir, bombId);
     writeFileSync(sidecarPathForId(dir, bombId), ALIAS_BOMB_YAML);
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // Asserting the sweep still ACTS, not merely that it resolved: a rejected
-    // scan makes it bail early, which is silent and would pass a
-    // does-not-throw assertion.
     expect(existsSync(sidecarPathForId(dir, orphanId))).toBe(false);
     expect(existsSync(zipPathForId(dir, liveId))).toBe(true);
     expect(existsSync(zipPathForId(dir, bombId))).toBe(true);
@@ -485,16 +434,11 @@ describe('listReports — one bad file must never break the list', () => {
 });
 
 describe('retention — a momentarily unreadable sidecar is not reclaimed', () => {
-  // chmod is the fixture here rather than a directory: the file has to stay
-  // genuinely UNLINKABLE-but-unreadable, or the assertion passes for the wrong
-  // reason (unlink of a directory fails regardless of the predicate).
   test.skipIf(process.getuid?.() === 0 || process.platform === 'win32')(
     'a sent tombstone whose sidecar hits EACCES survives the orphan sweep',
     async () => {
       const dir = makeTmpDir();
       const id = rid(1);
-      // A sent tombstone: zip already reclaimed, sidecar holds the state, the
-      // reference and the reporter's note.
       await writeReportSidecar(
         dir,
         makeSidecar({
@@ -513,7 +457,6 @@ describe('retention — a momentarily unreadable sidecar is not reclaimed', () =
       const survived = existsSync(path);
       chmodSync(path, 0o644);
       expect(survived).toBe(true);
-      // And the record is intact once it is readable again.
       const restored = await readSidecarValue(path);
       expect(restored?.reference).toBe('REF-TOMBSTONE');
       expect(restored?.note).toBe('the editor froze after a paste');
@@ -529,18 +472,12 @@ describe('send hooks — state transitions and in-flight lock', () => {
 
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
     expect((await readSidecarValue(sidecarPathForId(dir, id)))?.state).toBe('uploading');
-    // A second retry while the first is in flight is refused.
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: false });
   });
 
   test('a synthesized sidecar claims no project, so the row can never be titled by one', async () => {
     const dir = makeTmpDir();
     const id = rid(1);
-    // A sidecar-less bundle, as the CLI writes: the first retry synthesizes a
-    // record for it. That record asserts a bundle level and a system-wide flag
-    // nobody supplied, which is why the row title may lean on neither. The slug
-    // is the one identity signal synthesis cannot invent, and it must stay null
-    // or an untitled report starts claiming a project it never came from.
     seedZip(dir, id);
     const store = createBugReportSidecarStore({ dir });
 
@@ -569,10 +506,8 @@ describe('send hooks — state transitions and in-flight lock', () => {
     expect(sidecar?.zipDeleted).toBe(true);
     expect(sidecar?.attempts?.at(-1)).toMatchObject({ transport: 'upload', outcome: 'success' });
     expect(sidecar?.note).toBe('the editor froze after a paste');
-    // The confirmed-sent zip is reclaimed, its tombstone sidecar kept.
     expect(existsSync(zipPathForId(dir, id))).toBe(false);
     expect(existsSync(sidecarPathForId(dir, id))).toBe(true);
-    // The lock is released, so a later op on the same id is allowed.
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
   });
 
@@ -634,9 +569,6 @@ describe('runRetentionSweep', () => {
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // The zip that held the reporter's words is gone, so the sidecar is now the
-    // only local copy. A tombstone that dropped it would leave the row that
-    // most needs a title permanently unable to have one.
     const sidecar = await readSidecarValue(sidecarPathForId(dir, id));
     expect(sidecar?.zipDeleted).toBe(true);
     expect(sidecar?.note).toBe(note);
@@ -650,7 +582,6 @@ describe('runRetentionSweep', () => {
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // The two oldest are evicted; the newest is always kept.
     expect(existsSync(zipPathForId(dir, nth(ids, 0)))).toBe(false);
     expect(existsSync(zipPathForId(dir, nth(ids, 1)))).toBe(false);
     expect(existsSync(zipPathForId(dir, nth(ids, -1)))).toBe(true);
@@ -668,7 +599,6 @@ describe('runRetentionSweep', () => {
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // The oldest is `uploading` → skipped; the next two oldest are evicted instead.
     expect(existsSync(zipPathForId(dir, nth(ids, 0)))).toBe(true);
     expect(existsSync(zipPathForId(dir, nth(ids, 1)))).toBe(false);
     expect(existsSync(zipPathForId(dir, nth(ids, 2)))).toBe(false);
@@ -680,20 +610,16 @@ describe('runRetentionSweep', () => {
     const ids: string[] = [];
     for (let i = 1; i <= total; i += 1) ids.push(await seedReport(dir, i, { state: 'generated' }));
     const inFlight = createInFlightRegistry();
-    inFlight.add(nth(ids, 0)); // the oldest is mid-send
+    inFlight.add(nth(ids, 0));
 
     await runRetentionSweep(dir, inFlight);
 
     expect(existsSync(zipPathForId(dir, nth(ids, 0)))).toBe(true);
-    // The next oldest is evicted to satisfy the cap instead.
     expect(existsSync(zipPathForId(dir, nth(ids, 1)))).toBe(false);
   });
 
   test('evicts on the byte budget alone, with the count cap never exceeded', async () => {
     const dir = makeTmpDir();
-    // Three bundles at 40% of the budget each: 120% of the byte cap, but only
-    // 3 of the 10 allowed by the count cap. Eviction here can only be driven by
-    // the byte condition — drop it and nothing is reclaimed.
     const chunk = Math.floor(MAX_UNSENT_REPORT_BYTES * 0.4);
     const ids: string[] = [];
     for (let i = 1; i <= 3; i += 1) ids.push(await seedSparseReport(dir, i, chunk));
@@ -701,8 +627,6 @@ describe('runRetentionSweep', () => {
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // Evicting the oldest brings the total to 80% of the budget, so the sweep
-    // stops there — the remaining two (including the newest) stay.
     expect(existsSync(zipPathForId(dir, nth(ids, 0)))).toBe(false);
     expect(existsSync(sidecarPathForId(dir, nth(ids, 0)))).toBe(false);
     expect(existsSync(zipPathForId(dir, nth(ids, 1)))).toBe(true);
@@ -716,8 +640,6 @@ describe('runRetentionSweep', () => {
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // The residual over-budget state is the intended invariant: never strand a
-    // user with no bundle to retry, even when the only one left is oversized.
     expect(existsSync(zipPathForId(dir, older))).toBe(false);
     expect(existsSync(zipPathForId(dir, huge))).toBe(true);
   });
@@ -725,9 +647,6 @@ describe('runRetentionSweep', () => {
   test('reclaims an unreadable sidecar whose bundle is already gone', async () => {
     const dir = makeTmpDir();
     const orphanId = rid(1);
-    // Sidecar file present but unparseable, with no zip beside it: it is
-    // neither a sent tombstone nor an unsent bundle, so without an explicit
-    // sweep it belongs to no cap and accumulates forever.
     writeFileSync(sidecarPathForId(dir, orphanId), 'id: [unterminated\n  : : :');
     const liveId = await seedReport(dir, 2, { state: 'generated' });
 
@@ -740,9 +659,6 @@ describe('runRetentionSweep', () => {
   test('keeps a forward-compatible sidecar with an unrecognized state and no zip', async () => {
     const dir = makeTmpDir();
     const futureId = rid(1);
-    // A newer app wrote a state this build normalizes to `unknown`. It PARSES,
-    // so it is not the corrupt case — reclaiming it would defeat the open-enum
-    // forward compatibility the schema exists for.
     await writeReportSidecar(
       dir,
       makeSidecar({
@@ -779,7 +695,6 @@ describe('runRetentionSweep', () => {
 
     await runRetentionSweep(dir, createInFlightRegistry());
 
-    // The three oldest tombstone sidecars are removed.
     expect(existsSync(sidecarPathForId(dir, nth(ids, 0)))).toBe(false);
     expect(existsSync(sidecarPathForId(dir, nth(ids, 2)))).toBe(false);
     expect(existsSync(sidecarPathForId(dir, nth(ids, -1)))).toBe(true);
@@ -802,13 +717,11 @@ describe('reconcileStaleUploading', () => {
     expect(stale?.state).toBe('upload-failed');
     expect(stale?.lastError?.reason).toBe('interrupted-by-restart');
     expect(stale?.note).toBe('the editor froze after a paste');
-    // A non-uploading sidecar is untouched.
     expect((await readSidecarValue(sidecarPathForId(dir, okId)))?.state).toBe('generated');
   });
 });
 
 describe('send hooks — an unreadable sidecar is preserved, not overwritten', () => {
-  /** Seed a real note-bearing report, then make its sidecar unreadable in place. */
   async function seedUnreadable(dir: string, note: string): Promise<string> {
     const id = await seedReport(dir, 1, { state: 'generated', note });
     writeFileSync(sidecarPathForId(dir, id), 'state: [unclosed\n  bad: : :\n');
@@ -822,8 +735,6 @@ describe('send hooks — an unreadable sidecar is preserved, not overwritten', (
     const { logger, warns } = makeWarnRecorder();
     const store = createBugReportSidecarStore({ dir, logger });
 
-    // The send is not blocked — refusing a concurrent retry is the in-flight
-    // registry's job, not the sidecar's.
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
     expect(readFileSync(sidecarPathForId(dir, id))).toEqual(before);
     expect(warns.some((w) => w.message.includes('sidecar unreadable'))).toBe(true);
@@ -839,15 +750,10 @@ describe('send hooks — an unreadable sidecar is preserved, not overwritten', (
     await store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-PRESERVE' });
 
     expect(readFileSync(sidecarPathForId(dir, id))).toEqual(before);
-    // A confirmed send's reference is the reporter's only handle on the report
-    // with support, so it has to survive the skipped write. The log carries it,
-    // and the marker beside the untouched sidecar records it durably.
     const skipped = warns.find((w) => w.message.includes('not written to the sidecar'));
     expect(skipped).toBeDefined();
     expect(JSON.stringify(skipped?.data)).toContain('REF-PRESERVE');
     expect(readFileSync(sentMarkerPathForId(dir, id), 'utf-8')).toContain('REF-PRESERVE');
-    // The two side effects that follow, asserted rather than left implicit:
-    // retention reclaims the zip of a report now known to have sent.
     expect(existsSync(zipPathForId(dir, id))).toBe(false);
   });
 
@@ -857,22 +763,16 @@ describe('send hooks — an unreadable sidecar is preserved, not overwritten', (
     const store = createBugReportSidecarStore({ dir });
 
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
-    // Mid-send the lock is held, so a second retry is refused.
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: false });
 
     await store.sendHooks.onSendResult(id, { kind: 'upload-failed', reason: 'offline' });
 
-    // The `finally` still runs on the skipped-write branch. Moving the release
-    // into the `else` would compile and pass every other test while stranding
-    // the report in flight forever.
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
   });
 
   test('an ABSENT sidecar still synthesizes, so a legacy zip is not stranded', async () => {
     const dir = makeTmpDir();
     const id = rid(1);
-    // No sidecar at all, as the CLI writes it: nothing to preserve, so the
-    // first retry is still free to build a record.
     seedZip(dir, id);
     const store = createBugReportSidecarStore({ dir });
 
@@ -880,9 +780,6 @@ describe('send hooks — an unreadable sidecar is preserved, not overwritten', (
     expect((await readSidecarValue(sidecarPathForId(dir, id)))?.state).toBe('uploading');
   });
 
-  // chmod is the only fixture that keeps a PARSEABLE note behind a read failure,
-  // which is what makes this the end-to-end proof. It is also the one fixture
-  // root ignores, hence the guard.
   test.skipIf(process.getuid?.() === 0 || process.platform === 'win32')(
     'a valid note survives an EACCES read rather than being erased',
     async () => {
@@ -901,17 +798,7 @@ describe('send hooks — an unreadable sidecar is preserved, not overwritten', (
   );
 });
 
-/**
- * A send the intake CONFIRMED is a fact the store has to record, and the
- * store deliberately refuses to rewrite the one file that could record it —
- * an unreadable sidecar holds the reporter's prose. These pin
- * the sibling marker that carries the fact instead — without which the row
- * keeps offering Retry (a duplicate upload of a bundle intake already took),
- * hides the reference support asks for, and never leaves the unsent pool, so
- * cap eviction eventually unlinks the very note the refusal exists to protect.
- */
 describe('send hooks — a confirmed send is recorded even when the sidecar is unreadable', () => {
-  /** A note-bearing report with its zip, whose sidecar is then made unparseable. */
   async function seedUnreadableWithZip(dir: string, note: string): Promise<string> {
     const id = await seedReport(dir, 1, { state: 'generated', note });
     writeFileSync(sidecarPathForId(dir, id), 'state: [unclosed\n  bad: : :\n');
@@ -930,11 +817,8 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     const row = nth(result.reports, 0);
     expect(row.id).toBe(id);
     expect(row.state).toBe('sent');
-    // Retrying a report intake already accepted re-uploads the same bundle.
     expect(row.retryable).toBe(false);
-    // The reference is the reporter's only handle on the report with support.
     expect(row.reference).toBe('REF-LISTROW');
-    // The record itself is still unreadable, so the row stays degraded.
     expect(row.degraded).toBe(true);
   });
 
@@ -946,8 +830,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
 
     await store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-MARKER' });
 
-    // The preserve-what-we-cannot-read invariant is untouched: the record is
-    // not rewritten. The fact lands beside it instead.
     expect(readFileSync(sidecarPathForId(dir, id))).toEqual(before);
     expect(readFileSync(sentMarkerPathForId(dir, id), 'utf-8')).toContain('REF-MARKER');
   });
@@ -959,8 +841,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
 
     await store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-NORMAL' });
 
-    // The marker is the fallback for a record that could not be written, not a
-    // second copy of every send.
     expect(existsSync(sentMarkerPathForId(dir, id))).toBe(false);
     expect((await readSidecarValue(sidecarPathForId(dir, id)))?.reference).toBe('REF-NORMAL');
   });
@@ -984,14 +864,11 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     await store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-RECLAIM' });
 
     expect(existsSync(zipPathForId(dir, id))).toBe(false);
-    // The unreadable sidecar is still not ours to touch.
     expect(existsSync(sidecarPathForId(dir, id))).toBe(true);
   });
 
   test('the report leaves the unsent pool, so cap eviction never unlinks its note', async () => {
     const dir = makeTmpDir();
-    // The sent-but-unrecordable report is the OLDEST, which is precisely the
-    // one the unsent-count cap evicts first — taking the zip AND the sidecar.
     const sentId = await seedUnreadableWithZip(dir, 'crashed while renaming a folder');
     const store = createBugReportSidecarStore({ dir });
     await store.sendHooks.onSendResult(sentId, { kind: 'sent', reference: 'REF-CAP' });
@@ -1003,8 +880,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
 
     expect(existsSync(sidecarPathForId(dir, sentId))).toBe(true);
     expect(existsSync(sentMarkerPathForId(dir, sentId))).toBe(true);
-    // The cap did fire — the oldest genuinely-unsent report was evicted, so
-    // the survival above is not a vacuous pass.
     expect(existsSync(zipPathForId(dir, rid(2)))).toBe(false);
   });
 
@@ -1018,17 +893,9 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     const row = nth(result.reports, 0);
     expect(row.state).toBe('sent');
     expect(row.retryable).toBe(false);
-    // Nothing left to recover the reference from, so support is not offered —
-    // but a duplicate upload is not invited either.
     expect(row.reference).toBeUndefined();
   });
 
-  // The other marker trigger: the sidecar READS fine and its WRITE throws. A
-  // read-only reports directory is the portable way to force that — `rename`
-  // needs write permission on the directory, not on the target file, so no file
-  // mode reaches this arm. The same directory then blocks the marker write too,
-  // which is why this pins the branch being taken and the failure being loud
-  // rather than the marker landing.
   test.skipIf(process.getuid?.() === 0 || process.platform === 'win32')(
     'a readable sidecar whose write fails still reaches the marker, loudly',
     async () => {
@@ -1042,14 +909,10 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
       await store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-THROWN' });
 
       chmodSync(dir, 0o755);
-      // The sidecar was readable, so this is the thrown-write arm, not the
-      // skipped-read one. Asserting WHICH warn fired is what separates them.
       expect(warns.some((w) => w.message.includes('failed to write the send result sidecar'))).toBe(
         true,
       );
       expect(warns.some((w) => w.message.includes('not written to the sidecar'))).toBe(false);
-      // The marker attempt only happens when the sidecar did not record the
-      // send, so this warn is the proof the branch was taken.
       const markerFailed = warns.find((w) => w.message.includes('failed to write the sent marker'));
       expect(markerFailed).toBeDefined();
       expect(JSON.stringify(markerFailed?.data)).toContain('REF-THROWN');
@@ -1062,10 +925,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     const id = await seedUnreadableWithZip(dir, 'the note is in there as raw text');
     const store = createBugReportSidecarStore({ dir });
 
-    // Reclaiming the zip is what makes this reachable: a durably-corrupt
-    // sidecar with no bundle is exactly the orphan sweep's shape, so marking a
-    // send would otherwise hand it straight to that unlink. With the marker the
-    // report is a TOMBSTONE, bounded by the tombstone cap instead.
     await store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-ORPHAN' });
     await runRetentionSweep(dir, createInFlightRegistry());
     await runRetentionSweep(dir, createInFlightRegistry());
@@ -1092,12 +951,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     const store = createBugReportSidecarStore({ dir });
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
 
-    // Issued WITHOUT awaiting the send, so it reaches the in-flight check while
-    // the terminal record is still being written — the same interleaving a
-    // delete IPC gets on the event loop. The lock is what has to refuse it: if
-    // it were released before the marker write, this delete would unlink the
-    // zip and the sidecar, report success, and then the marker would land and
-    // resurrect the report as a phantom `sent` tombstone on the next scan.
     const send = store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-RACE' });
     const removed = await store.remove(id);
     await send;
@@ -1106,15 +959,10 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     expect(existsSync(sentMarkerPathForId(dir, id))).toBe(true);
   });
 
-  // Presence-first is what makes the two DESTRUCTIVE guards safe, and both are
-  // otherwise exercised only with markers that parse. A refactor swapping
-  // `sentMarkerPresent` for a truthy check on the parsed contents would pass
-  // every other test here while restoring the note-destruction path.
   test('the orphan sweep spares a corrupt sidecar whose marker does not parse either', async () => {
     const dir = makeTmpDir();
     const id = await seedUnreadableWithZip(dir, 'a note behind a corrupt file');
     writeFileSync(sentMarkerPathForId(dir, id), 'not: [yaml\n  : :');
-    // The zip already reclaimed is the shape the orphan sweep keys on.
     rmSync(zipPathForId(dir, id));
 
     await runRetentionSweep(dir, createInFlightRegistry());
@@ -1135,9 +983,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
   test('a marker-only report lists as sent, sorted by its send time', async () => {
     const dir = makeTmpDir();
     const id = rid(1);
-    // What the tombstone cap and a reclaimed sidecar leave behind. The whole
-    // list is one try/catch, so a throw in this branch would black out the
-    // history dialog rather than misrender one row.
     seedSentMarker(dir, id, 'REF-ALONE-ROW', ridCreatedAt(1));
 
     const result = await listReports(dir);
@@ -1146,7 +991,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     expect(row.state).toBe('sent');
     expect(row.retryable).toBe(false);
     expect(row.reference).toBe('REF-ALONE-ROW');
-    // The marker's send time is the only timestamp such a row has.
     expect(row.createdAt).toBe(ridCreatedAt(1));
     expect(row.zipExists).toBe(false);
     expect(row.zipDeleted).toBe(true);
@@ -1155,7 +999,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
   test('a marker alone is a deletable record, not a not-found', async () => {
     const dir = makeTmpDir();
     const id = rid(1);
-    // Everything else has been reclaimed; the marker is all that is left.
     seedSentMarker(dir, id, 'REF-ALONE');
 
     expect(await deleteReport(dir, id, createInFlightRegistry())).toEqual({ ok: true });
@@ -1181,10 +1024,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
 
   test('boot reconciliation does not demote a report the marker says sent', async () => {
     const dir = makeTmpDir();
-    // `markUploading` landed, the send succeeded, and the terminal write could
-    // not touch the sidecar: it is stuck at `uploading` with the marker beside
-    // it. Demoting would write a false `interrupted-by-restart` into a record
-    // that ships inside the next diagnostic bundle.
     const id = await seedReport(dir, 1, { state: 'uploading', note: 'stuck mid-send' });
     seedSentMarker(dir, id, 'REF-BOOT');
 
@@ -1192,9 +1031,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     expect((await readSidecarValue(sidecarPathForId(dir, id)))?.state).toBe('uploading');
   });
 
-  // chmod is the only fixture that keeps a PARSEABLE note behind a read
-  // failure, which is what makes this the end-to-end proof that recording the
-  // send did not cost the note the skipped write exists to protect.
   test.skipIf(process.getuid?.() === 0 || process.platform === 'win32')(
     'the reporter note survives an EACCES send that the marker records',
     async () => {
@@ -1215,13 +1051,6 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
   );
 });
 
-/**
- * The scan behind `listReports`, `runRetentionSweep` and
- * `reconcileStaleUploading` used to drop the read outcome silently, so an
- * engineer asking why a row is stuck degraded had no trace on the most common
- * path. It warns now — once per id, because the list is re-scanned on every
- * dialog open and every retention sweep.
- */
 describe('scanReports diagnostics — an unreadable sidecar warns once, not once per scan', () => {
   test('the first scan names the id and the reason, later scans stay quiet', async () => {
     const dir = makeTmpDir();
@@ -1261,7 +1090,6 @@ describe('scanReports diagnostics — an unreadable sidecar warns once, not once
     writeFileSync(path, 'state: [unclosed\n  bad: : :\n');
     await store.list();
 
-    // A file that degrades a second time is a second event, not a repeat.
     expect(scanWarns()).toHaveLength(2);
   });
 
@@ -1271,18 +1099,12 @@ describe('scanReports diagnostics — an unreadable sidecar warns once, not once
 
     expect(warned.shouldWarn(id, 'sidecar', 'parse-error')).toBe(true);
     expect(warned.shouldWarn(id, 'sidecar', 'parse-error')).toBe(false);
-    // A file that degrades a DIFFERENT way is a different event.
     expect(warned.shouldWarn(id, 'sidecar', 'io-error')).toBe(true);
-    // So is the OTHER file for the same report, and clearing one must not
-    // re-arm the other: a report whose sidecar reads cleanly on every scan
-    // would otherwise re-log its unreadable marker forever.
     expect(warned.shouldWarn(id, 'marker', 'unreadable')).toBe(true);
     warned.clear(id, 'sidecar');
     expect(warned.shouldWarn(id, 'sidecar', 'parse-error')).toBe(true);
     expect(warned.shouldWarn(id, 'marker', 'unreadable')).toBe(false);
 
-    // The set is bounded: ids churn over a long-lived desktop process, so it
-    // resets wholesale rather than growing forever.
     const other = createSidecarScanWarnRegistry();
     for (let i = 0; i <= MAX_REMEMBERED_SCAN_WARNINGS; i += 1) {
       other.shouldWarn(`${i}`, 'sidecar', 'parse-error');
@@ -1300,9 +1122,6 @@ describe('scanReports diagnostics — an unreadable sidecar warns once, not once
     await store.list();
     await store.list();
 
-    // Same trace an unreadable sidecar gets, and deduplicated the same way: the
-    // row still reads `sent`, but with no reference Contact support disappears
-    // and with no `sentAt` it sorts first into the tombstone cap.
     const markerWarns = warns.filter((w) => w.message.includes('sent marker unreadable'));
     expect(markerWarns).toHaveLength(1);
     expect(JSON.stringify(nth(markerWarns, 0).data)).toContain(id);

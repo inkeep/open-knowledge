@@ -3,12 +3,10 @@ import { type LanguagePreference, SUPPORTED_LOCALES } from './locales.ts';
 import { type LocaleEnvironment, readNodeLocaleSignal } from './node-locale-provider.ts';
 import { type LocaleResolution, resolveLocale } from './resolve-locale.ts';
 
-/** The ordered preference list an environment yields, as plain strings. */
 function preferencesFor(env: LocaleEnvironment): readonly string[] {
   return [...readNodeLocaleSignal(env).preferenceList];
 }
 
-/** Run an environment through the provider and the shared policy, end to end. */
 function resolveFor(
   env: LocaleEnvironment,
   storedPreference?: LanguagePreference,
@@ -41,9 +39,6 @@ describe('POSIX locale id conversion', () => {
     expect(preferencesFor({ LANG: 'fr' })).toEqual(['fr']);
   });
 
-  // `C` and `POSIX` name the scripting locale, not a language. `POSIX` is the
-  // one that hides: it canonicalizes to a meaningless `posix` instead of
-  // failing, so rejecting both by name is what keeps it out of the matcher.
   test('the C locale is no signal at all', () => {
     expect(preferencesFor({ LANG: 'C' })).toEqual([]);
   });
@@ -74,9 +69,6 @@ describe('setlocale precedence', () => {
     ]);
   });
 
-  // The first variable that is SET wins, even when its value names no language.
-  // Falling through to a weaker variable here would invert POSIX precedence and
-  // translate a session the user explicitly asked to keep untranslated.
   test('a set-but-unusable stronger variable is not overridden by a weaker one', () => {
     expect(preferencesFor({ LC_ALL: 'C', LANG: 'fr_FR.UTF-8' })).toEqual([]);
   });
@@ -104,8 +96,6 @@ describe('the GNU LANGUAGE list', () => {
     ]);
   });
 
-  // LANGUAGE is not part of the setlocale chain: it layers on top of the
-  // message category and gettext ignores it outright when that category is C.
   test('is ignored entirely when the message locale is C', () => {
     expect(preferencesFor({ LANGUAGE: 'fr_FR:de_DE', LC_ALL: 'C' })).toEqual([]);
   });
@@ -205,8 +195,6 @@ describe('the ambient environment', () => {
     vi.unstubAllEnvs();
   });
 
-  // The default argument is the only line an injected environment never runs,
-  // and it is the one every real caller takes.
   test('is read when no environment is supplied', () => {
     for (const variable of ['OK_LANG', 'LC_ALL', 'LC_MESSAGES', 'LANGUAGE']) {
       vi.stubEnv(variable, undefined);
@@ -220,9 +208,6 @@ describe('the ambient environment', () => {
 });
 
 describe('module placement', () => {
-  // The renderer bundles the root barrel, and nothing in CI catches a
-  // `process.env` read that reaches it — the failure surfaces as a blank
-  // editor window at runtime.
   test('the Node provider ships from the Node-only sub-export and not the browser-safe barrel', async () => {
     const nodeOnly = await import('../server.ts');
     expect(Object.keys(nodeOnly)).toContain('readNodeLocaleSignal');

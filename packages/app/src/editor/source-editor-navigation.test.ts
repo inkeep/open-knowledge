@@ -124,8 +124,6 @@ describe('pending-intent expiry', () => {
     vi.setSystemTime(new Date('2026-07-09T12:00:20.000Z'));
     rememberPendingSourceNavigation('doc-a', lintNavigation);
 
-    // 40s after the first remember, 20s after the second — the refreshed
-    // timestamp keeps the intent alive.
     vi.setSystemTime(new Date('2026-07-09T12:00:40.000Z'));
     expect(consumePendingSourceNavigation('doc-a')).toEqual(lintNavigation);
   });
@@ -185,9 +183,6 @@ describe('mode-exit clearing', () => {
   });
 
   test('leaving a mode preserves the intent queued for the mode being entered', () => {
-    // A W->S flip queues a source landing while leaving the WYSIWYG view.
-    // Clearing the exited (WYSIWYG) mode must not discard that queued landing,
-    // otherwise the flip that just banked it would erase itself.
     rememberPendingSourceNavigation('doc-a', { kind: 'selection-offset', anchor: srcAnchor });
     clearPendingNavigationForExitedMode('doc-a', 'wysiwyg');
     expect(consumePendingSourceNavigation('doc-a')).toEqual({
@@ -198,7 +193,6 @@ describe('mode-exit clearing', () => {
 });
 
 describe('navigation pin', () => {
-  // Offsets index the target word 'target' within a fixed source string.
   const SOURCE = 'hello world target here';
   const TARGET_START = SOURCE.indexOf('target');
   const TARGET_END = TARGET_START + 'target'.length;
@@ -244,7 +238,6 @@ describe('navigation pin', () => {
     const { doc, text } = seed();
     const pin = createNavigationPin(text, TARGET_START, TARGET_END);
 
-    // Delete 'rget', leaving 'ta' at the original start.
     text.delete(TARGET_START + 2, 4);
 
     expect(resolveNavigationPin(pin, doc)).toBe(TARGET_START);
@@ -254,7 +247,6 @@ describe('navigation pin', () => {
     const { text } = seed();
     const pin = createNavigationPin(text, TARGET_START, TARGET_END);
 
-    // A document that never saw this pin's structure cannot resolve it.
     const other = new Y.Doc();
     other.getText('source').insert(0, SOURCE);
 

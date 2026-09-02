@@ -148,12 +148,8 @@ describe('Dialog window-drag band', () => {
       'h-12',
       'z-50',
     ]);
-    // The ordering IS the contract: after the overlay so it beats the no-drag
-    // blanket, before the content so the close X and heading of a dialog that
-    // overlaps the band stay clickable rather than becoming drag region.
     expect(overlay?.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(content?.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
-    // Opts into the globals.css rule that suspends drag under an open popper.
     expect(strip.hasAttribute('data-electron-drag')).toBe(true);
     expect(strip.getAttribute('aria-hidden')).toBe('true');
   });
@@ -164,15 +160,11 @@ describe('Dialog window-drag band', () => {
 
     const className =
       document.querySelector('[data-slot="dialog-content"]')?.getAttribute('class') ?? '';
-    // Twice the 3rem band, because the dialog is vertically centered.
     expectVisualClassTokens(className, ['max-h-[calc(100dvh-6rem)]']);
     expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-2rem)]']);
   });
 
   test('a Dialog hosting an AlertDialog yields two distinct strips', async () => {
-    // Real path: Settings hosts a delete-confirmation AlertDialog. The per-
-    // surface testId exists for exactly this composition — a hardcoded id
-    // would collide here and getByTestId would throw on the duplicate.
     vi.stubGlobal('okDesktop', {});
     const { Dialog, DialogContent, DialogTitle } = await import('./dialog');
     const { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogTitle } = await import(

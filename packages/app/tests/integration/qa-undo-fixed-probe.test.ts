@@ -1,9 +1,3 @@
-/**
- * QA probe: FWD-04 corrected — agent undo across an edge-run write, with the
- * 600ms captureTimeout gap between writes the shipped C11 suite uses (the
- * first attempt coalesced both writes into one StackItem, a probe artifact).
- */
-
 import { appendFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';

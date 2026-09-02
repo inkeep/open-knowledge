@@ -39,9 +39,6 @@ describe('createMentionCorpus — default corpus', () => {
   });
 
   test('the default fetch opts into folders — the composer is the one folder consumer', async () => {
-    // Pins createMentionCorpus's default argument, not an injected stub:
-    // fetchPages excludes folders unless asked, and the composer must keep
-    // asking so folders stay attachable as chips.
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
       const body = url.startsWith('/api/pages')
@@ -80,8 +77,6 @@ describe('createMentionCorpus — fetch retry contract', () => {
     let calls = 0;
     const fetch = () => {
       calls += 1;
-      // First `@`: reject (the regression locked the corpus empty here). Second
-      // `@`: resolve, proving the retry path is reachable.
       return calls === 1 ? Promise.reject(new Error('network down')) : Promise.resolve([PAGE]);
     };
     const corpus = createMentionCorpus(fetch);
@@ -89,12 +84,9 @@ describe('createMentionCorpus — fetch retry contract', () => {
     const first = await corpus.getItems('');
     expect(calls).toBe(1);
     expect(first).toEqual([]);
-    // The fix: a failed first fetch must NOT mark the corpus loaded, or the
-    // session is permanently empty. Only `error` flips.
     expect(corpus.snapshot()).toEqual({ loaded: false, error: true });
 
     const second = await corpus.getItems('');
-    // The corpus re-fetched (calls === 2) rather than serving the empty cache.
     expect(calls).toBe(2);
     expect(second.map((i) => i.path)).toEqual(['notes.md']);
     expect(corpus.snapshot()).toEqual({ loaded: true, error: false });
@@ -108,10 +100,6 @@ describe('createMentionCorpus — fetch retry contract', () => {
     ];
     const corpus = createMentionCorpus(() => Promise.resolve(items));
     const first = await corpus.getItems('');
-    // The kind rides on to the chip attributes and on into the ACP attachment
-    // part, so the wire faithfully distinguishes file references from folder
-    // references — folders can't embed contents, and their block carries the
-    // inode/directory mimetype.
     expect(first.map((i) => ({ path: i.path, kind: i.kind }))).toEqual([
       { path: 'notes.md', kind: 'file' },
       { path: 'assets/logo.png', kind: 'file' },

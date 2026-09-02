@@ -1,10 +1,3 @@
-/**
- * Attachment-placement controls for the Preferences pane. The mode
- * select and folder input are one config leaf
- * (`content.attachmentFolderPath`), so this needs a small custom state
- * machine instead of the single-field schema-form path.
- */
-
 import {
   CONFIG_DOC_NAME_PROJECT,
   type ConfigBinding,

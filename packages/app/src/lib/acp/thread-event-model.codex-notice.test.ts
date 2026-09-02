@@ -1,13 +1,3 @@
-/**
- * The fold's half of the legacy Codex warning contract: a complete producer
- * envelope becomes runtime-status chrome, and everything else keeps its bytes
- * and its ordinary bubble.
- *
- * Fixtures carry the producer's exact emission rather than hand-typed
- * approximations, and the same file backs the core predicate's tests and the
- * server's boundary guard, so the three cannot drift apart.
- */
-
 import type { SessionUpdate, ThreadEvent } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import * as fc from 'fast-check';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -28,11 +18,6 @@ type AgentIdentity = typeof fixture.agents.codexRegistry;
 const agentNamed = (name: string | undefined): AgentIdentity =>
   name === undefined ? CODEX : (fixture.agents as Record<string, AgentIdentity>)[name];
 
-/**
- * Fixture updates are untyped wire JSON on purpose: several negatives are
- * shapes the SDK's types forbid, which is exactly what has to reach the fold
- * unclassified rather than be excluded by a cast at the test boundary.
- */
 const asUpdate = (value: unknown): SessionUpdate => value as SessionUpdate;
 
 let ts = 0;
@@ -58,17 +43,12 @@ const notices = (items: readonly RenderedItem[]): AgentNotice[] =>
 const agentMessages = (items: readonly RenderedItem[]): Message[] =>
   items.filter((item): item is Message => item.kind === 'message' && item.role === 'agent');
 
-/**
- * Every message bubble regardless of role — a near miss on a thought or user
- * chunk still has to keep its bytes, and it keeps them on its own role's path.
- */
 const messageText = (items: readonly RenderedItem[]): string =>
   items
     .filter((item): item is Message => item.kind === 'message')
     .map((item) => item.text)
     .join('');
 
-/** Every agent-authored byte the fold emitted, notice and prose alike, in order. */
 const agentText = (items: readonly RenderedItem[]): string =>
   items
     .filter(
@@ -151,10 +131,6 @@ describe('legacy Codex warning classification', () => {
   test.each(
     fixture.negatives.map((n) => [n.name, n] as const),
   )('near miss %s keeps its bytes on the ordinary path', (_name, negative) => {
-    // The fixture records the identity a near miss belongs to as a KEY into
-    // `agents`, not an inline object — a couple of them are near misses only
-    // because of who sent them, so folding under a raw key would reject them
-    // for being malformed and prove nothing about the identity gate.
     const agent = agentNamed((negative as { agent?: string }).agent);
 
     const model = buildThreadRenderModel([su(negative.update)], agent);
@@ -242,7 +218,6 @@ describe('legacy Codex warning fold properties', () => {
     'plain answer text',
   ];
 
-  /** One agent text event: a candidate, a near miss, or prose carrying an id. */
   const eventArb = fc.oneof(
     fc.constantFrom(...candidateTexts).map((text) => ({ text, candidate: true })),
     fc.constantFrom(...proseTexts).map((text) => ({ text, candidate: false })),

@@ -366,8 +366,6 @@ export async function updateGeneratedIndexGitAttributes(options: {
         { err: rollbackError, path: normalizeFsPath(context.attributesPath) },
         'failed to roll back generated-index Git attributes',
       );
-      // The caller still receives unavailable; a second write cannot make the
-      // original setup trustworthy enough to enable generation.
     }
     log.warn(
       { err: error, path: normalizeFsPath(context.attributesPath) },

@@ -60,7 +60,6 @@ function postReq(url: string, body: unknown): IncomingMessage {
 let api: ReturnType<typeof createCommentApi>;
 let bodies: Map<string, string>;
 let changed: number;
-/** The store's parent — `comments/` lives under it, and so does `threads/`. */
 let localDir: string;
 
 beforeEach(async () => {
@@ -175,7 +174,7 @@ describe('comment-api routes', () => {
 
   test('POST /api/comment queue returns queued + orphaned status', async () => {
     const id = await createThread();
-    bodies.set('notes/rollout', 'nothing to see here'); // anchor will be lost
+    bodies.set('notes/rollout', 'nothing to see here');
     const res = new MockRes();
     await api.mutate(
       postReq('/api/comment', { action: 'queue', id }),
@@ -197,11 +196,11 @@ describe('comment-api routes', () => {
 
   test('mutations signal clients to refetch; reads do not', async () => {
     const id = await createThread();
-    expect(changed).toBe(1); // create signalled
+    expect(changed).toBe(1);
 
     const listRes = new MockRes();
     await api.list(getReq('/api/comments?doc=notes/rollout'), listRes as unknown as ServerResponse);
-    expect(changed).toBe(1); // a read must not signal
+    expect(changed).toBe(1);
 
     await api.mutate(
       postReq('/api/comment', { action: 'resolve', id }),
@@ -322,7 +321,6 @@ describe('comment-api routes', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json.threadId).toBe(id);
 
-    // really gone — not merely unqueued or resolved
     const readRes = new MockRes();
     await api.read(getReq(`/api/comment?id=${id}`), readRes as unknown as ServerResponse);
     expect(readRes.statusCode).toBe(404);
@@ -333,8 +331,6 @@ describe('comment-api routes', () => {
   });
 
   test('DELETE /api/comment refuses an id that walks out of the comments dir', async () => {
-    // The ACP thread store is `comments/`'s sibling and names its files with the
-    // same two extensions, so a traversing id lands on real agent transcripts.
     const victimId = randomUUID();
     mkdirSync(join(localDir, 'threads'), { recursive: true });
     const transcript = join(localDir, 'threads', `${victimId}.ndjson`);

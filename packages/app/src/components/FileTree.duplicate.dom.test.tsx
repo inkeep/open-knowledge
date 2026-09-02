@@ -207,11 +207,6 @@ let duplicateStatus = 200;
 let duplicateGate: Promise<void> | null = null;
 let duplicateFetchError: Error | null = null;
 let fetchCalls: FetchCall[] = [];
-// Root-level entries the server "grows" mid-test (e.g. a folder the duplicate
-// just created on disk). The post-duplicate docs refresh re-reads the disk
-// walk, so a duplicated root folder surfaces here — the lazy splice keeps a
-// client optimistic add only for children of folders the server still returns,
-// not for a brand-new top-level folder.
 let extraDocuments: FileEntry[] = [];
 let okignoreBindingMock: {
   current: () => string;
@@ -276,8 +271,6 @@ function makeFetchMock() {
     if (url === '/api/duplicate-path') {
       if (duplicateGate) await duplicateGate;
       if (duplicateFetchError) throw duplicateFetchError;
-      // A folder duplicate creates the copy on disk; the next disk-walk listing
-      // returns it (the file-watcher round-trip, simulated).
       const dup = duplicateResponse as { kind?: string; path?: string } | undefined;
       if (duplicateStatus === 200 && dup?.kind === 'folder' && typeof dup.path === 'string') {
         extraDocuments = [
@@ -472,8 +465,6 @@ describe('FileTree duplicate action runtime behavior', () => {
     extraDocuments = [];
     okignoreBindingMock = null;
     projectLocalBindingMock = null;
-    // These duplicate/rename tests don't depend on visibility config; the
-    // tree loads through the default disk-walk listing.
     mergedConfigMock = null;
     deleteConfirmationProps = null;
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
@@ -621,9 +612,6 @@ describe('FileTree duplicate action runtime behavior', () => {
       /Delete/,
     ]);
 
-    // Global visibility toggles live on the sidebar surfaces (toolbar
-    // popover, empty-space menu, native View menu) — the per-row menu
-    // carries none.
     expect(screen.queryByTestId('file-tree-menu-show-hidden-files')).toBeNull();
 
     await user.click(screen.getByRole('menuitem', { name: /expand all/i }));
@@ -663,9 +651,6 @@ describe('FileTree duplicate action runtime behavior', () => {
     await waitFor(() => {
       expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeTruthy();
     });
-    // Read-only posture: OK-managed rows expose no rename/delete/duplicate/
-    // hide — the canonical editors own template/skill mutation, and raw `.ok`
-    // state is inspect-only.
     expect(screen.queryByRole('menuitem', { name: /duplicate/i })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /rename/i })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /^delete/i })).toBeNull();
@@ -683,9 +668,6 @@ describe('FileTree duplicate action runtime behavior', () => {
     await waitFor(() => {
       expect(screen.getByRole('menuitem', { name: /copy path/i })).toBeTruthy();
     });
-    // Creating inside `.ok` is server-refused — offering New file/folder here
-    // would be a broken affordance, so the create section hides with the
-    // mutate section.
     expect(screen.queryByRole('menuitem', { name: /new file/i })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /new folder/i })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /new from template/i })).toBeNull();

@@ -64,7 +64,6 @@ vi.doMock('@/lib/saved-themes-client', () => ({
 
 const userBinding = { patch: (p: unknown) => patchCalls.push(p) } as never;
 
-/** The six pre-base16 seed keys, nulled by every full-scheme write to delete them. */
 const RETIRED_LEGACY_KEYS = {
   background: null,
   surface: null,
@@ -74,18 +73,14 @@ const RETIRED_LEGACY_KEYS = {
   border: null,
 };
 
-/** The full scheme flattened into the config shape `reset` / `import` write. */
 const DEFAULT_SCHEME_PATCH = {
   name: DEFAULT_CUSTOM_SCHEME.name,
-  // The default scheme carries no credit, and the write nulls it so importing a
-  // credited scheme and then resetting doesn't strand the old author.
   author: null,
   variant: DEFAULT_CUSTOM_SCHEME.variant,
   ...DEFAULT_CUSTOM_SCHEME.palette,
   ...RETIRED_LEGACY_KEYS,
 };
 
-/** A complete scheme in the current upstream layout, for the import path. */
 const PASTED_SCHEME = `system: "base16"
 name: "Ayu Dark"
 author: "A. Scheme Author"
@@ -260,31 +255,23 @@ describe('CustomThemeEditor', () => {
   test('an invalid hex shows an inline error, marks the field invalid, and keeps the value', async () => {
     const { container, queryByTestId } = await renderEditor();
     const hex = hexInputs(container)[0] as HTMLInputElement;
-    // Pristine value is a valid hex — no error, not marked invalid.
     expect(queryByTestId('custom-theme-hex-error-base00')).toBeNull();
     expect(hex.getAttribute('aria-invalid')).toBe('false');
 
     fireEvent.change(hex, { target: { value: '#12' } });
     expect(queryByTestId('custom-theme-hex-error-base00')).not.toBeNull();
     expect(hex.getAttribute('aria-invalid')).toBe('true');
-    // The invalid value stays visible (no silent revert) so the user can fix it.
     expect(hex.value).toBe('#12');
   });
 
   test('an invalid slot associates its error with the input via aria-describedby', async () => {
-    // A screen-reader user returning to an invalid hex field must hear the error
-    // as the field's description, not just once when it first appears. The
-    // describedby target must exist and carry the message (mirrors the
-    // paste-import field's own wiring).
     const { container, getByTestId } = await renderEditor();
     const hex = hexInputs(container)[0] as HTMLInputElement;
-    // Valid pristine value: no association.
     expect(hex.getAttribute('aria-describedby')).toBeNull();
 
     fireEvent.change(hex, { target: { value: '#12' } });
     const errorId = hex.getAttribute('aria-describedby');
     expect(errorId).toBe('custom-theme-hex-error-base00');
-    // The referenced node exists and carries the error text.
     expect(getByTestId('custom-theme-hex-error-base00').id).toBe(errorId);
   });
 
@@ -297,9 +284,6 @@ describe('CustomThemeEditor', () => {
   });
 
   test('importing a pasted scheme writes all sixteen slots and the metadata', async () => {
-    // `author` included: a scheme's credit line has to survive the write, or it
-    // is gone by the next reload and "Copy as YAML" hands back an uncredited
-    // copy of someone else's scheme.
     const { getByTestId, queryByRole } = await renderEditor();
     pasteTheme(getByTestId('custom-theme-import'), PASTED_SCHEME);
     expect(queryByRole('button', { name: 'Import theme' })).toBeNull();
@@ -371,9 +355,6 @@ describe('CustomThemeEditor', () => {
   });
 
   test('editing a slot on a pre-base16 config migrates it and retires the old keys', async () => {
-    // The upgrade path: a user with an existing custom theme changes one color.
-    // The write must carry their whole (upgraded) palette and delete the six
-    // legacy keys, not leave a half-format config behind.
     mergedConfig = {
       appearance: {
         colorTheme: 'custom',
@@ -395,20 +376,16 @@ describe('CustomThemeEditor', () => {
     expect(patchCalls.length).toBe(1);
     const written = (patchCalls[0] as { appearance: { customTheme: Record<string, unknown> } })
       .appearance.customTheme;
-    // The edited slot, and the rest of their palette carried through.
     expect(written.base00).toBe('#123456');
     expect(written.base01).toBe('#202020');
     expect(written.base05).toBe('#fafafa');
     expect(written.base0D).toBe('#3366ff');
-    // Legacy keys nulled — a null in a config patch deletes the key.
     for (const key of ['background', 'surface', 'foreground', 'primary', 'accent', 'border']) {
       expect(written[key], key).toBeNull();
     }
   });
 
   test('editing a slot on an already-base16 config patches only that slot', async () => {
-    // No migration to do, so the write stays minimal rather than rewriting all
-    // sixteen slots on every keystroke-commit.
     mergedConfig = {
       appearance: { colorTheme: 'custom', customTheme: { base00: '#101010' } },
     };
@@ -433,7 +410,6 @@ describe('CustomThemeEditor', () => {
     const { container, getByLabelText } = await renderEditor();
     const preview = getByLabelText('Theme preview');
     expect(preview).toBeTruthy();
-    // Nothing is lit until a slot is pointed at.
     expect(container.querySelectorAll('[data-lit="true"]').length).toBe(0);
 
     const stringSwatch = container.querySelector<HTMLButtonElement>(
@@ -441,7 +417,6 @@ describe('CustomThemeEditor', () => {
     );
     expect(stringSwatch).not.toBeNull();
     fireEvent.mouseEnter(stringSwatch as HTMLButtonElement);
-    // base0B is the strings slot — the code sample's string literal lights up.
     expect(
       container.querySelectorAll('[data-lit="true"][data-slot="base0B"]').length,
     ).toBeGreaterThan(0);
@@ -451,7 +426,6 @@ describe('CustomThemeEditor', () => {
   });
 
   test('keyboard focus lights the same surfaces as hover', async () => {
-    // The spotlight must not be pointer-only — the slot list is a tab sequence.
     const { container } = await renderEditor();
     const swatch = container.querySelector<HTMLButtonElement>(
       'button[aria-label^="Select base0E "]',

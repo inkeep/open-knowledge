@@ -1,31 +1,3 @@
-/**
- * Project Navigator return-affordance smoke test — drives an Electron launch
- * with a `lastOpenedProject` so the editor window opens first (Navigator
- * window is NOT initially present), then triggers `bridge.navigator.open()`
- * from the editor renderer and asserts that the Navigator window appears.
- *
- * Coverage (one test per branch where the branches are observably distinct):
- *   1. Editor opens FIRST (lastOpenedProject path).
- *   2. closed → create: `bridge.navigator.open()` spawns a navigator window.
- *   3. count never exceeds 1 across re-invokes (poll-based, not
- *      a fixed sleep). These branches are not separately distinguishable
- *      from window-count alone, but the count-stability poll catches the
- *      regression class both branches are intended to prevent (duplicate spawn).
- *   4. closing the navigator leaves the editor window alive.
- *
- * The test calls `bridge.navigator.open()` directly via `page.evaluate(...)`
- * rather than clicking the dropdown trigger — exercising the IPC contract is
- * the goal here; full DOM-driven affordance coverage (dropdown click,
- * CommandPalette `Cmd+K` keystroke) belongs to component-level Playwright
- * runs that also need the `pnpm dev` server, not the smoke harness.
- *
- * Skip gates mirror `deep-link.e2e.ts` and `mcp-wiring.e2e.ts`:
- *   - `OK_DESKTOP_E2E_SMOKE !== '1'` — opt-in so `pnpm exec playwright test` on
- *     the whole repo doesn't try to launch Electron in headless CI.
- *   - unsupported platform — the harness drives darwin / win32 / linux.
- *   - `out/main/index.js` missing — `pnpm run build:desktop` must have run.
- */
-
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -48,12 +20,6 @@ interface SeededHome {
   projectDir: string;
 }
 
-// Compute the per-test Electron userData dir under tmpHome. The Chromium
-// `--user-data-dir=<path>` switch is the only mechanism that reliably
-// isolates `app.getPath('userData')` in dev mode — Electron's default
-// resolution reads `NSBundle.mainBundle`'s CFBundleName (which is
-// "Electron" when launched via `Electron.app/Contents/MacOS/Electron`,
-// regardless of `productName` or the `HOME` env var).
 function userDataDirFor(tmpHome: string): string {
   return join(tmpHome, 'electron-userdata');
 }
@@ -177,11 +143,8 @@ test.describe('Project Navigator return-affordance smoke', () => {
     captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
-    // Editor should be the only window initially — Navigator did NOT spawn
-    // because lastOpenedProject was set.
     await expect.poll(() => countNavigatorWindows(app)).toBe(0);
 
-    // Invoke the bridge IPC and assert the Navigator window appears.
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();
     });
@@ -193,10 +156,6 @@ test.describe('Project Navigator return-affordance smoke', () => {
       })
       .toBe(1);
 
-    // Re-invoke twice. Count must NEVER exceed 1 across the
-    // poll window: an event-driven check that fails the moment a duplicate
-    // appears, rather than waiting out a fixed sleep budget that could
-    // mask a slow-spawn race on a loaded machine.
     await editor.evaluate(async () => {
       await window.okDesktop?.navigator.open();
     });
@@ -227,9 +186,6 @@ test.describe('Project Navigator return-affordance smoke', () => {
     });
     const navigatorPage = await findNavigatorWindow(app);
 
-    // Close the Navigator. The editor window must NOT be torn down by
-    // any side-effect of the navigator's `closed` lifecycle handler
-    // (which only nulls the module-level `navigatorWindow` ref in main).
     await navigatorPage.close();
 
     await expect
@@ -239,9 +195,6 @@ test.describe('Project Navigator return-affordance smoke', () => {
       })
       .toBe(0);
 
-    // Editor must still be alive — verifying via its renderer-side bridge
-    // proves the BrowserWindow is still attached to its utility process,
-    // not just that an Electron handle exists.
     await expect
       .poll(() => countEditorWindows(app), {
         timeout: 2_000,

@@ -1,24 +1,3 @@
-/**
- * `logIpcError` boundary normalization — pins the canonical-payload contract
- * for the structured IPC failure log shape against three classes of `cause`
- * input that the canonical-payload contract must preserve:
- *
- *   1. Plain object cause — round-trips faithfully (existing baseline).
- *   2. Error instance cause — message + name + stack are preserved on the
- *      wire. `JSON.stringify(new Error('boom'))` returns `'{}'` because
- *      Error's standard properties are non-enumerable, so without a
- *      boundary-side normalize step every `cause: err` site in
- *      mcp-wiring.ts (and the pattern that future handlers will copy) would
- *      emit `{"cause":{}}` and silently lose the very context the
- *      observability discipline exists to preserve.
- *   3. Circular-reference cause — emits a degraded-but-safe log line
- *      instead of throwing. `JSON.stringify` throws TypeError on cyclic
- *      structures; without a boundary-side try/catch the throw escapes the
- *      IPC handler's catch block and the renderer sees an unhandled invoke
- *      rejection instead of the structured `{ ok: false; error: <message> }`
- *      return shape that retriable-consent dialogs depend on.
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 
@@ -106,13 +85,7 @@ describe('logIpcError — cause boundary normalization', () => {
     expect(captured).toHaveLength(1);
     const parsed = JSON.parse(captured[0].args[0] as string);
     expect(parsed.cause).toBeDefined();
-    // Most-load-bearing assertion: the message is on the wire (the field the
-    // operator greps when triaging "which exact write failed?"). Without the
-    // boundary normalize, this would be `cause: {}` because the JSON.stringify
-    // default omits non-enumerable Error properties.
     expect(parsed.cause.message).toBe('write-mcp-configs-threw boom');
-    // Name should also survive — distinguishes Error subclass at triage time
-    // (TypeError vs SyntaxError vs custom).
     expect(parsed.cause.name).toBe('Error');
   });
 
@@ -133,12 +106,7 @@ describe('logIpcError — cause boundary normalization', () => {
         threw = e;
       }
     });
-    // Most-load-bearing assertion: the function does NOT throw on circular
-    // input. Without the boundary try/catch, this would propagate out of
-    // every handler that wraps a real Error with a circular .cause chain.
     expect(threw).toBeNull();
-    // Some log line still emits — the structured shape (event/channel/reason/
-    // handler) is preserved even when the cause itself is unserializable.
     expect(captured.length).toBeGreaterThanOrEqual(1);
     const parsed = JSON.parse(captured[0].args[0] as string);
     expect(parsed.event).toBe('ipc.error');
@@ -148,13 +116,6 @@ describe('logIpcError — cause boundary normalization', () => {
   });
 
   test('circular Error.cause chain does not throw — emits a degraded-but-safe log line', () => {
-    // Without a per-call visited tracker
-    // in `normalizeCause`, a self-referential Error.cause chain
-    // (`a.cause = b; b.cause = a`) recurses infinitely and stack-overflows
-    // synchronously BEFORE the outer try/catch around JSON.stringify wraps
-    // anything. The RangeError would then escape `logIpcError` entirely —
-    // breaking the contract that the IPC handler's catch block can rely on
-    // structured-logging never throwing.
     const a: Error & { cause?: unknown } = new Error('outer');
     const b: Error & { cause?: unknown } = new Error('inner');
     a.cause = b;
@@ -173,21 +134,12 @@ describe('logIpcError — cause boundary normalization', () => {
         threw = e;
       }
     });
-    // Most-load-bearing assertion: no throw escapes. Stack overflow would
-    // surface as `RangeError: Maximum call stack size exceeded`.
     expect(threw).toBeNull();
     expect(captured.length).toBeGreaterThanOrEqual(1);
     const parsed = JSON.parse(captured[0].args[0] as string);
-    // Wire shape preserved. The chain is truncated at the first cycle —
-    // outer Error's `cause` (which is b) gets normalized; b's chained
-    // cause (which is a — already seen) is replaced with the marker.
     expect(parsed.event).toBe('ipc.error');
     expect(parsed.cause.message).toBe('outer');
     expect(parsed.cause.cause.message).toBe('inner');
-    // The chain truncates exactly when `a` is seen again — at the third
-    // level. That node carries `a`'s fields one more time with the cycle
-    // marker on its `cause` slot (terminating the recursion). The literal
-    // `'<circular>'` lives one level deeper.
     expect(parsed.cause.cause.cause.message).toBe('outer');
     expect(parsed.cause.cause.cause.cause).toBe('<circular>');
   });
@@ -207,12 +159,6 @@ describe('logIpcError — cause boundary normalization', () => {
   });
 
   test('BigInt cause triggers the outer-fallback serialization path', () => {
-    // Direct exercise of the outer try/catch at the bottom of `logIpcError`.
-    // `normalizeCause` is a pass-through for non-Error inputs, so a plain
-    // object containing a BigInt makes it through to `JSON.stringify` —
-    // which throws TypeError on BigInt. The outer catch must drop `cause`
-    // and emit the structured-but-degraded `_causeSerializationFailed: true`
-    // wire shape so the surrounding IPC handler's catch isn't bypassed.
     const captured = captureWarn(() => {
       logIpcError({
         event: 'ipc.error',
@@ -226,7 +172,6 @@ describe('logIpcError — cause boundary normalization', () => {
     const parsed = JSON.parse(captured[0].args[0] as string);
     expect(parsed._causeSerializationFailed).toBe(true);
     expect(parsed).not.toHaveProperty('cause');
-    // Structured shape (event/channel/reason/handler) still reaches the wire.
     expect(parsed.event).toBe('ipc.error');
     expect(parsed.channel).toBe('ok:mcp-wiring:confirm');
     expect(parsed.reason).toBe('write-mcp-configs-threw');
@@ -236,11 +181,6 @@ describe('logIpcError — cause boundary normalization', () => {
 
 describe('logIpcError — bounded details', () => {
   test('details ride the emitted payload alongside the canonical discriminants', () => {
-    // `details` exists so a failed send is diagnosable from the bundle the
-    // user submits rather than only from a terminal someone was tailing: the
-    // fields below are what separate "this machine's DNS is broken" from "the
-    // intake is down" from "the TLS clock is skewed", all of which reached the
-    // log as the bare token `network-error` before.
     const captured = captureWarn(() => {
       logIpcError({
         event: 'ipc.error',
@@ -275,17 +215,6 @@ describe('logIpcError — bounded details', () => {
   });
 });
 
-/**
- * The pino leg is the ONLY `logIpcError` surface that reaches
- * `~/.ok/logs/desktop.*.log`, and therefore the only one that reaches a
- * diagnostic bundle a reporter sends us. `console.warn` goes to main-process
- * stdio, which nothing captures in a packaged app launched from Finder.
- *
- * Every other test in this file asserts `console.warn`. That asymmetry is why
- * a failed bug-report send reached support as one bare line carrying no cause
- * and no errno: the leg that ships was never exercised, so nothing noticed it
- * was being handed three fields while the leg nobody reads got the rest.
- */
 const pinoWarn = vi.hoisted(() => vi.fn());
 
 vi.mock('./desktop-logger.ts', () => ({
@@ -302,7 +231,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
     pinoWarn.mockClear();
   });
 
-  /** Emit once with `console.warn` silenced and return what pino was handed. */
   function pinoFields(emit: () => void): Record<string, unknown> {
     const originalWarn = console.warn;
     console.warn = () => {};
@@ -333,9 +261,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
   });
 
   test('an Error cause contributes its class to the file logger', () => {
-    // Every channel that catches an unknown and passes `cause: err` gets this
-    // without hand-building `details` — which is what makes the fix worth
-    // making here rather than at one call site.
     const fields = pinoFields(() => {
       logIpcError({
         event: 'ipc.error',
@@ -350,10 +275,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
   });
 
   test('an errno hidden one level down in cause is recovered', () => {
-    // undici reports every transport failure as the same opaque
-    // `TypeError: fetch failed` and hangs the real error in `cause`, so reading
-    // `code` off the caught value alone yields nothing on exactly the failures
-    // worth triaging.
     const inner = Object.assign(new Error('getaddrinfo ENOTFOUND intake'), {
       code: 'ENOTFOUND',
     });
@@ -374,12 +295,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
   });
 
   test('no stack and no free-form message reach the file logger', () => {
-    // `details` (and everything derived alongside it) is collected into
-    // user-submitted bundles, so it takes only values bounded by construction.
-    // A stack carries absolute paths out of the reporter's home directory and
-    // an errno message carries the filename that could not be opened; neither
-    // may be written into a file the reporter hands to support. The class and
-    // the errno are what discriminate the failure, and they are bounded.
     const err = Object.assign(
       new Error("ENOENT: no such file or directory, open '/Users/someone/private/notes.md'"),
       { code: 'ENOENT' },
@@ -403,8 +318,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
   });
 
   test('call-site details win over facts derived from the cause', () => {
-    // A handler that has already classified its own failure knows more than a
-    // generic walk of the caught value can.
     const fields = pinoFields(() => {
       logIpcError({
         event: 'ipc.error',
@@ -424,9 +337,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
   });
 
   test('a cyclic cause chain cannot cost the log line', () => {
-    // `normalizeCause` guards the console leg against this; anything that walks
-    // the same hostile input for the pino leg has to guard it too, or the
-    // failure that most needs recording is the one that records nothing.
     const a = new Error('a');
     const b = new Error('b');
     Object.assign(a, { cause: b });
@@ -449,10 +359,6 @@ describe('logIpcError — the pino leg (the surface that ships in diagnostic bun
   });
 
   test('a cause that throws on inspection cannot suppress the log line', () => {
-    // Deriving the bounded facts must not run inside the try that already
-    // wraps the emit: a throw there would swallow the whole line and leave the
-    // failure with no record at all, which is strictly worse than the bare
-    // line this change exists to improve on.
     const hostile: Record<string, unknown> = {};
     Object.defineProperty(hostile, 'code', {
       enumerable: true,

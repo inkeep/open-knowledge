@@ -1,8 +1,3 @@
-/**
- * Schema-level regression coverage for `TemplatePayloadSchema.scope` and
- * `TemplateGetSuccessSchema` frontmatter shape.
- */
-
 import { describe, expect, test } from 'vitest';
 import { TemplateGetSuccessSchema, TemplatePayloadSchema } from './tags-search.ts';
 
@@ -43,9 +38,6 @@ describe('TemplatePayloadSchema.scope', () => {
 
 describe('TemplateGetSuccessSchema', () => {
   test('frontmatter accepts free-form unknown values', () => {
-    // Defensive: even if YAML parsing produces a weird (object-valued) field,
-    // the schema must accept it — frontmatter is `z.record(z.string(),
-    // z.unknown())` by design.
     const result = TemplateGetSuccessSchema.safeParse({
       template: {
         ...validPayload('local'),

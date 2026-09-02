@@ -1,17 +1,3 @@
-/**
- * Tests for the pure link-resolution helpers.
- *
- * Invariants under test:
- * - `computeLinkResolutionState` is pure (no globals, deterministic from inputs).
- * - State branching matches InternalLinkView's behavior today:
- *   `loading ? 'loading' : folder ? 'folder' : resolved ? 'resolved' : 'unresolved'`
- *   plus 'external' + 'anchor' for the additive V2 states.
- * - `computeLinkResolutionAttrs` returns `{'data-resolution-state': state}`
- *   or `null` when href is missing/malformed (skip decoration cleanly).
- * - `makeLinkResolutionAttrsComputer(docName)` captures sourceDocName once
- *   and produces a closure the decoration plugin can call many times.
- */
-
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
@@ -163,10 +149,6 @@ describe('computeLinkResolutionState', () => {
     expect(computeLinkResolutionState('./Characters.base', 'vault/note', cache)).toBe('unresolved');
   });
 
-  // a markdown link to a tracked non-markdown file that is
-  // NOT a renderable asset (e.g. `[csv](./data/example.csv)`) resolves
-  // against `cache.filePaths`, the kind:'file' partition emitted by
-  // /api/documents.
   test('relative non-asset file href resolves against filePaths', () => {
     const cache = makeCache({ pages: [], assetPaths: [], filePaths: ['data/example.csv'] });
     expect(computeLinkResolutionState('./data/example.csv', 'README', cache)).toBe('asset');
@@ -183,24 +165,17 @@ describe('computeLinkResolutionState', () => {
   });
 
   test('non-asset file href is unresolved when only assetPaths is set (no filePaths) and target missing', () => {
-    // Server emits the asset partition but the file partition stays absent —
-    // a stricter "treat as resolvable" branch must not let an arbitrary path
-    // through. Mirrors the original failure mode for parity.
     const cache = makeCache({ pages: [], assetPaths: [] });
     expect(computeLinkResolutionState('./data/example.csv', 'README', cache)).toBe('unresolved');
   });
 
   test('doc href with cache, target is folder → folder', () => {
-    // resolveLinkTargetIntent returns {kind: 'navigate', displayState: 'folder'} when target
-    // is present in folderPaths without a matching page.
     const cache = makeCache({ pages: [], folderPaths: ['subfolder'] });
     expect(computeLinkResolutionState('./subfolder', 'README', cache)).toBe('folder');
   });
 
   test('relative href normalization matches classifyMarkdownHref', () => {
-    // classifyMarkdownHref normalizes ./OTHER.md relative to sourceDocName before checking cache
     const cache = makeCache({ pages: ['topic/page'] });
-    // Source in topic/ should resolve ./page.md to topic/page
     expect(computeLinkResolutionState('./page.md', 'topic/other', cache)).toBe('resolved');
   });
 
@@ -271,13 +246,6 @@ describe('computeLinkResolutionAttrs', () => {
   });
 
   test('wikiembed-sourced media link → asset, not broken-link styling', () => {
-    // Asset-embed links (`![[foo.pdf]]` → link mark with sourceForm='wikiembed')
-    // must not be painted with broken-link styling. They used to be skipped
-    // wholesale to achieve that, because resolving a PDF/video/audio href
-    // against the markdown-only pages cache always came back 'unresolved'. The
-    // href is classified as an asset on its own merits now, so the embed
-    // resolves rather than being silenced — which also lets a document-shaped
-    // embed report the missing target the skip used to swallow.
     const cache = makeCache({ pages: ['README'] });
     const mark = makeMarkInfo({ href: 'docs/foo.pdf', sourceForm: 'wikiembed' });
     expect(computeLinkResolutionAttrs(mark, cache, 'README')).toEqual({
@@ -286,8 +254,6 @@ describe('computeLinkResolutionAttrs', () => {
   });
 
   test('plain link mark (sourceForm=null) still gets decoration', () => {
-    // Regression guard: wiki-embed handling must NOT affect normal markdown
-    // links `[text](./foo.md)` — those still need resolution state.
     const cache = makeCache({ pages: ['OTHER'] });
     const mark = makeMarkInfo({ href: './OTHER.md', sourceForm: null });
     expect(computeLinkResolutionAttrs(mark, cache, 'README')).toEqual({

@@ -1,22 +1,4 @@
 // @vitest-environment jsdom
-/**
- * What an outline click leaves behind in a diagnostic bundle.
- *
- * A user reported outline rows navigating to the wrong section and the bundle
- * could not say which row was clicked, which heading answered, or whether the
- * scroll happened — the path wrote nothing anywhere. These tests pin the
- * breadcrumb that closes that, and in particular the numbers that make the
- * class self-diagnosing: the outline's rows come from a server scan of the
- * markdown, this consumer resolves them against the headings ProseMirror
- * painted, and the two enumerations are joined by ordinal alone. `slugFoundAt`
- * reports where the clicked row's slug sits in the DOM, so `slugFoundAt - index`
- * is the shift whenever the slug resolves at all; `domHeadingCount` against the
- * dispatch line's `outlineCount` says the same thing without needing it to.
- *
- * The real component runs against a genuine TipTap view (so HeadingAnchors
- * assigns the real slug ids); the surrounding chrome is stubbed to markers, as
- * in the hash-ladder harness next door.
- */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { act, cleanup, render } from '@testing-library/react';
@@ -65,17 +47,12 @@ vi.doMock('../presence/identity', () => ({
 vi.doMock('./mount-promise', () => ({
   mountTiptapEditorPromise: () => Promise.resolve(editorEntry),
 }));
-// Only the parking surface is stubbed. `editorScrollContainerOf` stays REAL so
-// these tests exercise the actual ancestor walk — the thing that has to pick
-// this editor's scroller rather than whichever one happens to be painted.
 vi.doMock('./editor-cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./editor-cache')>()),
   parkTiptapEditor: () => {},
   peekRenameSnapshot: () => null,
   clearRenameSnapshot: () => {},
 }));
-// Toggle for the pre-mount / recycle race, which jsdom cannot hold open.
-// Delegates to the real accessor otherwise.
 vi.doMock('./utils/get-editor-view', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./utils/get-editor-view')>();
   return {
@@ -114,8 +91,6 @@ describe('outline click breadcrumb', () => {
 
   beforeEach(() => {
     __resetScrollRestoreCoordination();
-    // The real ancestor walk resolves this, so the editor DOM has to live
-    // inside a genuine scroll container rather than beside a stand-in.
     scroller = document.createElement('div');
     scroller.setAttribute('data-testid', 'editor-scroll-container');
     document.body.appendChild(scroller);
@@ -132,8 +107,6 @@ describe('outline click breadcrumb', () => {
       extensions: sharedExtensions,
       content: {
         type: 'doc',
-        // Levels deliberately differ so `resolvedLevel` is answered by the
-        // element rather than satisfied by a constant.
         content: HEADINGS.map(({ text, level }) => ({
           type: 'heading',
           attrs: { level },
@@ -164,7 +137,6 @@ describe('outline click breadcrumb', () => {
     Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
   });
 
-  /** Breadcrumbs emitted so far under the outline-nav event, in order. */
   function breadcrumbs(event = OUTLINE_NAV_BREADCRUMB): Array<Record<string, unknown>> {
     return infoSpy.mock.calls.flatMap(([first]) => {
       if (typeof first !== 'string') return [];
@@ -241,9 +213,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('an ordinal that lands on the wrong heading reports the exact shift', async () => {
-    // The outline believes row 1 is "Gamma"; the painted DOM has "Gamma" third.
-    // This is the shape a skipped-by-the-scanner heading produces, and the pair
-    // of numbers is what a bundle needs to say so without a reproduction.
     await mountEditor();
     await clickOutlineRow({ index: 1, slug: 'gamma' });
     const [line] = breadcrumbs();
@@ -270,8 +239,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('a declined claim is recorded rather than read as a completed scroll', async () => {
-    // A landing that does not yield owns the scroller, so the click does
-    // nothing at all. The user sees a dead row; before this line, so did triage.
     await mountEditor();
     registerLandingScrollOwner(DOC_NAME, {
       yieldsToNavigation: false,
@@ -284,9 +251,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('a click arriving before the view mounts is reported, not swallowed', async () => {
-    // `getEditorView` returns undefined during the recycle/remount race — the
-    // window in which a click is otherwise lost with no trace anywhere. The
-    // accessor is forced here because that race cannot be held open in jsdom.
     await mountEditor();
     viewUnavailable = true;
     try {
@@ -300,9 +264,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('the scroller is this editor own, not whichever pane happens to be painted', async () => {
-    // A second pane's container, EARLIER in the document than this editor's, is
-    // what a painted-container lookup would return. Every position on the line
-    // would then describe a document nobody clicked in.
     const otherPane = document.createElement('div');
     otherPane.setAttribute('data-testid', 'editor-scroll-container');
     otherPane.scrollTop = 8888;
@@ -355,19 +316,12 @@ describe('outline click breadcrumb', () => {
   });
 
   test('the settle read re-measures the target, not just where the scroller stopped', async () => {
-    // Content above the target carries an estimated intrinsic height until it
-    // paints. It materializes at its real height as the scroll passes through,
-    // which moves the target out from under the landing — the scroller reports
-    // a clean arrival while the user is looking at the wrong section. The
-    // target's own position after settling is the observable that says so, and
-    // the growth in scrollHeight is what names the cause.
     vi.useFakeTimers();
     try {
       await mountEditor();
       await clickOutlineRow({ index: 0, slug: 'alpha' });
       const target = editorEntry?.editor.view.dom.querySelector('h1');
       if (!target || !scroller) throw new Error('fixture not prepared');
-      // The document grew underneath the landing and pushed the target down.
       target.getBoundingClientRect = () => ({ top: 17_000 }) as DOMRect;
       Object.defineProperty(scroller, 'scrollHeight', { value: 26_000, configurable: true });
       await act(async () => {
@@ -382,10 +336,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('a heading replaced mid-animation reports its absence, not a zero-rect position', async () => {
-    // A detached node answers `getBoundingClientRect` with a zero rect rather
-    // than refusing, so an unguarded re-measure would report `-scrollerTop` —
-    // indistinguishable from a real position. A remote edit inside the 600 ms
-    // window is enough to reach this.
     vi.useFakeTimers();
     try {
       await mountEditor();
@@ -397,7 +347,6 @@ describe('outline click breadcrumb', () => {
       const [line] = breadcrumbs(OUTLINE_NAV_SETTLED_BREADCRUMB);
       expect(line).toMatchObject({ targetDetached: true, scrollerDetached: false });
       expect('targetTopAfter' in line).toBe(false);
-      // The scroller is still live, so its own numbers are still reportable.
       expect(line.scrollTopAfter).toBe(250);
     } finally {
       vi.useRealTimers();
@@ -405,15 +354,8 @@ describe('outline click breadcrumb', () => {
   });
 
   test('the before-scroll height is read before the scroll, not after it', async () => {
-    // `scrollIntoView` is smooth, so a late read usually returns the same
-    // number — usually is not what a field called `before` should rest on, and
-    // this one is half of the pair that measures the document growing.
     await mountEditor();
     if (!scroller) throw new Error('fixture not prepared');
-    // Keyed on the scroll HAVING HAPPENED, not on read ordinal. A read counter
-    // would pass whether the statement sat before or after the scroll call —
-    // nothing else reads the height in between — so it would pin "this is the
-    // handler's first height read", which is true either way.
     Object.defineProperty(scroller, 'scrollHeight', {
       get: () =>
         vi.mocked(HTMLElement.prototype.scrollIntoView).mock.calls.length > 0 ? 99_999 : 1234,
@@ -441,11 +383,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('flipping to source mode cancels the settle instead of measuring the other pane', async () => {
-    // A mode flip is a CSS swap, so this editor stays mounted and both
-    // connectedness guards keep passing — while the shared scroller now
-    // describes the source view and the hidden pane's `content-visibility`
-    // makes the heading answer with a zero rect. The line would land looking
-    // like a clean arrival, which is the one outcome worse than no line.
     vi.useFakeTimers();
     try {
       const result = await mountEditor();
@@ -496,10 +433,6 @@ describe('outline click breadcrumb', () => {
   });
 
   test('the settle read measures the scroller the click measured, not the visible one', async () => {
-    // `visibleEditorScrollContainer` answers with whichever scroller is
-    // painted, not this document's. A tab switch inside the settle window would
-    // otherwise file another document's position under this `docName`, and a
-    // confidently wrong number is worse to triage against than a missing one.
     vi.useFakeTimers();
     try {
       await mountEditor();
@@ -507,10 +440,6 @@ describe('outline click breadcrumb', () => {
       await clickOutlineRow({ index: 0, slug: 'alpha' });
       if (clicked) clicked.scrollTop = 77;
 
-      // Tagged and painted, and EARLIER in the document than this editor's own,
-      // so a settle-time painted-container lookup would answer with it. Without
-      // the attribute and the client rect the competitor is inert and the test
-      // proves nothing.
       const otherDoc = document.createElement('div');
       otherDoc.setAttribute('data-testid', 'editor-scroll-container');
       otherDoc.getClientRects = (() => [{}]) as unknown as Element['getClientRects'];

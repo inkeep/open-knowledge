@@ -1,12 +1,3 @@
-/**
- * Behavioral tests for the CLI rows in the toolbar "Open with AI" popover's
- * "Terminal" section — the in-app twin of the deep-link that launches an agent
- * CLI (`claude` / `codex` / `cursor-agent`) in the docked terminal. The rows are
- * desktop-gated: they render only when a `TerminalLaunchProvider` value is
- * present (the web host passes `null`, so the section is absent). Clicking a row
- * routes the handoff input plus the chosen CLI to the launcher.
- */
-
 import type { TerminalCli } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -20,8 +11,6 @@ const input: HandoffDispatchInput = {
   docPath: '/tmp/project/docs/notes.md',
 };
 
-// All installed so the menu has agent rows above the CLI rows (the separator
-// path) and never lands on the empty hint.
 const installedStates = {
   'claude-cowork': { installed: true, lastChecked: 1 },
   'claude-code': { installed: true, lastChecked: 1 },
@@ -68,10 +57,6 @@ type LaunchCall = { input: HandoffDispatchInput; cli: TerminalCli };
 async function renderMenu(opts: {
   launcher: ((input: HandoffDispatchInput, cli: TerminalCli) => void) | null;
   menuInput?: HandoffDispatchInput | null;
-  // The raw PATH-detection map the production provider supplies. The component
-  // gates its own rows via `isTerminalCliEnabled`, so feeding the map here (not a
-  // pre-gated list) exercises that production wiring. Defaults to `{}` (probe
-  // unresolved → fail-open, every CLI shown).
   installedClis?: Partial<Record<TerminalCli, boolean>>;
 }) {
   const menuInput = 'menuInput' in opts ? opts.menuInput : input;
@@ -109,10 +94,6 @@ describe('Open-with-AI Terminal CLI rows', () => {
   });
 
   test('gates rows through the real probe map: probed-absent hidden (Claude included), detected shown', async () => {
-    // A complete resolved map: only `codex` on PATH. Rows gate via
-    // `isTerminalCliEnabled` — codex shows; Claude, Cursor, and Antigravity are
-    // probed absent (`false`), so their rows are gone. Claude is no longer a
-    // special always-visible anchor: an absent Claude CLI hides like any other.
     await renderMenu({
       launcher: () => {},
       installedClis: {
@@ -132,8 +113,6 @@ describe('Open-with-AI Terminal CLI rows', () => {
   });
 
   test('fails open before the probe resolves (empty map) — installed CLIs stay launchable', async () => {
-    // Regression guard for the "probe failed / older bridge hides everything"
-    // defect: an empty map must show every CLI, not collapse to Claude-only.
     await renderMenu({ launcher: () => {}, installedClis: {} });
     await openMenu();
     expect(screen.getByTestId('open-in-agent-terminal-claude')).toBeTruthy();
@@ -153,8 +132,6 @@ describe('Open-with-AI Terminal CLI rows', () => {
     await renderMenu({ launcher: (i, cli) => calls.push({ input: i, cli }) });
     await openMenu();
     await userEvent.click(screen.getByTestId('open-in-agent-terminal-codex'));
-    // `toStrictEqual` proves the launched input is the bare `input` with no
-    // `instruction` key, and that the chosen CLI is threaded through.
     expect(calls).toStrictEqual([{ input, cli: 'codex' }]);
   });
 

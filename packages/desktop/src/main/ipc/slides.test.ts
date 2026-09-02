@@ -1,15 +1,3 @@
-/**
- * IPC handler tests for the `ok:slides:dispatch` channel (status + open).
- *
- * `handleSlidesStatus` is exercised with injected fs/PATH probes; `handleSlidesOpen`
- * with an injected registry, start deps, and window callbacks — covering the
- * resolution logic and the open orchestration (dedup→focus, start→open,
- * failure→nothing) as behavior, without an Electron runtime. The IPC wrapping in
- * main/index.ts is one createHandler call whose behavior (look up ctx, forward
- * projectPath) is shared with every project-scoped IPC and is covered by the
- * existing main-side tests for those siblings.
- */
-
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { OkSlidesOpenResult } from '../../shared/ipc-channels.ts';
@@ -21,8 +9,6 @@ import { handleSlidesOpen, handleSlidesStatus } from './slides.ts';
 const PROJECT = '/tmp/deck-project';
 const LOCAL_BIN = join(PROJECT, 'node_modules', '.bin', 'slidev');
 
-/** Build injected probes from explicit fs/PATH state, recording every query so
- *  tests can assert the resolver looks in the right places. */
 function fakeProbes(state: { executablePaths?: string[]; onLoginPath?: string[] }) {
   const executable = new Set(state.executablePaths ?? []);
   const onPath = new Set(state.onLoginPath ?? []);
@@ -46,7 +32,6 @@ describe('handleSlidesStatus', () => {
     const { probes, execQueries } = fakeProbes({ executablePaths: [LOCAL_BIN] });
     const result = await handleSlidesStatus(PROJECT, probes);
     expect(result).toEqual({ kind: 'status', available: true, source: 'project-local' });
-    // Proves the project's node_modules/.bin/slidev was the path probed.
     expect(execQueries).toContain(LOCAL_BIN);
   });
 
@@ -63,7 +48,6 @@ describe('handleSlidesStatus', () => {
     });
     const result = await handleSlidesStatus(PROJECT, probes);
     expect(result).toEqual({ kind: 'status', available: true, source: 'project-local' });
-    // Resolving locally short-circuits before the (slower) login-shell probe.
     expect(pathQueries).toEqual([]);
   });
 
@@ -77,7 +61,6 @@ describe('handleSlidesStatus', () => {
     const { probes, execQueries } = fakeProbes({ onLoginPath: ['slidev'] });
     const result = await handleSlidesStatus(undefined, probes);
     expect(result).toEqual({ kind: 'status', available: true, source: 'global' });
-    // No projectRoot → no project-local path to stat.
     expect(execQueries).toEqual([]);
   });
 
@@ -94,12 +77,10 @@ function fakeSlidevProcess(): SlidevProcess {
   return { onExit: () => {}, signal: () => {}, isAlive: () => true, pid: 7 };
 }
 
-/** A stand-in deck window for pre-registration + focus assertions. */
 function fakeWindow(id: number): SlidesDeckWindow {
   return { id } as unknown as SlidesDeckWindow;
 }
 
-/** Start deps whose server becomes ready immediately, on `port`. */
 function readyStartDeps(port: number): { deps: StartSlidevDeps; process: SlidevProcess } {
   const process = fakeSlidevProcess();
   return {
@@ -114,7 +95,6 @@ function readyStartDeps(port: number): { deps: StartSlidevDeps; process: SlidevP
   };
 }
 
-/** Start deps whose server never becomes reachable, so the poll times out. */
 function timingOutStartDeps(): { deps: StartSlidevDeps; spawned: () => boolean } {
   let spawned = false;
   let clock = 0;
@@ -153,17 +133,10 @@ describe('handleSlidesOpen', () => {
       recordOpenAttempt: () => {},
     });
     expect(result).toEqual({ kind: 'open', ok: true });
-    // The confirmed server + its port are handed to the window factory.
     expect(opened).toEqual([{ docPath: DECK, port: 5200, process }]);
   });
 
   it('joins an in-flight open instead of spawning a rival server for the same deck', async () => {
-    // A deck is registered only once its server is confirmed serving, and a
-    // cold Slidev start takes seconds — so two activations inside that window
-    // (a double-click on the toolbar action) both find an empty registry.
-    // Without the in-flight marker both spawn, and the second window's
-    // registration overwrites the first, leaving a server the registry — and
-    // so app-quit reapAll — knows nothing about.
     const registry = createSlidesDeckRegistry();
     let spawns = 0;
     let releaseProbe: (() => void) | undefined;
@@ -176,7 +149,6 @@ describe('handleSlidesOpen', () => {
         spawns += 1;
         return fakeSlidevProcess();
       },
-      // Hold the first attempt open across the second activation.
       probeReady: async () => {
         await gate;
         return { reachable: true, hasVersionMeta: true };
@@ -211,8 +183,6 @@ describe('handleSlidesOpen', () => {
   });
 
   it('gives a joined activation the real verdict when the in-flight open fails', async () => {
-    // The joiner must not assume success — a failed start has to surface to
-    // every activation, or a double-click silently swallows the error for one.
     const registry = createSlidesDeckRegistry();
     const { deps: startDeps } = timingOutStartDeps();
     const deps = {
@@ -229,7 +199,6 @@ describe('handleSlidesOpen', () => {
       { kind: 'open', ok: false, reason: 'timeout' },
       { kind: 'open', ok: false, reason: 'timeout' },
     ]);
-    // The marker is cleared on failure, so a later retry can start fresh.
     expect(registry.getOpenInFlight(DECK)).toBeUndefined();
   });
 
@@ -278,7 +247,6 @@ describe('handleSlidesOpen', () => {
     });
     expect(result).toEqual({ kind: 'open', ok: false, reason: 'timeout' });
     expect(spawned()).toBe(true);
-    // A failed start opens no window — no blank window onto a dead port.
     expect(openedCount).toBe(0);
   });
 
@@ -313,14 +281,10 @@ describe('handleSlidesOpen', () => {
       focusWindow: () => {},
       recordOpenAttempt: (r) => attempts.push(r),
     });
-    // Focus-existing spawns nothing, so it is not a genuine open attempt.
     expect(attempts).toEqual([]);
   });
 
   it('records one open attempt — not two — when a second activation joins the in-flight open', async () => {
-    // The double-click case the in-flight registry exists for: one spawn, two
-    // returned oks. Telemetry must count the single spawn once, not once per
-    // activation, or adoption/failure rates are inflated.
     const registry = createSlidesDeckRegistry();
     let releaseProbe: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {

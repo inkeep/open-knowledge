@@ -1,17 +1,3 @@
-/**
- * Discard semantics for the replay buffer once it has a DURABLE half.
- *
- * `close()` and `clearBufferedUpdates()` both exist to make a pending replay
- * buffer go away: the first because the user closed the doc (or the LRU evicted
- * it) and resurrecting the edit later would surprise them, the second because
- * an edit authored against branch A must never land on branch B. Dropping only
- * the in-memory copy would leave the outbox record behind as an immortal
- * orphan that replays on the next open — reintroducing, through the durable
- * layer, exactly the leak each method was written to close.
- *
- * Also covers the other side of the same coin: a buffer with NO durable mirror
- * must not be gated on a token that was never written.
- */
 import { randomUUID } from 'node:crypto';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -73,7 +59,6 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
     pool.close(docName);
 
     expect(pool.__test_hasBufferedUpdate(docName)).toBe(false);
-    // The durable half has to go too, or the next open resurrects the edit.
     await vi.waitFor(async () => {
       expect(
         await readReplayOutboxEntry({
@@ -84,7 +69,6 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
       ).toBeNull();
     });
 
-    // End-to-end: reopening replays nothing.
     const reopened = pool.open(docName);
     if (!reopened) throw new Error('expected reopened entry');
     reopened.observerCleanup = () => {};
@@ -103,9 +87,6 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
     );
 
     pool = new ProviderPool(3, DUMMY_WS);
-    // The branch-switch flow runs AFTER the observed branch has already moved,
-    // so the discard has to use the branch the buffer was captured on — not
-    // whatever the pool observes now (here: the unknown-branch sentinel).
     pool.__test_seedBufferedUpdate(docName, delta, {
       fullState,
       durable: true,
@@ -131,13 +112,8 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
     const entry = pool.open(docName);
     if (!entry) throw new Error('expected entry');
     entry.observerCleanup = () => {};
-    // Over-cap doc / failed durable write: RAM is the ONLY carrier.
     pool.__test_seedBufferedUpdate(docName, delta, { fullState, durable: false });
 
-    // Any consume attempt would now throw. The replay must not attempt one:
-    // the RAM copy is already deleted by the time a consume could fail, and
-    // there is no outbox record to recover from, so bailing here drops the
-    // edit inside the mechanism that exists to preserve it.
     vi.spyOn(indexedDB, 'databases').mockRejectedValue(new Error('databases() unavailable'));
 
     entry.provider.emit('synced', { state: true });
@@ -167,9 +143,6 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    // Fire the replay, then yank the entry out from under it while the consume
-    // is still awaiting. Both carriers are gone at that point, so the bail is a
-    // real loss and has to be loud — the sibling failure arms all emit.
     entry.provider.emit('synced', { state: true });
     pool.close(docName);
 

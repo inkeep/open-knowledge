@@ -133,7 +133,6 @@ async function dispatchRendererMenuAction(
 async function openTerminal(page: Page): Promise<void> {
   const terminal = page.locator('section[aria-label="Terminal"]:visible');
   await expect(async () => {
-    // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
     if (await terminal.isVisible()) return;
     await dispatchRendererMenuAction(page, 'toggle-terminal');
     await expect(terminal).toBeVisible({ timeout: 5_000 });
@@ -195,7 +194,6 @@ test.describe('terminal process restart', () => {
   test('restores placement, width, tab order, and active tab in a separate Electron process', async ({
     captureStderrFor,
   }) => {
-    // Two Electron launches and their sequential restore checks have a 220s cumulative budget.
     test.setTimeout(240_000);
     const seed = seedRestartProfile();
     const firstApp = await launchRestartProfile(seed);
@@ -210,17 +208,12 @@ test.describe('terminal process restart', () => {
     const [, secondTabId] = await terminalTabIds(firstPage);
     if (secondTabId === undefined) throw new Error('second terminal tab was not created');
     await renameTerminalTab(firstPage, terminalTabById(firstPage, firstTabId), 'process first');
-    // The default label pins ordinal persistence on POSIX. ConPTY can replace
-    // default labels with OSC titles, so Windows needs a durable custom label.
     const secondLabel = process.platform === 'win32' ? 'process second' : 'Terminal 2';
     if (process.platform === 'win32') {
       await renameTerminalTab(firstPage, terminalTabById(firstPage, secondTabId), secondLabel);
     }
     await terminalTabById(firstPage, secondTabId).click();
     await expect(terminalTabById(firstPage, secondTabId)).toHaveAttribute('aria-selected', 'true');
-    // This test owns process-restart persistence; the dedicated terminal-tabs
-    // smoke owns pointer-drag behavior. Reordering in the bottom dock keeps
-    // this setup independent of right-column overlay geometry.
     await firstPage.locator('section[aria-label="Terminal"]:visible .xterm').click();
     await firstPage.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
     await expectTerminalTabOrder(firstPage, [secondTabId, firstTabId]);
@@ -232,8 +225,6 @@ test.describe('terminal process restart', () => {
       'aria-selected',
       'true',
     );
-    // Pointer-drag behavior has its own live smoke. Here a deterministic
-    // persisted width isolates the cross-process contract this test owns.
     const retainedWidth = await applyPersistedRightTerminalWidth(firstPage, 860);
     await expect(terminalTabs(firstPage)).toHaveText([secondLabel, 'process first']);
     await expect(firstPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(

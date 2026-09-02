@@ -23,15 +23,12 @@ function scratchPath(): string {
 }
 
 afterEach(() => {
-  // One of these fixtures is the size cap, so leaving them behind costs real
-  // disk per run, not just clutter.
   while (scratchDirs.length > 0) {
     const dir = scratchDirs.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
 });
 
-/** Run one attempt end to end: open through the real sequence, write, close. */
 function attempt(path: string, childOutput: string, pid = 4242): void {
   const fd = openSpawnErrorLog(path, pid);
   try {
@@ -41,9 +38,6 @@ function attempt(path: string, childOutput: string, pid = 4242): void {
   }
 }
 
-// This module IS the fix — the predicates are separately unit-tested, but the
-// sequence they compose is what every spawn actually runs, and it is reachable
-// from a test only because it was extracted here.
 describe('openSpawnErrorLog', () => {
   test('creates the log when absent, with the header and the output', () => {
     const path = scratchPath();
@@ -53,8 +47,6 @@ describe('openSpawnErrorLog', () => {
     expect(contents).toContain('boom');
   });
 
-  // The defect the whole change exists to remove: a retry seconds later used
-  // to truncate the output that explained the failure it was retrying.
   test('a second attempt appends rather than erasing the first', () => {
     const path = scratchPath();
     attempt(path, 'first failure\n', 11);
@@ -80,13 +72,9 @@ describe('openSpawnErrorLog', () => {
     expect(contents.length).toBeLessThan(SPAWN_ERROR_LOG_MAX_BYTES);
   });
 
-  // `open(2)` honours its mode argument only on creation, so a log an older
-  // release created at the default 0644 would keep those permissions forever.
-  // A child's stderr carries absolute paths, and this sits beside a 0600 lock.
   test('tightens an existing world-readable log to 0600', () => {
     const path = scratchPath();
     writeFileSync(path, 'from an older release\n');
-    // Explicit chmod, not the `writeFileSync` mode, which umask can mask.
     chmodSync(path, 0o644);
     expect(statSync(path).mode & 0o777).toBe(0o644);
     attempt(path, 'next\n');

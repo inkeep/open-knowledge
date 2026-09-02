@@ -1,22 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleCommentCounts`.
- *
- * `GET /api/comment-counts` is the read-side door MCP enrichment knocks on to
- * annotate every file and folder `exec` reports, so its wire contract is pinned
- * the same way `/api/backlink-counts` is:
- *   - both query modes (`docNames` exact set, `prefix` folder rollup) return
- *     200 + `application/json` parsing against `CommentCountsSuccessSchema`.
- *   - neither param → `urn:ok:error:invalid-request`.
- *   - a malformed `prefix` is a 400 rather than a silent drop — dropping it
- *     would widen the query to the whole project.
- *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
- *     `Allow: GET`.
- *
- * It also pins the route as READ-ONLY: unlike `/api/comments` (whose POST
- * creates threads) this one is deliberately outside `MUTATING_ROUTES`, so a
- * plain GET must not trip the loopback/Host gate.
- */
-
 import { CommentCountsSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
@@ -44,7 +25,6 @@ describe('comment-counts envelope (RFC 9457)', () => {
     const parsed = CommentCountsSuccessSchema.safeParse(body);
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      // Zero, not absent: the caller has to tell "no comments" from "not asked".
       expect(parsed.data.counts).toEqual({ alpha: 0, beta: 0 });
     }
     expect((body as Record<string, unknown>).ok).toBeUndefined();
@@ -87,9 +67,6 @@ describe('comment-counts envelope (RFC 9457)', () => {
   });
 
   test('a real comment shows up in both modes', async () => {
-    // End-to-end through the chain the MCP read path depends on: create a doc,
-    // comment on it, and the counts must move. Pins that the index the
-    // endpoint reads is the same one the create path writes.
     const docName = 'rollout-notes';
     const created = await fetch(`http://127.0.0.1:${server.port}/api/create-page`, {
       method: 'POST',

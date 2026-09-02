@@ -130,14 +130,8 @@ describe('runStop', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// foreign-host (hostname drift) coverage
-// ---------------------------------------------------------------------------
-
 describe('buildStopPlan with foreign-host states', () => {
   test('foreign-host + locally-live PID → targeted (hostname drift)', () => {
-    // Probe answers only for the pid, so this also pins that `isStoppableState`
-    // passes the lock's pid rather than its port.
     const plan = buildStopPlan(foreign(100, 3001), { isAlive: (pid) => pid === 100 });
     expect(plan.targets).toEqual([{ name: 'server', pid: 100, port: 3001 }]);
   });
@@ -336,7 +330,6 @@ describe('probeCollabClients failure record', () => {
 
   let lockDir: string;
 
-  /** A same-host, live-pid server lock so `inspectLock` classifies `alive`. */
   function seedAliveServerLock(): string {
     const dir = mkdtempSync(join(tmpdir(), 'ok-stop-probe-'));
     mkdirSync(dir, { recursive: true });
@@ -368,7 +361,6 @@ describe('probeCollabClients failure record', () => {
 
     const record = records.find((r) => r.msg === 'stop client-probe failed');
     expect(record?.obj).toMatchObject({ lockDir, outcome: 'unreachable' });
-    // The raw error rides under `err` so pino's serializer keeps the stack.
     expect((record?.obj.err as Error).message).toContain('ECONNREFUSED');
   });
 

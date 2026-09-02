@@ -1,10 +1,3 @@
-/**
- * Guards the live-turn working row against a runaway render loop
- * ("Maximum update depth exceeded"). The row is the only part of the
- * transcript that updates on a timer rather than on an event, so a cascade
- * here would be invisible to every other ThreadView test.
- */
-
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { act, cleanup, render as rtlRender } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -52,16 +45,9 @@ vi.doMock('@/lib/use-workspace', () => ({ useWorkspace: () => null }));
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div>{text}</div>,
 }));
-// The composer's rich input, doubled as a textarea — a real TipTap instance in
-// jsdom schedules deferred scroll work that can crash the run after the suite
-// passes, and this suite only needs the composer to mount.
 vi.doMock('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: MockComposerMentionInput,
 }));
-// The comments store is deliberately NOT mocked here. It is the one dependency
-// in this component with a documented history of the runaway-update failure
-// (an unstable `useSyncExternalStore` snapshot — see comments/store.ts), and
-// every other ThreadView test stubs it out, so nothing else covers it.
 vi.doMock('@/comments/queue-attachment', () => ({ prepareQueuedComments: async () => [] }));
 
 const { ThreadView } = await import('./ThreadView');
@@ -93,9 +79,6 @@ afterEach(() => {
 
 describe('live-turn working row', () => {
   test('does not cascade as the idle line rotates', () => {
-    // The rotation reschedules itself after every tick, so a cascade here would
-    // blow React's nested-update limit and throw rather than settle. Several
-    // minutes of turn are simulated to cover many rotations.
     vi.useFakeTimers();
     try {
       model = {

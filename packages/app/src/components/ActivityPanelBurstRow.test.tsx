@@ -1,9 +1,3 @@
-/**
- * ActivityPanelBurstRow unit tests — static HTML shape via renderToString.
- * Click-to-open (row → full-pane AgentDiffPane) and the Restore confirm flow
- * are exercised in Playwright.
- */
-
 import { renderToString } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -30,7 +24,6 @@ describe('ActivityPanelBurstRow (static render)', () => {
     expect(stripped).toContain('+7');
     expect(stripped).toContain('−3');
     expect(html).toContain('s ago');
-    // The diff opens in the main pane, not inline in this narrow panel.
     expect(html).not.toContain('Loading diff');
     expect(html).not.toContain('activity-panel-diff');
   });
@@ -52,8 +45,6 @@ describe('ActivityPanelBurstRow (static render)', () => {
         onRestore={() => {}}
       />,
     );
-    // 3h ago → relative "m ago" / "h ago" logic. We accept either the hour
-    // formatting or colon-separated absolute time.
     expect(html.includes('h ago') || /\d\d:\d\d/.test(html)).toBe(true);
   });
 
@@ -69,12 +60,10 @@ describe('ActivityPanelBurstRow (static render)', () => {
         onRestore={() => {}}
       />,
     );
-    // No diff open in the store during SSR → not pressed.
     expect(html).toContain('aria-pressed="false"');
   });
 
   test('exposes a per-row Restore control, enabled when newer edits exist and the session is alive', () => {
-    // burstNumber = stackIndex + 1 = 2; editCount 5 → 3 newer edits to undo.
     const html = render(
       <ActivityPanelBurstRow
         burst={{ stackIndex: 1, ts: Date.now(), additions: 2, deletions: 0 }}
@@ -93,7 +82,6 @@ describe('ActivityPanelBurstRow (static render)', () => {
   });
 
   test('Restore is disabled on the newest burst (nothing newer to undo)', () => {
-    // stackIndex 4 → burstNumber 5 === editCount 5 → 0 newer edits.
     const html = render(
       <ActivityPanelBurstRow
         burst={{ stackIndex: 4, ts: Date.now(), additions: 1, deletions: 0 }}

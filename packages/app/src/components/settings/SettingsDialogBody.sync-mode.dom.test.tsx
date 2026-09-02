@@ -1,12 +1,3 @@
-/**
- * Integration coverage for the three-way sync-mode control in the Settings Sync
- * section. Unlike the sibling sections test (which stubs the sync hooks), this
- * renders the REAL `useSyncModeSelection` / `useSyncModeWriter` hooks and the
- * REAL `EnableSyncConfirmDialog`, mocking only the config-binding boundary, the
- * status feed, and leaf UI primitives. It proves the actual wiring: select a
- * mode -> the consent dialog opens with the right copy -> confirming patches
- * `autoSync.mode` on the project-local binding.
- */
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createContext, type ReactNode, StrictMode, use } from 'react';
@@ -80,9 +71,6 @@ vi.doMock('@/components/ui/button', () => ({
   ),
 }));
 
-// Content renders unconditionally so section tests need not open every
-// disclosure, but `open` is reflected onto `data-state` so a test CAN assert
-// expanded-vs-collapsed where that is the behavior under test.
 vi.doMock('@/components/ui/collapsible', () => ({
   Collapsible: ({ children, open }: { children?: ReactNode; open?: boolean }) => (
     <div data-state={open === true ? 'open' : 'closed'}>{children}</div>
@@ -91,8 +79,6 @@ vi.doMock('@/components/ui/collapsible', () => ({
   CollapsibleTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-// The sync section renders no Switch (mode uses a ToggleGroup); a bare stub
-// satisfies the module import without tripping the switch-role a11y lint.
 vi.doMock('@/components/ui/switch', () => ({
   Switch: (props: Record<string, unknown>) => <button type="button" {...props} />,
 }));
@@ -115,11 +101,6 @@ vi.doMock('@/components/ui/input', () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
-// Recorder Select, same shape as the ToggleGroup recorder below: forwards the
-// item value to the REAL onValueChange, keeps `data-testid` on the trigger, and
-// renders the selected item's label through SelectValue so a test can assert
-// what the control DISPLAYS, not just what it would write. Radix's real Select
-// portals its content and needs pointer capabilities jsdom lacks.
 const SelectHandlerCtx = createContext<
   { onValueChange?: (value: string) => void; value?: string } | undefined
 >(undefined);
@@ -163,17 +144,12 @@ vi.doMock('@/components/ui/select', () => ({
   SelectTrigger: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
     <div {...props}>{children}</div>
   ),
-  // The real SelectValue renders the selected item's label. Reproduced by
-  // reading the selected value off the context — otherwise every display
-  // assertion would be vacuous.
   SelectValue: () => {
     const ctx = use(SelectHandlerCtx);
     return <span data-slot="select-value">{ctx?.value ?? ''}</span>;
   },
 }));
 
-// Recorder ToggleGroup: reliable, deterministic clicks that forward the item
-// value to the REAL onValueChange handler (the hook under test).
 const ToggleGroupHandlerCtx = createContext<((value: string) => void) | undefined>(undefined);
 vi.doMock('@/components/ui/toggle-group', () => ({
   ToggleGroup: ({
@@ -239,10 +215,6 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
-// Import the component AFTER the doMock calls so it picks up the mocked deps
-// while keeping the REAL sync hooks + REAL EnableSyncConfirmDialog. RTL itself
-// depends on none of the mocked modules, so it stays a static top-level import
-// (the Tier-3 filename contract requires it).
 async function renderSyncSection({ strict = false }: { strict?: boolean } = {}) {
   const { SettingsDialogBody } = await import('./SettingsDialogBody');
   const tree = (
@@ -285,7 +257,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
 
     fireEvent.click(screen.getByTestId('settings-sync-mode-follow'));
 
-    // The real pull-variant confirmation renders; no write yet.
     expect(screen.getByRole('button', { name: 'Enable Auto (Pull only)' })).not.toBeNull();
     expect(screen.getByRole('note').textContent ?? '').toContain('Updates flow in');
     expect(localPatchCalls).toEqual([]);
@@ -307,9 +278,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
   });
 
   test('the push-outpaces-pull hint tracks both of its conditions', async () => {
-    // Gated twice: only in `full`, and only when the push interval is the
-    // shorter of the two. `off`/`follow` never push on a schedule, so the
-    // control is absent there and a note about it would describe nothing.
     const hint = 'settings-sync-push-outpaces-pull-hint';
 
     projectLocalConfig = {
@@ -320,7 +288,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     expect(screen.queryByTestId(hint)).toBeTruthy();
     cleanup();
 
-    // Same mode, healthy ordering — nothing to say.
     projectLocalConfig = {
       autoSync: { mode: 'full', pullIntervalSeconds: 30, pushIntervalSeconds: 900 },
     };
@@ -328,7 +295,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     expect(screen.queryByTestId(hint)).toBeNull();
     cleanup();
 
-    // Inverted intervals but pull-only: no scheduled push exists to warn about.
     projectLocalConfig = {
       autoSync: { mode: 'follow', pullIntervalSeconds: 900, pushIntervalSeconds: 30 },
     };
@@ -346,7 +312,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     fireEvent.click(screen.getByTestId('settings-sync-mode-off'));
 
     expect(localPatchCalls).toEqual([{ autoSync: { mode: 'off', enabled: null } }]);
-    // No confirmation dialog for the safe direction.
     expect(screen.queryByRole('button', { name: /Enable/ })).toBeNull();
   });
 
@@ -369,7 +334,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
 
     fireEvent.click(screen.getByTestId('settings-sync-switch-follow-action'));
 
-    // Pull-variant confirm with the stranded-commit disclosure sourced from ahead.
     expect(
       screen.getByText("You have 2 changes you haven't shared. They will stay on this computer."),
     ).not.toBeNull();
@@ -396,7 +360,6 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     expect((screen.getByTestId('settings-sync-mode-follow') as HTMLButtonElement).disabled).toBe(
       false,
     );
-    // The disabled Full item carries a tooltip explaining the read-only denial.
     const fullTrigger = screen
       .getByTestId('settings-sync-mode-full')
       .closest('[data-slot="tooltip-trigger"]');
@@ -444,8 +407,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
   });
 
   test('Manual hides the cadence card entirely', async () => {
-    // Nothing is scheduled in Manual, so a disabled control would imply the
-    // setting applies here and is merely blocked.
     projectLocalConfig = { autoSync: { mode: 'off' } };
     syncStatus = { ...syncStatus, syncMode: 'off' } as SyncStatus;
 
@@ -455,10 +416,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
   });
 
   test('the cadence controls sit behind the Advanced disclosure', async () => {
-    // The module-level Collapsible stub renders its content unconditionally, so
-    // this asserts the TRIGGER exists rather than open/close behavior — enough
-    // to catch a regression that drops the disclosure and leaves the controls
-    // with no way in.
     await renderSyncSection();
 
     expect(screen.queryByTestId('settings-sync-advanced-trigger')).not.toBeNull();
@@ -477,7 +434,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
     await renderSyncSection();
 
     expect(screen.queryByTestId('settings-sync-pull-interval')).not.toBeNull();
-    // A follower never pushes on a schedule, so the push knob would be inert.
     expect(screen.queryByTestId('settings-sync-push-interval')).toBeNull();
   });
 
@@ -491,14 +447,11 @@ describe('Settings Sync section — cycle cadence controls', () => {
     expect(screen.queryByTestId('settings-sync-push-interval')).not.toBeNull();
   });
 
-  /** The recorder Select stores the selected value on the wrapper it renders. */
   function selectedSeconds(testId: string): string | null | undefined {
     return screen.getByTestId(testId).closest('[data-value]')?.getAttribute('data-value');
   }
 
   test('an unset cadence selects the shipped default rather than nothing', async () => {
-    // A control opening on no value renders an empty trigger and writes nothing
-    // until touched, which reads as "sync has no cadence".
     await renderSyncSection();
 
     expect(selectedSeconds('settings-sync-pull-interval')).toBe('30');
@@ -513,7 +466,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
   });
 
   test('presets render as human durations, not raw seconds', async () => {
-    // Guards the label formatter: a missing case would surface "900 seconds".
     await renderSyncSection();
 
     const labels = screen.getAllByRole('option').map((o) => o.textContent);
@@ -521,8 +473,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
   });
 
   test('changing one leg writes both, leaving the other at its resolved value', async () => {
-    // Both legs ride one patch so the engine re-arms from a single config
-    // persist; the untouched leg must carry its current value, not undefined.
     projectLocalConfig = { autoSync: { mode: 'full', pushIntervalSeconds: 900 } };
     syncStatus = { ...syncStatus, syncMode: 'full' } as SyncStatus;
     const user = userEvent.setup();
@@ -538,7 +488,6 @@ describe('Settings Sync section — cycle cadence controls', () => {
   });
 
   test('a signed-out follower is told the anonymous floor overrides the setting', async () => {
-    // Otherwise the control claims a 30 s cadence the server will not honor.
     syncStatus = {
       ...syncStatus,
       pushPermission: { checkStatus: 'denied', deniedReason: 'not-authenticated' },
@@ -578,7 +527,6 @@ describe('Settings Sync section — Advanced disclosure intent', () => {
     projectSynced = true;
   });
 
-  /** The disclosure's open state, read off the recorder Collapsible. */
   function disclosureState(): string | null | undefined {
     return screen
       .getByTestId('settings-sync-intervals')
@@ -587,16 +535,12 @@ describe('Settings Sync section — Advanced disclosure intent', () => {
   }
 
   test('arriving with no intent leaves the disclosure collapsed', async () => {
-    // Reaching Sync any other way — header gear, sidebar, plain #settings/sync —
-    // must not expand it, which is the point of calling it Advanced.
     await renderSyncSection();
 
     expect(disclosureState()).toBe('closed');
   });
 
   test('the popover deep link lands on Sync with the disclosure expanded', async () => {
-    // The link names the cadence, so it must put the user ON the control rather
-    // than on a collapsed row they still have to find.
     const { openSyncSettings } = await import('@/lib/use-settings-route');
     openSyncSettings({ advanced: true });
 
@@ -606,15 +550,6 @@ describe('Settings Sync section — Advanced disclosure intent', () => {
   });
 
   test('the deep link still lands expanded under StrictMode', async () => {
-    // The app mounts under StrictMode (main.tsx), so the deep link has to work
-    // with every render-phase hook double-invoked and every mount effect run
-    // twice against a flag that only one read can win.
-    //
-    // SCOPE: this does NOT distinguish consuming the flag in an effect from
-    // consuming it in a `useState` initializer — measured on React 19.2, the
-    // initializer is invoked twice but React commits the FIRST call's value,
-    // so both spellings land expanded. The effect is preferred for render
-    // purity (see SyncSection), not because this test can tell them apart.
     const { openSyncSettings } = await import('@/lib/use-settings-route');
     openSyncSettings({ advanced: true });
 
@@ -624,8 +559,6 @@ describe('Settings Sync section — Advanced disclosure intent', () => {
   });
 
   test('the intent is one-shot — a later visit to Sync is collapsed again', async () => {
-    // A flag that stuck would make every subsequent Sync visit open, turning a
-    // deliberate deep link into permanent state.
     const { openSyncSettings } = await import('@/lib/use-settings-route');
     openSyncSettings({ advanced: true });
     await renderSyncSection();

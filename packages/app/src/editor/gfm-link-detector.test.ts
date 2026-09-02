@@ -3,12 +3,8 @@ import type { JSONContent } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
 import { detectGfmLinkToken, type GfmLinkToken } from './gfm-link-detector';
 
-// Real pipeline, shared with production — the parity oracle. Constructing one
-// manager pulls the same remark-gfm autolink transform the editor uses.
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 
-/** Walk a parsed doc for the first text run carrying a link mark and return
- *  the exact {href, text} the pipeline produced (or null if nothing linked). */
 function parseFirstLink(token: string): GfmLinkToken | null {
   function walk(node: JSONContent): GfmLinkToken | null {
     const mark = node.marks?.find((m) => m.type === 'link');
@@ -24,7 +20,6 @@ function parseFirstLink(token: string): GfmLinkToken | null {
   return walk(mdManager.parse(token));
 }
 
-// The locked acceptance matrix. `null` = stays plain text.
 const MATRIX: Array<{ token: string; expected: GfmLinkToken | null }> = [
   {
     token: 'https://example.com',
@@ -42,9 +37,6 @@ const MATRIX: Array<{ token: string; expected: GfmLinkToken | null }> = [
   { token: 'foo.bar', expected: null },
   { token: 'v1.2.3', expected: null },
   { token: '192.168.1.1', expected: null },
-  // Explicit-scheme dotless hosts: micromark's http_autolink skips the
-  // dotted-domain requirement, so these linkify and round-trip as bare
-  // literals (the schemeless rows above stay rejected).
   {
     token: 'http://localhost:5174',
     expected: { href: 'http://localhost:5174', text: 'http://localhost:5174' },
@@ -60,11 +52,6 @@ const MATRIX: Array<{ token: string; expected: GfmLinkToken | null }> = [
   },
   { token: 'localhost:5174', expected: null },
   { token: 'http://foo_bar', expected: null },
-  // Ported edge branches — splitUrl's trailing-punctuation / unbalanced-paren
-  // strips, isCorrectDomain's underscore reject, the email bad-tail reject,
-  // and their keep-side complements. In this array they get parity coverage
-  // against the real parse like every other row, which is what guards the
-  // hand-port against upstream drift.
   {
     token: 'https://example.com.',
     expected: { href: 'https://example.com', text: 'https://example.com' },
@@ -93,8 +80,6 @@ describe('detectGfmLinkToken — acceptance matrix', () => {
 });
 
 describe('detectGfmLinkToken — parity with MarkdownManager.parse', () => {
-  // The single-source-of-truth contract: for every matrix token the detector
-  // agrees with what the real pipeline linkifies (verdict AND href).
   const parityTokens = [
     ...MATRIX.map((row) => row.token),
     'http://example.com',
@@ -112,8 +97,6 @@ describe('detectGfmLinkToken — parity with MarkdownManager.parse', () => {
 });
 
 describe('detectGfmLinkToken — bare domains are rejected structurally, not by TLD', () => {
-  // No TLD table ships. A bare domain never linkifies regardless of how
-  // real its suffix looks; only a scheme, `www.`, or `@` promotes it.
   for (const token of [
     'example.com',
     'foo.bar',
@@ -145,8 +128,6 @@ describe('detectGfmLinkToken — href scheme stays inside the allowlist', () => 
   });
 
   test('ftp:// is a safe scheme but not a GFM shape, so it does not convert', () => {
-    // Guards against widening the recognizer to the full scheme allowlist:
-    // the shape rules are GFM's (http/https/www/email), not SAFE_URL_SCHEMES.
     expect(detectGfmLinkToken('ftp://files.example.com')).toBeNull();
   });
 });

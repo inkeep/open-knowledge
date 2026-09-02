@@ -111,15 +111,6 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
-/**
- * `editorPage` lets a caller that already holds the editor window skip the
- * rediscovery poll. That poll re-evaluates `window.okDesktop.config.mode` in
- * the renderer, so it waits on whatever the renderer's main thread is busy
- * with. Any caller that has armed a settlement observer should pass the page:
- * the poll otherwise sits between arming and dispatch, widening the window the
- * observer has to survive for no reason the app is responsible for. On darwin
- * the menu click happens inside main and never pays it at all.
- */
 async function dispatchRendererMenuAction(
   app: ElectronApplication,
   action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
@@ -188,9 +179,6 @@ async function clickTerminalPlacementItemRapidly(
 ): Promise<void> {
   if (process.platform !== 'darwin') {
     for (let index = 0; index < count; index += 1) {
-      // The page matters most here: without it each of these iterations pays
-      // its own rediscovery poll, and the settlement being awaited spans all
-      // of them.
       await dispatchRendererMenuAction(app, 'move-terminal', editorPage);
     }
     return;
@@ -207,18 +195,6 @@ async function clickTerminalPlacementItemRapidly(
 
 const visibleTerminal = (page: Page) => page.locator('section[aria-label="Terminal"]:visible');
 
-/**
- * Widen the editor window and PROVE the width stuck.
- *
- * `setSize` past the display's work area is honored in the renderer for a beat
- * and then clamped back, and a bare `innerWidth >= n` poll happily catches that
- * beat. The assertions below then measure a window that has since shrunk and
- * blame the app: a right column squeezed to its drag floor reads as a lost
- * width, and `Math.abs(rendered - restored) < 20` fails by hundreds of pixels.
- * Sampling until the width settles is what makes the precondition real; a
- * display that cannot hold the window skips, the same way the suite skips a
- * platform without a PTY.
- */
 async function widenEditorWindow(
   app: ElectronApplication,
   page: Page,
@@ -248,10 +224,6 @@ async function widenEditorWindow(
 
   if (previous < width - 100) {
     const workArea = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workAreaSize);
-    // Only a display that genuinely cannot hold the window earns a skip. On one
-    // that can, a window settling short is the app mis-sizing itself, and
-    // calling that "your display is too small" would bury a real regression
-    // under a reason that is not true.
     if (workArea.width < width) {
       test.skip(
         true,
@@ -267,7 +239,6 @@ async function widenEditorWindow(
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
   const terminal = visibleTerminal(page);
   await expect(async () => {
-    // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
     if (await terminal.isVisible()) return;
     await clickViewTerminalItem(app);
     await expect(terminal).toBeVisible({ timeout: 5_000 });
@@ -277,8 +248,6 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
     'running',
     { timeout: 25_000 },
   );
-  // `running` means the PTY spawned, not that the shell has reached its read
-  // loop. Typing before it does swallows the keystrokes.
   await waitForShellReady(
     () => readActiveTerminal(page),
     (command) => typeInActiveTerminal(page, `${command}\r`),
@@ -306,20 +275,6 @@ async function typeInActiveTerminal(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text);
 }
 
-/**
- * The rendered rows of the active terminal, and NOTHING else.
- *
- * Use this wherever being wrong about what is on screen would be wrong in the
- * ASSERTION's direction: anything checking a marker is ABSENT, and anything
- * PARSING what it reads. `readActiveTerminal`'s union with the announcement
- * buffer can only make those two fail — it holds lines the rows no longer show,
- * and it truncates mid-token under a burst.
- *
- * WAITING is the case that TOLERATES the union, which is why the waits
- * elsewhere in this file still use it — both the marker polls and the
- * shell-readiness wait. Extra content can only ever delay a wait, never satisfy
- * one wrongly: a stale line cannot contain a token that has not been printed.
- */
 function readTerminalRows(page: Page): Promise<string> {
   return visibleTerminal(page).evaluate(
     (section) => section.querySelector('.xterm-rows')?.textContent ?? '',
@@ -334,42 +289,7 @@ async function readActiveTerminal(page: Page): Promise<string> {
   });
 }
 
-/**
- * Scroll the active terminal's scrollback until every marker is on screen at
- * once — the proof that the lines survived whatever just happened to the panel.
- *
- * Reads `.xterm-rows` ONLY. The `.xterm-accessibility` node beside it is
- * xterm's screen-reader announcement buffer, NOT scrollback: under a burst it
- * collapses to "Too much output to announce, navigate to rows manually to read"
- * and truncates whatever it was mid-way through, token included. Reading it as
- * retained output is what failed this assertion on a loaded runner while the
- * terminal itself was perfectly healthy — the sentinel was found in the
- * announcement buffer, and the line printed right after it had been cut in
- * half there and was not yet scrolled into the rows.
- *
- * Pages with the keyboard, NOT the wheel. The panel sets
- * `smoothScrollDuration`, so a wheel notch does not move the rows — it
- * retargets an animation the renderer interpolates over the following frames,
- * and each further notch restarts that animation from wherever it had got to.
- * Reading straight after the last notch therefore reads a view still in flight,
- * and how far along it is depends on how many frames the runner could spare:
- * a made-up dependency on the machine for an assertion about retained lines.
- *
- * `Shift+PageUp` is animated too — `scrollPages` reaches the same viewport the
- * wheel does — so this does not escape the animation, it stops racing it. Each
- * press asks for one page rather than the wheel's several, then two animation
- * frames let xterm advance before the loop samples and presses again. Paging
- * past the top is inert, so the presses converge on the top instead of repeatedly
- * retargeting from a position that has not painted yet. The ceiling is several
- * times the pages either home needs to cross this fixture's scrollback, so it
- * bounds a stuck loop rather than the travel.
- */
 async function expectScrollbackRetains(page: Page, ...markers: string[]): Promise<void> {
-  // Focus the node xterm actually reads keys from. Clicking the row grid would
-  // do it too, but a click lands on whatever the session last printed, and the
-  // panel activates file links on a plain click — so the first path-shaped
-  // token in this output would navigate the editor and take the focus that
-  // every press below depends on.
   await visibleTerminal(page).locator('.xterm-helper-textarea').focus();
   let text = await readTerminalRows(page);
   for (let step = 0; step < 40 && !markers.every((marker) => text.includes(marker)); step += 1) {
@@ -388,23 +308,6 @@ async function expectScrollbackRetains(page: Page, ...markers: string[]): Promis
   await settleScrollPosition(page);
 }
 
-/**
- * Wait until the rows stop moving.
- *
- * The paging above is animated, so the position after the last press is a
- * target rather than a fact — and this is the only thing in the file that
- * leaves the view mid-flight, which is why the settle lives here rather than at
- * whichever caller happens to resize next. A resize refits the grid against
- * whatever line the buffer shows AT THAT INSTANT, so a move taken mid-animation
- * shrinks from a position that varies run to run, and every assertion about
- * what the shrink did to the scrollback inherits that variance.
- *
- * Each sample sits behind an animation frame, so consecutive reads cannot all
- * land inside one paint and report a stillness that is really just a fast round
- * trip. Best-effort by design: if the rows never settle inside the bound, the
- * assertions that follow are what fail, and they say something about the
- * product rather than about the sampling.
- */
 async function settleScrollPosition(page: Page): Promise<void> {
   let previous = '';
   let stable = 0;
@@ -462,44 +365,16 @@ async function moveTerminal(
   home: TerminalHome,
 ): Promise<void> {
   const settlement = waitForTerminalHome(page, home);
-  // The observer is already armed inside the renderer, so the dispatch must not
-  // re-discover the window before sending.
   await clickTerminalPlacementItem(app, page);
   await settlement;
 }
 
-/**
- * The live terminal surface, held so a later assertion can prove the SAME node
- * is what ended up at the other home. Follows `.xterm` rather than the section
- * wrapping it, so the node being tracked is the terminal itself.
- */
 async function captureLiveTerminal(page: Page): Promise<ElementHandle<Element>> {
   const handle = await visibleTerminal(page).locator('.xterm').elementHandle();
   if (!handle) throw new Error('no visible Terminal surface to follow across the move');
   return handle;
 }
 
-/**
- * Moving the terminal must RE-PARENT the live surface, never tear it down and
- * build a fresh one at the other home. That is the property this file exists to
- * defend — a rebuilt surface is a dead PTY, a lost scrollback and a visible
- * stall — and following one node across the move states it outright.
- *
- * It stands where a wall-clock budget on the settlement used to, which could
- * only claim the property by proxy. That budget measured the harness as much as
- * the app: the observer arms in the renderer BEFORE the dispatch is sent, so
- * its number spanned a Playwright round trip and, on darwin, a main-process
- * menu click and its IPC too. Node identity does not move with how busy the
- * machine is.
- *
- * Nothing here bounds how LONG the move takes, deliberately: the only clock
- * this harness can read spans its own round trip to the renderer, so any number
- * it produces is partly a measurement of the runner. What remains is
- * `waitForTerminalHome`'s 5s rejection, which catches a move that never lands
- * rather than one that is merely slow — a move that became four seconds slower
- * would pass here. A budget worth having would have to be taken inside the app,
- * against a clock the harness does not sit on.
- */
 async function expectTerminalMovedNotRebuilt(
   surface: ElementHandle<Element>,
   home: TerminalHome,
@@ -518,17 +393,6 @@ async function expectTerminalMovedNotRebuilt(
   });
 }
 
-/**
- * The live shell's pid, read from the terminal ROWS alone.
- *
- * This one PARSES rather than substring-matching a whole marker, which makes
- * the announcement buffer's truncation dangerous rather than merely slow: a
- * `MARKER=67818` cut short there yields `67`, which clears the
- * `toBeGreaterThan(0)` gate and is then compared against the real pid as proof
- * the session survived a move. Rows carry no such truncation.
- *
- * Which reader any given site wants is set out on `readTerminalRows`.
- */
 async function readShellPid(page: Page, marker: string): Promise<number> {
   await typeInActiveTerminal(page, `${SHELL_COMMANDS.processId(marker)}\r`);
   let processId = 0;
@@ -572,21 +436,6 @@ async function expectCollapsedRailColumn(page: Page, selector: string): Promise<
     .toBe(0);
 }
 
-/**
- * A move must not leave a scrolled-back reader at the bottom.
- *
- * Both callers reach this straight after `expectScrollbackRetains`, so the view
- * is parked back in the scrollback and the newest line is off screen. Any
- * restore that ends up at the bottom — the shape a scroll pair takes when its
- * second half is swallowed — puts that line back in view. That is the one
- * outcome distinguishable from a healthy move without asserting an exact
- * landing line the reflow is entitled to choose.
- *
- * Reads the ROWS. `readActiveTerminal` would fold in the announcement buffer,
- * which still holds the newest line from when it was printed, so an absence
- * assertion against it would contradict the presence assertion its own caller
- * just made.
- */
 async function expectStillScrolledBack(page: Page, newestLine: string): Promise<void> {
   expect(
     await readTerminalRows(page),
@@ -600,10 +449,6 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('moving a populated terminal preserves every live session', async ({ captureStderrFor }) => {
-    // The static calibration parser totals 235s of sequential condition
-    // budgets, which are worst-case ceilings rather than expected costs. The
-    // 260s outer budget leaves 25s for everything the parser cannot see: the
-    // Electron launch, every focus and keystroke, and the paging round trips.
     test.setTimeout(260_000);
     const s = seed();
     const app = await launchApp(s);
@@ -640,19 +485,12 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expectStillScrolledBack(page, `SCROLL_${token}_120`);
     await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
     await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
-    // Content retention across the GROW, not reach: the view enters this move
-    // at the top of the buffer, and growing 15 rows to 52 leaves almost nothing
-    // above it for a broken restore to swallow. The shrink leg below is where
-    // reach is actually exercised.
     await expectScrollbackRetains(page, sentinel, scrollStart);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const rightOutput = `RIGHT_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(rightOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rightOutput);
 
-    // The shrink is the leg that can lose reach: 52 rows down to 15 anchors the
-    // newest visible line and lands tens of rows below the markers, so the
-    // re-read after it has to page all the way back up.
     await expectScrollbackRetains(page, sentinel, scrollStart);
     await moveTerminal(app, page, 'bottom');
     await expectTerminalMovedNotRebuilt(liveSurface, 'bottom');
@@ -687,9 +525,6 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test('renderer restart restores the right layout and its live active terminal', async ({
     captureStderrFor,
   }) => {
-    // The static calibration parser totals 265s across both reload cycles,
-    // which are worst-case ceilings rather than expected costs. The 290s outer
-    // budget leaves 25s for the untimed interaction work between them.
     test.setTimeout(290_000);
     const s = seed({ skipRestoreState: true });
     const app = await launchApp(s);
@@ -704,8 +539,6 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const [, secondTabId] = await terminalTabIds(page);
     if (secondTabId === undefined) throw new Error('second terminal tab was not created');
     await renameTerminalTab(page, terminalTabById(page, firstTabId), 'restart first');
-    // Preserve the default-ordinal reload assertion where shell titles are
-    // stable; ConPTY can replace it with an OSC title on Windows.
     const secondLabel = process.platform === 'win32' ? 'restart second' : 'Terminal 2';
     if (process.platform === 'win32') {
       await renameTerminalTab(page, terminalTabById(page, secondTabId), secondLabel);
@@ -719,9 +552,6 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(beforeRestart)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(beforeRestart);
 
-    // This test owns restart persistence; the dedicated terminal-tabs smoke
-    // owns pointer-drag behavior. Reordering in the bottom dock keeps this
-    // setup independent of right-column overlay geometry.
     await visibleTerminal(page).locator('.xterm').click();
     await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
     await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
@@ -768,7 +598,6 @@ test.describe('Terminal placement continuity — live Electron', () => {
 
     await clickViewAgentsItem(app);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
-    // Shrinking always takes, so this direction needs no settle proof.
     const editorWindow = await app.browserWindow(page);
     await editorWindow.evaluate((windowHandle: unknown) => {
       const target = windowHandle as {

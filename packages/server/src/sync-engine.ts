@@ -1,12 +1,3 @@
-/**
- * SyncEngine — background fetch/merge/push with typed state machine.
- *
- * Surface: core state machine + remote detection + lifecycle, pull cycle
- * (fetch + merge + timers + backoff), push cycle (squash-before-push +
- * content-scope), conflict + error handling integration, state persistence
- * + restart recovery.
- */
-
 import { execFile } from 'node:child_process';
 import {
   type Dirent,
@@ -91,12 +82,6 @@ import {
 const log = getLogger('sync-engine');
 const TRACKED_MCP_CONFIG_TARGET_SET: ReadonlySet<string> = new Set(TRACKED_MCP_CONFIG_TARGETS);
 
-/**
- * Git SHA-1 object IDs are 40 lowercase hex chars. `commit-tree` and similar
- * plumbing can emit error text on stdout under failure modes (e.g. corrupt
- * objects, disk full) — a non-empty truthy string is not enough to trust as a
- * ref value, so we pattern-match before feeding it to `update-ref`.
- */
 const SHA_HEX_40 = /^[0-9a-f]{40}$/i;
 
 const execFileAsync = promisify(execFile);
@@ -110,26 +95,8 @@ class ShareableOkEnumerationError extends Error {
   }
 }
 
-/**
- * Why a `git merge --ff-only` refused. `git` distinguishes the two causes by
- * both exit code and stderr severity token, and the pull-only cycle must react
- * differently to each: an overlay overlap is recoverable (restore the file and
- * retry), a divergence is not fast-forwardable at all.
- */
 export type FastForwardRefusal = 'overlay-overlap' | 'divergence' | 'unknown';
 
-/**
- * Classify a fast-forward refusal from git's exit code and stderr. Two
- * independent discriminators are available and pinned against the shipped git
- * build by a test, because the message text is locale- and version-sensitive:
- *   - divergence (local history not fast-forwardable): exit 128, `fatal:` +
- *     "Not possible to fast-forward";
- *   - overlay overlap (an uncommitted edit to a file the merge would update):
- *     exit 1, `error:` + "would be overwritten by merge".
- * The severity token is the primary signal — git prints an informational
- * `Updating <a>..<b>` line to stdout even when it then aborts, so stdout is not
- * safe to key on.
- */
 export function classifyFastForwardRefusal(input: {
   exitCode?: number | null;
   stderr: string;
@@ -145,8 +112,6 @@ export function classifyFastForwardRefusal(input: {
   return 'unknown';
 }
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export type SyncState =
   | 'dormant'
   | 'idle'
@@ -158,29 +123,10 @@ export type SyncState =
   | 'auth-error'
   | 'disabled';
 
-/**
- * Push-permission probe outcome the sync UI branches on. Flat shape (single
- * discriminator `checkStatus`) so the renderer can switch without runtime
- * narrowing of the underlying tagged union. Wire schema lives in
- * `packages/core/src/schemas/api/sync-seed.ts` as `PushPermissionSchema`.
- */
-/**
- * Discriminated union — `checkStatus` tag determines which payload fields
- * are present. The earlier flat shape allowed illegal combinations
- * (e.g., `{ checkStatus: 'denied' }` with no `deniedReason`, or
- * `{ checkStatus: 'allowed', deniedReason: 'no-collaborator' }`); the
- * union makes both type-impossible. Mirrors the source-of-truth
- * `PushPermission` shape in `github-permissions.ts`.
- */
 export type PushPermissionStatus =
   | { checkStatus: 'allowed' }
   | ({
       checkStatus: 'denied';
-      // Both payload unions derive structurally from the source-of-truth
-      // `PushPermission` in github-permissions.ts so a code added there can't
-      // silently drift from this wire shape. The Zod enum in core's
-      // sync-seed.ts still needs a manual matching update; its round-trip
-      // test is the runtime net for that half.
       deniedReason: Extract<PushPermission, { kind: 'denied' }>['reason'];
     } & Pick<
       Extract<PushPermission, { kind: 'denied' }>,
@@ -191,7 +137,6 @@ export type PushPermissionStatus =
       unknownError?: Extract<PushPermission, { kind: 'unknown' }>['error'];
     };
 
-/** Flatten the tagged `PushPermission` from `github-permissions.ts` to wire shape. */
 function pushPermissionStatusFrom(p: PushPermission): PushPermissionStatus {
   if (p.kind === 'allowed') return { checkStatus: 'allowed' };
   if (p.kind === 'denied') {
@@ -206,7 +151,6 @@ function pushPermissionStatusFrom(p: PushPermission): PushPermissionStatus {
   return { checkStatus: 'unknown', unknownError: p.error };
 }
 
-/** Structural equality on flattened push-permission status. */
 function pushPermissionStatusEqual(
   a: PushPermissionStatus | null,
   b: PushPermissionStatus | null,
@@ -225,7 +169,6 @@ function pushPermissionStatusEqual(
   if (a.checkStatus === 'unknown' && b.checkStatus === 'unknown') {
     return a.unknownError === b.unknownError;
   }
-  // 'allowed' has no payload to compare; equality is the tag match above.
   return true;
 }
 
@@ -233,87 +176,32 @@ interface SyncStatus {
   state: SyncState;
   lastSyncUtc: string | null;
   lastRunUtc: string | null;
-  /**
-   * Per-direction companions to `lastRunUtc`, which collapses both directions
-   * into one stamp and so cannot say WHICH ran. Same admission rule as
-   * `lastRunUtc` — the op reached the remote, whether or not anything moved —
-   * split so the panel can report the two legs separately. Neither is a
-   * content-changed signal; that is `lastSyncUtc`.
-   */
   lastPullOkUtc: string | null;
   lastPushOkUtc: string | null;
   lastFetchUtc: string | null;
   lastPushedSha: string | null;
-  /**
-   * Completion timestamp + bounded outcome of the last pull (background or
-   * one-shot). `lastPullUtc` bumps at every pull completion so a downstream
-   * surface can detect a fresh result by change; `lastPullOutcome` carries that
-   * pull's outcome. Null until the first pull completes.
-   */
   lastPullUtc: string | null;
   lastPullOutcome: PullOutcome | null;
   ahead: number;
   behind: number;
-  /**
-   * Failure streaks, one per direction. Each governs only its own interval's
-   * backoff: a rejected push must not stretch the pull interval, because an
-   * exhausted push retry hands off to exactly that loop.
-   *
-   * `consecutiveFailures` is the pull leg, under the name it has always had on
-   * the wire. Renaming it to match its sibling would be a deliberate migration,
-   * not a field added beside it.
-   */
   consecutiveFailures: number;
   consecutivePushFailures: number;
   conflictCount: number;
-  /** True when a git remote exists, even if sync is dormant/disabled. */
   hasRemote: boolean;
-  /**
-   * Whether sync is on at all — true for both `pull` and `full` mode, false for
-   * `off`. False by default (disabled for safety). Read `syncMode` to branch on
-   * push capability; this boolean cannot distinguish pull-only from full.
-   */
   syncEnabled: boolean;
-  /** Project sync mode. `full` is the only mode that pushes. */
   syncMode: SyncMode;
-  /**
-   * Soft signal: `resolveGitIdentity()` returned null on the last probe.
-   * The push cycle still commits under the "OpenKnowledge" default — this flag
-   * tells the UI to surface a non-blocking nudge to set a real identity.
-   */
   identityUnresolved: boolean;
-  /** Origin remote resolved for display; null when no remote is configured. */
   remote: SyncRemoteInfo | null;
-  /**
-   * Errors are tracked per direction so a success on one leg never clears the
-   * other's error. A failed push followed by a successful fetch (public repo,
-   * or any read-allowed/write-denied remote) must keep the push error visible
-   * instead of flashing it for the gap between the two broadcasts.
-   *
-   * `push*` = sending local commits out; `pull*` = bringing remote changes in
-   * (fetch + merge). Each pairs a developer-facing `*Error` message with an
-   * optional bounded `*ErrorCode`: at most one of the pair carries content per
-   * direction (code wins at render; else fall back to the raw message).
-   */
   pushError?: string;
   pushErrorCode?: UserFacingErrorCode;
   pullError?: string;
   pullErrorCode?: UserFacingErrorCode;
   pausedReason?: string;
-  /**
-   * Push-permission probe outcome. Absent when the engine hasn't reached a
-   * `hasRemote === true` decision yet, or when the remote is not a github.com
-   * origin (the probe only runs against github.com). UI consumers treat
-   * absent as "no gate" and render current behavior.
-   */
   pushPermission?: PushPermissionStatus;
 }
 
-/** A single content-scoped file entry used during push-cycle tree building. */
 interface ContentFileEntry {
-  /** Path relative to contentDir — used for commit messages. */
   contentRelPath: string;
-  /** Path relative to projectDir (git root) — used for git add/rm commands. */
   projectRelPath: string;
 }
 
@@ -343,69 +231,26 @@ const CONTENT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'content' } } as con
 const PROJECT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'project' } } as const;
 type SyncStagingScope = typeof CONTENT_SYNC_STAGING_SCOPE | typeof PROJECT_SYNC_STAGING_SCOPE;
 
-/**
- * Which VERB asked for this pull. Buttons are mode-independent (user-directed:
- * the same click does the same thing whatever the sync-mode dropdown says; the
- * mode only chooses what runs on the timer):
- *
- *   - `'explicit'` — the Pull verb: the Pull button in any mode, and the
- *     pull-only automation (follow's scheduled loop). Runs the B1 overlay
- *     cycle and never commits; diverged committed history refuses rather than
- *     merging, because merging requires authoring a commit.
- *   - `'sync'` — the Sync verb: the Pull-and-Push button in any mode, and
- *     full mode's scheduled loop. Keeps the classic commit+merge machinery —
- *     syncing is the act of committing your work.
- */
 type PullInvocation = 'explicit' | 'sync';
 
-/**
- * Cap on the overlapping-path set carried in the status payload. The list is a
- * UI affordance, not a report: past a few dozen the user is not picking through
- * rows, and the payload rides the CC1 status broadcast.
- */
 const BLOCKING_PATHS_CAP = 50;
 
-/**
- * Pauses a one-shot cycle may RAISE and keep, rather than having rolled back by
- * the Manual-mode posture restore.
- *
- * Both are the visible answer to a click the user just made. Rolling them back
- * left Manual — the default resting mode — showing nothing at all: the
- * blocked-changes panel gates on `external-changes-pending` surviving, so
- * without it the flagship affordance never rendered in the mode that most needs
- * it, silently and with no log line.
- */
 const FORWARD_ONLY_PAUSES: ReadonlySet<string | undefined> = new Set([
   'diverged-local-commits',
   'external-changes-pending',
 ]);
 
-/** Commit subject for the user-pressed "commit the blocking files" action. */
 const COMMIT_BLOCKING_MESSAGE = 'Commit local changes before syncing';
 
-/** Persisted state (sync-state.json). */
 interface PersistedSyncState {
   version: 1;
   lastSyncUtc: string | null;
-  /**
-   * Optional so a state file written before these existed still loads — a
-   * missing leg reads as "never", which is honest for a restored engine.
-   */
   lastPullOkUtc?: string | null;
   lastPushOkUtc?: string | null;
   lastFetchUtc: string | null;
   lastPushedSha: string | null;
-  /** Pull-leg failure streak. Legacy key name; see `SyncStatus`. */
   consecutiveFailures: number;
-  /** Push-leg failure streak. Absent in older state files, which read 0. */
   consecutivePushFailures?: number;
-  /**
-   * Whether that streak is connectivity-class. Persisted with the counter it
-   * gates: without it a restart mid-outage restores the tier but not the
-   * evidence that releases it, so the engine sits out the full backoff after
-   * the network is demonstrably back — the common case for a desktop app that
-   * was closed while offline. Absent in older state files, which read false.
-   */
   pushStreakIsConnectivity?: boolean;
   pausedReason?: string;
   pausedSinceUtc?: string;
@@ -417,137 +262,39 @@ interface SyncEngineOptions {
   contentDir: string;
   contentFilter: ContentFilter;
   contentRoot?: string;
-  /** Seconds between pull cycles. Default 30. */
   pullIntervalSeconds?: number;
-  /** Seconds between push cycles. Default 60. */
   pushIntervalSeconds?: number;
-  /**
-   * Project sync mode from resolved config. When omitted, `syncEnabled` is used
-   * as the legacy back-compat source (`true`→`full`, else `off`). Prefer `mode`.
-   */
   mode?: SyncMode;
-  /**
-   * Legacy boolean enable flag. Retained so existing callers (and tests) keep
-   * working; `true` maps to `full`, anything else to `off`. Ignored when `mode`
-   * is provided.
-   */
   syncEnabled?: boolean;
-  /** Ordered credential config values for simple-git (e.g. ['credential.helper=', 'credential.helper=!…']). */
   credentialConfig?: string[];
-  /**
-   * CC1 broadcaster for sync-status channel signals. Narrowed to the one
-   * member the engine calls so a test can inject `{ signal }` without
-   * casting past the class's private fields; the real broadcaster stays
-   * assignable.
-   */
   cc1Broadcaster?: Pick<CC1Broadcaster, 'signal'> | null;
-  /** Called on every state transition. */
   onStateChange?: (state: SyncState) => void;
-  /**
-   * Called after SyncEngine records content conflicts in ConflictStore.
-   * The server uses this to mark already-loaded Y.Docs as conflicted.
-   */
   onContentConflictsDetected?: (files: string[]) => void | Promise<void>;
-  /**
-   * Called after a content conflict clears (resolved by the user or
-   * auto-dissolved when upstream converged). The server uses this to clear the
-   * conflict status on already-loaded Y.Docs — for a working-tree conflict the
-   * resolution may not change disk bytes (keep-mine), so the file-watcher's
-   * `case 'update'` clear cannot be relied on.
-   */
   onContentConflictsResolved?: (files: string[]) => void | Promise<void>;
-  /** Callback to gate batch-in-progress during merge operations.
-   *  Prevents HEAD watcher from firing reconciliation mid-merge. */
   setBatchInProgress?: (value: boolean) => void;
-  /**
-   * Fires when the engine auto-disables itself due to an unrecoverable error
-   * (currently only `protected-branch`). The caller is expected to persist
-   * `autoSync.enabled = false` to project-local config so the disable survives
-   * restart and the SettingsPane toggle reflects reality. Without this,
-   * boot would re-read `enabled: true` from config and re-trigger the same
-   * push failure on every restart.
-   */
   onAutoDisable?: (reason: 'protected-branch') => void | Promise<void>;
-  /**
-   * Snapshot the working tree to the recoverable timeline just before a
-   * pull-only transition folds stranded local commits into a working-tree
-   * overlay (a `--mixed` reset realigns the branch to origin). Fired only when
-   * there are commits to convert, and before the branch moves, so the
-   * pre-conversion state is recoverable even if the process dies mid-transition.
-   * The server wires this to a shadow-repo safety checkpoint; omit in tests /
-   * headless boots where no shadow repo exists.
-   */
   checkpointBeforeStrandedConversion?: (context: {
     branch: string;
     ahead: number;
   }) => void | Promise<void>;
-  /**
-   * Fired inside a pull-only cycle when an incoming fast-forward overlaps an
-   * uncommitted local edit, right before the overlapping paths are reset to HEAD
-   * (the reset is what lets the fast-forward land). Between that reset and the
-   * overlay re-write the edit lives only in memory, so a hard crash in that
-   * window would lose it for a doc with no live client. The server wires this to
-   * a shadow-repo safety checkpoint so the pre-reset bytes survive on the shadow
-   * timeline and stay recoverable. Best-effort — a failure only forfeits the
-   * crash-window safety net, so the cycle proceeds. Omit in tests / headless
-   * boots where no shadow repo exists.
-   */
   checkpointBeforeOverlayRestore?: (context: {
     branch: string;
     paths: number;
   }) => void | Promise<void>;
-  /** Native, token-preserving TOML capability supplied by a composition root. */
   mcpTomlEditor?: NativeTomlMcpEditor;
-  /**
-   * Tier A token detector. Honors the existing three-tier model (see
-   * `packages/cli/src/auth/resolve-auth.ts`) without `packages/server`
-   * importing from `packages/cli` (would be a package cycle).
-   *
-   * Omit when no auth source is wired (tests, headless boot) — the probe
-   * falls through to Tier B/C or anonymous.
-   */
   detectGh?: DetectGhFn;
-  /**
-   * gh account listing for naming the identity behind a probe denial — same
-   * package-cycle seam as `detectGh`. Omit when no auth source is wired;
-   * denials then go unnamed, nothing else changes.
-   */
   detectGhAccounts?: DetectGhAccountsFn;
-  /**
-   * Injectable `git config --get-urlmatch` reader for the declared-account
-   * resolution behind every git handle, so tests can count or script the one
-   * subprocess that step spawns. Default: the real lookup.
-   */
   _readCredentialUrlMatch?: CredentialUrlMatchReader;
-  /**
-   * Tier B/C credential store, structurally compatible with cli's `TokenStore`.
-   * Omit when no auth source is wired.
-   */
   tokenStore?: ProbeTokenStore | null;
-  /**
-   * Probe implementation. Defaults to the real `checkPushPermission` from
-   * `github-permissions.ts`. Tests inject fakes to bypass the network.
-   */
   checkPushPermissionFn?: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
 }
 
-// ─── Jitter helper ───────────────────────────────────────────────────────────
-
-/** Apply ±15% jitter to a seconds interval, returning ms. */
 function jitteredMs(seconds: number): number {
   const base = seconds * 1000;
-  const jitter = base * 0.15 * (2 * Math.random() - 1); // ±15%
+  const jitter = base * 0.15 * (2 * Math.random() - 1);
   return Math.round(base + jitter);
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Returns true if the project repo has an unborn HEAD (git init with no
- * commits yet). Checks both loose refs (`.git/refs/heads/<branch>`) and
- * packed refs (`.git/packed-refs`) to avoid misclassifying a fully-committed
- * repo whose refs happen to be packed.
- */
 function isUnbornHead(projectDir: string): boolean {
   const inspected = inspectGitRepository(projectDir);
   if (inspected.kind !== 'repository') return false;
@@ -556,69 +303,26 @@ function isUnbornHead(projectDir: string): boolean {
   return inspected.repository.readRef(head.ref).kind === 'absent';
 }
 
-// ─── Backoff thresholds ──────────────────────────────────────────────────────
-
-/**
- * Consecutive contended pushes before the log escalates to `warn`. Three is one
- * more than a coincidence at any cadence, and still well short of a remote that
- * is merely busy for a moment.
- */
 export const CONTENTION_WARN_THRESHOLD = 3;
 
-/**
- * Whether a failure is the kind a later successful fetch disproves.
- *
- * Only transport-level unreachability qualifies. `429` and `5xx` share the
- * `network` class but describe the remote REFUSING work — a fetch is a read and
- * cannot clear a write-path rate limit, so treating them as disproven would
- * give a throttled remote the tightest retry loop of all.
- */
 export function isFetchDisprovableFailure(
   classified: Pick<ClassifiedError, 'class' | 'subclass'>,
 ): boolean {
-  // Denylist, not an allowlist. `unknown-network` is the residual bucket in
-  // `classifyGitError`, and most genuine unreachability lands there — "network
-  // is unreachable", "Temporary failure in name resolution", `ETIMEDOUT`,
-  // `EHOSTUNREACH` and SSL handshake failures all miss the narrower
-  // sub-branches and fall through to it. None describes a remote refusing
-  // work. Naming what a read cannot disprove also keeps a subclass added to the
-  // network class later dischargeable by default, which is the correct bias.
   return (
     classified.class === 'network' && classified.subclass !== '429' && classified.subclass !== '5xx'
   );
 }
 
 function backoffMs(consecutiveFailures: number): number {
-  if (consecutiveFailures >= 8) return 60 * 60 * 1000; // 60 min
-  if (consecutiveFailures >= 5) return 15 * 60 * 1000; // 15 min
-  if (consecutiveFailures >= 3) return 5 * 60 * 1000; // 5 min
-  return 0; // use normal interval
+  if (consecutiveFailures >= 8) return 60 * 60 * 1000;
+  if (consecutiveFailures >= 5) return 15 * 60 * 1000;
+  if (consecutiveFailures >= 3) return 5 * 60 * 1000;
+  return 0;
 }
 
-/**
- * Wall-clock cap for the `git merge --ff-only` subprocess. It is the one git
- * call in the engine spawned directly (not via the simple-git handle's block
- * timeout), so without this a hang — a stuck credential-helper prompt, a
- * degraded disk/NFS — would block the pull cycle forever with `pullInFlight`
- * held, wedging every future pull and push. On timeout the child is killed and
- * the cycle takes the error path so it retries with backoff.
- */
 const FF_ONLY_TIMEOUT_MS = 120_000;
 
-/**
- * Inactivity cap (simple-git `timeout.block`: ms since the last stdout/stderr
- * chunk) for every git op run through the engine's shared handle — fetch, push,
- * status, rev-parse. Without it a stuck remote or a hung credential-helper
- * prompt blocks the op forever with `pullInFlight`/`pushInFlight` held, wedging
- * every future cycle until the app restarts; pull-only amplifies this since a
- * follower has no push cycle to interleave and the one-shot "Update now" is a
- * fresh entry point onto the same fetch. A progressing transfer resets the
- * timer on each chunk, so only genuine silence trips it and the cycle then
- * falls into the existing backoff.
- */
 const GIT_BLOCK_TIMEOUT_MS = 120_000;
-
-// ─── SyncEngine ──────────────────────────────────────────────────────────────
 
 export class SyncEngine {
   private state: SyncState = 'dormant';
@@ -636,19 +340,6 @@ export class SyncEngine {
   private rootOkOutsideContentWalk: boolean;
   private pullIntervalSeconds: number;
   private pushIntervalSeconds: number;
-  /**
-   * The single source of truth for what this engine does ON A SCHEDULE.
-   * `off` = nothing scheduled, `follow` = scheduled fetch + fast-forward only,
-   * `full` = scheduled both directions. (`pull` is a legacy alias for
-   * `follow`.)
-   *
-   * SCHEDULED push is structurally impossible unless this is `full` — the gate
-   * is at `runPushCycle`'s entrance — so no timer can publish commits for a
-   * follower. It is NOT a capability gate: `pushOnce()` runs in every mode,
-   * including `off`, because a button the user pressed is its own consent. Read
-   * `ConfigSchema`'s `autoSync.mode` description as the user-facing contract;
-   * the two must not drift.
-   */
   private mode: SyncMode;
   private credentialConfig: string[];
   private cc1Broadcaster: Pick<CC1Broadcaster, 'signal'> | null;
@@ -667,98 +358,28 @@ export class SyncEngine {
   private detectGh: DetectGhFn | undefined;
 
   private detectGhAccounts: DetectGhAccountsFn | undefined;
-  /**
-   * Resolves + caches the gh token relayed to the credential helper so sync
-   * authenticates via the same source clone does (gh-first). Built from the
-   * injected `detectGh`; returns null throughout when gh is unavailable.
-   */
   private ghTokenSource: GhTokenSource;
-  /**
-   * Resolves + caches which GitHub account the origin declares (remote-URL
-   * userinfo, then `credential.<url>.username`), so the token above is
-   * requested for the account the user bound to this remote rather than for
-   * whichever gh account happens to be active.
-   */
   private ghAccountResolver: CachedGitHubAccountResolver;
-  /**
-   * Dedup key for the declared-account-miss warning: set while the declared
-   * account is not producing the relayed token, cleared on recovery. Keeps the
-   * warning to one line per continuous miss instead of one per git handle.
-   */
   private declaredAccountWarnKey: string | undefined;
   private tokenStore: ProbeTokenStore | null | undefined;
   private checkPushPermissionFn: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
-  /**
-   * Push-permission status. `null` until the engine has resolved one probe
-   * (or determined the probe should not run for this remote). Updated by
-   * `start()` post-`hasRemote` and by `refreshPushPermission()`. Never
-   * persisted — the probe result is in-memory only; GitHub permission state
-   * can change at any time and a stale denial would lock the user out after
-   * their access is granted.
-   */
   private pushPermission: PushPermissionStatus | null = null;
-  /** Prevents concurrent probes — strict one-call-per-session contract. */
   private pushPermissionProbeInFlight = false;
-  /**
-   * Credential tier the next pull-mode cycle fetches as, resolved from the same
-   * gh → token-store → anonymous order the push probe uses. Cached so the
-   * scheduler can read it synchronously; refreshed before each pull-mode
-   * schedule. Anonymous followers poll at a gentler cadence. `unknown` until
-   * first resolved, treated as authenticated (the responsive default).
-   */
   private authTier: PullAuthTier | 'unknown' = 'unknown';
 
   private pullTimer: ReturnType<typeof setTimeout> | null = null;
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
   private stateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Runtime state
   private lastSyncUtc: string | null = null;
-  /**
-   * When a sync operation last completed successfully — a push or a pull,
-   * scheduled or user-pressed, whether or not anything actually moved.
-   *
-   * Excludes the read-only fetch on panel open: that fires whenever the user
-   * looks, so counting it would pin this to "just now" permanently.
-   *
-   * Distinct from `lastSyncUtc`, which advances only when CONTENT changed (a
-   * merge landed, a commit was pushed). That distinction is invisible to a user
-   * who just pressed Pull on an already-current repo: nothing changed, so
-   * `lastSyncUtc` stayed put and the panel read "18h ago", which looks like the
-   * button did nothing. This is the timestamp the UI shows.
-   */
-  /**
-   * Derived, never stored: the later of the two per-direction legs.
-   *
-   * It used to be a third field assigned alongside each leg, which meant
-   * `saveStateNow` persisted the legs but not it — so after a restart the legs
-   * restored while this read `null`. Deriving makes that asymmetry
-   * unrepresentable. ISO-8601 UTC is fixed-width, so lexicographic max is
-   * chronological max.
-   */
   private get lastRunUtc(): string | null {
     if (this.lastPullOkUtc === null) return this.lastPushOkUtc;
     if (this.lastPushOkUtc === null) return this.lastPullOkUtc;
     return this.lastPullOkUtc > this.lastPushOkUtc ? this.lastPullOkUtc : this.lastPushOkUtc;
   }
-  /**
-   * The same successful-run signal as `lastRunUtc`, kept per direction so the
-   * panel can distinguish "pulled a moment ago" from "pushed a moment ago".
-   * `lastRunUtc` derives from these two and stays the single-value fallback for
-   * a client that predates the split.
-   */
   private lastPullOkUtc: string | null = null;
   private lastPushOkUtc: string | null = null;
-  /**
-   * Whether the most recent push cycle actually landed (pushed, or verified
-   * there was nothing to push). Set only at the two success sites in
-   * `doPushCycle`; reset at each cycle entry. The wrappers stamp `lastRunUtc`
-   * off THIS, never off error-absence — the retry-exhausted non-fast-forward
-   * path exits without recording an error, and inferring success from a
-   * missing error stamped "Updated just now" for a push that never landed.
-   */
   private pushCycleLanded = false;
-  /** Single-flight for the read-only panel-open fetch. */
   private fetchOnlyInFlight = false;
   private lastFetchUtc: string | null = null;
   private lastPushedSha: string | null = null;
@@ -766,24 +387,7 @@ export class SyncEngine {
   private lastPullOutcome: PullOutcome | null = null;
   private consecutivePullFailures = 0;
   private consecutivePushFailures = 0;
-  /**
-   * Whether the current push streak is connectivity-class (a retryable
-   * network/transport failure) rather than semantic or structural.
-   *
-   * A successful fetch proves the remote is reachable and the credential
-   * resolves, which falsifies a connectivity-class streak outright — but says
-   * nothing about a protected branch or an unreadable object store. Recording
-   * the cause is what lets the fetch discharge only what it disproves.
-   */
   private pushStreakIsConnectivity = false;
-  /**
-   * Consecutive pushes lost to write contention (non-fast-forward surviving the
-   * inline fetch+merge retry). Deliberately NOT `consecutivePushFailures`:
-   * contention is not an outage and must not accrue backoff. It is counted
-   * anyway because a genuinely contended remote otherwise retries forever with
-   * no streak, no error, and nothing in the log above `info` — indistinguishable
-   * from a push that simply has not run yet.
-   */
   private consecutiveContentions = 0;
   private ahead = 0;
   private behind = 0;
@@ -793,24 +397,14 @@ export class SyncEngine {
   private pullError: string | undefined;
   private pullErrorCode: UserFacingErrorCode | undefined;
   private pausedReason: string | undefined;
-  /**
-   * Tracked paths whose local edits overlap the incoming merge, recorded when
-   * `prepareForMerge` pauses. Read back out only while that pause holds (see
-   * `blockingPathsForStatus`), so a stale set can never outlive the condition
-   * that produced it — the alternative is clearing it at each of the five
-   * places `pausedReason` is reset, one of which would eventually be missed.
-   */
   private blockingPaths: string[] = [];
   private currentBranch = 'main';
 
-  // Concurrency guard: only one operation at a time
   private pullInFlight = false;
   private pushInFlight = false;
 
-  /** True once a git remote has been confirmed present. */
   private hasRemote = false;
 
-  /** Latest known state of the identity chain (null-return on resolveGitIdentity). */
   private identityUnresolved = false;
 
   private statePath: string;
@@ -826,8 +420,6 @@ export class SyncEngine {
     ).startsWith('..');
     this.pullIntervalSeconds = options.pullIntervalSeconds ?? 30;
     this.pushIntervalSeconds = options.pushIntervalSeconds ?? 60;
-    // `mode` wins; fall back to the legacy boolean so callers that still pass
-    // `syncEnabled` keep their exact prior semantics (true→full, else off).
     this.mode = options.mode ?? (options.syncEnabled === true ? 'full' : 'off');
     this.credentialConfig = options.credentialConfig ?? [];
     this.cc1Broadcaster = options.cc1Broadcaster ?? null;
@@ -848,34 +440,14 @@ export class SyncEngine {
     this.tokenStore = options.tokenStore;
     this.checkPushPermissionFn = options.checkPushPermissionFn ?? defaultCheckPushPermission;
     this.statePath = resolve(getLocalDir(this.projectDir), 'sync-state.json');
-    // ConflictStore branch is set lazily in start() after branch detection.
-    // Use a placeholder here; setBranch() updates it before any conflict operations.
     this.conflictStore = new ConflictStore(this.projectDir, this.currentBranch);
   }
 
-  /**
-   * The origin's declared GitHub account plus the host the relayed token must
-   * authenticate: the remote's GitHub host (github.com or GHES), falling back
-   * to github.com when the origin is missing or a non-GitHub forge (the relay
-   * is then harmless surplus — the helper only serves it to a matching host).
-   * Resolved per call from `.git/config` — a few small file reads, noise next
-   * to the subprocess each handle spawns — so a remote swap mid-session,
-   * including a userinfo edit that changes the declared account, is picked up
-   * without a restart. The subprocess-backed credential-config step stays
-   * cached per origin URL in `ghAccountResolver`.
-   */
   private syncGhTarget(): { account: GitHubAccount; host: string } {
     const account = this.ghAccountResolver.resolve(this.projectDir);
     return { account, host: account.host ?? 'github.com' };
   }
 
-  /**
-   * The gh token relayed to the credential helper, requested for the origin's
-   * declared account when one is named. A declared account gh cannot serve
-   * degrades to the active account's token (never to no credential), which
-   * `noteDeclaredAccountOutcome` records. The token stays cached per host +
-   * account in `ghTokenSource`.
-   */
   private resolveRelayGhToken(): RelayGhToken | null {
     const { account, host } = this.syncGhTarget();
     const relay = this.ghTokenSource.get(host, account.login);
@@ -883,32 +455,12 @@ export class SyncEngine {
     return relay;
   }
 
-  /**
-   * Warn — once per continuous miss, not once per handle — when the account
-   * the user declared for this origin did not produce the relayed token. Two
-   * shapes of miss: the relay fell back to the active gh account (the push
-   * may then succeed as that identity, making this warning the only trace),
-   * or the declared account produced no token at all (the strictly worse
-   * outcome — the failure that follows would otherwise carry no record of
-   * the declaration that led there). The fallback identity is resolved via
-   * `detectGhAccounts` only on the miss TRANSITION, never per handle — an
-   * account-list spawn per handle is the amplification the token cache
-   * exists to prevent, so a mid-miss active-account switch keeps the
-   * original warning rather than re-warning. Logins are
-   * unbounded-cardinality and belong in pino fields only, never in OTel
-   * span or metric attributes.
-   */
   private noteDeclaredAccountOutcome(
     account: GitHubAccount,
     host: string,
     relay: RelayGhToken | null,
   ): void {
     const declared = account.login;
-    // Resolve the login that actually produced the token BEFORE deciding, the
-    // same ordering `withDeniedIdentity` uses on the probe path: a fallback
-    // relay carries no login, so comparing it directly would report every
-    // fallback as a miss — including the casing-only case, where the active
-    // account IS the declared one and GitHub treats the two as identical.
     const resolvedLogin = relay === null ? undefined : (relay.login ?? this.activeGhLogin(host));
     const missed =
       declared !== undefined && (relay === null || !sameGitHubLogin(resolvedLogin, declared));
@@ -938,14 +490,6 @@ export class SyncEngine {
     this.declaredAccountWarnKey = key;
   }
 
-  /**
-   * Parked on the repository-not-found masquerade. Keyed on `pausedReason` as
-   * well as `state` because the retryable arm transitions to `offline`
-   * without clearing the reason, and the UI surfaces key on the reason — so a
-   * `state`-only test would leave `trigger()` unable to un-park exactly the
-   * state the surfaces are already rendering as not-found. Shared by
-   * `trigger()` and the probe-demotion guard so the two cannot drift.
-   */
   private parkedOnAmbiguousNotFound(): boolean {
     return (
       (this.state === 'auth-error' || this.pausedReason === 'auth-error') &&
@@ -954,12 +498,6 @@ export class SyncEngine {
     );
   }
 
-  /**
-   * Best-effort name of the host's active gh account, for the fallback
-   * warning above. Diagnostic only: a listing failure (or an injected
-   * implementation throwing across the package seam) costs the warning its
-   * name, never the handle its token.
-   */
   private activeGhLogin(host: string): string | undefined {
     if (!this.detectGhAccounts) return undefined;
     try {
@@ -970,17 +508,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Single construction point for every git handle the engine spawns. Threads
-   * the credential config plus the cached gh token (scoped to the origin's
-   * GitHub host and requested for its declared account) so fetch/push
-   * authenticate via gh when available. Local-only handles (e.g. `remote -v`,
-   * `merge --abort`) carry the token harmlessly — the caches keep resolution
-   * to at most one `git config` spawn per minute and one `gh` spawn per token
-   * TTL window regardless of handle count (60s when the requested account
-   * answered; a shorter, escalating window after a declared-account miss —
-   * `gh-token-source.ts` owns that contract).
-   */
   private gitHandle(gitIndexFile?: string): GitHandle {
     return createGitInstance(this.projectDir, {
       credentialConfig: this.credentialConfig,
@@ -990,16 +517,11 @@ export class SyncEngine {
     });
   }
 
-  // ─── Lifecycle ─────────────────────────────────────────────────────────────
-
   async start(): Promise<void> {
     if (this.state !== 'dormant') return;
 
-    // Restore runtime status. The enabled/disabled preference comes from
-    // project config and is passed via constructor options.
     this.loadState();
 
-    // Detect remote + branch regardless of enabled state so status is accurate.
     let hasRemote = false;
     try {
       const handle = this.gitHandle();
@@ -1013,25 +535,15 @@ export class SyncEngine {
           this.currentBranch = b;
           this.conflictStore.setBranch(b);
         }
-      } catch {
-        // detached HEAD — will pause when push/pull fires
-      }
+      } catch {}
     } catch (e) {
       log.warn({ err: e }, '[sync] remote detection failed');
     }
 
-    // Push-permission probe. Kicked off non-blocking after remote
-    // detection so an offline/slow GitHub doesn't delay sync start.
-    // The probe self-pauses sync in-memory when it resolves `denied`
-    // and the user already had autoSync enabled. Probe is a no-op when
-    // !hasRemote or origin is not a github.com URL.
     if (hasRemote) {
       void this.probePushPermissionInternal('start');
     }
 
-    // Disabled by default: sync only runs when the user has explicitly opted in.
-    // Protects real git repos (production code) from being mutated automatically.
-    // Both `pull` and `full` are active here; only `off` stays inactive.
     if (this.mode === 'off') {
       if (hasRemote) this.transitionTo('disabled');
       log.info({ hasRemote, mode: this.mode }, '[sync] sync not enabled — staying inactive');
@@ -1045,25 +557,15 @@ export class SyncEngine {
 
     this.transitionTo('idle');
 
-    // Reconcile persisted conflict state against git's view. The user may
-    // have resolved (or aborted) the merge externally between server runs,
-    // so conflicts.json can be stale — git is the source of truth.
-    // Linked-worktree safety: resolve the real gitdir (the worktree's
-    // `<repo>/.git/worktrees/<name>/` dir, not the literal
-    // `<projectDir>/.git`) so MERGE_HEAD probes work in main + linked.
     const gitDir = resolveGitDir(this.projectDir);
     const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
     const mergeInProgress = mergeHeadPath !== null && existsSync(mergeHeadPath);
 
-    // Align the cached count with the persisted store (conflicts.json) so the
-    // reconcile below sees every entry, including working-tree variants.
     this.conflictCount = this.conflictStore.count();
     const mergeNativeEntries = () =>
       this.conflictStore.list().filter((e) => e.variant !== 'working-tree');
 
     if (mergeNativeEntries().length > 0 && !mergeInProgress) {
-      // Merge-native entries with no merge in progress → resolved externally.
-      // (Working-tree entries are MERGE_HEAD-free by design and survive.)
       log.warn(
         { count: mergeNativeEntries().length },
         '[sync] persisted merge conflicts but no MERGE_HEAD — clearing stale state',
@@ -1071,7 +573,6 @@ export class SyncEngine {
       for (const entry of mergeNativeEntries()) this.conflictStore.removeConflict(entry.file);
       this.conflictCount = this.conflictStore.count();
     } else if (mergeNativeEntries().length > 0 && mergeInProgress) {
-      // Merge still in progress — drop any tracked entries git considers resolved.
       try {
         const handle = this.gitHandle();
         const stillUnmerged = new Set(
@@ -1095,8 +596,6 @@ export class SyncEngine {
       }
     }
 
-    // Clean up stale merge state: MERGE_HEAD but no merge-native conflicts
-    // tracked → a previous crash left a half-merged state; abort to recover.
     if (mergeInProgress && mergeNativeEntries().length === 0) {
       log.warn({}, '[sync] stale MERGE_HEAD detected with no tracked conflicts — aborting merge');
       try {
@@ -1107,8 +606,6 @@ export class SyncEngine {
       }
     }
 
-    // Merge-native conflicts pause the engine (a MERGE_HEAD blocks all sync);
-    // working-tree conflicts only re-flag their doc and keep the engine pulling.
     if (mergeNativeEntries().length > 0) {
       await this.notifyContentConflictsDetected(
         this.conflictStore.list().map((entry) => entry.file),
@@ -1124,26 +621,15 @@ export class SyncEngine {
       .list()
       .filter((e) => e.variant === 'working-tree');
     if (workingTreeEntries.length > 0) {
-      // Re-flag the per-doc lifecycle so the resolver mounts on open; stay idle
-      // and keep scheduling pulls — the branch is already at origin tip.
       await this.notifyContentConflictsDetected(workingTreeEntries.map((entry) => entry.file));
     }
 
-    // Resolve the follower's credential tier before scheduling so an anonymous
-    // pull-only follower's first cycle already uses the gentle cadence.
     if (this.mode === 'follow') await this.refreshAuthTier();
 
-    // Schedule with restart-aware remaining delay (max(0, lastFetchUtc+interval - now)).
     const pullRemainingMs = computeRemainingMs(
       this.lastFetchUtc,
       this.currentPullIntervalSeconds(),
     );
-    // Use lastPushOkUtc, not lastSyncUtc: lastSyncUtc is stamped by successful
-    // pull merges as well, so a repo where pulls keep merging but pushes keep
-    // failing would find a fresh lastSyncUtc on restart and arm the push at base
-    // cadence — ignoring a restored consecutivePushFailures streak that should
-    // gate it. lastPushOkUtc only advances on a landed push, so a failing-push
-    // streak correctly survives the restart.
     const pushRemainingMs = computeRemainingMs(this.lastPushOkUtc, this.pushIntervalSeconds);
     this.schedulePull(pullRemainingMs > 0 ? pullRemainingMs : undefined);
     this.schedulePush(pushRemainingMs > 0 ? pushRemainingMs : undefined);
@@ -1176,34 +662,6 @@ export class SyncEngine {
     this.saveStateNow();
   }
 
-  // ─── User-controlled enable/disable ────────────────────────────────────────
-
-  /**
-   * Set the sync mode. Soft transition — cancels scheduled cycles but lets an
-   * in-flight pull/push finish cleanly to avoid leaving a partial merge. The
-   * caller persists the preference to project config; sync-state.json only
-   * records runtime status/history.
-   *
-   * Idempotent on a same-value call: the config re-apply path fires on both a
-   * producer notify and a watcher echo, so this must not double-run.
-   *
-   * Switching between `pull` and `full` while local commits are ahead needs a
-   * checkpoint + overlay conversion; that transition machinery is not wired here
-   * yet, so this treats every non-`off` target as the plain enable path.
-   */
-  /**
-   * Apply a new scheduled-cycle cadence.
-   *
-   * Idempotent on a same-value call, for the same reason `setMode` is: the
-   * config re-apply path fires on both a producer notify and a watcher echo.
-   *
-   * A changed interval re-arms the timers immediately rather than waiting for
-   * the in-flight one to elapse — a user who moves 60 min → 30 s expects the
-   * next pull in 30 s, not up to an hour later. The re-arm goes through the
-   * normal schedule helpers, so backoff, jitter, and the mode gate on pushing
-   * all still apply. An in-flight cycle is left alone; its own `finally`
-   * re-schedules at the new interval.
-   */
   setIntervals(pullIntervalSeconds: number, pushIntervalSeconds: number): void {
     const pullChanged = this.pullIntervalSeconds !== pullIntervalSeconds;
     const pushChanged = this.pushIntervalSeconds !== pushIntervalSeconds;
@@ -1219,9 +677,6 @@ export class SyncEngine {
     );
     this.pullIntervalSeconds = pullIntervalSeconds;
     this.pushIntervalSeconds = pushIntervalSeconds;
-    // Only re-arm what is already armed. Re-scheduling a timer that is null
-    // because the engine is off, dormant, or mid-cycle would start a loop the
-    // mode gate never authorized.
     if (pullChanged && this.pullTimer !== null) this.schedulePull();
     if (pushChanged && this.pushTimer !== null) this.schedulePush();
   }
@@ -1234,9 +689,6 @@ export class SyncEngine {
 
     if (mode === 'off') {
       this.cancelScheduledCycles();
-      // Drain in-flight cycles so disable is observed before the next cycle
-      // mutates state. Bounded so a wedged pull/push can't hold the toggle
-      // forever — disable still lands in-memory.
       await this.drainInFlightCycles();
       this.pausedReason = undefined;
       this.clearPushError();
@@ -1246,10 +698,6 @@ export class SyncEngine {
       return;
     }
 
-    // Enable (pull or full). Re-detect remote in case it was added (or removed)
-    // while sync was off. Unconditional — unlike refreshRemote() this handles
-    // both directions, so enabling against an externally-removed remote
-    // correctly demotes to dormant instead of incorrectly transitioning to idle.
     this.hasRemote = await this.probeRemote();
 
     this.pausedReason = undefined;
@@ -1265,12 +713,6 @@ export class SyncEngine {
       return;
     }
 
-    // Entering pull-only with local commits ahead of origin: those commits can
-    // never be pushed, so fold them into the working-tree overlay and realign
-    // the branch to origin. A full→pull downgrade first lets an in-flight push
-    // finish (soft-disable drain) — it may land some of those commits — then
-    // converts what remains; off→pull has nothing in flight to drain. Full mode
-    // keeps stranded commits and pushes them, so it skips conversion entirely.
     if (mode === 'follow') {
       await this.drainInFlightCycles();
       this.cancelScheduledCycles();
@@ -1279,33 +721,15 @@ export class SyncEngine {
 
     this.transitionTo('idle');
     this.schedulePull(0);
-    // Immediate, symmetric with the pull above. Deferring the first push by a
-    // full interval made enabling Auto look like it had synced — the pull lands
-    // at once and stamps the freshness line — while pending edits sat locally
-    // for the whole interval. Harmless before the cadence was configurable
-    // (60 s); with a user-chosen interval it stretched to an hour.
-    //
-    // No-op unless mode === 'full' (the push gate lives in schedulePush +
-    // runPushCycle), so a pull-only project schedules pulls only.
     this.schedulePush(0);
     this.saveStateNow();
-    // Re-check push permission so the engine state and the probe state stay
-    // consistent. For `full`, a stale `denied` probe would otherwise let this
-    // reach 'idle' + schedule cycles that hit a 403; for `pull`, the probe just
-    // records the (expected) denial without pausing. Matches trigger()'s pattern.
     void this.probePushPermissionInternal('refresh');
   }
 
-  /**
-   * Back-compat adapter over {@link setMode}: `true`→`full`, `false`→`off`.
-   * Retained so callers that predate the mode enum keep working; the idempotent
-   * same-value early-return is preserved by setMode.
-   */
   async setEnabled(enabled: boolean): Promise<void> {
     await this.setMode(enabled ? 'full' : 'off');
   }
 
-  /** Cancel any pending pull/push timers so no scheduled cycle fires. */
   private cancelScheduledCycles(): void {
     if (this.pullTimer !== null) {
       clearTimeout(this.pullTimer);
@@ -1317,12 +741,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Wait for any in-flight pull/push cycle to finish before mutating state that
-   * would race it. Bounded so a wedged cycle (hung network, unresponsive
-   * remote) can't block the caller forever — after the cap the caller proceeds
-   * and the stuck cycle logs its own outcome when it eventually resolves.
-   */
   private async drainInFlightCycles(): Promise<void> {
     const DRAIN_TIMEOUT_MS = 30_000;
     const drainStartMs = Date.now();
@@ -1338,29 +756,16 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Count local commits not yet on origin — the "unshared changes" figure a
-   * downgrade confirm surfaces before those commits are folded into an overlay.
-   * A fresh probe (not the cached `ahead`), so a UI can read it at an arbitrary
-   * moment. Returns 0 when there's no remote or the branch is unborn.
-   */
   async probeUnpushedCommitCount(): Promise<number> {
     if (!this.hasRemote || isUnbornHead(this.projectDir)) return 0;
     return this.unpushedCommitCount(this.gitHandle());
   }
 
-  /**
-   * Ahead count via the configured upstream (`git status`), falling back to an
-   * explicit `rev-list` against `origin/<branch>` when the branch has no
-   * upstream (an enable-time-divergence clone that never set tracking).
-   */
   private async unpushedCommitCount(handle: GitHandle): Promise<number> {
     try {
       const status = await handle.git.status();
       if (status.tracking) return status.ahead;
-    } catch {
-      // Fall through to the rev-list probe below.
-    }
+    } catch {}
     try {
       const out = (
         await handle.git.raw(['rev-list', '--count', `origin/${this.currentBranch}..HEAD`])
@@ -1372,20 +777,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Fold stranded local commits (ahead of origin) into a working-tree overlay
-   * and realign the branch. Called when entering pull-only, where those commits
-   * can never be pushed.
-   *
-   * A `--mixed` reset to the merge base moves the branch ref and index but never
-   * touches the working tree, so the committed content survives verbatim as an
-   * uncommitted overlay and nothing on screen changes. Ahead-only lands directly
-   * on origin's tip (the merge base IS the tip); a diverged branch lands on the
-   * common ancestor with the local edits as overlay, and the next fast-forward
-   * cycle carries it to origin's tip, reconciling per B1. The pre-conversion
-   * tree is checkpointed to the recoverable timeline first (before the ref
-   * moves) so the stranded content is never only in the reflog.
-   */
   private async convertStrandedCommitsToOverlay(): Promise<void> {
     if (!this.hasRemote || isUnbornHead(this.projectDir)) return;
     const handle = this.gitHandle();
@@ -1405,8 +796,6 @@ export class SyncEngine {
     try {
       await this.checkpointBeforeStrandedConversion?.({ branch: this.currentBranch, ahead });
     } catch (e) {
-      // The checkpoint is a recovery convenience; the reset below still leaves
-      // the stranded commits reachable via the reflog / ORIG_HEAD, so proceed.
       log.warn({ err: e }, '[sync] pull-only: stranded-commit checkpoint failed — proceeding');
     }
 
@@ -1414,9 +803,6 @@ export class SyncEngine {
       const base = (
         await handle.git.raw(['merge-base', 'HEAD', `origin/${this.currentBranch}`])
       ).trim();
-      // Gate the HEAD/file watchers while the ref moves. The working tree is
-      // byte-identical across a `--mixed` reset, so no reconciliation is owed —
-      // the gate just suppresses a spurious mid-transition pass.
       this.setBatchInProgress?.(true);
       try {
         await withParentLock(() => handle.git.raw(['reset', '--mixed', base]));
@@ -1432,11 +818,6 @@ export class SyncEngine {
         '[sync] pull-only: folded stranded local commits into a working-tree overlay',
       );
     } catch (e) {
-      // Reset failed — leave the branch as-is, but surface the divergence now
-      // rather than relying on the next pull: setMode continues to idle + a
-      // scheduled pull, so without a paused reason the badge shows a clean idle
-      // while stranded, unpushable commits remain. (transitionTo does not clear
-      // pausedReason, so this survives setMode's subsequent idle transition.)
       this.pausedReason = 'diverged-local-commits';
       log.warn(
         { err: e },
@@ -1445,33 +826,9 @@ export class SyncEngine {
     }
   }
 
-  // ─── Credential change (reconnect) ──────────────────────────────────────────
-
-  /**
-   * Resume sync after the GitHub credential changed (a reconnect / fresh login).
-   *
-   * The credential helper reads the token at git-invocation time, so a newly
-   * stored token is picked up on the next cycle — but the engine parks in
-   * `auth-error`, where both sync cycles early-return, so the engine makes no
-   * useful progress while parked until something clears the state. `trigger()`
-   * clears `auth-error` only for the identity-ambiguous not-found park, whose
-   * repairs happen outside the app; for every other subclass a retry with the
-   * same missing credential would just fail again, and `setEnabled(true)`
-   * requires toggling sync off first. This is the dedicated recovery entry point: the auth-login
-   * success handler calls it so a reconnect resumes sync without a restart.
-   * No-op unless currently parked on an auth error, so a credential change
-   * during healthy operation is cheap.
-   */
   async notifyCredentialsChanged(): Promise<void> {
     if (this.mode === 'off') return;
 
-    // A credential change is precisely when any cached gh token is stale (the
-    // user just signed in / switched accounts). Drop it BEFORE the auth-error
-    // gate below so an account switch during HEALTHY sync is picked up on the
-    // next already-scheduled cycle, not left stale until the TTL expires. The
-    // account resolution is flushed with it — requesting a fresh token for a
-    // stale account choice would defeat the flush. The resume logic below
-    // still only runs when parked on an auth error.
     this.ghTokenSource.invalidate();
     this.ghAccountResolver.invalidate();
 
@@ -1484,8 +841,6 @@ export class SyncEngine {
     this.consecutivePushFailures = 0;
     this.pushStreakIsConnectivity = false;
 
-    // Remote may have changed while the user was signed out; re-detect so we
-    // demote to dormant rather than scheduling cycles against no remote.
     this.hasRemote = await this.probeRemote();
     if (!this.hasRemote) {
       this.transitionTo('dormant');
@@ -1495,27 +850,13 @@ export class SyncEngine {
 
     this.transitionTo('idle');
     this.schedulePull(0);
-    // Immediate for the same reason as the mode-change path above: a resumed
-    // engine that pulls at once but withholds the push reads as synced while
-    // local work stays local.
     this.schedulePush(0);
     this.saveStateNow();
     void this.probePushPermissionInternal('refresh');
   }
 
-  // ─── Manual trigger ────────────────────────────────────────────────────────
-
-  /**
-   * Trigger an immediate push and/or pull (bypasses backoff, resets both
-   * failure legs). Every `op` runs through a once-primitive, so a
-   * manual-mode project (`off`, no background loop) does real work on an
-   * explicit user act.
-   */
   async trigger(op: 'sync' | 'push' | 'pull' | 'fetch' = 'sync'): Promise<void> {
     if (op === 'fetch') {
-      // Read-only and deliberately ahead of everything below: a fetch must not
-      // reset failure counters, clear paused reasons, or re-probe permissions.
-      // Those are recoveries a user-requested sync earns; a panel open does not.
       await this.fetchOnly();
       return;
     }
@@ -1523,7 +864,6 @@ export class SyncEngine {
     this.consecutivePushFailures = 0;
     this.pushStreakIsConnectivity = false;
     this.consecutiveContentions = 0;
-    // Retry clears transient paused reasons; protected-branch etc. stay set.
     if (
       this.pausedReason === 'dirty-tree' ||
       this.pausedReason === 'external-changes-pending' ||
@@ -1532,17 +872,6 @@ export class SyncEngine {
       this.pausedReason = undefined;
       this.clearPullError();
     }
-    // A manual trigger also clears the one auth park a re-sign-in cannot fix:
-    // git's "repository not found" with a credential attached. Every repair
-    // for it happens outside the app (declaring the right account, restoring
-    // the deleted repo) and fires no credential-changed signal, and the badge
-    // withholds the Sign in button for it — without this, the only recovery
-    // is an app restart. Other auth subclasses keep the Sign in button, whose
-    // handler resumes via notifyCredentialsChanged; clearing them here would
-    // just re-run a fetch with the same missing credential. Caches are
-    // flushed like the other recovery entry points, so the retry resolves
-    // fresh instead of replaying a fallback token cached before the user's
-    // out-of-band fix; a re-failure simply re-parks.
     if (this.parkedOnAmbiguousNotFound()) {
       this.ghTokenSource.invalidate();
       this.ghAccountResolver.invalidate();
@@ -1550,38 +879,12 @@ export class SyncEngine {
       this.clearPushError();
       this.clearPullError();
       this.transitionTo('idle');
-      // Both background loops died when the park landed: the first tick after
-      // an auth-error early-returns BEFORE the finally that chains the next
-      // timer. The cycles this trigger runs re-arm only their own direction
-      // (`trigger('push')` never reschedules pull), so re-arm both here —
-      // otherwise the un-parked engine reports idle while one direction
-      // silently never runs again. Normal delays, not the immediate
-      // `schedulePull(0)` the credential-change path uses: this trigger runs
-      // its own cycles inline right after, and a 0ms timer would race them
-      // (the inline cycle would then early-return on `pullInFlight` and
-      // resolve the trigger while the pull it reported was still running).
       this.schedulePull();
       this.schedulePush();
     }
-    // Manual sync is one of the documented refresh triggers for the
-    // push-permission probe (auth-state change, manual sync, project
-    // re-open). Fire-and-forget — never blocks the trigger() caller. If
-    // the probe newly resolves `allowed` for a previously-denied user,
-    // the engine clears `no-push-permission` and returns to idle before
-    // the sync cycle runs.
-    //
-    // The probe-resolves-`denied`-mid-cycle race is benign: the cycle has
-    // already passed the `state !== 'idle'` early-return and will attempt
-    // the push, getting a 403 the user sees in `status.pushError`. That's the
-    // same UX the user would have hit on push failure regardless. Don't
-    // await this probe — doubling the latency of every manual sync to
-    // close a single-cycle race isn't worth it.
     void this.probePushPermissionInternal('refresh');
 
     if (op === 'pull') {
-      // A one-shot pull runs in every mode (including off/null): it never
-      // commits, never enables anything, and records a bounded outcome rather
-      // than a silent no-op. Its own state-gating decides refuse-vs-run.
       await this.pullOnce();
       return;
     }
@@ -1591,11 +894,6 @@ export class SyncEngine {
       return;
     }
 
-    // Log why a sync trigger is a no-op so "Sync now returns OK but nothing
-    // happens" is diagnosable from the server terminal. The cycle guards
-    // silently early-return in these states; surface them here. `disabled` is
-    // NOT in this set: it is the resting state of a manual-mode project, where
-    // a trigger is expected to do real work.
     if (this.state === 'dormant' || this.state === 'conflict' || this.state === 'auth-error') {
       log.warn(
         {
@@ -1611,38 +909,11 @@ export class SyncEngine {
     } else {
       log.info({ op, state: this.state }, `[sync] trigger(${op}) running`);
     }
-    // Push first so pending working-tree edits get committed via the
-    // isolated-index path. A subsequent merge then has a clean tree instead of
-    // refusing with "working tree has uncommitted changes". Both legs go
-    // through the once-primitives so a manual (mode `off`) project runs a real
-    // cycle rather than two silent no-ops.
     await this.pushOnce();
-    // The sync op's pull leg is 'sync' context: in full mode it keeps the
-    // commit+merge machinery. Push ran first, so the tree is usually clean and
-    // the interim commit fires only on mid-window dirt.
     await this.pullOnce('sync');
   }
 
-  /**
-   * Run a single push — the primitive behind every user-pressed Push, and the
-   * push leg of a user-pressed Pull-and-Push.
-   *
-   * Symmetric with {@link pullOnce}: it runs in every mode, so a project whose
-   * automation does not push (`off` — manual, or `follow` — auto pull-only) can
-   * still push on an explicit user act. The scheduled loop is untouched — a
-   * manual push neither starts one nor leaves the project looking active.
-   *
-   * The consent guarantee lives on the scheduling axis, not the mode axis:
-   * Open Knowledge never pushes on its OWN initiative outside `full` mode
-   * (`runPushCycle` is the single gate for that). A button press is not the
-   * product's initiative — it is the user's, and the user is allowed to send
-   * their own work whichever automation they chose. What `follow` guarantees is
-   * that nothing leaves this machine unless they ask; it is not a promise that
-   * they can never ask.
-   */
   async pushOnce(): Promise<void> {
-    // A full-mode project already owns a push loop; reuse it so the manual push
-    // chains the next scheduled one exactly as a background push would.
     if (this.mode === 'full') {
       await this.runPushCycle();
       return;
@@ -1650,24 +921,7 @@ export class SyncEngine {
     await this.runOneShotPush();
   }
 
-  /**
-   * Push once for a project whose automation has no push loop — mode `off`
-   * (manual) or `follow` (auto pull-only).
-   *
-   * Mirrors `runOneShotPull`'s shape: same single-flight guard, same
-   * "restore the resting posture" discipline so the project does not end up
-   * looking like it started auto-pushing, and deliberately no `schedulePush()`
-   * — an explicit push must not arm a background loop the user did not choose.
-   */
   private async runOneShotPush(): Promise<void> {
-    // Single-flight: a concurrent cycle already owns the working tree and the
-    // isolated index. Refuse rather than race it.
-    // Every refusal logs. `runOneShotPull`'s equivalents all route through
-    // `recordPullOutcome('refused')`, which stamps status and signals CC1; the
-    // push one-shot has no such outcome channel, so the log line is the only
-    // record that an explicit user press did nothing. Without it "Push does
-    // nothing" is undiagnosable — and this is a desktop app whose users have no
-    // server log to read, so support has only this.
     if (this.pushInFlight || this.pullInFlight) {
       log.info(
         { pushInFlight: this.pushInFlight, pullInFlight: this.pullInFlight },
@@ -1675,8 +929,6 @@ export class SyncEngine {
       );
       return;
     }
-    // The conflict resolver owns the tree until the user resolves — ledger
-    // conflicts included (B1 keeps the engine idle while they wait).
     if (this.state === 'conflict' || this.state === 'auth-error') {
       log.info({ state: this.state }, `[sync] one-shot push refused — state=${this.state}`);
       return;
@@ -1704,12 +956,6 @@ export class SyncEngine {
     } finally {
       this.pushInFlight = false;
       if (this.pushCycleLanded) this.markRun();
-      // Restore the resting STATE only. A `pausedReason` or `pushError` the
-      // cycle just recorded is the answer to "why didn't my push land", so
-      // unlike the pull one-shot this path never rolls those back — the user
-      // asked for this push and has to be able to see how it went. A cycle that
-      // ended in conflict/auth-error keeps that state: it outranks the resting
-      // posture and needs the user's attention.
       const settled = this.currentState();
       if (settled !== 'conflict' && settled !== 'auth-error') {
         this.transitionTo(restingState);
@@ -1718,34 +964,8 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Update remote-tracking refs and the ahead/behind counts, and nothing else.
-   *
-   * Read-only by construction: `git fetch` writes `refs/remotes/origin/*` and
-   * never touches the working tree, the index, or HEAD. That is what makes it
-   * safe to run when the user merely OPENS the sync panel — a panel headed
-   * "2 behind" is the user asking about remote state, and answering that
-   * question must not move their files. Merging stays exclusively behind the
-   * Pull button (`pullOnce`), which is what "Nothing moves until you ask"
-   * promises in manual mode.
-   *
-   * Failures are deliberately QUIET. The caller here is a passive panel open,
-   * not a sync the user requested, so this never routes through `handleError`:
-   * that classifies failures, can set `pullError`, and can pause the engine —
-   * turning an offline laptop into a red error state for someone who only
-   * clicked to look. A failed background fetch leaves the previous counts
-   * standing and reports `false`; the visible state is "these numbers are old",
-   * which is the truth.
-   *
-   * Returns true when refs were refreshed. Never throws.
-   */
   async fetchOnly(): Promise<boolean> {
     if (!this.hasRemote || isUnbornHead(this.projectDir)) return false;
-    // A cycle already owns the repo; its own fetch is fresher than ours would
-    // be, so decline rather than issue a second concurrent network call. The
-    // fetchOnlyInFlight leg covers two panel opens racing each other (two
-    // clients on one server): concurrent `git fetch` processes contend on ref
-    // locks for nothing — one fetch serves both.
     if (this.pullInFlight || this.pushInFlight || this.fetchOnlyInFlight) return false;
 
     this.fetchOnlyInFlight = true;
@@ -1753,83 +973,36 @@ export class SyncEngine {
     try {
       await handle.git.fetch('origin');
       this.lastFetchUtc = new Date().toISOString();
-      // Persisted so the restart-recovery scheduler computes its remaining
-      // delay from the real last fetch rather than treating every boot as
-      // never-fetched.
       this.scheduleSaveState();
     } catch (err) {
-      // Quiet by contract — see the doc comment. No handleError, no state
-      // transition, no pullError: the counts simply stay as they were. The log
-      // line is the one concession: without it an expired token or a renamed
-      // remote is indistinguishable from being genuinely current, and the
-      // bug-report bundle carries no evidence at all.
       log.debug({ err }, '[sync] panel-open fetch failed — counts left as they were');
       return false;
     } finally {
       this.fetchOnlyInFlight = false;
     }
     await this.refreshDivergenceCounts(handle);
-    // Deliberately NOT a run: this fires on panel open, so stamping it would
-    // make "Updated" read "just now" every time the user so much as looks at
-    // the popover — a field that always says the same thing tells them nothing.
-    // The fetch still refreshes the counts and the incoming list; "Updated"
-    // stays reserved for when content actually flowed.
     this.cc1Broadcaster?.signal('sync-status');
     return true;
   }
 
-  /**
-   * Re-read ahead/behind from the tracking ref. Local-only — `git status`
-   * compares HEAD against `@{upstream}` with no network — so the numbers are
-   * exactly as fresh as the last fetch, no fresher.
-   */
   private async refreshDivergenceCounts(handle: GitHandle): Promise<void> {
     try {
       const status = await handle.git.status();
       this.ahead = status.ahead;
       this.behind = status.behind;
     } catch (err) {
-      // Non-fatal — continue with previous counts. Logged because a silently
-      // stale ahead/behind pair renders as "up to date" in the popover.
       log.debug({ err }, '[sync] divergence-count refresh failed — keeping previous counts');
     }
   }
 
-  /**
-   * Run a single pull and return its bounded outcome — the primitive a
-   * downstream surface (e.g. an update button) triggers via `op: 'pull'`.
-   *
-   * Unlike the background cycle, this runs regardless of mode: an `off`/`null`
-   * project fetches and fast-forwards via the B1 variant (never committing) and
-   * is left exactly as inactive as it started — no mode flip, no scheduled loop.
-   * A `pull`/`full` project runs its normal cycle variant and keeps its
-   * background loop alive.
-   *
-   * State-gating is explicit and always recorded (never a silent no-op): the
-   * pull is refused when a cycle is already in flight, an unresolved conflict
-   * holds the tree, or there is nothing to pull from. Every path writes
-   * `lastPullUtc` + `lastPullOutcome` and signals `sync-status`, so a consumer
-   * that read status before triggering can wait for the timestamp to change and
-   * read the outcome of a pull that completed after its trigger.
-   */
   async pullOnce(invocation: PullInvocation = 'explicit'): Promise<PullOutcome> {
     const mode = this.mode;
     const outcome = await this.runOneShotPull(invocation);
-    // One-shot outcomes are the discrete, consumer-visible pull events (e.g. a
-    // downstream update button); log each so their distribution is observable
-    // without the per-cycle noise a background-pull log would add.
     log.info({ mode, outcome }, '[sync] one-shot pull complete');
     return outcome;
   }
 
   private async runOneShotPull(invocation: PullInvocation): Promise<PullOutcome> {
-    // Single-flight: a background or concurrent one-shot cycle already owns the
-    // working tree. Refuse rather than race it — the consumer retries on refused.
-    // Each site names its own cause. `recordPullOutcome` collapses all three to
-    // the same `'refused'` on the wire — deliberately, since a consumer's only
-    // useful response to any of them is to retry — but that leaves the log as
-    // the sole place the three are distinguishable when a user reports that
-    // Pull does nothing.
     if (this.pullInFlight || this.pushInFlight) {
       log.info(
         { pullInFlight: this.pullInFlight, pushInFlight: this.pushInFlight },
@@ -1837,7 +1010,6 @@ export class SyncEngine {
       );
       return this.recordPullOutcome('refused');
     }
-    // The full-mode conflict resolver owns the tree until the user resolves.
     if (this.state === 'conflict') {
       log.info(
         { state: this.state },
@@ -1845,7 +1017,6 @@ export class SyncEngine {
       );
       return this.recordPullOutcome('refused');
     }
-    // Nothing to pull from, or no commits to fast-forward against yet.
     if (!this.hasRemote || isUnbornHead(this.projectDir)) {
       log.info(
         { hasRemote: this.hasRemote },
@@ -1854,9 +1025,6 @@ export class SyncEngine {
       return this.recordPullOutcome('refused');
     }
 
-    // Snapshot the resting posture so an off/null project can be restored to it
-    // afterwards — the cycle transitions through fetching/pulling/idle, which
-    // must not leave a never-enabled project looking active.
     const restingMode = this.mode;
     const restingState = this.state;
     const restingPausedReason = this.pausedReason;
@@ -1866,12 +1034,6 @@ export class SyncEngine {
     } finally {
       this.pullInFlight = false;
       if (restingMode === 'off') {
-        // Restore the resting posture — with an asymmetry for the pauses that
-        // only ever flow FORWARD: if this cycle just raised one, keep it (it is
-        // the visible answer to the click the user made — in Manual, Pull is
-        // the primary affordance and rolling it back made the press change
-        // nothing); and if this cycle CLEARED a previously-raised one, never
-        // resurrect the stale copy from the resting snapshot.
         if (!FORWARD_ONLY_PAUSES.has(this.pausedReason)) {
           if (!FORWARD_ONLY_PAUSES.has(restingPausedReason)) {
             this.pausedReason = restingPausedReason;
@@ -1879,34 +1041,20 @@ export class SyncEngine {
         }
         this.transitionTo(restingState);
       } else {
-        // A background timer that fired during this one-shot early-returned on
-        // the single-flight guard without rescheduling; re-arm the loop.
         this.schedulePull();
       }
     }
   }
 
-  /**
-   * Record a pull's completion timestamp + outcome and signal `sync-status`,
-   * then echo the outcome back to the caller. Called at every pull completion
-   * (background and one-shot) so `lastPullUtc` changes on each — the signal the
-   * change-detection consumer contract relies on.
-   */
   private recordPullOutcome(outcome: PullOutcome): PullOutcome {
     this.lastPullUtc = new Date().toISOString();
     this.lastPullOutcome = outcome;
-    // `up-to-date` counts: the pull ran and confirmed there was nothing to
-    // bring in. `refused` (a guard declined) and `error` do not — neither
-    // reached the remote. `conflict` did the work and left something to resolve.
     if (outcome === 'succeeded' || outcome === 'up-to-date' || outcome === 'conflict') {
-      // `lastRunUtc` derives from the legs, so stamping this one is enough.
       this.lastPullOkUtc = new Date().toISOString();
     }
     this.cc1Broadcaster?.signal('sync-status');
     return outcome;
   }
-
-  // ─── Status ────────────────────────────────────────────────────────────────
 
   getStatus(): SyncStatus {
     return {
@@ -1928,8 +1076,6 @@ export class SyncEngine {
       syncEnabled: this.mode !== 'off',
       syncMode: this.mode,
       identityUnresolved: this.identityUnresolved,
-      // Resolve the origin label/URL only when a remote exists — keeps the
-      // common no-remote dormant path free of `.git/config` reads.
       remote: this.hasRemote ? readSyncRemoteInfo(this.projectDir) : null,
       ...(this.pushError !== undefined ? { pushError: this.pushError } : {}),
       ...(this.pushErrorCode !== undefined ? { pushErrorCode: this.pushErrorCode } : {}),
@@ -1943,54 +1089,23 @@ export class SyncEngine {
     };
   }
 
-  /**
-   * The overlapping paths, but only while the pause that produced them holds.
-   * Guarding on `pausedReason` here rather than clearing the field at every
-   * reset site is what keeps a resumed engine from advertising stale paths —
-   * and what makes the two resolution actions below safe to run without a
-   * caller-supplied path list.
-   */
   private blockingPathsForStatus(): string[] {
     if (this.pausedReason !== 'external-changes-pending') return [];
-    // The cap bounds the CC1 payload only; `getBlockingPaths()` (the action
-    // path) applies the same pause-gate but stays uncapped.
     return this.blockingPaths.slice(0, BLOCKING_PATHS_CAP);
   }
 
-  /** Public read of the same guarded set, for the resolution endpoints. */
   getBlockingPaths(): string[] {
-    // Same pause-gating as the status projection (a stale set must never be
-    // actionable) but WITHOUT its display cap: this is what Commit operates on,
-    // and inheriting the bound made one press clear only the first 50 overlaps.
     return this.pausedReason === 'external-changes-pending' ? [...this.blockingPaths] : [];
   }
 
-  /**
-   * Commit exactly the paths blocking the merge, then let the caller resume.
-   *
-   * Scoped to the blocking set on purpose: the user pressed a button about
-   * four named files, and sweeping the rest of a dirty tree into a commit they
-   * never saw is not what that button said. The set comes from the engine's own
-   * state rather than the request body — an endpoint that committed
-   * caller-named paths would be a general-purpose commit API reachable from any
-   * page the browser loads.
-   *
-   * Returns the new commit SHA, or null when there was nothing to commit.
-   */
   async commitBlockingPaths(): Promise<string | null> {
     const paths = this.getBlockingPaths();
     if (paths.length === 0) return null;
     const handle = this.gitHandle();
     return withParentLock(async () => {
-      // Inside the lock like every mutation below it — running it outside left
-      // a window where a concurrent cycle's identity write could interleave.
       await this.applyCommitIdentity(handle);
       try {
         await handle.git.raw(['add', '--', ...paths]);
-        // Pathspec-scoped: an unscoped `--cached` probe passes on unrelated
-        // content the USER staged by hand, even when the add above staged
-        // nothing — and `git commit -- <paths>` then fails, surfacing as a
-        // generic 500 with the user's staging silently altered.
         const staged = await listNames(handle.git, [
           'diff',
           '--cached',
@@ -2001,11 +1116,6 @@ export class SyncEngine {
         if (staged.length === 0) return null;
         await handle.git.raw(['commit', '-m', COMMIT_BLOCKING_MESSAGE, '--', ...paths]);
       } catch (err) {
-        // This path stages into the user's REAL index (unlike every scheduled
-        // commit, which builds through an isolated GIT_INDEX_FILE), so a failed
-        // attempt must not leave files staged the user never staged — that
-        // silently changes the semantics of their next hand-typed `git commit`.
-        // Best-effort: the reset can itself fail on the same broken repo.
         await handle.git.raw(['reset', '--', ...paths]).catch(() => {});
         log.error({ err, files: paths.length }, '[sync] commit of blocking paths failed');
         throw err;
@@ -2017,19 +1127,6 @@ export class SyncEngine {
     });
   }
 
-  // There is deliberately no `discardBlockingPaths` sibling to
-  // `commitBlockingPaths`. Restoring the blocking paths to HEAD destroys
-  // uncommitted work with no reflog entry and no stash object behind it, and a
-  // confirmation dialog is not a substitute for recoverability. The verb ships
-  // once a snapshot does; until then the panel offers Commit and a terminal,
-  // which at least makes the user type the destructive command somewhere they
-  // can inspect first. Re-adding this must come WITH the snapshot, not before.
-
-  /**
-   * Drop the pause the resolution actions just cleared the cause of. Leaves
-   * the engine idle so the caller's follow-up trigger runs a real cycle
-   * instead of short-circuiting on a paused state that no longer applies.
-   */
   private clearBlockingPause(): void {
     this.blockingPaths = [];
     this.pausedReason = undefined;
@@ -2041,24 +1138,10 @@ export class SyncEngine {
     this.scheduleSaveState();
   }
 
-  /**
-   * Re-run the push-permission probe. Public for callers that observe an
-   * auth-state change (e.g. set-identity, manual sync trigger) and want the
-   * UI to reflect the new permission without waiting on the next session.
-   *
-   * Returns the resolved status when the probe ran, or `null` when it was
-   * skipped (no remote, non-github origin, or a concurrent probe is already
-   * in flight — see `pushPermissionProbeInFlight`). Never throws.
-   */
   async refreshPushPermission(): Promise<PushPermissionStatus | null> {
     return this.probePushPermissionInternal('refresh');
   }
 
-  /**
-   * Re-run the identity chain and broadcast if the unresolved flag
-   * changed. Called from the set-identity endpoint so the UI nudge clears
-   * immediately instead of waiting for the next push cycle.
-   */
   async refreshIdentity(): Promise<void> {
     const identity = await resolveGitIdentity(this.projectDir);
     const next = identity === null;
@@ -2068,13 +1151,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Apply the resolved Git identity, or OpenKnowledge's non-interactive
-   * fallback, to every engine-authored commit path. `git merge` creates its
-   * own commit and therefore needs the same environment as `commit-tree`;
-   * otherwise a machine without user.name/user.email aborts after a
-   * non-fast-forward push and never reaches MCP reconciliation.
-   */
   private async applyCommitIdentity(handle: GitHandle): Promise<void> {
     const identity = await resolveGitIdentity(this.projectDir);
     const nextUnresolved = identity === null;
@@ -2092,45 +1168,14 @@ export class SyncEngine {
     });
   }
 
-  /**
-   * Drive the push-permission probe and apply its consequences:
-   *   - record the result in `this.pushPermission`
-   *   - when `denied` AND the user previously enabled sync, pause the
-   *     engine in-memory via `pausedReason='no-push-permission'` (no
-   *     persistent `__local__/project` write — probe result + pause are
-   *     in-memory only).
-   *   - broadcast `sync-status` so the frontend re-renders
-   *
-   * `caller` is informational only (logging). The method is safe to invoke
-   * before remote detection (no-op) and from concurrent paths (in-flight
-   * guard prevents N parallel calls).
-   */
   private async probePushPermissionInternal(
     caller: 'start' | 'refresh',
   ): Promise<PushPermissionStatus | null> {
-    // Three "skip the probe" paths collapse to a single `null` return value.
-    // Callers (`start`, `setEnabled(true)`, `trigger`) discard the return
-    // anyway — they don't differentiate "no remote" from "already running"
-    // from "non-GH origin." If a future "Re-check now" UI button needs to
-    // distinguish (e.g., spinner during in-flight vs gray-out when no remote),
-    // widen the return type to a discriminated union here.
     if (!this.hasRemote) return null;
     if (this.pushPermissionProbeInFlight) return null;
 
     const origin = readOriginGitHubRepo(this.projectDir);
     if (origin.kind !== 'ok') {
-      // Non-github origin (gitlab, self-hosted, ssh-only without a parseable
-      // form) or no remote URL configured — the GitHub-only probe cannot
-      // run. Emit `{ checkStatus: 'unknown' }` so the UI sees `pushPermission`
-      // populated (not undefined) and the AutoSync onboarding gate's
-      // probe-resolved guard passes. Without this, the gate would block
-      // non-GitHub users from the onboarding dialog forever (probe never
-      // resolves → pushPermission stays undefined → gate fails). `'unknown'`
-      // is honest semantically — we don't know whether they can push — and
-      // it composes correctly with every downstream consumer: the popover's
-      // `shouldOfferSignInAgain` won't fire (needs `'token-invalid'`),
-      // `shouldDisableSyncSwitch` won't fire (needs `'denied'`), and the
-      // onboarding gate accepts it.
       const next: PushPermissionStatus = { checkStatus: 'unknown' };
       const prev = this.pushPermission;
       this.pushPermission = next;
@@ -2141,11 +1186,6 @@ export class SyncEngine {
     }
 
     this.pushPermissionProbeInFlight = true;
-    // Owner + repo deliberately excluded — they're unbounded-cardinality
-    // attributes that would inflate downstream log indices if pino is ever
-    // bridged into the OTLP pipeline (pino-opentelemetry-transport).
-    // Matches the sibling cardinality discipline in github-permissions.ts.
-    // `host` is bounded (one value per project) and safe to log.
     log.info(
       {
         caller,
@@ -2155,9 +1195,6 @@ export class SyncEngine {
       },
       '[sync] push-permission probe dispatching',
     );
-    // The same resolution the push path reads (cached resolver), so the
-    // probe can never authenticate as a different identity than the push
-    // it is predicting.
     const { account } = this.syncGhTarget();
     let outcome: PushPermission;
     try {
@@ -2172,9 +1209,6 @@ export class SyncEngine {
         tokenStore: this.tokenStore,
       });
     } catch (err) {
-      // checkPushPermission already swallows network failures into an
-      // `unknown` variant — this catch is defense-in-depth in case an
-      // injected fake throws.
       log.warn({ err, caller }, '[sync] push-permission probe threw — recording unknown/network');
       outcome = { kind: 'unknown', error: 'network' };
     } finally {
@@ -2185,26 +1219,8 @@ export class SyncEngine {
     const prev = this.pushPermission;
     this.pushPermission = next;
 
-    // A denial only pauses `full` mode, which needs push permission it just
-    // learned it lacks. A pull-only follower expects to lack push — denial is
-    // its normal condition, so it keeps fetching (no pause, no state change).
-    // Pausing in-memory mirrors the existing pausedReason precedent
-    // ('detached-head', 'protected-branch', ...) — no disk write. The
-    // persistent-write alternative was rejected at spec time because it
-    // would silently mutate the user's preference.
     let transitioned = false;
-    // An auth park outranks a probe denial ONLY for the not-found masquerade.
-    // There the park's error code is the more specific diagnosis and the probe
-    // cannot see it. Every other auth subclass is better diagnosed by the
-    // probe — a 403 park plus `denied/no-collaborator` is exactly the
-    // revoked-collaborator case — and `trigger()` clears only the masquerade,
-    // so blocking those demotions would strand the user on "Reconnect
-    // required" behind a sign-in that cannot help. Keyed on `pausedReason` as
-    // well as `state`: the retryable arm transitions to `offline` without
-    // clearing the reason, and the surfaces key on the reason.
     if (next.checkStatus === 'denied' && this.mode === 'full' && this.parkedOnAmbiguousNotFound()) {
-      // A discarded verdict is otherwise invisible: the park stays, the probe
-      // result is dropped, and nothing records that the two disagreed.
       log.info(
         { reason: next.deniedReason, caller },
         '[sync] probe denial not applied — repository-not-found park is the more specific diagnosis',
@@ -2217,7 +1233,7 @@ export class SyncEngine {
     ) {
       if (this.pausedReason !== 'no-push-permission' || this.state !== 'disabled') {
         this.pausedReason = 'no-push-permission';
-        this.transitionTo('disabled'); // already broadcasts CC1 sync-status
+        this.transitionTo('disabled');
         transitioned = true;
         log.info(
           { reason: next.deniedReason, caller },
@@ -2225,20 +1241,6 @@ export class SyncEngine {
         );
       }
     } else if (next.checkStatus === 'allowed' && this.pausedReason === 'no-push-permission') {
-      // Permission was granted after a prior denied probe — clear the pause.
-      // Two restart-survival cases the disabled-state gate previously missed:
-      //
-      //   (a) Engine was `disabled` (probe denied + sync enabled) → transition
-      //       back to `idle` so the UI resumes.
-      //   (b) Engine reached `idle` independently (e.g. `start()` re-init that
-      //       loaded a stale reason from a pre-filter state file, or a parallel
-      //       re-init that flipped state without re-running this probe path)
-      //       but still carries `pausedReason='no-push-permission'`. Just
-      //       clear the reason; no transition needed because state is
-      //       already correct.
-      //
-      // Either way, `transitioned = true` triggers the CC1 broadcast so the
-      // popover + settings drop the disabled-with-reason copy immediately.
       this.pausedReason = undefined;
       if (this.state === 'disabled' && this.mode === 'full') {
         this.transitionTo('idle');
@@ -2248,26 +1250,12 @@ export class SyncEngine {
     }
 
     if (!transitioned && !pushPermissionStatusEqual(prev, next)) {
-      // No state change but the payload diff matters to the UI (e.g. unknown
-      // → allowed). transitionTo already broadcasts when it fires; broadcast
-      // here only when it didn't.
       this.cc1Broadcaster?.signal('sync-status');
     }
 
     return next;
   }
 
-  /**
-   * Lazy re-detection of `git remote -v` for the dormant case. `start()`
-   * snapshots `hasRemote` once at boot; without this hook, a user who runs
-   * `git remote add origin <url>` after the server is up keeps seeing the
-   * stale "no remote" empty state in Settings → Sync until the app restarts.
-   *
-   * No-op once a remote has been observed (the only useful transition is
-   * false → true; remote removal is rare and resolves on next restart). The
-   * gating in `handleSyncStatus` already skips the git invocation on the hot
-   * path where sync is running.
-   */
   async refreshRemote(): Promise<void> {
     if (this.hasRemote) return;
 
@@ -2280,25 +1268,12 @@ export class SyncEngine {
     if (this.mode !== 'off') {
       this.transitionTo('idle');
       this.schedulePull(0);
-      // No-op unless mode === 'full' (the push gate); pull-only schedules pulls.
       this.schedulePush();
     } else {
       this.transitionTo('disabled');
     }
   }
 
-  /**
-   * Run `git remote -v` once and report whether at least one remote is
-   * configured. Returns false on missing `.git/` or any git failure (the
-   * caller decides what to do; this never throws). Suppresses the subprocess
-   * + warn when `.git/` is absent — the common pre-`git init` case would
-   * otherwise log on every status poll.
-   *
-   * Shared by `refreshRemote()` (lazy probe, gated on `!hasRemote`) and
-   * `setEnabled(true)` (unconditional re-check after sync was toggled off
-   * and back on). `start()` keeps its own inline detection so it can reuse
-   * the git handle for the immediately-following branch probe.
-   */
   private async probeRemote(): Promise<boolean> {
     if (!existsSync(join(this.projectDir, '.git'))) return false;
     try {
@@ -2311,35 +1286,14 @@ export class SyncEngine {
     }
   }
 
-  /** Return all current conflict entries. */
   getConflicts(): import('./conflict-storage.ts').ConflictEntry[] {
     return this.conflictStore.list();
   }
 
-  /**
-   * Reconcile in-memory conflict state against git's source of truth.
-   * Public entry point for the HEAD watcher's batch-end callback so external
-   * git operations — `git merge --abort`, manual `git checkout --ours/
-   * --theirs && git add && git commit`, etc. — flow into the UI without
-   * waiting for the next pull cycle.
-   *
-   *   - No MERGE_HEAD: every tracked entry is stale; clear the store.
-   *   - MERGE_HEAD present: prune entries `git diff --diff-filter=U` no
-   *     longer reports as unmerged.
-   *
-   * Emits `sync-status` via CC1 when the count changes so the sidebar
-   * Conflicts list and topbar badge refresh; transitions out of the
-   * `conflict` state when the last entry clears.
-   */
   async reconcileConflictsFromGit(): Promise<void> {
-    // Working-tree conflicts (pull-only B1) have no MERGE_HEAD and are managed by
-    // the pull cycle (re-pin / auto-dissolve) + the resolve path. This
-    // git-index reconciliation governs merge-native entries only — leave the
-    // working-tree entries untouched so the batch-end drain doesn't wipe them.
     const mergeNative = this.conflictStore.list().filter((e) => e.variant !== 'working-tree');
     if (mergeNative.length === 0) return;
     const before = this.conflictCount;
-    // Linked-worktree safety (see `start()`): use the resolved gitdir.
     const gitDir = resolveGitDir(this.projectDir);
     const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
     const mergeInProgress = mergeHeadPath !== null && existsSync(mergeHeadPath);
@@ -2376,15 +1330,10 @@ export class SyncEngine {
     }
 
     if (this.conflictCount === before) return;
-    // Keyed on the ledger emptying, NOT on `state === 'conflict'`: B1 records
-    // conflicts while the engine sits at `idle`, so a state-keyed gate skips
-    // exactly the case that needs the legs restarted.
     if (this.conflictCount === 0) {
-      this.transitionTo('idle'); // fires CC1
+      this.transitionTo('idle');
       this.pausedReason = undefined;
       this.schedulePull();
-      // schedulePush(0): the conflict that stopped the push loop is gone, so
-      // fire immediately rather than waiting out any accumulated backoff.
       this.schedulePush(0);
     } else {
       this.cc1Broadcaster?.signal('sync-status');
@@ -2392,24 +1341,11 @@ export class SyncEngine {
     this.scheduleSaveState();
   }
 
-  /**
-   * Resolve a conflict by file path and strategy.
-   * Delegates to ConflictStore.resolveConflict.
-   */
   async resolveConflict(
     file: string,
     strategy: import('./conflict-storage.ts').ResolveStrategy,
     content?: string,
   ): Promise<void> {
-    // Mirror the pull-cycle batch pattern: git checkout/add/commit emit a
-    // burst of fs events; buffering and draining them under
-    // setBatchInProgress keeps the file-watcher's case 'update' from
-    // racing the API response, and the false-edge callback in
-    // server-factory.ts flushes deferred persistence so the resolved
-    // bytes land before the next sync cycle observes the state.
-    // A working-tree resolution may not change disk bytes (keep-mine), so the
-    // file-watcher's `case 'update'` clear can't be relied on — fire the
-    // resolved callback explicitly to clear the doc's conflict lifecycle.
     const wasWorkingTree =
       this.conflictStore.list().find((c) => c.file === file)?.variant === 'working-tree';
     this.setBatchInProgress?.(true);
@@ -2417,13 +1353,6 @@ export class SyncEngine {
       try {
         await this.conflictStore.resolveConflict(file, strategy, content);
       } catch (e) {
-        // ConflictStore.resolveConflict throws on `git commit --no-edit`
-        // failure AFTER re-adding the still-unmerged files. Re-sync our
-        // cached count from the store before rethrowing so the next
-        // /api/sync/status returns the true conflict count — otherwise
-        // `conflictCount === 0` from the optimistic line below (which
-        // never ran) would lie to the UI until the next pull cycle
-        // refreshes it.
         this.conflictCount = this.conflictStore.count();
         this.scheduleSaveState();
         throw e;
@@ -2431,34 +1360,14 @@ export class SyncEngine {
       if (wasWorkingTree) {
         log.info({ choice: strategy }, '[sync] pull-only: conflict resolved by choice');
       }
-      // Fires for BOTH variants. Merge-native was previously left to the
-      // file-watcher's reconcile, which clears the lifecycle only for a doc
-      // that is loaded and only once the reconcile lands — so a resolve whose
-      // watcher event computed `noop`, or arrived while the doc was not open,
-      // left `lifecycle.status = 'conflict'` standing with no conflict behind
-      // it, which is what keeps the conflict view on screen with nothing to
-      // show. The clear is idempotent: `clearLifecycleConflict` returns early
-      // when the doc is not marked, and refuses while the engine still holds a
-      // standing conflict for it, so the redundant call on the paths the
-      // watcher already covers is a no-op rather than a race.
       await this.notifyContentConflictsResolved([file]);
       this.conflictCount = this.conflictStore.count();
-      // Ledger-keyed, not state-keyed: B1 leaves the engine at `idle` while its
-      // conflicts sit in the ledger, so gating on `state === 'conflict'` skips
-      // the re-arm for exactly the conflicts that stopped the push loop.
       if (this.conflictCount === 0) {
         this.transitionTo('idle');
         this.pausedReason = undefined;
         this.schedulePull();
-        // schedulePush(0): the user just resolved the conflict that was blocking
-        // the push loop — fire immediately, not after a potential backoff delay.
         this.schedulePush(0);
       } else {
-        // Partial resolution: state stays `conflict`, but conflictCount
-        // dropped (e.g. 3 → 2). `transitionTo` is the only other site
-        // that fires the CC1 signal — without an explicit emit here,
-        // the sidebar Conflicts list and topbar conflictCount stay
-        // stale until the next state transition (next sync cycle).
         this.cc1Broadcaster?.signal('sync-status');
       }
       this.scheduleSaveState();
@@ -2467,10 +1376,8 @@ export class SyncEngine {
     }
   }
 
-  /** Update the current branch (called by head-watcher callbacks). */
   updateCurrentBranch(branch: string | null): void {
     if (branch === null) {
-      // Detached HEAD
       if (this.state !== 'dormant' && this.state !== 'disabled') {
         this.transitionTo('disabled');
         this.pausedReason = 'detached-head';
@@ -2479,19 +1386,14 @@ export class SyncEngine {
     } else if (this.currentBranch !== branch) {
       this.currentBranch = branch;
       this.conflictStore.setBranch(branch);
-      // Resume from detached if paused for that reason
       if (this.state === 'disabled' && this.pausedReason === 'detached-head') {
         this.pausedReason = undefined;
         this.transitionTo('idle');
         this.schedulePull();
-        // schedulePush(0): branch just reattached — no reason to wait out any
-        // backoff from whatever failures predated the detached-HEAD pause.
         this.schedulePush(0);
       }
     }
   }
-
-  // ─── Scheduling ────────────────────────────────────────────────────────────
 
   private schedulePull(overrideDelayMs?: number): void {
     if (this.pullTimer !== null) clearTimeout(this.pullTimer);
@@ -2505,9 +1407,6 @@ export class SyncEngine {
   }
 
   private schedulePush(overrideDelayMs?: number): void {
-    // Only `full` mode pushes. Skipping the timer here means a pull-only project
-    // never even schedules a push cycle; runPushCycle carries the authoritative
-    // consent gate for any direct caller (e.g. trigger('push')).
     if (this.mode !== 'full') return;
     if (this.pushTimer !== null) clearTimeout(this.pushTimer);
     const delayMs = overrideDelayMs ?? this.effectivePushDelayMs();
@@ -2519,14 +1418,6 @@ export class SyncEngine {
     }, delayMs);
   }
 
-  /**
-   * Resolve which credential tier the follower fetches as, mirroring the push
-   * probe's gh → token-store → anonymous order. The probe doesn't surface which
-   * tier it used, so the engine resolves it from the credential sources it
-   * already holds. gh resolution is cached per TTL window (`gh-token-source.ts`
-   * owns the contract, including the shorter declared-account-miss window);
-   * the token store is read at most once per pull.
-   */
   private async resolveAuthTier(): Promise<PullAuthTier> {
     if (this.resolveRelayGhToken() !== null) return 'authenticated';
     if (this.tokenStore) {
@@ -2534,26 +1425,16 @@ export class SyncEngine {
         const entry = await this.tokenStore.get(this.syncGhTarget().host);
         if (entry?.token) return 'authenticated';
       } catch (err) {
-        // A token-store backend can throw on read (corrupted keyring, EACCES).
-        // Degrade to the anonymous cadence rather than letting a credential-read
-        // failure abort the pull cycle or sync start. Mirrors the same
-        // fall-through in github-permissions' probe token resolution.
         log.warn({ err }, '[sync] auth-tier token-store lookup threw — treating as anonymous');
       }
     }
     return 'anonymous';
   }
 
-  /** Refresh the cached {@link authTier} so the next schedule reflects it. */
   private async refreshAuthTier(): Promise<void> {
     this.authTier = await this.resolveAuthTier();
   }
 
-  /**
-   * Base pull interval (seconds) for the current mode + auth tier, before jitter
-   * and backoff. Only pull-only anonymous followers deviate from the configured
-   * interval; full sync and authenticated pull-only keep it unchanged.
-   */
   private currentPullIntervalSeconds(): number {
     if (this.mode !== 'follow') return this.pullIntervalSeconds;
     return pullIntervalSecondsForAuthTier(
@@ -2564,42 +1445,16 @@ export class SyncEngine {
 
   private effectivePullDelayMs(): number {
     const bkoff = backoffMs(this.consecutivePullFailures);
-    // Jitter the backoff too, not just the normal interval: anonymous followers
-    // of the same public repo fail in lockstep during an outage, so an un-jittered
-    // fixed backoff (5/15/60 min) would retry at identical offsets and spike read
-    // pressure on the recovering origin. jitteredMs takes seconds.
-    // Math.max: the backoff is a floor, not a replacement — if the configured
-    // interval is already slower than the backoff tier, keep the configured
-    // cadence rather than speeding up (which would invert the purpose of a slow
-    // preset for metered connections or rate-limit-sensitive hosts).
     const backoffSeconds = bkoff > 0 ? bkoff / 1000 : 0;
     return jitteredMs(Math.max(backoffSeconds, this.currentPullIntervalSeconds()));
   }
 
-  /**
-   * Push delay for the current push-failure streak, mirroring
-   * `effectivePullDelayMs`. Without it a remote that keeps rejecting pushes is
-   * retried at the full configured cadence indefinitely.
-   *
-   * Recovery paths that call `schedulePush(0)` bypass this entirely; recovery
-   * paths that call `schedulePush()` without an override inherit the backoff,
-   * which is intentional for re-arms after an interval change or remote
-   * detection (not errors), but recovery sites that cleared the cause of the
-   * failure pass `schedulePush(0)` to fire immediately.
-   */
   private effectivePushDelayMs(): number {
     const bkoff = backoffMs(this.consecutivePushFailures);
-    // Same Math.max rationale as effectivePullDelayMs: backoff is a floor, not
-    // a replacement for the configured interval.
     const backoffSeconds = bkoff > 0 ? bkoff / 1000 : 0;
     return jitteredMs(Math.max(backoffSeconds, this.pushIntervalSeconds));
   }
 
-  /**
-   * Report a push lost to write contention. One lost race is routine; a run of
-   * them means the remote is moving faster than this client can land a push,
-   * and an operator needs something above `info` to find.
-   */
   private logContention(): void {
     const fields = {
       consecutiveContentions: this.consecutiveContentions,
@@ -2619,21 +1474,10 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Charge a failure to the leg that produced it, so each direction backs off
-   * on its own streak. Routing on `op` — the direction every caller already
-   * carries — is what keeps a push failure from stretching the pull interval.
-   */
   private bumpFailureCount(op: 'push' | 'pull', connectivityClass = false): void {
     if (op === 'push') {
-      // Any charged push failure ends a contention run: the next contention
-      // starts a fresh streak rather than resuming one interrupted by an
-      // unrelated outage.
       this.consecutiveContentions = 0;
       this.consecutivePushFailures++;
-      // Latches false once any non-connectivity failure joins the streak: a
-      // fetch must not discharge a streak that a protected branch contributed
-      // to, even if a transient network blip started it.
       this.pushStreakIsConnectivity =
         this.consecutivePushFailures === 1
           ? connectivityClass
@@ -2641,49 +1485,33 @@ export class SyncEngine {
     } else this.consecutivePullFailures++;
   }
 
-  // ─── Pull cycle ────────────────────────────────────────────────────────────
-
   private async runPullCycle(): Promise<void> {
     if (this.pullInFlight) return;
-    // `auth-error` mirrors the push-cycle guard below. Auth errors are
-    // non-retryable and don't increment the pull failure leg, so without this
-    // an authless fetch would re-park in `auth-error` and reschedule at the
-    // base interval forever — a steady busy-loop with no backoff (and, since
-    // each fetch invokes the credential helper, a recurring credential-miss
-    // log line). The engine resumes via `notifyCredentialsChanged()` instead.
     if (this.state === 'dormant' || this.state === 'disabled' || this.state === 'auth-error')
       return;
     if (this.state === 'conflict') {
-      this.schedulePull(); // retry after interval but don't fetch while conflicted
+      this.schedulePull();
       return;
     }
-    // Skip cleanly if the project repo has no commits yet — nothing to pull
-    // against and `rev-parse HEAD` would otherwise throw an ambiguous-argument
-    // error that's classified as a generic unknown-local failure.
     if (isUnbornHead(this.projectDir)) {
       this.schedulePull();
       return;
     }
 
-    // Re-resolve the credential tier so a follower who signs in (or out)
-    // mid-session picks up the matching cadence on the next reschedule.
     if (this.mode === 'follow') await this.refreshAuthTier();
 
     this.pullInFlight = true;
     try {
-      // Automation maps to its verb: full mode's loop IS auto-sync; follow's
-      // loop is auto-Pull (pull-only — it must never commit).
       this.recordPullOutcome(await this.doPullCycle(this.mode === 'full' ? 'sync' : 'explicit'));
     } finally {
       this.pullInFlight = false;
-      this.schedulePull(); // chain: schedule next after current completes
+      this.schedulePull();
     }
   }
 
   private async doPullCycle(invocation: PullInvocation): Promise<PullOutcome> {
     const handle = this.gitHandle();
 
-    // Detached HEAD check
     let branch: string;
     try {
       const b = (await handle.git.raw('rev-parse', '--abbrev-ref', 'HEAD')).trim();
@@ -2700,19 +1528,12 @@ export class SyncEngine {
       return 'error';
     }
 
-    // Fetch
     this.transitionTo('fetching');
     try {
       await handle.git.fetch('origin');
       this.lastFetchUtc = new Date().toISOString();
       this.consecutivePullFailures = 0;
       this.clearPullError();
-      // The fetch just proved the remote reachable and the credential good, so
-      // a push streak built purely from connectivity failures is disproven —
-      // release it and fire, rather than leaving the push parked for up to an
-      // hour after the outage it was waiting out has demonstrably ended. A
-      // semantic or structural streak keeps its backoff: a fetch says nothing
-      // about a protected branch or an unreadable object store.
       if (this.consecutivePushFailures > 0 && this.pushStreakIsConnectivity) {
         log.info(
           { cleared: this.consecutivePushFailures },
@@ -2720,9 +1541,6 @@ export class SyncEngine {
         );
         this.consecutivePushFailures = 0;
         this.pushStreakIsConnectivity = false;
-        // Configured cadence, not 0: the point is to stop waiting out an hour
-        // of backoff for an outage that has demonstrably ended, not to promote
-        // the push leg to the pull loop's frequency.
         this.schedulePush();
       }
     } catch (e) {
@@ -2731,37 +1549,18 @@ export class SyncEngine {
       return 'error';
     }
 
-    // Check ahead/behind
     await this.refreshDivergenceCounts(handle);
 
-    // Merge if behind. The dispatch is keyed on the VERB alone — never the
-    // mode — so a button click behaves identically wherever the dropdown sits
-    // (see PullInvocation). Pull → B1 overlay, never commits (B1's own
-    // `ahead > 0` guard refuses diverged committed history: reconciling it
-    // needs a merge commit, and Pull doesn't author commits — Pull-and-Push
-    // does). Sync → classic commit+merge. B1 runs even with working-tree
-    // conflicts tracked (it re-pins them against the new tip and
-    // fast-forwards the rest of the repo).
     if (this.behind > 0 && invocation === 'explicit') {
       const outcome = await this.doPullCycleB1(handle, branch);
       this.scheduleSaveState();
       return outcome;
     }
-    // Sync context, any mode. Gates on `conflictCount === 0`: a MERGE_HEAD in
-    // flight must be resolved before another merge starts.
     if (this.behind > 0 && this.conflictCount === 0) {
-      // An explicit pull that refused on diverged history parked this reason;
-      // the merge about to run is what reconciles it.
       if (this.pausedReason === 'diverged-local-commits') this.pausedReason = undefined;
       this.transitionTo('pulling');
-      // Gate batch to suppress HEAD watcher reconciliation during SyncEngine merge
       this.setBatchInProgress?.(true);
       try {
-        // Commit content-scoped dirty files first so `git merge` doesn't
-        // refuse with dirty-tree. For dirty paths outside the content scope
-        // (typically OK-generated configs like `.claude/`, `.cursor/`,
-        // `.mcp.json`), `prepareForMerge` stashes anything non-overlapping
-        // with the incoming merge — sync isn't blocked by adjacent dirt.
         await this.commitDirtyContentFilesToHead(handle);
         const mergePrep = await this.prepareForMerge(handle, branch);
         if (!mergePrep.proceed) return 'refused';
@@ -2773,12 +1572,6 @@ export class SyncEngine {
           this.lastSyncUtc = new Date().toISOString();
           this.behind = 0;
           if (this.pausedReason === 'external-changes-pending') this.clearBlockingPause();
-          // The merge that just landed IS the resolution of any overlap pause,
-          // so clear it here. Without this a user who resolved the overlap
-          // themselves (which the panel's terminal handoff tells them to do)
-          // left a fully-synced idle engine still advertising the pause and a
-          // stale path list, indefinitely — nothing else on the success path
-          // clears either field.
           this.transitionTo('idle');
         } finally {
           if (mergePrep.needsStashPop) {
@@ -2794,11 +1587,6 @@ export class SyncEngine {
       } catch (e) {
         const classified = classifyGitError(e instanceof Error ? e : new Error(String(e)));
         if (classified.class === 'semantic' && classified.subclass === 'merge-conflict') {
-          // Conflict detected — content conflicts pause in 'conflict' state;
-          // an all-non-content merge auto-resolves and returns to idle. But
-          // auto-resolution can itself fail (a rejected commit, an aborted
-          // merge): those paths set pullError and return to idle, so treat a
-          // set pullError as the error outcome rather than reporting success.
           await this.handleMergeConflict();
           if (this.state === 'conflict') return 'conflict';
           return this.pullError ? 'error' : 'succeeded';
@@ -2809,41 +1597,14 @@ export class SyncEngine {
         this.setBatchInProgress?.(false);
       }
     }
-    // Not behind (up-to-date), or behind but holding a conflict that blocks the
-    // merge — either way the tree stays put this cycle.
     this.transitionTo('idle');
     this.scheduleSaveState();
     return this.behind === 0 ? 'up-to-date' : 'conflict';
   }
 
-  /**
-   * Pull-only fast-forward cycle. Fetch has already landed `origin/<branch>`
-   * and the caller has confirmed the branch is behind. This never commits,
-   * merges, stashes, or leaves a MERGE_HEAD: the branch advances only by
-   * fast-forward, and uncommitted local edits ride along as a working-tree
-   * overlay on the new tip.
-   *
-   * Git's own fast-forward guard is asymmetric, which forces the choreography:
-   *   - It refuses to clobber an uncommitted edit to a file the incoming tip
-   *     also changed — even a byte-identical one — so every overlapping edit is
-   *     restored to HEAD first, then re-applied after the fast-forward.
-   *   - It does NOT protect an uncommitted DELETION: a locally-removed file the
-   *     tip modifies is silently resurrected. So a deletion overlay is
-   *     re-applied explicitly afterwards.
-   *
-   * Overlapping edits to CONTENT files are reconciled per file:
-   * different-line edits auto-combine into a new overlay; same-line collisions
-   * keep the local edit and raise a working-tree conflict entry the resolver
-   * serves. The engine stays idle (not paused) so the rest of the repo keeps
-   * fast-forwarding while a single doc waits on resolution.
-   */
   private async doPullCycleB1(handle: GitHandle, branch: string): Promise<PullOutcome> {
     this.transitionTo('pulling');
 
-    // Local commits ahead of origin cannot fast-forward. Pull-only never merges
-    // or commits to reconcile them: leave the branch where it is with the
-    // overlay intact and surface a paused reason. (Converting stranded local
-    // commits into an overlay is a mode-transition concern handled elsewhere.)
     if (this.ahead > 0) {
       this.clearPullError();
       this.pausedReason = 'diverged-local-commits';
@@ -2855,9 +1616,6 @@ export class SyncEngine {
       return 'refused';
     }
 
-    // The overlay = tracked paths whose working tree differs from HEAD.
-    // Intersect with the paths the incoming tip changes: only that intersection
-    // can block the fast-forward; non-overlapping overlay files ride through.
     let oldHead: string;
     let overlapping: string[];
     try {
@@ -2872,18 +1630,11 @@ export class SyncEngine {
       return 'error';
     }
 
-    // Existing working-tree conflicts, so an overlap that already collided can
-    // be re-pinned to the new tip (or dissolved when the collision disappears).
     const existing = new Map<string, ConflictEntry>();
     for (const e of this.conflictStore.list()) {
       if (e.variant === 'working-tree') existing.set(e.file, e);
     }
 
-    // Read-only planning pass over origin's blobs — decide each overlapping
-    // path's disposition before mutating the tree. A throw here (an unreadable
-    // blob from `cat-file`, a corrupt object store) must route through
-    // handleError so the pull failure leg increments and the retry backs off,
-    // rather than propagating uncaught and re-firing at the base interval.
     let plan: Awaited<ReturnType<typeof this.planOverlapReconciliation>>;
     try {
       plan = await this.planOverlapReconciliation(handle, branch, oldHead, overlapping, existing);
@@ -2892,18 +1643,9 @@ export class SyncEngine {
       return 'error';
     }
 
-    // Gate the file-watcher / HEAD-watcher reconciliation while the tree is
-    // mutated, exactly as the full-sync merge path does.
     this.setBatchInProgress?.(true);
     try {
-      // Restore every overlapping path to HEAD so the fast-forward isn't refused.
       if (overlapping.length > 0) {
-        // Snapshot the overlay bytes before the reset destroys them on disk.
-        // Between the reset and the overlay re-write below they live only in the
-        // in-memory plan, so a hard crash in that window would lose them for a
-        // doc with no live client; the checkpoint keeps the pre-reset content
-        // recoverable. Best-effort — a failed checkpoint only forfeits the
-        // crash-window net, so proceed (mirrors convertStrandedCommitsToOverlay).
         try {
           await this.checkpointBeforeOverlayRestore?.({ branch, paths: overlapping.length });
         } catch (e) {
@@ -2922,10 +1664,6 @@ export class SyncEngine {
             ...overlapping,
           ]);
         } catch (e) {
-          // Couldn't clear the overlay — abandon the cycle without mutating
-          // history. The overlay is still on disk; route through handleError so
-          // the pull failure leg increments and the retry backs off instead of
-          // re-firing at the base interval against a persistently locked file.
           log.warn(
             { err: e },
             '[sync] pull-only: failed to restore overlay before fast-forward — skipping cycle',
@@ -2937,12 +1675,6 @@ export class SyncEngine {
 
       const ff = await this.fastForwardOnly(handle, branch);
       if (!ff.ok) {
-        // The FF didn't happen; restore the ORIGINAL overlay (not the planned
-        // combine, which assumed the tip landed) so no local edit is lost. The
-        // only expected refusal is a divergence the ahead-check missed (TOCTOU).
-        // If even this restore fails, the overlapping paths are still reset to
-        // HEAD and the user's bytes live only in the in-memory plan — surface it
-        // as an error with backoff, never a clean 'refused' idle.
         try {
           this.applyOverlayPlan(plan.mineRestore, plan.deletions);
         } catch (e) {
@@ -2954,9 +1686,6 @@ export class SyncEngine {
           return 'error';
         }
         if (ff.timedOut) {
-          // A wedged ff-only subprocess is an operational failure, not a
-          // semantic refusal — surface it with backoff so a stuck credential
-          // helper or degraded disk doesn't re-fire at the base interval.
           log.warn({}, '[sync] pull-only: fast-forward timed out — backing off');
           this.handleError(
             classifyGitError(
@@ -2975,9 +1704,6 @@ export class SyncEngine {
         return 'refused';
       }
 
-      // Branch is at origin tip. Apply the reconciliation on the new base. A
-      // failure here means the fast-forward landed but the user's overlay
-      // didn't reach disk — surface it rather than returning a clean outcome.
       try {
         this.applyOverlayPlan(plan.writes, plan.deletions);
       } catch (e) {
@@ -2985,13 +1711,6 @@ export class SyncEngine {
         this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
         return 'error';
       }
-      // Persist the conflict-store deltas. addConflict/removeConflict mutate
-      // in-memory then return false when the disk write failed: the fast-forward
-      // landed and the overlay is on disk, but a restart would read a
-      // conflicts.json missing these entries — the resolver would lose the
-      // pinned theirs blob and the user's overlay would strand with no conflict
-      // UI. Surface it as an error so the outcome isn't reported clean and the
-      // next cycle retries, rather than diverging in-memory state from disk.
       let conflictsPersisted = true;
       for (const entry of plan.upserts) {
         conflictsPersisted = this.conflictStore.addConflict(entry) && conflictsPersisted;
@@ -3015,9 +1734,6 @@ export class SyncEngine {
       this.lastSyncUtc = new Date().toISOString();
       this.behind = 0;
       this.clearPullError();
-      // Clears the paths too, not just the reason: leaving `blockingPaths`
-      // populated behind a cleared reason is what lets a later pause republish
-      // a stale set.
       this.pausedReason = undefined;
       this.blockingPaths = [];
       this.transitionTo('idle');
@@ -3044,21 +1760,12 @@ export class SyncEngine {
         '[sync] pull-only: fast-forwarded to origin tip',
       );
 
-      // A newly-surfaced same-line collision is the consumer-visible "conflict"
-      // signal; re-pins/dissolves of pre-known conflicts still read as a clean
-      // fast-forward.
       return plan.newConflicts.length > 0 ? 'conflict' : 'succeeded';
     } finally {
       this.setBatchInProgress?.(false);
     }
   }
 
-  /**
-   * Run `git merge --ff-only` via a direct child process so the exit code is
-   * observable (simple-git does not surface it reliably), and classify any
-   * refusal. `core.autocrlf=false` mirrors the sync git handle so the FF's
-   * working-tree update keeps the byte-exact LF round-trip.
-   */
   private async fastForwardOnly(
     handle: GitHandle,
     branch: string,
@@ -3086,9 +1793,6 @@ export class SyncEngine {
         killed?: boolean;
         signal?: string;
       };
-      // `child_process` kills the child on timeout (`killed`, SIGTERM). That is
-      // an operational hang, not a semantic fast-forward refusal — flag it so
-      // the caller takes the error/backoff path instead of a clean 'refused'.
       const timedOut = err.killed === true || err.signal === 'SIGTERM';
       const exitCode = typeof err.code === 'number' ? err.code : null;
       const stderr =
@@ -3103,23 +1807,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Classify each overlapping path (working-tree edit ∩ incoming change) into a
-   * reconciliation action, reading only origin's blobs (no tree mutation yet):
-   *
-   *   - byte-identical      → converge (nothing to write; the FF re-materialises it)
-   *   - non-content         → keep the overlay verbatim (never line-merge configs)
-   *   - content, combinable → line-level auto-combine into a new overlay
-   *   - content, collision  → keep-mine + a working-tree conflict entry pinned to
-   *                            the tip/base blobs the resolver serves
-   *
-   * Existing conflicts re-pin to the new tip, or dissolve when the tip's change
-   * makes the collision combinable or byte-identical.
-   *
-   * `mineRestore` carries every present overlay verbatim for the fast-forward-
-   * refusal path, where the planned combine (which assumed the tip landed) must
-   * not be written.
-   */
   private async planOverlapReconciliation(
     handle: GitHandle,
     branch: string,
@@ -3143,9 +1830,6 @@ export class SyncEngine {
     const dissolved: string[] = [];
     const newConflicts: string[] = [];
     const autoCombined: string[] = [];
-    // Content docs deleted locally that the tip modified — restored from origin
-    // rather than conflicted (pull-only follower posture). Counted in the pull
-    // telemetry so how often a follower's deletion yields to upstream is visible.
     const autoRestored: string[] = [];
 
     for (const p of overlapping) {
@@ -3153,15 +1837,10 @@ export class SyncEngine {
       const hadEntry = priorEntry !== undefined;
 
       if (!existsSync(join(this.projectDir, p))) {
-        // Deleted locally and changed on the incoming tip.
         try {
-          // Probe origin for its own throw behavior — a success means origin
-          // still has the path (modify), a genuine miss means origin removed it.
           await handle.git.revparse([`origin/${branch}:${p}`]);
         } catch (e) {
           if (this.classifyRefReadFailure(e) === 'error') {
-            // Unexpected failure probing origin — do NOT infer an agreed
-            // deletion. Keep the deletion this cycle and re-evaluate next pull.
             deletions.push(p);
             log.warn(
               { err: e, path: p },
@@ -3169,35 +1848,24 @@ export class SyncEngine {
             );
             continue;
           }
-          // Genuinely absent at origin — origin also removed it, deletion agreed.
           deletions.push(p);
           if (hadEntry) dissolved.push(p);
           continue;
         }
         if (!this.isContentConflictPath(p)) {
-          // Non-content file (config/asset) deleted locally, modified on origin:
-          // keep the deletion (these sit outside the content-doc follow model).
           deletions.push(p);
           continue;
         }
-        // Content doc deleted locally, modified on origin. In pull-only the
-        // follower tracks upstream, so accept the remote's change and let the
-        // fast-forward restore the file rather than surfacing a delete/modify
-        // conflict. Nothing authored is lost — the local side was a deletion —
-        // so the deletion intent yields to upstream: do NOT re-apply the
-        // deletion (leave `p` out of `deletions` so the FF resurrects it) and
-        // dissolve any prior conflict entry for this path.
         autoRestored.push(p);
         if (hadEntry) dissolved.push(p);
         continue;
       }
 
-      // Modified overlay.
       let mineBuf: Buffer;
       try {
         mineBuf = readFileSync(join(this.projectDir, p));
       } catch {
-        continue; // vanished between status and read — treat as non-overlap
+        continue;
       }
       mineRestore.push({ path: p, bytes: mineBuf });
       const mineStr = mineBuf.toString('utf-8');
@@ -3206,11 +1874,6 @@ export class SyncEngine {
       try {
         theirsStr = await handle.git.raw(['show', `origin/${branch}:${p}`]);
       } catch (e) {
-        // `null` covers both "origin removed the path" (a modify/delete the
-        // overlay keeps-mine over) and an unexpected read failure. Only the
-        // latter is worth a log — a transient failure that keeps the overlay
-        // but leaves a real collision un-surfaced this cycle should be
-        // diagnosable rather than invisible.
         if (this.classifyRefReadFailure(e) === 'error') {
           log.warn(
             { err: e, path: p },
@@ -3221,7 +1884,6 @@ export class SyncEngine {
       }
 
       if (theirsStr !== null && theirsStr === mineStr) {
-        // Byte-identical: the FF re-materialises the identical bytes. Converged.
         if (hadEntry) dissolved.push(p);
         continue;
       }
@@ -3264,10 +1926,6 @@ export class SyncEngine {
       }
 
       if (theirsStr === null || !this.isContentConflictPath(p)) {
-        // Non-content or unreadable tip blob: keep the overlay verbatim, never
-        // line-merge or escalate (matches adjacent-config behavior). B1 serves
-        // only the Pull verb, whose disposition is keep-mine — the Sync verb's
-        // theirs-wins for these paths lives in the classic merge path.
         writes.push({ path: p, bytes: mineBuf });
         continue;
       }
@@ -3280,19 +1938,13 @@ export class SyncEngine {
       if (combined.clean) {
         writes.push({ path: p, bytes: Buffer.from(combined.merged, 'utf-8') });
         autoCombined.push(p);
-        if (hadEntry) dissolved.push(p); // the tip's change dissolved the collision
+        if (hadEntry) dissolved.push(p);
         continue;
       }
 
-      // Same-line collision: keep-mine on disk, pin theirs+base for the resolver.
       writes.push({ path: p, bytes: mineBuf });
       const theirsSha = await this.gitBlobSha(handle, `origin/${branch}:${p}`);
       if (theirsSha === undefined) {
-        // The tip blob was readable moments ago (theirsStr is non-null), so a
-        // missing SHA here is a transient git failure, not a semantic absence.
-        // A working-tree entry with no pinned theirs blob can't offer the
-        // 'theirs' resolution, so keep the overlay and let the next pull
-        // re-detect the collision rather than persist an unresolvable entry.
         log.warn(
           { path: p },
           '[sync] pull-only: could not pin origin blob for a collision — keeping overlay, deferring',
@@ -3321,29 +1973,10 @@ export class SyncEngine {
     };
   }
 
-  /**
-   * Apply a planned overlay: write the chosen bytes, then re-apply any
-   * uncommitted deletions the fast-forward would otherwise resurrect (git's
-   * overwrite guard does not cover a delete overlay).
-   *
-   * A write failure here is fatal to the cycle, not a swallowed warn. On the
-   * fast-forward-refusal path the overlapping paths were already reset to HEAD,
-   * so this write is the only thing restoring the user's uncommitted bytes from
-   * the in-memory buffer — dropping it silently would lose the edit behind a
-   * clean-looking `idle`. Each target is realpath-contained first: a git remote
-   * is untrusted and could ship a symlink at a tracked path that a bare write
-   * would follow out of the working tree. Writes route through the fs-traced
-   * wrappers like every other server-side disk write.
-   */
   private applyOverlayPlan(
     writes: Array<{ path: string; bytes: Buffer }>,
     deletions: string[],
   ): void {
-    // The exemption admits shareable `.ok` artifacts by their RESOLVED path —
-    // the overlay legitimately re-writes a dirty `.ok/config.yml` or root
-    // template, while a symlink resolving into private `.ok` state stays
-    // refused. Without it every dirty-artifact-overlapping-incoming pull dies
-    // here as a phantom "offline".
     const guardOpts = { allowShareableOkArtifact: isShareableOkArtifact };
     for (const { path, bytes } of writes) {
       const abs = join(this.projectDir, path);
@@ -3356,16 +1989,11 @@ export class SyncEngine {
       try {
         tracedUnlinkSync(abs);
       } catch (e) {
-        // `ENOENT` is the benign converged case (origin also deleted it, or the
-        // fast-forward already removed it). Any other errno (EACCES/EPERM/
-        // EISDIR) is a real failure that must not be swallowed — surface it so
-        // the cycle backs off instead of looking clean.
         if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
       }
     }
   }
 
-  /** True when a project-relative path is a resolvable OK content doc. */
   private isContentConflictPath(file: string): boolean {
     const absPath = join(this.projectDir, file);
     const contentRelPath = toPosix(relative(this.contentDir, absPath));
@@ -3376,7 +2004,6 @@ export class SyncEngine {
     );
   }
 
-  /** Resolve a ref to its blob SHA, or `undefined` when the path is absent. */
   private async gitBlobSha(handle: GitHandle, ref: string): Promise<string | undefined> {
     try {
       return (await handle.git.revparse([ref])).trim();
@@ -3385,67 +2012,29 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Discriminate why a `<ref>:<path>` read failed: the path is genuinely absent
-   * at the ref (expected — origin deleted/never had it) vs an unexpected git
-   * failure (timeout, corruption, bad ref). Conflating the two lets a transient
-   * failure masquerade as a semantic fact — silently dissolving a tracked
-   * conflict or suppressing a real collision. Locale-stable English fragments,
-   * matching the merge-native `showStage` discipline (git messages are
-   * English-only).
-   */
   private classifyRefReadFailure(err: unknown): 'absent' | 'error' {
     const msg = err instanceof Error ? err.message : String(err);
     return /does not exist in|exists on disk, but not in/i.test(msg) ? 'absent' : 'error';
   }
 
-  /** Read a blob's bytes by SHA. */
   private async gitBlobContent(handle: GitHandle, sha: string): Promise<string> {
     return handle.git.raw(['cat-file', 'blob', sha]);
   }
 
-  /**
-   * Count content docs carrying a standing overlay — tracked content paths whose
-   * working tree differs from HEAD. This is the pull-only divergence surface: it
-   * accumulates as a never-push follower edits locally, and per-pull conflict
-   * rates don't capture the standing stock.
-   */
   private async countStandingOverlay(handle: GitHandle): Promise<number | null> {
     try {
       const overlayPaths = await listNames(handle.git, ['diff-index', '--name-only', 'HEAD']);
       return overlayPaths.filter((p) => this.isContentConflictPath(p)).length;
     } catch {
-      // Best-effort gauge sampled after a successful fast-forward; a transient
-      // git failure here must not turn a completed pull into an error.
       return null;
     }
   }
 
-  // ─── Push cycle ────────────────────────────────────────────────────────────
-
   private async runPushCycle(): Promise<void> {
     if (this.pushInFlight) return;
-    // The single, authoritative gate on pushing at the product's own
-    // initiative. Only `full` mode does that — no scheduling path, backoff
-    // retry, or self-heal can reach the push subprocess for any other mode.
-    // `off` and `follow` reach it solely through `runOneShotPush`, behind an
-    // explicit user act. Loosening this line is what would let Open Knowledge
-    // push for a user who never asked it to.
     if (this.mode !== 'full') return;
     if (this.state === 'dormant' || this.state === 'disabled') return;
     if (this.state === 'conflict' || this.state === 'auth-error') return;
-    // B1 records conflicts in the ledger while the engine stays idle, so the
-    // state gate above no longer covers them. Unresolved keep-mine bytes on
-    // disk must not be committed and pushed over a teammate's version — the
-    // resolver decides that, not the push loop. Same rule as the old
-    // state==='conflict' pause, keyed off the ledger instead.
-    //
-    // Re-arm before returning. The timer that fired is already cleared, and
-    // this is the ONLY chain call — a bare return kills the push loop for the
-    // process lifetime. `doPullCycleB1` transitions to `idle` before recording
-    // its conflicts, so the state-keyed re-arm in the resolver never fires for
-    // a B1 conflict and nothing else brings the loop back. Every visible signal
-    // would stay green while commits pile up locally.
     if (this.conflictCount > 0) {
       this.schedulePush();
       return;
@@ -3454,25 +2043,8 @@ export class SyncEngine {
       this.schedulePush();
       return;
     }
-    // A pull cycle holds the working tree and index for its whole duration —
-    // it commits dirty content, may stash, and runs `git merge`. Pushing into
-    // that stages files mid-merge against an index another git process owns.
-    // Every other push entry point already asserts this; `runPushCycle` was the
-    // outlier, so any `schedulePush(0)` added from a pull-side context could
-    // reintroduce the interleave. Re-arm rather than return bare: the timer
-    // that fired is already cleared, and this is the only chain call.
     if (this.pullInFlight) {
-      // The one refusal here that fires during ordinary healthy operation: a
-      // pull spans fetch + merge and runs every 30 s by default, so this window
-      // is open a meaningful fraction of the time. The guards above gate
-      // exceptional states the badge already explains, which is what makes
-      // their silence reasonable and this one's not — `pushOnce()` routes a
-      // full-mode press through all of them, so a press can land here.
       log.info({ pullInFlight: true }, '[sync] push cycle deferred — a pull cycle holds the tree');
-      // Only re-arm when nothing is pending. The timer path nulls `pushTimer`
-      // before calling and needs the chain continued; a manual press arrives
-      // with one still armed, and `schedulePush()` would clear it and push the
-      // next scheduled push back a full fresh interval.
       if (this.pushTimer === null) this.schedulePush();
       return;
     }
@@ -3483,53 +2055,22 @@ export class SyncEngine {
     } finally {
       this.pushInFlight = false;
       if (this.pushCycleLanded) this.markRun();
-      this.schedulePush(); // chain: schedule next after current completes
+      this.schedulePush();
     }
   }
 
-  // NOTE: the guards above look like `runOneShotPush`'s and are deliberately
-  // NOT shared. Three differences make a common predicate wrong here:
-  //   - mode: this path refuses outside `full`; the explicit one runs in every
-  //     mode, because a button press is its own consent.
-  //   - re-arm: refusals here are split — `conflict`/`auth-error` return bare
-  //     (the resolver and the auth flow re-arm), while ledger-conflict and
-  //     unborn-head MUST call `schedulePush()` or the loop dies for the process
-  //     lifetime. The explicit path re-arms on none of them: arming a
-  //     background loop the user did not choose is the bug in the other
-  //     direction.
-  //   - signal: most refusals here are silent by design (a timer fires
-  //     constantly); the explicit path logs every refusal, since a user is
-  //     waiting on it. `pushOnce()` routes a full-mode press through EVERY
-  //     guard below the mode check, so any of them can have a user behind it.
-  //     `pullInFlight` logs because it is the one that fires during ordinary
-  //     healthy operation rather than gating an exceptional state; a new guard
-  //     with that property should log too.
-  // Collapsing them is how the loop-death case gets reintroduced. Change one
-  // side deliberately, and re-read the other before assuming they should match.
-
-  /** @param retriesLeft - Max inline fetch+merge+retry attempts on non-fast-forward. */
   private async doPushCycle(retriesLeft = 0): Promise<void> {
-    // Reset per attempt; the retry recursion re-enters here, so the flag
-    // reflects the FINAL attempt's outcome by the time a wrapper reads it.
     this.pushCycleLanded = false;
-    // Temp index file for GIT_INDEX_FILE isolation
     const tmpIndexPath = join(tmpdir(), `ok-sync-idx-${process.pid}-${Date.now()}.idx`);
     let commitSha: string | null = null;
 
     this.transitionTo('pushing');
 
     try {
-      // Gather after entering the guarded cycle so an unreadable staging root
-      // is surfaced as a push failure instead of escaping the state machine.
       const contentFiles = this.gatherContentFilesSync();
       await withParentLock(async () => {
-        // Create handle with isolated index so we never disturb the user's real index
         const handle = this.gitHandle(tmpIndexPath);
 
-        // ── 1. Get current HEAD SHA ────────────────────────────────────────────
-        // Short-circuit unborn HEAD by checking .git/HEAD directly — more
-        // reliable than catching revparse's error, since simple-git surfaces
-        // the same error message for several unrelated failure modes.
         if (isUnbornHead(this.projectDir)) {
           log.info({}, '[sync] repo has no commits yet — skipping push cycle');
           this.transitionTo('idle');
@@ -3552,57 +2093,34 @@ export class SyncEngine {
             return;
           }
           this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'push');
-          return; // early exit from lock
+          return;
         }
 
-        // ── 2. Seed isolated index from HEAD tree ──────────────────────────────
         await handle.git.raw(['read-tree', headSha]);
 
-        // ── 3. Identify deleted content files (in HEAD but no longer on disk) ──
         const headContentSet = await this.listHeadContentPaths(handle, headSha);
 
-        // ── 4. Stage working-tree content files into isolated index ────────────
-        // After the read-tree seed above, so trackedness reflects HEAD.
         const staged = await this.stageContentFiles(handle, contentFiles);
 
-        // ── 5. Remove deleted content files from isolated index ────────────────
         const onDiskSet = new Set(staged.map((f) => f.projectRelPath));
         const deleted = [...headContentSet].filter((f) => !onDiskSet.has(f));
         await this.removePathsFromIndex(handle, deleted);
 
-        // ── 6. Write the tree from the isolated index ──────────────────────────
         const newTreeSha = (await handle.git.raw(['write-tree'])).trim();
 
-        // ── 7. Skip if tree is identical to HEAD's tree (prevents empty commits) ─
-        //       Authoritative "nothing changed" check: compare against HEAD
-        //       rather than `lastPushedSha`, since (a) `lastPushedSha` is null
-        //       on first start / fresh sync-state, and (b) HEAD may have moved
-        //       via pull or external commit, in which case `lastPushedSha^{tree}`
-        //       no longer reflects the parent we'd be committing on top of.
         let headTreeSha = '';
         try {
           headTreeSha = (await handle.git.raw(['rev-parse', `${headSha}^{tree}`])).trim();
-        } catch {
-          // Non-fatal: fall through and let commit-tree handle it
-        }
+        } catch {}
         if (headTreeSha && headTreeSha === newTreeSha) {
-          // Working tree matches HEAD — nothing new to commit. But local HEAD
-          // may still be ahead of `origin/<branch>` (e.g. a merge commit
-          // produced by conflict resolution): in that case we still need to
-          // push, just without creating a new commit on top.
           let upstreamSha: string | null = null;
           try {
             upstreamSha = (
               await handle.git.raw(['rev-parse', `origin/${this.currentBranch}`])
             ).trim();
-          } catch {
-            // No origin/<branch> ref yet — treat as ahead so push --set-upstream runs.
-          }
+          } catch {}
 
           if (upstreamSha === headSha) {
-            // Truly synced. Logged so "Sync now returns OK but nothing happens"
-            // is still diagnosable when user edits sit in the persistence
-            // debounce (default 2s) and haven't landed on disk yet.
             log.info(
               { contentFileCount: contentFiles.length, headSha },
               '[sync] push cycle: nothing to commit (tree unchanged, origin matches HEAD)',
@@ -3639,8 +2157,6 @@ export class SyncEngine {
           return;
         }
 
-        // ── 8. Build commit message from files that actually changed in this
-        //       commit (HEAD tree vs new tree), not from every tracked file.
         let changedProjectRelPaths: string[] = [];
         let changedContentRelPaths: string[] = [];
         try {
@@ -3666,28 +2182,17 @@ export class SyncEngine {
             }
           }
         } catch {
-          // Non-fatal: fall back to all-files message so we still commit.
           changedProjectRelPaths = contentFiles.map((f) => f.projectRelPath).concat(deleted);
           changedContentRelPaths = contentFiles.map((f) => f.contentRelPath);
         }
         const message = this.buildCommitMessage(changedContentRelPaths);
 
-        // ── 9. Author identity (resolveGitIdentity chain, soft fallback) ─
-        // Chain: effective merged git config → (OAuth profile, when tokenStore plumbed) →
-        // hard-coded "OpenKnowledge" default. We never error on unresolved
-        // identity — attribution silently degrades to the default and the UI
-        // surfaces a non-blocking nudge via `status.identityUnresolved`.
-        // Set author/committer env vars on the handle for commit-tree.
         await this.applyCommitIdentity(handle);
 
-        // ── 10. Create squash commit (one parent per push cycle) ───────────────
         const newCommitSha = (
           await handle.git.raw(['commit-tree', newTreeSha, '-p', headSha, '-m', message])
         ).trim();
 
-        // `commit-tree` may return error text on stdout under failure modes
-        // (corrupt objects, disk issues). Treating that as a ref value would
-        // corrupt the branch pointer in the subsequent `update-ref`.
         if (!newCommitSha || !SHA_HEX_40.test(newCommitSha)) {
           log.warn(
             { raw: newCommitSha },
@@ -3697,7 +2202,6 @@ export class SyncEngine {
           return;
         }
 
-        // ── 11. Update branch ref atomically (CAS: old=headSha prevents races) ─
         await handle.git.raw([
           'update-ref',
           `refs/heads/${this.currentBranch}`,
@@ -3705,16 +2209,8 @@ export class SyncEngine {
           headSha,
         ]);
 
-        // ── 11b. Sync the real index with new HEAD for the paths we just
-        //        committed. Uses a handle WITHOUT the isolated GIT_INDEX_FILE
-        //        so the reset targets `.git/index`, not our tmp index. Without
-        //        this, the real index keeps the old HEAD's tree entries and
-        //        `git status` reports phantom staged changes. Reset the full
-        //        changed path set, not just files still present on disk, so
-        //        committed deletions are removed from the real index too.
         await this.resetRealIndexForPaths(changedProjectRelPaths);
 
-        // ── 12. Push — set upstream if branch has none ─────────────────────────
         let hasUpstream = false;
         try {
           await handle.git.raw(['rev-parse', '--abbrev-ref', `${this.currentBranch}@{u}`]);
@@ -3742,10 +2238,6 @@ export class SyncEngine {
         if (this.state === 'pushing') {
           this.transitionTo('idle');
         }
-        // If we were paused on dirty-tree, the commit we just made cleared
-        // the working tree relative to HEAD. Clear the paused reason and
-        // schedule an immediate pull so any pending merge (behind>0) lands
-        // now that the tree is clean.
         if (this.pausedReason === 'dirty-tree') {
           this.pausedReason = undefined;
           this.clearPullError();
@@ -3760,22 +2252,13 @@ export class SyncEngine {
       const classified = classifyGitError(err);
       if (classified.class === 'semantic' && classified.subclass === 'non-fast-forward') {
         if (retriesLeft > 0) {
-          // Inline fetch + merge + retry (one attempt)
           log.info({}, '[sync] push rejected (non-fast-forward) — fetching, merging, retrying');
           const retryHandle = this.gitHandle();
           this.setBatchInProgress?.(true);
-          // Track which step threw so the catch can route to the right leg.
-          // 'fetch' and 'merge' are pull-leg operations; everything else is
-          // push-side assembly (commit, stash restore, overlay restore, persist).
           let retryStage: 'fetch' | 'merge' | 'push' = 'fetch';
           try {
             await retryHandle.git.fetch('origin');
             retryStage = 'push';
-            // Commit content-scoped dirty files before merging so the editor
-            // racing against the outer push's `update-ref` doesn't cause
-            // `git merge` to refuse with dirty-tree. `prepareForMerge` then
-            // stashes any remaining non-content dirt that doesn't overlap
-            // with the incoming merge.
             await this.commitDirtyContentFilesToHead(retryHandle);
             const mergePrep = await this.prepareForMerge(retryHandle, this.currentBranch);
             if (!mergePrep.proceed) {
@@ -3788,7 +2271,7 @@ export class SyncEngine {
               await this.applyCommitIdentity(retryHandle);
               retryStage = 'merge';
               await retryHandle.git.merge([`origin/${this.currentBranch}`]);
-              retryStage = 'push'; // merge succeeded; subsequent steps are push-side
+              retryStage = 'push';
             } finally {
               if (mergePrep.needsStashPop) {
                 stashRestored = await this.popPreMergeStash(retryHandle);
@@ -3799,20 +2282,12 @@ export class SyncEngine {
             if (!overlaysRestored) throw new Error('failed to restore reconciled MCP overlays');
             await this.persistReconciledMcpEntries(mergePrep.reconciled);
           } catch (mergeErr) {
-            // Routed, NOT rethrown. This catch sits inside the outer catch, so
-            // a throw here escapes doPushCycle entirely — past runOneShotPush's
-            // catch-less try/finally, out to the fire-and-forget
-            // `void engine.trigger()` call sites, where an unhandled rejection
-            // terminates the server.
             const mc = classifyGitError(
               mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
             );
             if (mc.class === 'semantic' && mc.subclass === 'merge-conflict') {
               await this.handleMergeConflict();
             } else {
-              // Route on the step that threw: fetch and merge are pull-leg
-              // operations; commit, stash restore, overlay restore, and persist
-              // are push-side assembly and belong on pushError.
               const leg = retryStage === 'merge' || retryStage === 'fetch' ? 'pull' : 'push';
               log.warn({ err: mergeErr, stage: retryStage }, '[sync] push retry error detail');
               this.handleError(mc, leg);
@@ -3822,45 +2297,21 @@ export class SyncEngine {
           } finally {
             this.setBatchInProgress?.(false);
           }
-          // Merge succeeded — retry push once (retriesLeft=0 prevents recursion)
           await this.doPushCycle(0);
           return;
         }
-        // Retry exhausted. The fetch above succeeded, so the remote is reachable
-        // and the credential resolves — this is write contention, not network
-        // unavailability, and contention must not accrue toward a 60-minute
-        // backoff the remote's own reachability disproves. So this path never
-        // charges the streak.
-        //
-        // It discharges one only on the same evidence the fetch-success site
-        // uses: a connectivity-class streak is disproven here, a semantic or
-        // structural one is not. Zeroing unconditionally would let a single
-        // contended push erase a protected-branch backoff that nothing about
-        // this cycle contradicts.
         this.consecutiveContentions++;
         this.logContention();
         if (this.pushStreakIsConnectivity) {
           this.consecutivePushFailures = 0;
           this.pushStreakIsConnectivity = false;
-          // The retry's own fetch succeeded, so the connectivity message this
-          // streak carried is disproven by the same evidence that just
-          // released it. Keeping it would let the badge show a dead network
-          // error for as long as contention keeps any push from landing.
-          // Scoped to this branch: a semantic or structural message is not
-          // disproven by a successful read and still stands.
           this.clearPushError();
         }
-        // No blanket clear here: this cycle did not land, and a message set by
-        // an earlier, unrelated failure is still the best explanation on offer.
-        // The connectivity arm above is the one exception — there the retry's
-        // own fetch disproved the message, so it clears it. Everything else
-        // stands until something replaces it.
         if (this.state === 'pushing') this.transitionTo('idle');
       } else {
         this.handleError(classified, 'push');
       }
     } finally {
-      // Always clean up the temporary index file
       try {
         unlinkSync(tmpIndexPath);
       } catch {}
@@ -3869,22 +2320,6 @@ export class SyncEngine {
     this.scheduleSaveState();
   }
 
-  // ─── Push cycle helpers ───────────────────────────────────────────────────
-
-  /**
-   * Stage the current working tree's **content** files against HEAD and, if
-   * the result differs from HEAD's tree, create a commit + fast-forward
-   * `refs/heads/<branch>`. Content scope matches the main push cycle — only
-   * files returned by `gatherContentFilesSync()` are staged.
-   *
-   * Returns the new commit SHA, or null if there was nothing content-scoped
-   * to commit.
-   *
-   * Note: this does not clean the tree entirely — files outside the content
-   * scope (e.g. package.json, untracked config) remain dirty. Callers that
-   * need a truly clean tree (e.g. before `git merge`) must also call
-   * `prepareForMerge` and pause if it's not.
-   */
   private async commitDirtyContentFilesToHead(handle: GitHandle): Promise<string | null> {
     const status = await handle.git.status();
     if (status.files.length === 0) return null;
@@ -3898,7 +2333,6 @@ export class SyncEngine {
     const isoHandle = this.gitHandle(tmpIndex);
     try {
       await isoHandle.git.raw(['read-tree', headSha]);
-      // After the read-tree seed, so trackedness reflects HEAD.
       const staged = await this.stageContentFiles(isoHandle, contentFiles);
       const onDiskSet = new Set(staged.map((f) => f.projectRelPath));
       const deleted = [...headContentSet].filter((f) => !onDiskSet.has(f));
@@ -3925,8 +2359,6 @@ export class SyncEngine {
       const newCommitSha = (
         await isoHandle.git.raw(['commit-tree', newTreeSha, '-p', headSha, '-m', message])
       ).trim();
-      // Same rationale as the main push path: reject error text masquerading
-      // as a SHA before we feed it to `update-ref`.
       if (!newCommitSha || !SHA_HEX_40.test(newCommitSha)) {
         log.warn(
           { raw: newCommitSha },
@@ -3942,9 +2374,6 @@ export class SyncEngine {
         headSha,
       ]);
 
-      // Sync the real index with new HEAD for the paths we just committed
-      // (see push-cycle step 11b for the full rationale). `handle` has no
-      // isolated GIT_INDEX_FILE — resets the real `.git/index`.
       await this.resetRealIndexForPaths(changedProjectRelPaths, handle);
 
       return newCommitSha;
@@ -3955,29 +2384,6 @@ export class SyncEngine {
     }
   }
 
-  /**
-   * Prepare the working tree for an upcoming merge from `origin/<branch>`.
-   * After `commitDirtyContentFilesToHead` has cleared content-scoped dirt,
-   * three states remain possible:
-   *
-   *   1. Tree is clean → proceed straight to merge.
-   *   2. Tree is dirty AND a dirty path overlaps the incoming merge's
-   *      changeset → pause; the user must resolve locally before sync can
-   *      continue.
-   *   3. Tree is dirty but no dirty path overlaps the merge → STASH the
-   *      dirt so git's index is clean for the merge, then proceed. The
-   *      caller pops the stash after the merge (regardless of whether the
-   *      merge surfaced a conflict).
-   *
-   * Case (3) covers the common OK-generated config-file scenario
-   * (`.claude/`, `.codex/`, `.cursor/`, `.mcp.json`): the user has those
-   * files dirty or staged, but the remote merge doesn't touch them.
-   * `git merge` refuses a non-fast-forward merge on a dirty index —
-   * stashing isolates that dirt for the duration of the merge.
-   *
-   * If either git diff call fails, fall back to "proceed without stash" —
-   * the merge will surface any real failure via its own error class.
-   */
   private async readMcpGitBlob(
     handle: GitHandle,
     revision: string,
@@ -4015,9 +2421,7 @@ export class SyncEngine {
     let worktree: string | null = null;
     try {
       worktree = readFileSync(join(this.projectDir, path), 'utf8');
-    } catch {
-      // A missing worktree path is a deletion layer, not an empty file.
-    }
+    } catch {}
     return reconcileTrackedMcpConfig({
       target: path,
       layers: { base, head, index, worktree, incoming },
@@ -4027,31 +2431,15 @@ export class SyncEngine {
 
   private async prepareForMerge(handle: GitHandle, branch: string): Promise<MergePreparation> {
     const reconciled: PreparedMcpReconciliation[] = [];
-    // `diff-index --name-only HEAD` lists only TRACKED files whose working-
-    // tree OR index content differs from HEAD's. Untracked files are
-    // intentionally excluded: `git merge` only refuses on untracked when
-    // the merge would create the same path, which git surfaces at merge
-    // time with a specific error — we don't pre-pause for build artifacts,
-    // IDE state, or scratch notes.
     let dirtyPaths: string[];
     try {
       dirtyPaths = await listNames(handle.git, ['diff-index', '--name-only', 'HEAD']);
     } catch (err) {
-      // Fail-open is correct (git merge will surface real conflicts), but
-      // log so triage can spot a degraded pre-check (stale remote ref,
-      // index corruption, etc.) rather than seeing the gate vanish silently.
       log.warn({ err, branch }, '[sync] diff-index failed — allowing merge attempt');
       return { proceed: true, needsStashPop: false, reconciled };
     }
     if (dirtyPaths.length === 0) return { proceed: true, needsStashPop: false, reconciled };
 
-    // Intersect with the set of paths the incoming merge actually touches.
-    // `diff --name-only HEAD..origin/<branch>` reports every path differing
-    // between HEAD and the remote tip. Git's rename detection reports only the
-    // rename DESTINATION, so a file dirty at its old name that the incoming
-    // merge renames is not caught here — the real protection is fail-open: the
-    // actual `git merge` still surfaces that conflict, this pre-check only
-    // avoids pausing on the common clean cases.
     let mergePaths: Set<string>;
     try {
       mergePaths = new Set(
@@ -4063,10 +2451,6 @@ export class SyncEngine {
     }
     let blocking = dirtyPaths.filter((p) => mergePaths.has(p));
 
-    // Tracked MCP configs are guest-owned at entry granularity. Before the
-    // generic path-name gate pauses, prove that every overlapping config can
-    // preserve its unowned shell and select a non-downgrading launcher. Plan
-    // the whole batch first: one decline means zero reconciliation writes.
     const trackedTargets = TRACKED_MCP_CONFIG_TARGET_SET;
     const mcpOverlaps = blocking.filter((path) => trackedTargets.has(path));
     if (mcpOverlaps.length > 0) {
@@ -4114,21 +2498,10 @@ export class SyncEngine {
     if (blocking.length > 0) {
       const display = blocking.slice(0, 3).join(', ');
       const rest = blocking.length > 3 ? `, +${blocking.length - 3} more` : '';
-      // Uncapped: this set is what the resolution ACTION operates on, and a
-      // display bound must not leak into it — a capped set made Commit clear
-      // only the first 50 overlaps, re-pause on the remainder with a different
-      // file list, and read as a product bug. The cap is applied at the status
-      // projection, whose payload rides the CC1 broadcast.
       this.blockingPaths = blocking;
       this.pullErrorCode = undefined;
       this.pullError = `Sync paused — your local changes to ${display}${rest} conflict with incoming changes. Commit, stash, or discard them before syncing.`;
       this.pausedReason = 'external-changes-pending';
-      // Reset only the pull leg: this pause is triggered by the pull/merge cycle
-      // finding blocking paths. The push leg may have its own independent streak;
-      // resetting it here would make the push backoff unreachable on exactly the
-      // contention scenario it was added for. clearBlockingPause() (the
-      // user-driven recovery) resets both legs — that's appropriate because it
-      // represents an explicit user act, not an incidental pull-side event.
       this.consecutivePullFailures = 0;
       this.transitionTo('idle');
       this.scheduleSaveState();
@@ -4136,11 +2509,6 @@ export class SyncEngine {
       return { proceed: false, needsStashPop: false, reconciled: [] };
     }
 
-    // The reconciler has captured the exact post-merge overlay for these
-    // paths. Restore them to HEAD before stashing so Git never tries to replay
-    // an MCP launcher change across the incoming commit. The caller reapplies
-    // the captured bytes after the merge (including failure paths) and then
-    // persists the managed entry on a successful merge.
     if (reconciled.length > 0) {
       try {
         await handle.git.raw([
@@ -4156,9 +2524,6 @@ export class SyncEngine {
         this.pullError =
           'Sync paused — OpenKnowledge could not safely isolate local MCP launcher changes before merging.';
         this.pausedReason = 'external-changes-pending';
-        // This pause has no path list — it is an isolation failure, not an
-        // overlap. Clearing explicitly stops it republishing whatever set a
-        // previous overlap pause left behind.
         this.blockingPaths = [];
         this.transitionTo('idle');
         this.scheduleSaveState();
@@ -4171,10 +2536,6 @@ export class SyncEngine {
       return { proceed: true, needsStashPop: false, reconciled };
     }
 
-    // No overlap with the incoming merge, but tracked dirt remains. Stash
-    // it so `git merge` sees a clean index. The caller pops in a finally
-    // block. Marker message helps a future debugger spot the stash if a
-    // pop ever leaves it behind.
     const stashMessage = `ok-sync: pre-merge stash @ ${new Date().toISOString()}`;
     try {
       await handle.git.raw(['stash', 'push', '-m', stashMessage]);
@@ -4209,13 +2570,6 @@ export class SyncEngine {
     return restored;
   }
 
-  /**
-   * Restore the stash created by `prepareForMerge` (case 3). Called from a
-   * `finally` block so it runs whether the merge succeeded, surfaced a
-   * conflict, or threw another error class. If `git stash pop` conflicts,
-   * the stash stays on the stack — we log so the user can recover via
-   * `git stash list` / `git stash pop` manually.
-   */
   private async popPreMergeStash(handle: GitHandle): Promise<boolean> {
     try {
       await handle.git.raw(['stash', 'pop']);
@@ -4332,9 +2686,6 @@ export class SyncEngine {
           return;
         }
 
-        // Rebase the user's real index/worktree layers onto the new HEAD. The
-        // replay bytes are the reconciler's entry-only result over the original
-        // index/worktree shell, so unrelated staged intent remains staged.
         try {
           for (const replay of replayEntries) {
             await realHandle.git.raw([
@@ -4350,9 +2701,6 @@ export class SyncEngine {
             }
           }
         } catch (err) {
-          // The commit already landed, so recover the entire batch rather than
-          // leaving a partly replayed index. Resetting to the new HEAD turns
-          // the preserved overlay bytes into ordinary unstaged changes.
           log.warn(
             { event: 'mcp-config-reconcile', outcome: 'overlay-replay-failed', err },
             '[sync] MCP overlay replay failed; resetting the affected index entries',
@@ -4405,7 +2753,7 @@ export class SyncEngine {
     files: ContentFileEntry[],
   ): Promise<ContentFileEntry[]> {
     if (files.length === 0) return files;
-    const BATCH = 100; // avoid ARG_MAX
+    const BATCH = 100;
     const refused = new Set<string>();
     let probeOk = true;
     for (let i = 0; i < files.length; i += BATCH) {
@@ -4447,12 +2795,6 @@ export class SyncEngine {
     return stageable;
   }
 
-  /**
-   * Recursively walk contentDir and return all files that pass ContentFilter
-   * under the sync staging scope (regular content plus shareable `.ok`
-   * artifacts). Uses synchronous FS because this runs under the
-   * parentGitMutex.
-   */
   private gatherContentFilesSync(): ContentFileEntry[] {
     const results: ContentFileEntry[] = [];
     const failUnreadableOkSubtree = (err: unknown, dir: string) => {
@@ -4470,9 +2812,6 @@ export class SyncEngine {
       try {
         entries = readdirSync(dir, { withFileTypes: true });
       } catch (err) {
-        // Ordinary content frames stay best-effort because mid-walk deletions
-        // are routine. Admitted `.ok` frames carry a fatal handler because a
-        // partial enumeration is indistinguishable from artifact deletion.
         onError?.(err, dir);
         return;
       }
@@ -4480,7 +2819,6 @@ export class SyncEngine {
         const fullPath = join(dir, entry.name);
         if (entry.isDirectory()) {
           const dirRelPath = toPosix(relative(filterBase, fullPath));
-          // Dir-level early-skip delegates to ContentFilter (BUILTIN_SKIP_DIRS + ignore files).
           if (
             !dirRelPath.startsWith('..') &&
             this.contentFilter.isDirExcluded(dirRelPath, stagingScope)
@@ -4497,7 +2835,6 @@ export class SyncEngine {
           );
         } else if (entry.isFile() || entry.isSymbolicLink()) {
           const filterRelPath = toPosix(relative(filterBase, fullPath));
-          // Only include files inside the walk root that pass the filter
           if (
             !filterRelPath.startsWith('..') &&
             !this.contentFilter.isExcluded(filterRelPath, stagingScope)
@@ -4513,17 +2850,12 @@ export class SyncEngine {
     if (existsSync(this.contentDir)) {
       walk(this.contentDir, this.contentDir, CONTENT_SYNC_STAGING_SCOPE);
     }
-    // The project-root shareable `.ok` set lives outside the contentDir walk
-    // when content.dir is a subfolder — enumerate it from the project root,
-    // with admission still fully delegated to ContentFilter (precedent #55).
     if (this.rootOkOutsideContentWalk) {
       const rootOkDir = join(this.projectDir, OK_DIR);
       if (
         existsSync(rootOkDir) &&
         !this.contentFilter.isDirExcluded(OK_DIR, PROJECT_SYNC_STAGING_SCOPE)
       ) {
-        // A partial project-root enumeration is unsafe because HEAD deletion
-        // tracking cannot distinguish unreadable artifacts from deleted ones.
         walk(rootOkDir, this.projectDir, PROJECT_SYNC_STAGING_SCOPE, failUnreadableOkSubtree);
       }
     }
@@ -4546,9 +2878,6 @@ export class SyncEngine {
     const inContentWalk =
       !contentRelPath.startsWith('..') &&
       !this.contentFilter.isExcluded(contentRelPath, CONTENT_SYNC_STAGING_SCOPE);
-    // Mirror of the gather walk's project-root enumeration: without this
-    // term, a tracked project-root artifact would be misread as deleted
-    // on every push cycle in subfolder-content.dir projects.
     const inRootOkWalk =
       this.rootOkOutsideContentWalk &&
       projRelPath.startsWith(`${OK_DIR}/`) &&
@@ -4565,9 +2894,7 @@ export class SyncEngine {
           paths.add(projRelPath);
         }
       }
-    } catch {
-      // Non-fatal: callers proceed without deletion tracking.
-    }
+    } catch {}
     return paths;
   }
 
@@ -4590,17 +2917,10 @@ export class SyncEngine {
       const batch = unique.slice(i, i + BATCH);
       try {
         await realIndexHandle.git.raw(['reset', 'HEAD', '--', ...batch]);
-      } catch {
-        // Non-fatal: worst case is phantom index dirt until next sync cycle.
-      }
+      } catch {}
     }
   }
 
-  /**
-   * Build the auto-save commit message.
-   * ≤3 files: "Auto-save: Updated a.md, b.md"
-   * >3 files: "Auto-save: N files changed"
-   */
   private buildCommitMessage(contentRelPaths: string[]): string {
     if (contentRelPaths.length === 0) {
       return 'Auto-save: changes saved';
@@ -4611,17 +2931,9 @@ export class SyncEngine {
     return `Auto-save: ${contentRelPaths.length} files changed`;
   }
 
-  // ─── Conflict handling ────────────────────────────────────────────────────
-
   private async handleMergeConflict(): Promise<void> {
     const handle = this.gitHandle();
 
-    // List all conflicted files (those with U status in git's unmerged index).
-    // If this listing fails we cannot tell content-vs-non-content conflicts
-    // apart, so the downstream auto-resolve and `commit --no-edit` path would
-    // silently commit a merge with unresolved files still in the index. Abort
-    // the merge and surface the error so the user can retry rather than
-    // produce a malformed commit.
     let conflictedFiles: string[] = [];
     try {
       conflictedFiles = await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']);
@@ -4642,23 +2954,6 @@ export class SyncEngine {
       return;
     }
 
-    // Partition: content files pause sync; non-content files are auto-resolved with theirs.
-    //
-    // "Content" here = CRDT-managed markdown the editor can show in the
-    // DiffView. That is a stricter predicate than `ContentFilter.isExcluded`,
-    // which is the SIDEBAR/file-index predicate and ALSO admits asset files
-    // (e.g. `.json`, `.png`, `.csv`) when they sit next to an `.md` via the
-    // sibling-asset rule (`packages/server/src/content-filter.ts` step 3).
-    // Without the `isSupportedDocFile` gate, a routine modify/modify conflict
-    // on `.mcp.json` at a directory containing any `.md` would be classified
-    // as content, surfacing it in the sidebar Conflicts section with no
-    // editor surface to resolve from.
-    //
-    // The `isExcluded` check is retained so that `.gitignore` / `.okignore`
-    // exclusions on a `.md` (e.g. `private-notes.md`, anything under
-    // `node_modules/`) ALSO route to auto-resolve. Both gates together =
-    // "user can resolve this in the OK editor", which is the only valid
-    // condition for ConflictStore admission.
     const contentConflicts: string[] = [];
     const nonContentConflicts: string[] = [];
 
@@ -4670,19 +2965,7 @@ export class SyncEngine {
       }
     }
 
-    // Auto-resolve non-content files with 'theirs' strategy.
-    // Non-content files (e.g. `.mcp.json`, `.claude/*`) have no editor
-    // surface — the ConflictStore + sidebar Conflicts section are
-    // content-only by construction. On any failure (most commonly a
-    // modify/delete conflict where `--theirs` errors with "does not have
-    // their version") abort the whole merge and pause sync rather than
-    // escalating into the ConflictStore. The user resolves the file in
-    // their terminal; the next pull tick re-attempts cleanly.
     const nonContentResolveFailures: Array<{ file: string; err: unknown }> = [];
-    // Theirs-resolve discards the local side. For most non-content files that
-    // loss is benign, but `.ok/config.yml` holds the user's own project
-    // settings, so that one file logs at warn to leave a findable breadcrumb
-    // for otherwise-silent local-config loss.
     const projectConfigRelPath = toPosix(
       relative(this.projectDir, resolveConfigPath('project', this.projectDir)),
     );
@@ -4719,19 +3002,9 @@ export class SyncEngine {
       }
       const display = failedFiles.slice(0, 3).join(', ');
       const rest = failedFiles.length > 3 ? `, +${failedFiles.length - 3} more` : '';
-      // List both common resolutions as equal alternatives. `git rm` comes
-      // first because the documented primary cause (modify/delete where
-      // theirs deleted) makes `--theirs` fail with "does not have their
-      // version" — but framed as alternatives rather than branched on
-      // git's error text, which is git-version-dependent + locale-sensitive
-      // (LANG/LC_MESSAGES). The user picks based on the per-file warn log
-      // emitted above and their own context.
       this.pullErrorCode = undefined;
       this.pullError = `Sync paused — couldn't auto-resolve ${display}${rest}. Resolve in your terminal (e.g. \`git rm <file>\` or \`git checkout --ours/--theirs <file> && git add <file>\`), then retry sync.`;
       this.pausedReason = 'non-content-merge-failure';
-      // Reset only the pull leg — same rationale as the blocking-paths pause in
-      // prepareForMerge: this is a pull/merge-cycle failure and should not
-      // forgive an independent push streak.
       this.consecutivePullFailures = 0;
       this.transitionTo('idle');
       this.scheduleSaveState();
@@ -4743,14 +3016,12 @@ export class SyncEngine {
     }
 
     if (contentConflicts.length > 0) {
-      // Record in ConflictStore
       for (const file of contentConflicts) {
         this.conflictStore.addConflict({ file, detectedAt: new Date().toISOString() });
       }
       this.conflictCount = this.conflictStore.count();
       await this.notifyContentConflictsDetected(contentConflicts);
 
-      // Pause timers — sync resumes only after manual resolution or abort
       if (this.pullTimer !== null) {
         clearTimeout(this.pullTimer);
         this.pullTimer = null;
@@ -4766,11 +3037,6 @@ export class SyncEngine {
         '[sync] content conflicts — sync paused until resolved',
       );
     } else {
-      // All non-content conflicts auto-resolved — complete the merge. Confirm it
-      // landed by checking MERGE_HEAD cleared, not by trusting the call not to
-      // throw: simple-git does NOT throw on every non-zero `git commit` exit (a
-      // pre-commit hook rejection returns without an error), so a rejected commit
-      // would otherwise be reported as a successful pull over a half-merged tree.
       let committed = false;
       try {
         await this.applyCommitIdentity(handle);
@@ -4786,9 +3052,6 @@ export class SyncEngine {
         this.transitionTo('idle');
         log.info({}, '[sync] all conflicts auto-resolved — merge committed');
       } else {
-        // Commit rejected or threw — abort so the tree isn't left half-merged,
-        // and set pullError so the pull reports the error class (doPullCycle
-        // treats a set pullError as the error outcome) instead of a false success.
         try {
           await handle.git.raw(['merge', '--abort']);
         } catch (abortErr) {
@@ -4822,8 +3085,6 @@ export class SyncEngine {
     }
   }
 
-  // ─── Error handling ───────────────────────────────────────────────────────
-
   private clearPushError(): void {
     this.pushError = undefined;
     this.pushErrorCode = undefined;
@@ -4834,21 +3095,7 @@ export class SyncEngine {
     this.pullErrorCode = undefined;
   }
 
-  /**
-   * @param op - which direction failed. Errors are stored per direction so a
-   *   later success on the other leg can't clear this one (see SyncStatus).
-   *   `'pull'` covers fetch + merge (bringing remote changes in, including
-   *   the inline merge during a push retry); `'push'` covers sending commits
-   *   out.
-   */
   private handleError(classified: ClassifiedError, op: 'push' | 'pull'): void {
-    // Surface the error to the sync UI as either a bounded code (named
-    // buckets: auth/401, auth/403, auth/scope-mismatch, semantic/protected-
-    // branch) OR a developer-facing message (everything else). The UI
-    // Lingui-formats the code; the dev message renders verbatim as a
-    // fallback for unmapped variants. Setting exactly one of the direction's
-    // {<dir>Error, <dir>ErrorCode} pair lets the UI branch without ambiguity —
-    // see SyncStatusBadge's `formatPushFailureCode` / `formatPullFailureCode`.
     if (classified.userFacingCode !== null) {
       if (op === 'push') {
         this.pushErrorCode = classified.userFacingCode;
@@ -4875,42 +3122,21 @@ export class SyncEngine {
     );
 
     if (classified.class === 'auth') {
-      // The relayed gh token may be the stale credential that just failed
-      // (revoked, or a `gh auth logout` since we cached). Drop the cache so the
-      // next cycle re-resolves — picking up a fresh `gh auth login` without
-      // waiting out the TTL. The account resolution is dropped with it: the
-      // failure may stem from the account choice itself (a fresh
-      // `credential.<url>.username` edit), and re-requesting a token for the
-      // stale choice would waste the flush.
       this.ghTokenSource.invalidate();
       this.ghAccountResolver.invalidate();
       this.transitionTo('auth-error');
       this.pausedReason = 'auth-error';
     } else if (classified.class === 'semantic' && classified.subclass === 'protected-branch') {
-      // Reachable only in `full` mode — protected-branch is a push rejection and
-      // the push gate keeps pull-only/off from ever pushing. Auto-disable to
-      // `off`; onAutoDisable persists the equivalent legacy `enabled: false`.
       this.mode = 'off';
       this.transitionTo('disabled');
       this.pausedReason = 'protected-branch';
-      // Persist the auto-disable to project-local config so it survives restart;
-      // otherwise next boot would re-read `autoSync.enabled: true` and
-      // re-trigger the same push failure (restart-retry loop).
       void this.onAutoDisable?.('protected-branch');
     } else if (classified.class === 'local' && classified.subclass === 'dirty-tree') {
-      // Self-heal: schedule an immediate push. The push cycle commits
-      // working-tree edits via an isolated index, which reconciles the
-      // tree against HEAD and lets the subsequent merge proceed.
       this.bumpFailureCount(op);
       this.transitionTo('idle');
       this.pausedReason = 'dirty-tree';
       this.schedulePush(0);
     } else if (classified.retryable) {
-      // Only transport-level reachability failures are disproven by a later
-      // fetch. `429`/`5xx` share the `network` class but describe the remote
-      // REFUSING work, not being unreachable — and a fetch is a read, so it
-      // cannot clear a write-path rate limit. Treating them as disproven made
-      // a throttled remote the one we retried hardest.
       this.bumpFailureCount(op, isFetchDisprovableFailure(classified));
       this.transitionTo('offline');
     } else {
@@ -4919,28 +3145,11 @@ export class SyncEngine {
     }
   }
 
-  // ─── State transitions ────────────────────────────────────────────────────
-
-  /**
-   * Read `this.state` opaquely. An awaited cycle reassigns it, but TypeScript's
-   * control-flow analysis keeps the narrowing from the calling method's own
-   * earlier guards, so a direct `this.state` comparison after the await is
-   * checked against a stale union and reported as an impossible comparison.
-   */
   private currentState(): SyncState {
     return this.state;
   }
 
-  /**
-   * Stamp a successful sync run — a push or pull that reached the remote.
-   * Called only from completion points that know the op did not error: a failed
-   * push must not read "Updated just now" while a red error line sits above it.
-   * The panel-open fetch deliberately does not call this.
-   */
   private markRun(): void {
-    // Both call sites gate on `pushCycleLanded`, so reaching here always means
-    // a push landed. Pull success stamps its own leg in `recordPullOutcome`;
-    // `lastRunUtc` derives from whichever is later.
     this.lastPushOkUtc = new Date().toISOString();
     this.cc1Broadcaster?.signal('sync-status');
   }
@@ -4954,10 +3163,8 @@ export class SyncEngine {
     this.cc1Broadcaster?.signal('sync-status');
   }
 
-  // ─── State persistence ────────────────────────────────────────────────────
-
   private scheduleSaveState(): void {
-    if (this.stateSaveTimer !== null) return; // debounce
+    if (this.stateSaveTimer !== null) return;
     this.stateSaveTimer = setTimeout(() => {
       this.stateSaveTimer = null;
       this.saveStateNow();
@@ -4966,13 +3173,6 @@ export class SyncEngine {
 
   private saveStateNow(): void {
     try {
-      // `'no-push-permission'` and `'auth-error'` are in-memory only by design.
-      // The push-permission probe re-establishes the former on every `start()`;
-      // auth-error must NOT survive restart either, or a relaunch after the user
-      // reconnects would stay stuck (the credential is read fresh per git
-      // invocation, so the next cycle would succeed if we let it run). Dropping
-      // both means a restart re-attempts sync and re-classifies if it still
-      // fails. Every other pausedReason value persists normally.
       const persistedReason =
         this.pausedReason === 'no-push-permission' || this.pausedReason === 'auth-error'
           ? undefined
@@ -4989,7 +3189,6 @@ export class SyncEngine {
         pushStreakIsConnectivity: this.pushStreakIsConnectivity,
         pausedReason: persistedReason,
         pausedSinceUtc: persistedReason ? new Date().toISOString() : undefined,
-        // Persist file paths of any in-flight conflicts so they survive restart
         inflightConflicts: this.conflictStore.list().map((c) => c.file),
       };
       writeFileSync(this.statePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -5011,20 +3210,7 @@ export class SyncEngine {
       this.lastPushedSha = data.lastPushedSha ?? null;
       this.consecutivePullFailures = data.consecutiveFailures ?? 0;
       this.consecutivePushFailures = data.consecutivePushFailures ?? 0;
-      // A state file predating this field restores a streak with no recorded
-      // cause. `false` is the safe read: it keeps the backoff until a push
-      // actually lands, rather than releasing a streak that may have been
-      // semantic on evidence that never covered it.
       this.pushStreakIsConnectivity = data.pushStreakIsConnectivity ?? false;
-      // Defense-in-depth: `saveStateNow` filters `'no-push-permission'` and
-      // `'auth-error'` out, but a state file written by an earlier build (or
-      // hand-edited) could still contain them. Drop both on load so a restart
-      // re-attempts sync rather than resurrecting a stuck auth/permission state.
-      // `external-changes-pending` joins them: `blockingPaths` is memory-only,
-      // so a restored reason advertises a pause the panel cannot render (no
-      // paths) and the resolve endpoint 409s on. The overlap may also have been
-      // resolved outside the app while we were down; the next cycle re-derives
-      // it truthfully.
       this.pausedReason =
         data.pausedReason === 'no-push-permission' ||
         data.pausedReason === 'auth-error' ||
@@ -5032,11 +3218,9 @@ export class SyncEngine {
           ? undefined
           : data.pausedReason;
 
-      // Restore in-flight conflicts into the ConflictStore
       const inflightFiles = data.inflightConflicts ?? [];
       if (inflightFiles.length > 0) {
         for (const file of inflightFiles) {
-          // Only add if not already present (ConflictStore.load() may have populated it)
           if (!this.conflictStore.list().some((c) => c.file === file)) {
             this.conflictStore.addConflict({ file, detectedAt: new Date().toISOString() });
           }

@@ -1,13 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
 
-/**
- * update-listener preload-pattern test.
- *
- * Exercises the listener subscribe/unsubscribe pattern used by the preload's
- * update events against a fake ipcRenderer. This isolates the reference-
- * identity behavior without booting an Electron process.
- */
-
 type FakeListener = (_event: unknown, payload: unknown) => void;
 
 interface FakeIpcRenderer {
@@ -28,13 +20,6 @@ function makeFakeIpc(): FakeIpcRenderer {
   };
 }
 
-/**
- * Pure reimplementation of the preload's listener-wrapper pattern. The
- * preload keeps the `listener` closure variable in scope so `removeListener`
- * gets the exact reference that was `on`-registered — per electron#33328,
- * without reference-equality, removeListener silently no-ops and the
- * callback stays attached forever.
- */
 function createUpdateSubscription<T>(
   ipc: FakeIpcRenderer,
   channel: string,
@@ -59,13 +44,11 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
     const cb = vi.fn(() => {});
     const unsubscribe = createUpdateSubscription(ipc, 'ok:update:downloaded', cb);
 
-    // Capture the wrapper that was registered.
     const registeredWrapper = ipc.on.mock.calls[0]?.[1];
     expect(registeredWrapper).toBeDefined();
 
     unsubscribe();
 
-    // removeListener was called with the EXACT same wrapper reference.
     expect(ipc.removeListener).toHaveBeenCalledTimes(1);
     expect(ipc.removeListener.mock.calls[0]?.[0]).toBe('ok:update:downloaded');
     expect(ipc.removeListener.mock.calls[0]?.[1]).toBe(registeredWrapper);
@@ -79,7 +62,6 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
       'ok:update:downloaded',
       cb,
     );
-    // Simulate ipc delivering an event BEFORE unsubscribe.
     const registeredWrapper = ipc.on.mock.calls[0]?.[1] as FakeListener | undefined;
     expect(registeredWrapper).toBeDefined();
     registeredWrapper?.(null, { version: '0.1.1' });
@@ -88,11 +70,6 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
 
     unsubscribe();
 
-    // Fake ipc's tracking of attached-listeners reflects the removal — a real
-    // ipcRenderer wouldn't deliver further events to a removed listener.
-    // Simulate that: after unsubscribe, the wrapper reference is no longer
-    // the "attached" listener, so the preload contract holds.
-    // We prove this by asserting removeListener was called with the wrapper:
     expect(ipc.removeListener).toHaveBeenCalledWith('ok:update:downloaded', registeredWrapper);
   });
 

@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { UninstallNoticeScreen } from './UninstallNoticeScreen';
 
-/** The two-button shape: a question whose safe answer is Cancel. */
 const CONFIRM_NOTICE: UninstallNoticeSpec = {
   title: 'Uninstall OpenKnowledge?',
   paragraphs: [
@@ -16,7 +15,6 @@ const CONFIRM_NOTICE: UninstallNoticeSpec = {
   danger: true,
 };
 
-/** The single-button shape: an acknowledgement with a recap and one action left. */
 const COMPLETION_NOTICE: UninstallNoticeSpec = {
   title: 'OpenKnowledge files were removed',
   subtitle: "Almost done. Here's what happened and what's left.",
@@ -94,8 +92,6 @@ describe('uninstall notice screen', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reveal in Finder' }));
   });
 
-  // The asymmetry main also applies to a window close: an unanswered question
-  // must not proceed, while an acknowledgement has no other outcome to reach.
   test('Escape cancels a two-button notice', async () => {
     const { user, onConfirm, onCancel } = renderNotice(CONFIRM_NOTICE);
 
@@ -123,7 +119,6 @@ describe('uninstall notice screen', () => {
       if (item.detail !== undefined) expect(screen.getByText(item.detail)).toBeDefined();
     }
 
-    // State reaches a screen reader as a word, not only as the check glyph.
     expect(screen.getAllByText('Done.')).toHaveLength(2);
     expect(screen.getAllByText('To do.')).toHaveLength(1);
   });
@@ -134,7 +129,6 @@ describe('uninstall notice screen', () => {
     await user.click(screen.getByRole('button', { name: 'Cleanup log' }));
 
     expect(onRevealLog).toHaveBeenCalledTimes(1);
-    // Revealing is not an answer — settling here would quit the flow early.
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
@@ -152,7 +146,6 @@ describe('uninstall notice screen', () => {
       screen.getByText('Also saved to /Users/dev/Library/Logs/OpenKnowledge/uninstall.log'),
     ).toBeDefined();
 
-    // Keyboard users have to be able to scroll the log, so it is a named region.
     const log = screen.getByRole('region', { name: 'Cleanup log' });
     expect(log.textContent).toContain('deinit=1 global=0');
     expect(log.getAttribute('tabindex')).toBe('0');

@@ -134,7 +134,6 @@ describe('attachRendererConsoleCapture', () => {
 
     const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
     const raw = `push from /Users/alice/notes failed: ${secret}`;
-    // Planted-positive control: the token really is in the emitted console text.
     expect(raw).toContain(secret);
     wc.emit({ level: 'error', message: raw });
 
@@ -156,8 +155,6 @@ describe('attachRendererConsoleCapture', () => {
       level: 'warning',
       message: JSON.stringify({
         event: 'ok-provider-auth-failed',
-        // Not a key on the desktop logger's `redact` denylist — a keyed-field
-        // redaction pass cannot reach it, so only a capture-time scrub can.
         reason: `rejected creds ${secret}`,
         docPath: '/Users/alice/notes/plan.md',
       }),
@@ -171,11 +168,6 @@ describe('attachRendererConsoleCapture', () => {
   });
 
   test('a bearer credential is masked without taking the record with it', () => {
-    // The pattern class the AWS-key case above cannot reach. `bearer-token`
-    // ends at whitespace and serialized JSON has none, so a scrub applied to
-    // the line before parsing runs to its end and `JSON.parse` then throws —
-    // costing the event name and every field. Parsing first and masking the
-    // values keeps both the record and the redaction.
     const wc = makeFakeWebContents();
     const spy = makeSpyLogger();
     attachRendererConsoleCapture(wc, { getLogger: spy.getLogger });
@@ -202,8 +194,6 @@ describe('attachRendererConsoleCapture', () => {
     attachRendererConsoleCapture(wc, { getLogger: spy.getLogger });
 
     const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
-    // Straddle the message cap: truncating first cuts the token in half, the
-    // pattern stops matching, and the surviving prefix ships verbatim.
     const filler = 'x'.repeat(RENDERER_LOG_MAX_MESSAGE_BYTES - 33);
     wc.emit({ level: 'info', message: `${filler} ${secret} trailing` });
 

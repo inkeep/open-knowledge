@@ -6,24 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed git group over a REAL socket through
- * the composed `bootServer` stack — native registration and the shared
- * admission posture. Gate BEHAVIOR is owned by
- * `api-admission-composition.test.ts` (path-agnostic by construction); the
- * rebound-Host pin below re-pins gate REACHABILITY for this family — a
- * native-registration bug could mount the group outside
- * `createApiRequestPipeline` without changing any happy-path response, and a
- * hostile-header probe is the only wire signal that tells those apart. The
- * wire cannot distinguish the mutating gate from the read gate (both apply
- * the same loopback + workspace-Host checks), so the mutating DECLARATION
- * itself is pinned at the table tier in `http/git-routes.test.ts`.
- *
- * The rig's content dir is not a git repository: branch-info and checkout
- * refuse on validation before any git op, and worktree-status degrades to its
- * unreadable-porcelain 200 — all real-handler responses, no git side effects.
- */
-
 let tmpRoot: string;
 let server: BootedServer;
 

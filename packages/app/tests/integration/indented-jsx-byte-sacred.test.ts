@@ -1,21 +1,3 @@
-/**
- * CONTRACT — byte-sacred typing inside indented MDX-JSX regions.
- *
- * A source-mode keystroke, or a WYSIWYG-side body edit, inside an INDENTED
- * MDX-JSX region (a <Step> nested in <Steps> with leading indentation on the
- * tags) must NOT trigger a normalizing (de-indent) write-back into Y.Text.
- * Server Observer A is the only surface allowed to canonicalize, and it must
- * leave the raw indented bytes intact (per-write-path fidelity: byte-writer
- * paths land verbatim). A de-indent / normalization write-back is a fidelity
- * regression.
- *
- * Shape B (the whole <Steps> container indented) is the sentinel: it rests
- * BEYOND normalizeBridge tolerance, so its raw bytes and their canonical
- * serialization are not normalize-equal — the highest write-back-risk shape.
- * Byte-sacred must still hold for it.
- *
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { updateYFragment } from '@tiptap/y-tiptap';
@@ -33,8 +15,6 @@ import {
   type TestServer,
 } from './test-harness';
 
-/** A genuine WYSIWYG-side fragment commit (null origin => server Observer A
- *  sees a real WYSIWYG mutation, xmlDirty=true). */
 function applyWysiwygEdit(client: TestClient, markdownAfterEdit: string): void {
   const pmNode = schema.nodeFromJSON(mdManager.parse(markdownAfterEdit));
   client.doc.transact(() => {
@@ -45,9 +25,6 @@ function applyWysiwygEdit(client: TestClient, markdownAfterEdit: string): void {
   });
 }
 
-// Indented-JSX shapes (leading indentation ON the tags).
-
-// Shape A: flush-left <Steps>, 2-space-indented <Step>/</Step> tags + bodies.
 const SHAPE_A_INDENTED_STEP = [
   '<Steps>',
   '',
@@ -67,7 +44,6 @@ const SHAPE_A_INDENTED_STEP = [
   '',
 ].join('\n');
 
-// Shape B: the ENTIRE container indented 2 spaces (every tag + body).
 const SHAPE_B_INDENTED_CONTAINER = [
   '  <Steps>',
   '',
@@ -81,8 +57,6 @@ const SHAPE_B_INDENTED_CONTAINER = [
   '',
 ].join('\n');
 
-// Shape C: 3-space-indented <Step> tags (an odd indent below CommonMark's
-// 4-space indented-code boundary).
 const SHAPE_C_THREE_SPACE = [
   '<Steps>',
   '',
@@ -100,9 +74,6 @@ interface Shape {
   name: string;
   seed: string;
   anchor: string;
-  /** Measured serialize/tolerance characterization the byte-sacred guarantee
-   *  rests on. Shape B is the sentinel: NOT a serialize fixed point AND beyond
-   *  normalizeBridge tolerance, yet byte-sacred still holds. */
   isFixedPoint: boolean;
   withinTolerance: boolean;
 }
@@ -165,18 +136,13 @@ describe('byte-sacred source-mode typing inside indented JSX', () => {
         await awaitDocQuiescence(client.doc);
         const landed = ytext.toString();
 
-        // Simulate a source-mode keystroke: a client-origin Y.Text insert (the
-        // default transaction origin is NOT a paired write origin — it is the
-        // CM6/source-typing channel). Insert INSIDE the indented region.
         const at = landed.indexOf(anchor) + anchor.length;
-        expect(at).toBeGreaterThan(anchor.length); // anchor exists in landed bytes
+        expect(at).toBeGreaterThan(anchor.length);
         client.doc.transact(() => ytext.insert(at, 'X'));
-        const expectedAfterTyping = ytext.toString(); // exactly the typed bytes
+        const expectedAfterTyping = ytext.toString();
         await awaitDocQuiescence(client.doc);
 
         const serverBytes = getServerState(server, docName)?.ytext.toString() ?? '';
-        // The server's raw Y.Text must equal EXACTLY the typed bytes. Any
-        // de-indent / normalization write-back reddens here.
         expect(serverBytes).toBe(expectedAfterTyping);
       } finally {
         await client.cleanup();
@@ -185,10 +151,6 @@ describe('byte-sacred source-mode typing inside indented JSX', () => {
   }
 });
 
-// The indented-JSX write-back risk names the hidden-but-mounted WYSIWYG TipTap
-// binding as the single-client trigger. Cover that channel (a fragment commit,
-// xmlDirty) on the two shapes whose indentation survives landing — including
-// Shape B, which rests beyond normalizeBridge tolerance (the highest risk).
 const WYSIWYG_SHAPES = SHAPES.filter((s) => s.name.startsWith('A') || s.name.startsWith('B'));
 
 describe('byte-sacred WYSIWYG-commit channel on indented JSX', () => {
@@ -202,17 +164,13 @@ describe('byte-sacred WYSIWYG-commit channel on indented JSX', () => {
         const ytext = client.doc.getText('source');
         await awaitDocQuiescence(client.doc);
         const landed = ytext.toString();
-        expect(landed).toBe(seed); // indented seed landed verbatim
+        expect(landed).toBe(seed);
 
-        // Genuine WYSIWYG-side change (fires Observer A with xmlDirty): edit the
-        // body text of the first Step.
         applyWysiwygEdit(client, landed.replace('Content one.', 'Content one, edited.'));
         await awaitDocQuiescence(client.doc);
 
         const serverBytes = getServerState(server, docName)?.ytext.toString() ?? '';
-        expect(serverBytes).toContain('Content one, edited.'); // non-vacuous: edit landed
-        // The tags must NOT gain/lose indentation vs the pre-edit landed bytes
-        // (only the edited body text changes). A normalization write-back reddens.
+        expect(serverBytes).toContain('Content one, edited.');
         expect(serverBytes).toBe(landed.replace('Content one.', 'Content one, edited.'));
       } finally {
         await client.cleanup();

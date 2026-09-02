@@ -88,13 +88,12 @@ describe('scanInPlaceSkillDirs', () => {
 
   test('admits a skill living in an editor dir; ignores non-skill entries', () => {
     writeSkill(contentDir, '.claude/skills/foo', '# Foo');
-    mkdirSync(join(contentDir, '.claude/plugins/p'), { recursive: true }); // not a skill
-    writeFileSync(join(contentDir, '.claude/skills/loose.txt'), 'x'); // file, not a bundle dir
+    mkdirSync(join(contentDir, '.claude/plugins/p'), { recursive: true });
+    writeFileSync(join(contentDir, '.claude/skills/loose.txt'), 'x');
 
     const dirs = scanInPlaceSkillDirs(contentDir);
     expect([...dirs]).toEqual(['.claude/skills/foo']);
 
-    // The set drives content-filter admission end to end.
     const filter = createContentFilter({
       projectDir: contentDir,
       contentDir,
@@ -108,7 +107,6 @@ describe('scanInPlaceSkillDirs', () => {
     writeSkill(contentDir, '.claude/skills/foo', '# Same');
     writeSkill(contentDir, '.codex/skills/foo', '# Same');
     const dirs = scanInPlaceSkillDirs(contentDir);
-    // claude wins precedence; codex copy excluded.
     expect([...dirs]).toEqual(['.claude/skills/foo']);
   });
 
@@ -118,7 +116,6 @@ describe('scanInPlaceSkillDirs', () => {
     const dirs = scanInPlaceSkillDirs(contentDir);
     expect([...dirs].sort()).toEqual(['.claude/skills/foo', '.codex/skills/foo']);
 
-    // Both are real, editable content — neither is hidden behind the other.
     const filter = createContentFilter({
       projectDir: contentDir,
       contentDir,
@@ -167,19 +164,13 @@ describe('scanInPlaceSkills (list projection)', () => {
 
     const fromClaude = skills.find((s) => s.dir === '.claude/skills/foo');
     const fromCodex = skills.find((s) => s.dir === '.codex/skills/foo');
-    // Each row owns only its own physical occurrence...
     expect(fromClaude?.hosts).toEqual(['claude']);
     expect(fromCodex?.hosts).toEqual(['codex']);
-    // ...and names the other's slot as occupied by someone else. Symmetric:
-    // neither side is the "loser" whose folder the other one hides.
     expect(fromClaude?.conflictHosts).toEqual(['codex']);
     expect(fromCodex?.conflictHosts).toEqual(['claude']);
   });
 
   test('the by-name default sorts first among same-name rows', () => {
-    // Every by-name caller resolves with `.find(s => s.name === n)`, so the row
-    // a host-less lookup should land on has to come first or those callers
-    // silently resolve in content-hash order.
     writeSkill(contentDir, '.codex/skills/foo', '# zzz sorts late by hash');
     writeSkill(contentDir, '.claude/skills/foo', '# aaa');
     const skills = scanInPlaceSkills(contentDir);
@@ -187,24 +178,17 @@ describe('scanInPlaceSkills (list projection)', () => {
   });
 
   test("OK's own bundles collapse to one row even when a projection drifted", () => {
-    // A divergence is the user's only when they hand-edited a copy. Built-ins
-    // are read-only and OK ships their bytes, so a drifted projection (a stale
-    // pre-split copy, say) is an artifact to ignore, not a second skill.
     writeSkill(contentDir, '.claude/skills/open-knowledge', '# current');
     writeSkill(contentDir, '.agents/skills/open-knowledge', '# stale pre-split copy');
-    // An authored skill in the same tree still gets its two rows.
     writeSkill(contentDir, '.claude/skills/mine', '# A');
     writeSkill(contentDir, '.agents/skills/mine', '# B different');
 
     const skills = scanInPlaceSkills(contentDir);
     expect(skills.filter((s) => s.name === 'open-knowledge')).toHaveLength(1);
     expect(skills.filter((s) => s.name === 'mine')).toHaveLength(2);
-    // The one built-in row is the by-name default, not whichever hash sorted first.
     expect(skills.find((s) => s.name === 'open-knowledge')?.dir).toBe(
       '.agents/skills/open-knowledge',
     );
-    // And it must not carry conflict hosts — the drifted copy is an artifact to
-    // ignore, not a conflict to badge.
     expect(skills.find((s) => s.name === 'open-knowledge')?.conflictHosts).toEqual([]);
   });
 
@@ -214,7 +198,6 @@ describe('scanInPlaceSkills (list projection)', () => {
     writeSkill(contentDir, '.cursor/skills/foo', '# C different again');
     const skills = scanInPlaceSkills(contentDir);
     expect(skills).toHaveLength(3);
-    // N-way falls out of the model: every row lists the other two.
     for (const s of skills) {
       expect(s.hosts).toHaveLength(1);
       expect([...s.conflictHosts].sort()).toEqual(
@@ -225,29 +208,25 @@ describe('scanInPlaceSkills (list projection)', () => {
 
   test('a same-named sibling still dedups its OWN copies', () => {
     writeSkill(contentDir, '.claude/skills/foo', '# A');
-    writeSkill(contentDir, '.cursor/skills/foo', '# A'); // copy of the claude one
+    writeSkill(contentDir, '.cursor/skills/foo', '# A');
     writeSkill(contentDir, '.codex/skills/foo', '# B different');
     const skills = scanInPlaceSkills(contentDir);
     expect(skills).toHaveLength(2);
     const a = skills.find((s) => s.dir === '.claude/skills/foo');
-    expect(a?.hosts).toEqual(['claude', 'cursor']); // one skill, two locations
+    expect(a?.hosts).toEqual(['claude', 'cursor']);
     expect(a?.conflictHosts).toEqual(['codex']);
   });
 
   test('size reports the three tiers from the on-disk bundle, excluding non-readable files', () => {
     writeSkill(contentDir, '.claude/skills/foo', '# Foo body content');
-    // A readable reference contributes to on-demand; a script never does — the
-    // producer feeds the estimator the real tree, which filters by extension.
     mkdirSync(join(contentDir, '.claude/skills/foo/references'), { recursive: true });
     writeFileSync(join(contentDir, '.claude/skills/foo/references/ref.md'), 'x'.repeat(400));
     mkdirSync(join(contentDir, '.claude/skills/foo/scripts'), { recursive: true });
     writeFileSync(join(contentDir, '.claude/skills/foo/scripts/run.sh'), 'y'.repeat(400));
 
     const foo = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
-    // name ("foo"=3) + description ("d"=1) = 4 chars / 4.
     expect(foo?.size.alwaysOn).toBe(1);
     expect(foo?.size.onTrigger).toBeGreaterThan(0);
-    // 400-char readable .md → 100 tokens; the equal-length .sh contributes zero.
     expect(foo?.size.onDemand).toBe(100);
   });
 
@@ -269,8 +248,6 @@ describe('scanInPlaceSkills (list projection)', () => {
 
     const foo = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
     expect(foo?.dir).toBe('.claude/skills/foo');
-    // The body lives only behind the symlink; a non-zero on-trigger proves the
-    // walk read through it.
     expect(foo?.size.onTrigger).toBeGreaterThan(0);
   });
 
@@ -285,15 +262,12 @@ describe('scanInPlaceSkills (list projection)', () => {
     expect(foo?.hosts).toEqual(['agents', 'claude']);
     const solo = skills.find((s) => s.name === 'solo');
     expect(solo?.dir).toBe('.agents/skills/solo');
-    // Observable facts only: no vendor-capability hosts (table deleted).
     expect(solo?.hosts).toEqual(['agents']);
   });
 });
 
 describe('parse cache (bundle stamp invalidation)', () => {
   let contentDir: string;
-  // A pinned mtime so the stamp is controlled explicitly rather than left to
-  // depend on filesystem clock resolution between successive writes.
   const PINNED = new Date(1_700_000_000_000);
   beforeEach(() => {
     contentDir = mkdtempSync(join(tmpdir(), 'ok-parse-cache-'));
@@ -309,9 +283,6 @@ describe('parse cache (bundle stamp invalidation)', () => {
     utimesSync(skillMdOf('foo'), PINNED, PINNED);
     const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
 
-    // Swap the body for different bytes of the SAME length and restore the pinned
-    // mtime: relpath+size+mtime are unchanged, so the stamp matches. A re-parse
-    // would surface the new hash; the cache returns the old one.
     const swapped = readFileSync(skillMdOf('foo'), 'utf8').replace('# body one', '# body two');
     writeFileSync(skillMdOf('foo'), swapped);
     utimesSync(skillMdOf('foo'), PINNED, PINNED);
@@ -324,8 +295,6 @@ describe('parse cache (bundle stamp invalidation)', () => {
     writeSkill(contentDir, '.claude/skills/foo', '# short');
     const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
 
-    // A real on-disk edit that grows the body must surface on the next list, not a
-    // permanently cached figure.
     writeFileSync(
       skillMdOf('foo'),
       `---\nname: foo\ndescription: d\n---\n\n${'word '.repeat(200)}\n`,
@@ -340,8 +309,6 @@ describe('parse cache (bundle stamp invalidation)', () => {
     utimesSync(skillMdOf('foo'), PINNED, PINNED);
     const first = scanInPlaceSkills(contentDir).find((s) => s.name === 'foo');
 
-    // Same-length body swap (size identical) with a bumped mtime: mtime is the ONLY
-    // changed stamp field, so a re-parse here proves mtime alone invalidates.
     const swapped = readFileSync(skillMdOf('foo'), 'utf8').replace('# one', '# two');
     writeFileSync(skillMdOf('foo'), swapped);
     const later = new Date(PINNED.getTime() + 5000);
@@ -363,7 +330,7 @@ describe('global tier (R12): scanGlobalInPlaceSkills + resolveGlobalNativeSkillD
 
   test('scans user editor dirs (incl. the non-standard pi layout + ~/.agents hub)', () => {
     writeSkill(home, '.claude/skills/foo', '# Same');
-    writeSkill(home, '.codex/skills/foo', '# Same'); // copy → deduped
+    writeSkill(home, '.codex/skills/foo', '# Same');
     writeSkill(home, '.pi/agent/skills/nested', '# Pi layout');
     writeSkill(home, '.agents/skills/hub', '# Hub');
 
@@ -378,7 +345,6 @@ describe('global tier (R12): scanGlobalInPlaceSkills + resolveGlobalNativeSkillD
   test('probe resolves the precedence-winning native dir; null when absent', () => {
     writeSkill(home, '.codex/skills/foo', '# A');
     writeSkill(home, '.claude/skills/foo', '# A');
-    // claude beats codex; agents beats both.
     expect(resolveGlobalNativeSkillDir(home, 'foo')).toBe(join(home, '.claude/skills/foo'));
     writeSkill(home, '.agents/skills/foo', '# A');
     expect(resolveGlobalNativeSkillDir(home, 'foo')).toBe(join(home, '.agents/skills/foo'));
@@ -397,16 +363,14 @@ describe('symlinked occurrences (D7 disclosure)', () => {
 
   test('a DIR-LEVEL root symlink (sync-tool style) discloses as VIA, not a copy', () => {
     writeSkill(contentDir, '.agents/skills/foo', '# Same');
-    // The WHOLE .codex/skills root is a symlink to .agents/skills — the leaf
-    // path reads as a real dir but is the same inode as the source.
     mkdirSync(join(contentDir, '.codex'), { recursive: true });
     symlinkSync(join(contentDir, '.agents/skills'), join(contentDir, '.codex/skills'), 'dir');
 
     const skills = scanInPlaceSkills(contentDir);
     const foo = skills.find((s) => s.name === 'foo');
     expect(foo?.dir).toBe('.agents/skills/foo');
-    expect(foo?.hosts).not.toContain('codex'); // an alias (via scanHostRootAliases), not a host
-    expect(foo?.copyDirs).toEqual([]); // NOT a copy — same physical folder
+    expect(foo?.hosts).not.toContain('codex');
+    expect(foo?.copyDirs).toEqual([]);
   });
 
   test('a user symlink counts as a host AND is reported in linkedHosts', () => {
@@ -423,7 +387,6 @@ describe('symlinked occurrences (D7 disclosure)', () => {
     expect(foo?.dir).toBe('.agents/skills/foo');
     expect(foo?.hosts).toEqual(['agents', 'codex']);
     expect(foo?.linkedHosts).toEqual(['codex']);
-    // The symlink itself is never a canonical admission target.
     expect([...scanInPlaceSkillDirs(contentDir)]).toEqual(['.agents/skills/foo']);
   });
 });
@@ -445,10 +408,10 @@ describe('scanHostRootAliases (folder-level aliases, observable facts only)', ()
   });
 
   test('real, absent, and outside-base roots are not aliases', () => {
-    mkdirSync(join(contentDir, '.claude/skills'), { recursive: true }); // real
+    mkdirSync(join(contentDir, '.claude/skills'), { recursive: true });
     const outside = mkdtempSync(join(tmpdir(), 'ok-outside-'));
     mkdirSync(join(contentDir, '.cursor'), { recursive: true });
-    symlinkSync(outside, join(contentDir, '.cursor/skills'), 'dir'); // escapes base
+    symlinkSync(outside, join(contentDir, '.cursor/skills'), 'dir');
     try {
       expect(scanHostRootAliases(contentDir, 'project')).toEqual({});
     } finally {
@@ -457,9 +420,6 @@ describe('scanHostRootAliases (folder-level aliases, observable facts only)', ()
   });
 
   test('a sticky source pref can NEVER elect an alias-rooted occurrence', () => {
-    // The 2026-07-23 orphan-source bug: `sources: {foo: codex}` while
-    // .codex/skills is a symlink to .agents/skills elected the ALIAS path as
-    // canonical — rendering an orphan folder row for a location that is a view.
     writeSkill(contentDir, '.agents/skills/foo', '# Same');
     mkdirSync(join(contentDir, '.codex'), { recursive: true });
     symlinkSync(join(contentDir, '.agents/skills'), join(contentDir, '.codex/skills'), 'dir');
@@ -481,9 +441,6 @@ describe('scanHostRootAliases (folder-level aliases, observable facts only)', ()
   });
 
   test('a CUSTOM root symlinked into another root is an alias too (keyed by its path)', () => {
-    // `.tim/skills → .ok/skills`: the ledger-known custom root is a view of
-    // the target — alias-mapped (no row, audience icon rides the target) and
-    // its occurrences never win election.
     writeSkill(contentDir, '.ok/skills/foo', '# Same');
     mkdirSync(join(contentDir, '.tim'), { recursive: true });
     symlinkSync(join(contentDir, '.ok/skills'), join(contentDir, '.tim/skills'), 'dir');
@@ -491,7 +448,6 @@ describe('scanHostRootAliases (folder-level aliases, observable facts only)', ()
     writeFileSync(
       join(contentDir, '.ok/local/skill-placements.json'),
       JSON.stringify({
-        // Both roots ledger-known, as promotion records them in reality.
         skills: {
           foo: [
             { path: '.ok/skills/foo', mode: 'copy' },
@@ -504,8 +460,6 @@ describe('scanHostRootAliases (folder-level aliases, observable facts only)', ()
     expect(scanHostRootAliases(contentDir, 'project')).toEqual({
       '.tim/skills': '.ok/skills',
     });
-    // Election: the custom-root source stays canonical; the alias path never
-    // surfaces as an independent host.
     const skills = scanInPlaceSkills(contentDir);
     const foo = skills.find((s) => s.name === 'foo');
     expect(foo?.dir).toBe('.ok/skills/foo');
@@ -525,10 +479,6 @@ describe('removableSkillOccurrenceDirs', () => {
   const hashOf = (rel: string) => parseSkillDir(join(base, rel))?.contentHash as string;
 
   test('removes THIS skill everywhere, and never a same-named fork', () => {
-    // The blocker this guards: the registry models two same-named bundles with
-    // different bytes as two DISTINCT skills (`conflictHosts`). Deleting
-    // `.cursor/skills/foo` because `.claude/skills/foo` moved away destroys a
-    // bundle its owner never touched — unrecoverably when it is untracked.
     writeSkill(base, '.claude/skills/foo', '# Moved');
     writeSkill(base, '.agents/skills/foo', '# Moved');
     writeSkill(base, '.cursor/skills/foo', '# A DIFFERENT skill that happens to share the name');
@@ -543,8 +493,6 @@ describe('removableSkillOccurrenceDirs', () => {
   });
 
   test('a symlink goes even when its target is already gone', () => {
-    // A projection whose target the move deleted is still a dir entry the next
-    // scan trips on, and `existsSync` reports it absent — hence lstat.
     mkdirSync(join(base, '.claude/skills'), { recursive: true });
     symlinkSync(join(base, 'gone'), join(base, '.claude/skills/foo'));
     expect(removableSkillOccurrenceDirs(base, 'project', 'foo', 'any-hash')).toEqual([
@@ -553,8 +501,6 @@ describe('removableSkillOccurrenceDirs', () => {
   });
 
   test('covers the legacy .ok/skills store, not just host roots', () => {
-    // A copy parked outside the standard roots would otherwise survive the move
-    // and be re-detected as a second skill at the scope just moved away from.
     writeSkill(base, '.ok/skills/foo', '# Moved');
     const moved = hashOf('.ok/skills/foo');
     expect(removableSkillOccurrenceDirs(base, 'project', 'foo', moved)).toEqual([
@@ -586,20 +532,12 @@ describe('isActivatedSkillRoot', () => {
   });
 
   test('the hub is NOT offered when nothing on the machine reads it', () => {
-    // The hub has no owning tool, so it must not be offered just because it
-    // could exist — that would put a folder nothing here would read in front of
-    // every user.
     expect(existsSync(join(base, '.agents'))).toBe(false);
     expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(false);
     expect(isActivatedSkillRoot(base, 'global', '.agents/skills', home)).toBe(false);
   });
 
   test('an installed hub reader activates the hub, at the scope it reads', () => {
-    // LM Studio reads `<project>/.agents/skills`, so installing it makes the
-    // hub a real project destination on a project that has never used it — the
-    // case that was previously reachable only by typing the path into "Add
-    // custom path". It does not speak for global scope, where LM Studio reads
-    // `~/.agents/skills` only behind an off-by-default toggle.
     mkdirSync(join(home, '.lmstudio'), { recursive: true });
     expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(true);
     expect(isActivatedSkillRoot(base, 'global', '.agents/skills', home)).toBe(false);
@@ -611,10 +549,6 @@ describe('isActivatedSkillRoot', () => {
   });
 
   test('a hub reader that already has its own root does NOT activate the hub', () => {
-    // OpenCode and Pi read `.agents/skills` too, but OK already writes
-    // `.opencode/skills` and `.pi/skills`. Activating the hub for them would add
-    // a SECOND place the same agent reads rather than reach one it was missing —
-    // the double-load hazard `EDITOR_PROJECT_SKILL_ROOT`'s header warns about.
     mkdirSync(join(home, '.opencode'), { recursive: true });
     mkdirSync(join(home, '.pi'), { recursive: true });
     expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(false);
@@ -622,15 +556,6 @@ describe('isActivatedSkillRoot', () => {
   });
 
   test('an existing .agents dir activates it through the standard dotdir check', () => {
-    // Named for what it actually pins. `isActivatedSkillRoot` short-circuits on
-    // the dotdir check BEFORE the reader branch, so with `base/.agents` present
-    // the `true` comes entirely from that branch — this asserts nothing about
-    // HUB_READER_EDITORS, and would still pass if the reader branch were
-    // deleted. The two that DO go red if it is deleted are 'an installed hub
-    // reader activates the hub, at the scope it reads' and 'OpenClaw activates
-    // the hub at global scope, where it reads it' — named, not counted, because
-    // the negative assertions beside them stay green either way and a positional
-    // pointer breaks on the next insertion into this block.
     mkdirSync(join(base, '.agents'), { recursive: true });
     expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(true);
   });

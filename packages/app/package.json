@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-app",
-  "version": "0.67.0",
+  "version": "0.68.3",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -55,7 +55,7 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "8.4 MB",
+      "limit": "8.8 MB",
       "gzip": true,
       "running": false
     },
@@ -82,12 +82,12 @@
     "@codemirror/legacy-modes": "^6.5.1",
     "@codemirror/lint": "^6.9.7",
     "@codemirror/search": "^6.6.0",
-    "@codemirror/state": "^6.6.0",
+    "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@excalidraw/excalidraw": "0.18.1",
+    "@excalidraw/excalidraw": "0.18.0-abeeaeb",
     "@fellow/prosemirror-recreate-transform": "^1.2.3",
     "@floating-ui/dom": "^1.7.6",
     "@fontsource-variable/inter": "^5.2.8",

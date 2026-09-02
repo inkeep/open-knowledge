@@ -1,12 +1,3 @@
-/**
- * Unit tests for the pure IPC handler impls used by main/index.ts to wire
- * the `ok:shell:detect-protocol` and `ok:shell:spawn-cursor` channels.
- *
- * The handlers are written as dependency-injected functions so these tests
- * can run under Bun without a real Electron `app` module. Real wiring is
- * smoke-tested by the integration surface (contract-equality scan).
- */
-
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -59,8 +50,6 @@ describe('detectProtocol', () => {
       {
         platform: 'win32',
         getApplicationInfoForProtocol: async () => {
-          // Electron's AssocQueryString path finds no executable for
-          // MSIX-registered schemes (empty shell\open\command) and rejects.
           throw new Error('Unable to retrieve installation path to app');
         },
         runWindowsProbe: async (s) => {
@@ -232,7 +221,6 @@ describe('detectProtocol', () => {
     const result = await detectProtocol(
       {
         platform: 'darwin',
-        // A promise that never resolves — timeout race wins.
         getApplicationInfoForProtocol: () => new Promise(() => {}),
         runMacOsProbe: async () => false,
         timeoutMs: 20,
@@ -355,14 +343,10 @@ describe('isPathWithinProject — Review M5 confined-path check', () => {
   });
 
   test('rejects sibling paths (sharing common parent but not under project)', () => {
-    // `/Users/x/project-other` shares `/Users/x/` prefix with `/Users/x/project`
-    // but is NOT under the project root. String prefix matches would pass; the
-    // path-relative-based check correctly rejects.
     expect(isPathWithinProject('/Users/x/project-other', '/Users/x/project', 'darwin')).toBe(false);
   });
 
   test('rejects parent-traversal escape (..)', () => {
-    // `relative()` returns `../other` when userPath escapes via ..
     expect(isPathWithinProject('/Users/x/other', '/Users/x/project', 'darwin')).toBe(false);
     expect(isPathWithinProject('/etc/passwd', '/Users/x/project', 'linux')).toBe(false);
   });
@@ -388,17 +372,12 @@ describe('isPathWithinProject — Review M5 confined-path check', () => {
   });
 
   test('Windows: matches drive root case-insensitively', () => {
-    // Filesystem semantics — `c:\proj` and `C:\proj` are the same root.
     expect(
       isPathWithinProject('c:\\Users\\x\\project\\sub', 'C:\\Users\\x\\project', 'win32'),
     ).toBe(true);
   });
 
   test('Windows: rejects UNC userPath when projectPath is on a local drive', () => {
-    // `path.win32.relative('C:\\projects\\foo', '\\\\evil\\share\\secret.txt')` returns
-    // `\\\\evil\\share\\secret.txt` (the absolute UNC). The legacy drive-letter
-    // regex doesn't match `\\\\` — without the root check, this case slipped
-    // through and accepted attacker-controlled UNC mounts as in-scope.
     expect(isPathWithinProject('\\\\evil\\share\\secret.txt', 'C:\\projects\\foo', 'win32')).toBe(
       false,
     );
@@ -427,9 +406,6 @@ describe('isPathWithinProject — Review M5 confined-path check', () => {
   });
 
   test('Windows: rejects device / extended-length namespace prefixes (cross-root)', () => {
-    // `\\?\C:\…` and `\\.\C:\…` resolve to roots `\\?\C:\` / `\\.\C:\` —
-    // distinct from `C:\`. A renderer that constructs one to escape the
-    // legacy drive-letter check is rejected by the root comparison.
     expect(isPathWithinProject('\\\\?\\C:\\Windows\\System32', 'C:\\projects\\foo', 'win32')).toBe(
       false,
     );
@@ -439,11 +415,6 @@ describe('isPathWithinProject — Review M5 confined-path check', () => {
   });
 
   describe('lexical-only symlink contract', () => {
-    // Pins the JSDoc contract: isPathWithinProject does NOT resolve symlinks.
-    // A symlink inside projectPath that targets outside (e.g. <proj>/notes -> /etc)
-    // passes this check at the lexical layer; the OS follows it at use time.
-    // A future "hardening" with fs.realpathSync would silently break user setups
-    // like `notes -> ~/Documents/notes` symlinked inside their project.
     let root: string;
 
     beforeAll(() => {
@@ -493,9 +464,6 @@ describe('spawnCursor', () => {
   });
 
   test('rejects out-of-scope path when projectPath is bound (Review M5)', async () => {
-    // Defense-in-depth against a renderer compromise. The caller window's
-    // `ProjectContext.projectPath` is threaded from main/index.ts; any
-    // user-supplied path that escapes is refused before resolve/spawn.
     let resolveCalls = 0;
     let spawnCalls = 0;
     const result = await spawnCursor(
@@ -549,7 +517,6 @@ describe('spawnCursor', () => {
     const result = await spawnCursor(
       {
         platform: 'darwin',
-        // projectPath intentionally omitted — scope check falls through.
         resolveCursorBinary: async () =>
           '/Applications/Cursor.app/Contents/Resources/app/bin/cursor',
         getApplicationInfoForProtocol: async () => {
@@ -591,12 +558,6 @@ describe('spawnCursor', () => {
   });
 
   test('falls back to Electron bundle path via `/usr/bin/open -a <bundle>` when CLI resolver fails', async () => {
-    // If the CLI shim is unavailable, `app.getApplicationInfoForProtocol('cursor://').path`
-    // can return `/Applications/Cursor.app` (the BUNDLE, a directory) in
-    // production — not the inner Mach-O binary. Unix `exec()` requires a real
-    // binary, so direct spawn on the bundle fails with EACCES. Route through
-    // macOS's `/usr/bin/open -a <bundle> <userPath>` which asks Launch Services
-    // to resolve the bundle to its registered executable.
     let spawnedExec: string | null = null;
     let spawnedArgs: ReadonlyArray<string> | null = null;
     const result = await spawnCursor(
@@ -730,10 +691,6 @@ describe('spawnCursor', () => {
 });
 
 describe('recordHandoff', () => {
-  /**
-   * Build a fresh in-memory stub that captures appendFile + mkdir calls.
-   * Each test gets its own instance — mutations don't leak between tests.
-   */
   const makeStubs = () => {
     const calls: { appendFile: Array<{ path: string; content: string }>; mkdir: string[] } = {
       appendFile: [],
@@ -814,7 +771,6 @@ describe('recordHandoff', () => {
         throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
       },
     };
-    // Must resolve to undefined — never throw — so dispatch path can continue.
     await expect(recordHandoff(failingDeps, sampleLine)).resolves.toBeUndefined();
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('EACCES');
@@ -859,8 +815,6 @@ describe('recordHandoff', () => {
     const failingDeps = {
       ...deps,
       appendFile: async () => {
-        // Intentionally throws a non-Error to exercise the String(err) coercion
-        // branch in `recordHandoff`'s catch block.
         throw 'plain-string-failure';
       },
     };
@@ -984,19 +938,12 @@ describe('showItemInFolder', () => {
   });
 });
 
-// Construct a thrown shape matching a `NodeJS.ErrnoException` so the
-// classifier's `(err as NodeJS.ErrnoException).code` branch runs against a
-// realistic error rather than a plain string. Centralized so the EPERM /
-// EACCES / ENOENT cases stay consistent across the test block.
 function makeErrnoError(code: string, message: string): Error {
   const err = new Error(message) as NodeJS.ErrnoException;
   err.code = code;
   return err;
 }
 
-// Build an Error carrying a macOS `localizedDescription` property (the
-// Electron NSError → JS Error bridge surface). Pins the `detail` extraction
-// preference order: localizedDescription > message > undefined.
 function makeNsError(localized: string, message = 'underlying message'): Error {
   const err = new Error(message);
   (err as Error & { localizedDescription?: string }).localizedDescription = localized;
@@ -1045,7 +992,7 @@ describe('trashItem', () => {
         projectPath: '/Users/me/proj',
         realpath: (p) => {
           realpathCalls.push(p);
-          return p; // identity — no symlink dereferencing in the test
+          return p;
         },
         trashItem: async (p) => {
           trashCalls.push(p);
@@ -1059,9 +1006,6 @@ describe('trashItem', () => {
   });
 
   test('success: realpath dereferences a symlink that resolves back inside project', async () => {
-    // Symlink `/Users/me/proj/link.md` → `/Users/me/proj/real.md` should be
-    // accepted (canonical target is inside the project). isPathWithinProject
-    // runs against the CANONICAL path returned by realpath, not the input.
     const trashCalls: string[] = [];
     const result = await trashItem(
       {
@@ -1082,10 +1026,6 @@ describe('trashItem', () => {
   });
 
   test('path-escape: realpath dereferences a symlink that escapes project root', async () => {
-    // Symlink-traversal attack: `/Users/me/proj/notes` → `/etc`. realpath
-    // canonicalizes to `/etc`, isPathWithinProject refuses, shell.trashItem
-    // is NEVER called. This is the load-bearing defense — the lexical
-    // containment check at the wire boundary would have admitted the input.
     let trashCalled = false;
     const result = await trashItem(
       {
@@ -1169,9 +1109,6 @@ describe('trashItem', () => {
   });
 
   test('path-escape: lexical-only containment refuses parent-escape input even before realpath', async () => {
-    // Input is absolute but lexically escapes the project root. realpath
-    // returns identity, then isPathWithinProject refuses. No symlink trickery
-    // involved — pure lexical check at the post-realpath stage.
     let trashCalled = false;
     const result = await trashItem(
       {
@@ -1216,10 +1153,6 @@ describe('trashItem', () => {
   });
 
   test('not-found: surfaces from shell.trashItem ENOENT (race window after realpath success)', async () => {
-    // Edge case: realpath succeeds but the file is deleted during the microsecond window
-    // before shell.trashItem reaches it. The classifier maps ENOENT during
-    // the trash stage to `not-found` (consistent with the realpath-stage
-    // outcome) so UX is coherent.
     const result = await trashItem(
       {
         platform: 'darwin',
@@ -1277,9 +1210,6 @@ describe('trashItem', () => {
   });
 
   test('system-error: shell.trashItem throws a non-ENOENT/EPERM/EACCES error (catch-all)', async () => {
-    // Electron's NSFileManager backend surfaces tmpfs / OneDrive failures as
-    // generic Error with a localizedDescription. The classifier falls
-    // through to `system-error`; the detail surfaces the OS string.
     const result = await trashItem(
       {
         platform: 'darwin',
@@ -1302,11 +1232,6 @@ describe('trashItem', () => {
   });
 
   test('system-error: surfaces from non-Error thrown values via String() coercion', async () => {
-    // Defensive — production never throws a non-Error from shell.trashItem,
-    // but the classifier MUST not crash if anything else surfaces. A
-    // module-level rejected Promise carrier keeps the test's intent
-    // (cover the non-Error throw branch) without tripping Biome's
-    // `noThrowLiterals` / `useErrorMessage` rules at the literal-throw site.
     const result = await trashItem(
       {
         platform: 'darwin',

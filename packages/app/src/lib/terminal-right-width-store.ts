@@ -33,7 +33,5 @@ export function writeTerminalRightWidth(width: number, storage?: TerminalRightWi
   try {
     const target = storage ?? localStorage;
     target.setItem(TERMINAL_RIGHT_WIDTH_KEY, String(normalizeTerminalRightWidth(width)));
-  } catch {
-    // Browser storage can reject access; the in-memory width remains usable for the session.
-  }
+  } catch {}
 }

@@ -7,8 +7,6 @@ import {
   splitMarkdownBlocks,
 } from './reconciliation';
 
-// ─── splitMarkdownBlocks ─────────────────────────────────────────────────────
-
 describe('splitMarkdownBlocks', () => {
   test('splits on blank lines', () => {
     const blocks = splitMarkdownBlocks('# Heading\n\nParagraph one.\n\nParagraph two.\n');
@@ -29,8 +27,6 @@ describe('splitMarkdownBlocks', () => {
     expect(splitMarkdownBlocks('# Just a heading\n')).toEqual(['# Just a heading']);
   });
 });
-
-// ─── containsConflictMarkers ─────────────────────────────────────────────────
 
 describe('containsConflictMarkers', () => {
   test('detects merge-style markers (<<<<<<< HEAD)', () => {
@@ -56,7 +52,6 @@ describe('containsConflictMarkers', () => {
   });
 
   test('does not match ======= inside a word', () => {
-    // The marker must be the entire line (^={7}$)
     const content = 'some ======= inline text\n';
     expect(containsConflictMarkers(content)).toBe(false);
   });
@@ -66,8 +61,6 @@ describe('containsConflictMarkers', () => {
     expect(containsConflictMarkers(content)).toBe(false);
   });
 });
-
-// ─── reconcile outcomes ──────────────────────────────────────────────────────
 
 describe('reconcile', () => {
   const docName = 'test-doc';
@@ -146,7 +139,6 @@ describe('reconcile', () => {
       expect(result.conflicts[0].base).toBe('Shared paragraph.');
       expect(result.conflicts[0].ours).toBe('Our version of shared.');
       expect(result.conflicts[0].theirs).toBe('Their version of shared.');
-      // Merged output preserves ours
       const blocks = splitMarkdownBlocks(result.newContent);
       expect(blocks).toContain('Our version of shared.');
     }
@@ -160,11 +152,9 @@ describe('reconcile', () => {
     const result = reconcile({ docName, base, ours, theirs });
     expect(result.kind).toBe('conflicts');
     if (result.kind === 'conflicts') {
-      // Block C is the conflict (both changed it)
       expect(result.conflicts).toHaveLength(1);
       expect(result.conflicts[0].base).toBe('Block C.');
 
-      // Block A (only ours) and Block B (only theirs) merge cleanly
       const blocks = splitMarkdownBlocks(result.newContent);
       expect(blocks).toContain('Block A edited by us.');
       expect(blocks).toContain('Block B edited by them.');
@@ -180,20 +170,12 @@ describe('reconcile', () => {
     expect(result.kind).toBe('merged');
   });
 
-  // ─── LCS memory bound ────────────────────────────────────────────────────
-  // Refuse oversized inputs rather than allocate an unbounded DP grid that
-  // would OOM the server on every external-disk update. The cap is a hard
-  // contract — `MAX_LCS_CELLS` is exported and the test sizes the inputs
-  // relative to it so the assertion remains valid if the cap is later tuned.
-
   function buildBlocks(prefix: string, count: number): string {
     const blocks: string[] = [];
     for (let i = 0; i < count; i++) blocks.push(`${prefix} ${i}.`);
     return `${blocks.join('\n\n')}\n`;
   }
 
-  // Pick block counts whose product exceeds MAX_LCS_CELLS without allocating
-  // multi-megabyte strings. Symmetric `ceil(sqrt(cap)) + 10` works.
   const overCapPerSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
 
   test('refused: (base × ours) exceeds the LCS bound', () => {
@@ -221,9 +203,6 @@ describe('reconcile', () => {
   });
 
   test('refused: oversized inputs return promptly without allocating LCS DP', () => {
-    // Crude regression guard: the refusal path must short-circuit BEFORE the
-    // LCS allocation. Without the bound, allocating the prior Array-of-Arrays
-    // grid for these inputs would take seconds (or OOM) on every disk event.
     const base = buildBlocks('base', overCapPerSide);
     const ours = buildBlocks('ours', overCapPerSide);
     const theirs = buildBlocks('theirs', overCapPerSide);
@@ -237,7 +216,6 @@ describe('reconcile', () => {
   });
 
   test('large but in-bounds inputs still merge', () => {
-    // 100 × 100 ≈ 10k cells, well under the cap.
     const same = buildBlocks('block', 100);
     const base = same;
     const ours = `${same}\nAdded by us.\n`;
@@ -252,8 +230,6 @@ describe('reconcile', () => {
     }
   });
 });
-
-// ─── containsUnresolvedConflictBlock ─────────────────────────────────────────
 
 describe('containsUnresolvedConflictBlock', () => {
   test('a complete unresolved block is detected', () => {
@@ -285,8 +261,6 @@ describe('containsUnresolvedConflictBlock', () => {
   });
 
   test('the loose predicate still flags the setext heading it always did', () => {
-    // Guards the split: `containsConflictMarkers` keeps its deliberately loose
-    // bias for the watcher, and only the write-refusal path uses the strict one.
     expect(containsConflictMarkers('Release Notes\n=======\n')).toBe(true);
   });
 });

@@ -12,7 +12,7 @@ function isPrecededByListItem(source: string, closeLineStart: number): boolean {
     while (lineStart > 0 && source[lineStart - 1] !== '\n') lineStart--;
     const line = source.slice(lineStart, scan === closeLineStart - 1 ? scan : scan + 1);
     if (line.trim().length === 0) {
-      scan = lineStart - 2; // -1 to step over the `\n`, -1 to land on prev line's last char
+      scan = lineStart - 2;
       continue;
     }
     return LIST_ITEM_LINE_RE.test(line);

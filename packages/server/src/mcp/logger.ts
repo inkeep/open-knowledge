@@ -1,17 +1,3 @@
-/**
- * Structured MCP logger — JSON lines on stderr for Claude Desktop logs.
- *
- * Every log entry carries:
- *   sessionId  — stable for one MCP stdio process lifetime
- *   corrId     — rotated per logical operation (tool call, startup phase)
- *   component  — 'mcp' by default; callers can narrow
- *
- * stderr:      always JSON lines (for Claude Desktop / MCP clients)
- * OK_LOG_FILE: same single-line JSON format, appended one entry per line.
- *
- * Debug-level output is gated behind MCP_DEBUG=1 or DEBUG containing 'mcp'.
- */
-
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
@@ -28,11 +14,6 @@ interface McpLogEntry {
 
 const loggerContext = new AsyncLocalStorage<McpLogger>();
 
-/**
- * Raw Errors stringify to `{}` under JSON.stringify — flatten top-level Error
- * values to a plain `{name, message, stack}` record so the JSONL line keeps
- * the stack. Nested structures stay caller-shaped.
- */
 function toSerializableError(value: unknown): unknown {
   if (value instanceof Error) {
     return { name: value.name, message: value.message, stack: value.stack };
@@ -50,11 +31,6 @@ export class McpLogger {
     this.corrId = randomUUID().slice(0, 8);
     this.component = component;
   }
-
-  // ── public API ───────────────────────────────────────────────────────
-  // Intentional divergence from the server package's Pino wrapper:
-  // this logger owns the final JSON envelope, so MCP call sites stay
-  // message-first and pass optional structured context separately.
 
   info(msg: string, ctx: Record<string, unknown> = {}): void {
     this.emit('info', msg, ctx);
@@ -75,21 +51,14 @@ export class McpLogger {
     }
   }
 
-  /**
-   * Return a child logger that shares sessionId but has a fresh corrId.
-   * Use at the start of each tool call or startup phase.
-   */
   child(component?: string): McpLogger {
     const c = new McpLogger(component ?? this.component, this.sessionId);
     return c;
   }
 
-  /** Adapter for call sites that still pass `(msg: string) => void`. */
   asCallback(): (msg: string) => void {
     return (msg: string) => this.info(msg);
   }
-
-  // ── internals ────────────────────────────────────────────────────────
 
   private emit(
     level: 'debug' | 'info' | 'warn' | 'error',
@@ -124,12 +93,10 @@ export class McpLogger {
   }
 }
 
-/** Run an async/sync block with the provided logger bound as the active MCP logger. */
 export function runWithMcpLogger<T>(logger: McpLogger, fn: () => T): T {
   return loggerContext.run(logger, fn);
 }
 
-/** Return the active per-call logger when one is bound, otherwise `undefined`. */
 export function getCurrentMcpLogger(): McpLogger | undefined {
   return loggerContext.getStore();
 }

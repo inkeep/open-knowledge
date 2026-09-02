@@ -22,12 +22,6 @@ interface TestRepoHandle {
   cleanup(): void;
 }
 
-/**
- * Build a tmpdir containing a main repo and N linked worktrees on freshly-
- * created branches. Each worktree gets a single committed file so HEAD has a
- * real SHA. Returns realpath-resolved paths to avoid macOS `/private/var/...`
- * vs `/var/...` mismatches when comparing against the impl's output.
- */
 async function makeRepoWithWorktrees(branches: string[]): Promise<TestRepoHandle> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'list-git-wt-test-')));
   const mainRepo = join(root, 'main');
@@ -94,7 +88,6 @@ describe('listGitWorktrees', () => {
     const entries = await listGitWorktrees(handle.mainRepo);
     const locked = entries.find((e) => e.branch === 'feat-locked');
     expect(locked?.locked).toBe(true);
-    // Unlock so cleanup can rmSync the worktree dir
     await git(handle.mainRepo, 'worktree', 'unlock', handle.worktrees.get('feat-locked') as string);
   });
 
@@ -110,7 +103,6 @@ describe('listGitWorktrees', () => {
     const symlinkPath = join(handle.root, 'main-symlink');
     symlinkSync(handle.mainRepo, symlinkPath);
     const entries = await listGitWorktrees(symlinkPath);
-    // The symlinked anchor should still resolve to the canonical mainRepo path.
     expect(entries.find((e) => e.branch === 'main')?.path).toBe(handle.mainRepo);
   });
 

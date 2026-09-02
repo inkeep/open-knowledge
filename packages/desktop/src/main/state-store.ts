@@ -1,15 +1,3 @@
-/**
- * Pure state-store helpers for app-level persistence (recent projects,
- * last-opened, spell-check preference). The main entry persists this to
- * `app.getPath('userData')/state.json`; tests exercise the pure helpers
- * directly without an Electron process.
- *
- * Recent-projects shape: LRU array, cap 20, realpath-canonicalized
- * `contentDir` as key. Improvements over surveyed apps (Obsidian, VS Code):
- * we use `realpath` so symlinked projects collapse to the same entry, matching
- * OK's existing realpath-based file-watcher identity.
- */
-
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OkTerminalRestartSnapshot } from '@inkeep/open-knowledge-core/desktop-bridge';
@@ -19,40 +7,19 @@ interface RecentProject {
   path: string;
   name: string;
   lastOpenedAt: string;
-  /** Computed at read time — `existsSync(path)` was false when this snapshot was built. */
   missing?: boolean;
-  /**
-   * Canonical GitHub remote URL (`https://github.com/<owner>/<repo>.git`)
-   * when this project has a github.com origin. Undefined when the project
-   * has no `.git/config`, no `[remote "origin"]`, or a non-GitHub remote.
-   * Powers the RecentProject-lookup in the share-receive decision tree:
-   * an incoming share-URL's `{owner, repo}` resolves to a canonical URL
-   * and the desktop scans recents for a matching entry. Backfilled on
-   * every project open, so legacy entries persisted before the field
-   * existed self-heal without a schema bump.
-   */
   gitRemoteUrl?: string;
 }
 
-/**
- * Persisted frame of a project's editor window, captured on move/resize/
- * mode-change/close and restored on the next open of the same project.
- * `x/y/width/height` always hold the NORMAL-state frame
- * (`BrowserWindow.getNormalBounds()`), so leaving maximize/full-screen
- * restores the pre-mode geometry; the two flags remember the mode itself.
- */
 export interface PersistedWindowBounds {
   x: number;
   y: number;
   width: number;
   height: number;
-  /** Window was maximized (macOS zoom); bounds hold the pre-maximize frame. */
   isMaximized: boolean;
-  /** Window was in native full-screen; bounds hold the non-fullscreen frame. */
   isFullScreen: boolean;
 }
 
-/** Keep field-for-field with the canonical and IPC ProjectSessionState pane shape. */
 interface PersistedEditorPane {
   id: string;
   openTabs: string[];
@@ -61,26 +28,9 @@ interface PersistedEditorPane {
   size: number;
 }
 
-/**
- * One entry in the persisted session-restore snapshot. A restart reopens the
- * full set of windows open at the last clean exit — each is either a project
- * window (keyed by its resolved project path) or a loose single-file
- * ("Open File") window (keyed by the canonical file path). Ordered least → most
- * recently focused so the restoring boot can raise the last entry.
- */
 export type RestoredWindow =
   | { kind: 'project'; projectPath: string }
   | { kind: 'file'; filePath: string }
-  /**
-   * A popped-out note window. Carries the document it was showing when the
-   * snapshot was taken — its CURRENT one, which in-place wiki-link navigation
-   * may have moved away from the document it was opened on — plus its own
-   * frame, since each pop-out is positioned individually.
-   *
-   * Unknown to builds that predate it: they drop the entry in
-   * `parsePendingWindowRestore` and restore the rest, which is why this needed
-   * no schema bump.
-   */
   | {
       kind: 'doc';
       projectPath: string;
@@ -88,46 +38,17 @@ export type RestoredWindow =
       bounds?: PersistedWindowBounds;
     };
 
-/**
- * Stable key for a `RestoredWindow` — the string used for focus-recency
- * ordering and for the WindowManager `getWindowFor` lookup at restore time.
- * Projects key by their (possibly symlinked) resolved path, matching
- * `projectFocusSeq` + `getOpenProjectPaths`; loose files key by the canonical
- * file path (matching an ephemeral window's `canonicalKey`).
- */
 export function windowRestoreKey(w: RestoredWindow): string {
   if (w.kind === 'project') return w.projectPath;
   if (w.kind === 'file') return w.filePath;
-  // A pop-out's identity is (project, document), and it must NOT collide with
-  // its own project window's key — they are two windows that both restore. The
-  // NUL separator cannot occur in either component, so the composite is
-  // unambiguous. This is an identity string, not a path: the survivor filter
-  // asks `restoreSurvivorPath` for something to stat instead.
   return `\u0000doc:${w.projectPath}\u0000${w.docName}`;
 }
 
-/**
- * The filesystem path whose existence decides whether a restore entry is still
- * worth reopening.
- *
- * Split from `windowRestoreKey` because the two jobs diverged once pop-outs
- * arrived. The key must be unique per window; the survivor test must be
- * something that exists on disk. For a pop-out those differ: its key is a
- * composite, while the thing to check is its project folder — a document that
- * was deleted while the app was closed still restores, and shows the
- * deleted state, which is more honest than silently dropping the window.
- */
 export function restoreSurvivorPath(w: RestoredWindow): string {
   if (w.kind === 'file') return w.filePath;
   return w.projectPath;
 }
 
-/**
- * A loose single-file ("Open File") open, tracked in a durable LRU list
- * separate from `recentProjects`. Surfaced in File → Open Recent so a user can
- * reopen a file they edited outside any project. `path` is the realpath-
- * canonical file path (the LRU key); `name` is the basename shown in the menu.
- */
 interface RecentFile {
   path: string;
   name: string;
@@ -135,11 +56,8 @@ interface RecentFile {
 }
 
 export interface ProjectSessionState {
-  /** ISO-8601 timestamp of the last tab-session write. */
   updatedAt: string | null;
-  /** Authoritative flat, side-by-side editor workspace. */
   panes: PersistedEditorPane[];
-  /** Pane that owns the active editor target. */
   focusedPaneId: string;
 }
 
@@ -148,314 +66,45 @@ export interface PersistedTerminalDockState {
   terminalSnapshot: OkTerminalRestartSnapshot;
 }
 
-/**
- * Auto-update channel. The build's version string is the sole source of
- * truth (`channelFromVersion` in `auto-updater.ts`) — `'beta'` for a
- * prerelease build, `'latest'` for a stable one. Channels are install-time
- * sticky: a beta DMG only auto-updates to a newer beta DMG, a stable DMG
- * only to a newer stable DMG. To switch channels the user uninstalls and
- * reinstalls; there is no persisted preference and no in-app toggle.
- */
 export type UpdateChannel = 'latest' | 'beta';
 
-/**
- * Schema version the running build knows how to read. Bump when introducing
- * an `AppState` change that the previous reader cannot safely parse — and
- * raise `MAX_SUPPORTED_SCHEMA_VERSION` to match. Additive field changes do
- * NOT require a bump (they pass the `?? default` reader path unchanged).
- */
 export const CURRENT_SCHEMA_VERSION = 1;
 
-/**
- * Highest `schemaVersion` this build can read without losing data. Diverges
- * from `CURRENT_SCHEMA_VERSION` only during a migration window where this
- * build can still read older formats but writes the newer one. A boot that
- * sees `persisted.schemaVersion > MAX_SUPPORTED_SCHEMA_VERSION` refuses to
- * silently parse the future state and surfaces to the user.
- */
 export const MAX_SUPPORTED_SCHEMA_VERSION = 1;
 
 export interface AppState {
-  /** LRU-capped recent-projects, newest first. */
   recentProjects: RecentProject[];
-  /**
-   * LRU-capped recent loose files opened via File → Open File, newest first.
-   * Separate from `recentProjects` — a loose file is not a project. Surfaced in
-   * File → Open Recent so a user can reopen a file they edited outside any
-   * project.
-   */
   recentFiles: RecentFile[];
-  /** Most recently opened project, or null if Navigator was last visible. */
   lastOpenedProject: string | null;
-  /**
-   * Version string (e.g. "0.3.0") of an update that `autoUpdater` has
-   * downloaded and is awaiting install-on-quit. Gates Toast A to fire at
-   * most once per pending-update state; cleared after install completes.
-   */
   versionPendingInstall: string | null;
-  /**
-   * Absolute path of the staged installer electron-updater downloaded
-   * (`update-downloaded`'s `downloadedFile`). Persisted so the Linux
-   * manual-install fallback can build its copyable command on the standard
-   * Linux flow — download, quit, boot, click Relaunch — where the banner
-   * (restored from `versionPendingInstall`) becomes clickable long before
-   * the updater's launch check re-validates its cache and re-emits the
-   * path. Arms alongside `versionPendingInstall` at download time; cleared
-   * wherever the staged update stops being live (running version caught up,
-   * cross-channel residue, failure-budget giveup). Deliberately NOT cleared
-   * by "Relaunch now": a failed install still needs it. May point at a
-   * since-deleted file — consumers existence-check before use.
-   */
   stagedInstallerPath: string | null;
-  /**
-   * Version the app committed to install and is expected to be running after
-   * the next boot. Set when an update finishes downloading (the install is
-   * then committed to run on the next quit, via either "Relaunch now" or
-   * `autoInstallOnAppQuit`). Unlike `versionPendingInstall` — which the
-   * "Relaunch now" handler clears BEFORE `quitAndInstall()` as a double-invoke
-   * guard — this record survives the quit, so the boot reconciliation can tell
-   * "install succeeded" (running caught up) from "install failed" (booted back
-   * on the old version, e.g. Squirrel.Mac's post-quit ShipIt never ran).
-   * Cleared on boot once reconciled. Compared with a prerelease-aware compare,
-   * not the MMP-only `versionAtLeast`, so a same-major.minor.patch beta bump
-   * (the OK beta cadence) is distinguishable.
-   */
   attemptedInstall: string | null;
-  /**
-   * How many times the boot-time failed-install notice has been surfaced for
-   * the current `attemptedInstall`. Bounds the per-boot nag: `attemptedInstall`
-   * only clears once the running version finally reaches it, so without a cap a
-   * genuinely stuck or unreachable attempt (a persistently-failing ShipIt, a
-   * yanked release, a channel move) would re-fire the "didn't install" card on
-   * every boot forever. Reset to 0 when a new version is armed and on a
-   * successful reconcile; at `INSTALL_FAILURE_MAX_SURFACES` the record is
-   * dropped and the notice goes quiet (the 7-day stuck-hint stays the backstop).
-   * Non-negative integer.
-   */
   attemptedInstallSurfacedCount: number;
-  /**
-   * Epoch ms at which the pending version was staged. Rewritten by every
-   * `update-downloaded` that arms (a re-fire for the already-pending version
-   * dedupes out before reaching it), so it always describes the most recently
-   * staged artifact rather than the first one seen for that version.
-   *
-   * Deliberately NOT cleared when `relaunch-now` clears `versionPendingInstall`:
-   * a failed install leaves the same artifact staged, and a Retry should measure
-   * from when that artifact was originally staged, not from the retry.
-   */
   versionPendingInstallStagedAt: number | null;
-  /**
-   * How long `attemptedInstall` had been staged when the install was actually
-   * requested, in ms. Recorded at whichever moment commits the install — the
-   * "Relaunch now" click, or the quit install-on-quit commits on — and read on
-   * the NEXT boot, where the failed-install detector runs in a different
-   * process than the install it is reporting on. The age cannot be recomputed
-   * there, so it has to cross the quit as persisted state; added to
-   * `versionPendingInstallStagedAt` it reconstitutes the handoff instant.
-   *
-   * Written once per staging, so a re-handoff of an attempt already handed off
-   * does not move the recorded moment forward.
-   *
-   * Null when no live process saw the commit: a quit that never ran its
-   * handlers (a force-quit, a power loss), or a state file from a build
-   * predating the quit stamp.
-   */
   attemptedInstallStagingAgeMs: number | null;
-  /**
-   * Epoch ms at which the install for `attemptedInstall` was handed off — the
-   * "Relaunch now" click, or the quit install-on-quit commits on. The boot that
-   * has to tell "the install may still be running" from "the install failed"
-   * runs in a different process than the install it is judging, so the handoff
-   * instant has to cross the quit as persisted state.
-   *
-   * Stored absolute rather than reconstituted from
-   * `versionPendingInstallStagedAt + attemptedInstallStagingAgeMs`: those two
-   * belong to the pending-banner group, which the boot-time stale-pending
-   * reconciliation clears on its major.minor.patch-only compare. A same-MMP
-   * beta bump therefore drops the staging stamp on the first boot, and every
-   * later boot would have no timing left to reason from. This field belongs to
-   * the `attemptedInstall` group instead and is cleared only with it.
-   *
-   * Re-stamped when a new staging arms (`update-downloaded`), and by a
-   * "Relaunch now" click, which is an explicit request for a fresh install
-   * attempt. NOT re-stamped by a later quit — a user who reopens promptly after
-   * every quit would otherwise keep resetting the clock on a broken installer
-   * and never be told.
-   *
-   * Null when no commit point ran at all — the dominant shape being a Windows
-   * session end, which terminates the process without `will-quit` so
-   * install-on-quit never fires. The boot reconciliation reads that as "no
-   * install was ever started" and re-offers the staged update instead of timing
-   * an attempt. Also null, benignly, for a state file from a build predating
-   * this field and for a quit whose stamp write failed.
-   */
   attemptedInstallHandoffAt: number | null;
-  /**
-   * How many boots have held the failed-install verdict on the grounds that the
-   * install for `attemptedInstall` might still have been running. Bounds the
-   * hold, which `attemptedInstallHandoffAt` cannot do on its own: a re-arm for
-   * the version already attempted clears that stamp and the next quit writes a
-   * fresh one, so an install that never lands keeps looking "just handed off"
-   * to a user whose quit-to-reopen gaps stay inside the tolerance, and the
-   * notice never arrives. Version-scoped for that reason — a same-version
-   * re-arm keeps the count, and only a genuinely new attempted version earns a
-   * fresh bound. Reset to 0 when a new version is armed and cleared with the
-   * rest of the `attemptedInstall` group; at `INSTALL_DEFER_MAX_BOOTS` the hold
-   * ends and the verdict is decided on its merits. Non-negative integer.
-   *
-   * Two readers, not one. Crash detection reads it too, through
-   * `installWasInFlightDuring`, wherever the death span collapses onto the
-   * detecting instant, and there the same threshold decides whether an install
-   * kill still suppresses the crash prompt. It reads the pre-reconciliation
-   * snapshot, so its count is this boot's entry value. Changing the increment
-   * or reset cadence moves both verdicts. `INSTALL_DEFER_MAX_BOOTS` carries the
-   * pairing.
-   */
   attemptedInstallDeferredBoots: number;
-  /**
-   * Last version the app successfully booted under — compared to
-   * `app.getVersion()` at auto-updater start to decide whether to fire
-   * Toast B ("Updated to Version ..."). Null before the first recorded boot,
-   * which also shows the notice before seeding the baseline. Advances on
-   * every successful boot.
-   */
   lastSeenVersion: string | null;
-  /**
-   * ISO-8601 timestamp of the last successful update-check outcome
-   * (`checking-for-update` settling into `update-available` or
-   * `update-not-available`). Null before the first successful check. Used
-   * by the stuck-hint 7-day counter — failed checks leave this unchanged,
-   * so `now - lastSuccessfulCheckAt` grows monotonically during
-   * silent-failure windows.
-   */
   lastSuccessfulCheckAt: string | null;
-  /**
-   * Whether Toast C (the once-per-installation stuck-update hint) has
-   * already fired. Flips true on first dispatch; resets to false on any
-   * successful update check so the hint can re-arm if the update pipeline
-   * breaks again after a repaired window.
-   */
   stuckHintShown: boolean;
-  /**
-   * Per-bundle dismissal token for the "Command-Line Tools are broken —
-   * repair?" launch-time modal. Keyed by `<appVersion>:<exePath>` so an
-   * auto-update OR app-move invalidates the token (the user re-consents on
-   * the new bundle). Null before any dismissal.
-   *
-   * Without this, the modal fires on every launch while status is 'broken'
-   * — a consent-fatigue hazard given the Repair button leads into the
-   * osascript admin-password prompt. Users who don't
-   * care about CLI tools would be reflexively dismissing a root-adjacent
-   * modal every boot until they either run Repair or move the .app back.
-   *
-   * Per-bundle semantics (not permanent skip): an auto-update that shifts
-   * `app.getVersion()` OR a user-initiated drag-to-/Applications/ that
-   * shifts `app.getPath('exe')` forms a new token value; the modal fires
-   * exactly once against the new bundle, then respects Skip for the rest
-   * of that bundle's lifetime.
-   */
   dismissedRepairForBundle: string | null;
-  /** Per-project editor session state, keyed by realpath-canonical contentDir. */
   projectSessions: Record<string, ProjectSessionState>;
-  /**
-   * Per-project editor-window frame memory, keyed by the resolved project
-   * path (`ProjectContext.projectPath`) — the exact string that keys
-   * `projectSessions` and `recentProjects[].path`, so the
-   * `removeRecentProject` cleanup below deletes by the same key. Written on
-   * every completed move/resize/mode-change and
-   * on window close; read at window creation so reopening a project lands
-   * its window where the user left it (same display, same position, same
-   * size) instead of the cascade default. Entries whose frame no longer
-   * intersects a connected display are ignored at read time (`window-
-   * placement.ts`), not rewritten — so unplugging a monitor while a project
-   * is CLOSED keeps its memory intact for when the monitor returns. (A
-   * project whose window is open during the unplug re-persists wherever
-   * macOS migrates the window — the memory tracks where the window IS.)
-   * Removed alongside `projectSessions` when a project is dropped from
-   * recents.
-   */
   projectWindowBounds: Record<string, PersistedWindowBounds>;
-  /**
-   * Where this project's popped-out note windows should open, keyed by the same
-   * resolved project path as `projectWindowBounds`.
-   *
-   * One slot per project rather than one per document: the persona is "my
-   * pop-outs land on my second monitor", which a single remembered frame
-   * serves, while per-document memory would need an LRU cap and a cleanup story
-   * for unbounded document names. Concurrent extras cascade off it.
-   *
-   * Additive: absent in state written by older builds, and ignored by them.
-   */
   noteWindowBounds: Record<string, PersistedWindowBounds>;
-  /** Full-restart terminal visibility + tab snapshot, keyed by project or loose-file identity. */
   terminalDockStates: Record<string, PersistedTerminalDockState>;
-  /**
-   * Schema version of the persisted state, written by whichever build last
-   * touched it. Reads default to `1` when the field is missing. The boot
-   * path in main/index.ts compares this against `MAX_SUPPORTED_SCHEMA_VERSION`
-   * — a value greater than the max means the state was written by a future
-   * build (typically a beta) the current build can't safely parse, and the
-   * boot path surfaces a refuse-downgrade UX rather than silently overwriting.
-   */
   schemaVersion: number;
-  /**
-   * Last parent directory the user picked in the Create-new-project dialog.
-   * Persists across launches so the Location field defaults to the user's
-   * working pattern (e.g., `~/Notes/`) instead of resetting to
-   * `~/Documents/OpenKnowledge/` every session. The IPC handler
-   * `ok:project:create-new` writes this on successful create; the read-only
-   * `ok:fs:default-projects-root` reads it. Stores the user-picked PARENT
-   * (not the resolved project dir — `ensureProjectGit` may promote to an
-   * ancestor git root inside the scaffold spine, but the user's intent is
-   * the parent they chose). `null` (or a path that no longer exists) falls
-   * back to `~/Documents/OpenKnowledge/`.
-   */
   lastUsedProjectParent: string | null;
-  /**
-   * Snapshot of every window open at the last clean exit — a normal quit, a
-   * "Relaunch now" update, or the silent install-on-quit update. Captured
-   * write-once at the earliest teardown-preceding hook of each path. Each entry
-   * is a project OR a loose single-file window. The next boot restores ALL of
-   * them, not just `lastOpenedProject` — a restart should land the user back
-   * where they were. The one exception is a boot a launch-claiming URL owns (a
-   * single-file deep-link or a valid share): `bootRestoreDecision` ranks that
-   * URL above this snapshot, so the snapshot is consumed and none of it is
-   * restored.
-   *
-   * `null` means no restore is pending: the boot path falls back to
-   * `lastOpenedProject` (or the Navigator). An empty array means the app quit
-   * with nothing open (only the Navigator) — the boot path consumes it and
-   * opens the Navigator rather than `lastOpenedProject`.
-   * Cleared back to `null` on the boot that consumes it, before any window
-   * opens, so a crash mid-restore can't loop the restore forever.
-   *
-   * Ordered least → MOST recently focused: the snapshot is sorted by the
-   * focus-recency sequence at `prepareForRelaunch` time (before any window
-   * closes — teardown's close cascade re-focuses surviving windows and would
-   * corrupt the order), and the restoring boot raises the LAST entry once its
-   * window is visible, so the user lands back in the window they were
-   * actually working in. Readers must not assume the pre-ordering-era
-   * insertion order.
-   */
   pendingWindowRestore: RestoredWindow[] | null;
-  /**
-   * Whether spell check is enabled. `session.setSpellCheckerEnabled` is
-   * session-wide and all OK windows share the default session, so this is a
-   * single app-level flag re-applied at window creation. Defaults to `true`
-   * (Chromium's default); persisted so a user's disable survives relaunch.
-   */
   spellCheckEnabled: boolean;
 }
 
 const RECENT_CAP = 20;
 const RECENT_FILES_CAP = 20;
 
-/** Epoch-ms / duration coercion shared by the additive updater timing fields. */
 function nonNegativeIntOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
-/** Counter coercion shared by the `attemptedInstall` per-boot counters. */
 function nonNegativeIntOrZero(value: unknown): number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0;
 }
@@ -488,18 +137,10 @@ export function emptyState(): AppState {
   };
 }
 
-/**
- * Update the persisted last-used parent directory the user picked in the
- * Create-new-project dialog. Returns a new state — caller persists.
- */
 export function setLastUsedProjectParent(state: AppState, parent: string): AppState {
   return { ...state, lastUsedProjectParent: parent };
 }
 
-/**
- * Update the persisted app-wide spell-check toggle. Returns a new state —
- * caller persists.
- */
 export function setSpellCheckEnabled(state: AppState, enabled: boolean): AppState {
   return { ...state, spellCheckEnabled: enabled };
 }
@@ -520,7 +161,6 @@ export function emptyProjectSessionState(): ProjectSessionState {
   };
 }
 
-/** A per-surface active-tab slot: a string that is still an open tab, else null. */
 function sanitizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -642,16 +282,6 @@ function parseProjectSessions(raw: unknown): Record<string, ProjectSessionState>
   return sessions;
 }
 
-/**
- * Tolerant parse of the session-restore snapshot. Accepts BOTH the legacy
- * `string[]` shape (each string coerced to a `{ kind: 'project' }` entry) and
- * the current `RestoredWindow[]` object shape; unrecognized entries are
- * dropped and duplicates de-duped. Returns `null` only for a non-array (absent
- * / legacy-null); an empty-but-present array stays `[]` (the "quit with nothing
- * open → Navigator" signal). No `schemaVersion` bump is needed: an older build
- * reading a new-format array coerces the objects away via its own
- * `sanitizeStringArray`, degrading to one Navigator open, never corruption.
- */
 function parsePendingWindowRestore(raw: unknown): RestoredWindow[] | null {
   if (!Array.isArray(raw)) return null;
   const out: RestoredWindow[] = [];
@@ -678,8 +308,6 @@ function parsePendingWindowRestore(raw: unknown): RestoredWindow[] | null {
           kind: 'doc',
           projectPath: o.projectPath,
           docName: o.docName,
-          // A corrupt or absent frame degrades to placement-by-default rather
-          // than dropping the window: the document matters more than the pixels.
           ...(bounds === null ? {} : { bounds }),
         };
       }
@@ -714,19 +342,6 @@ function parseRecentFiles(raw: unknown): RecentFile[] {
   return out;
 }
 
-/**
- * Add a project to the recent list (or move to front if already present).
- * Returns a NEW state (immutable update — caller persists).
- *
- * `gitRemoteUrl` is the optional canonical GitHub remote URL for the
- * project (e.g. `https://github.com/<owner>/<repo>.git`). Callers omit
- * this argument when the project has no GitHub origin; on re-open of an
- * already-recent project, omitting the argument PRESERVES any previously
- * persisted value rather than clearing it — a project whose origin
- * disappeared transiently (network share unmounted, tooling glitch) does
- * not lose its `gitRemoteUrl` until the caller passes an explicit value
- * indicating fresh truth.
- */
 export function addRecentProject(
   state: AppState,
   projectPath: string,
@@ -736,8 +351,6 @@ export function addRecentProject(
   const now = new Date().toISOString();
   const prior = state.recentProjects.find((p) => p.path === projectPath);
   const filtered = state.recentProjects.filter((p) => p.path !== projectPath);
-  // Caller-supplied value is authoritative; if absent, preserve any prior
-  // truth so a transient `.git/config` blip doesn't strip the field.
   const resolvedRemoteUrl = gitRemoteUrl ?? prior?.gitRemoteUrl;
   const entry: RecentProject = {
     path: projectPath,
@@ -751,14 +364,6 @@ export function addRecentProject(
   return { ...state, recentProjects: updated, lastOpenedProject: projectPath };
 }
 
-/**
- * Add a loose file to the Recent Files list (or move it to the front). Returns
- * a NEW state (immutable update — caller persists). `filePath` is the realpath-
- * canonical path (the LRU key); `name` is the basename shown in the menu.
- * Unlike `addRecentProject`, this does NOT touch `lastOpenedProject` — a loose
- * file is not a project and must never become the single-project restore
- * fallback.
- */
 export function addRecentFile(state: AppState, filePath: string, name: string): AppState {
   const now = new Date().toISOString();
   const filtered = state.recentFiles.filter((f) => f.path !== filePath);
@@ -769,7 +374,6 @@ export function addRecentFile(state: AppState, filePath: string, name: string): 
   return { ...state, recentFiles: updated };
 }
 
-/** Remove a project from the recent list. */
 export function removeRecentProject(state: AppState, projectPath: string): AppState {
   const projectSessions = { ...state.projectSessions };
   delete projectSessions[projectPath];
@@ -790,14 +394,6 @@ export function removeRecentProject(state: AppState, projectPath: string): AppSt
   };
 }
 
-/**
- * Record a project window's frame. Returns a new state — caller persists.
- * `projectPath` is the resolved project path (`ProjectContext.projectPath`),
- * the same string that keys `projectSessions` / `recentProjects[].path` —
- * NOT the realpath-canonical `canonicalKey`, or `removeRecentProject` (which
- * deletes by the recents entry's path) would leak the entry for symlinked
- * projects.
- */
 export function setProjectWindowBounds(
   state: AppState,
   projectPath: string,
@@ -809,11 +405,6 @@ export function setProjectWindowBounds(
   };
 }
 
-/**
- * Record where this project's note windows should open. Same key discipline as
- * `setProjectWindowBounds` — the resolved project path, so `removeRecentProject`
- * clears this alongside the rest by one key.
- */
 export function setNoteWindowBounds(
   state: AppState,
   projectPath: string,
@@ -927,10 +518,6 @@ export function setTerminalDockState(
   };
 }
 
-/**
- * Annotate the recent list with `missing: true` for projects whose folder
- * no longer exists. Pure read; doesn't mutate state.
- */
 export function annotateMissing(
   state: AppState,
   exists: (path: string) => boolean = existsSync,
@@ -941,23 +528,6 @@ export function annotateMissing(
   }));
 }
 
-/**
- * Persist `state` to `<userDataDir>/state.json` atomically. Writes to a
- * `.tmp-<pid>-<ms>` sibling first, then renames to the canonical path. A
- * crash mid-write leaves either the prior file intact OR the fully-formed
- * new file — never a half-written blob. Logs on failure (bracket-prefixed
- * per CLAUDE.md logging conventions); does not throw.
- *
- * Returns `true` on successful persist, `false` on any failure (EACCES,
- * disk full, rename race, userData mkdir failure). The boolean lets
- * callers that need disk-persistence-succeeded semantics (e.g. the
- * auto-updater's persist-before-emit gate) distinguish "in-memory + disk
- * agree" from "in-memory mutated but disk stale." Existing callers that
- * ignore the return value get the same void-like behavior as before.
- *
- * Injected `fs` hook for tests. Production callers pass `undefined` to use
- * the module-scope `node:fs` imports.
- */
 export interface SaveAppStateFs {
   existsSync: typeof existsSync;
   mkdirSync: typeof mkdirSync;
@@ -995,9 +565,7 @@ export function saveAppStateToDir(
       });
       try {
         fs.unlinkSync(tmpPath);
-      } catch {
-        // tmp file may not exist — best-effort cleanup.
-      }
+      } catch {}
       return false;
     }
   } catch (err) {
@@ -1009,13 +577,6 @@ export function saveAppStateToDir(
   }
 }
 
-/**
- * Diagnostic surfaced to the renderer when the persisted state was written
- * by a future build (typically a beta) that bumped `schemaVersion` past
- * what the current build can read. The renderer-side UX (refuse-downgrade
- * Toast / dialog with "Stay on Beta" / "Reset and Continue to Stable"
- * options) consumes this payload to explain to the user what happened.
- */
 export interface SchemaIncompatibilityDiagnostic {
   currentBuild: string;
   persistedSchemaVersion: number;
@@ -1026,16 +587,6 @@ type SchemaCompatibilityResult =
   | { status: 'ok' }
   | { status: 'incompatible'; diagnostic: SchemaIncompatibilityDiagnostic };
 
-/**
- * Compare the persisted `schemaVersion` to what this build can read. Returns
- * `'ok'` when the state is safe to load (today's universal case — current
- * and max are both `1`). Returns `'incompatible'` when a future build has
- * written a higher `schemaVersion`; callers MUST NOT silently overwrite the
- * state file in that case — surface the diagnostic to the user.
- *
- * Pure: no I/O, no Electron, testable directly. The boot-site call lives in
- * main/index.ts; the renderer surface lives in the renderer-mount IPC seam.
- */
 export function evaluateSchemaCompatibility(
   state: Pick<AppState, 'schemaVersion'>,
   maxSupported: number,
@@ -1054,11 +605,6 @@ export function evaluateSchemaCompatibility(
   return { status: 'ok' };
 }
 
-/**
- * Coerce an unknown JSON blob into AppState shape. Returns emptyState() for
- * invalid input (the caller should rename the corrupt file to
- * `state.json.corrupt-<ts>` and start fresh).
- */
 export function parseAppState(raw: unknown): AppState | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const obj = raw as Record<string, unknown>;
@@ -1079,16 +625,6 @@ export function parseAppState(raw: unknown): AppState | null {
         lastOpenedAt: item.lastOpenedAt,
       };
       if (typeof item.gitRemoteUrl === 'string' && item.gitRemoteUrl.length > 0) {
-        // Load-time repair: entries persisted by builds whose URL parser
-        // folded userinfo into the hostname can hold a credentialed URL
-        // (`https://alice:pw@github.com/…`) at rest. Re-canonicalizing
-        // through the fixed parser heals the IN-MEMORY copy only — this
-        // parse never writes back — but every state save is a whole-file
-        // rewrite of all entries, so the on-disk value is replaced by the
-        // next flush (project open at boot, window-bounds change, …), not
-        // only when this project is re-opened. A value that no longer parses
-        // was junk-shaped and is dropped rather than kept; canonical values
-        // pass through unchanged.
         const healed = canonicalizeGitHubRemoteUrl(item.gitRemoteUrl);
         if (healed !== null) {
           entry.gitRemoteUrl = healed;
@@ -1099,27 +635,15 @@ export function parseAppState(raw: unknown): AppState | null {
   }
   const lastOpenedProject =
     typeof obj.lastOpenedProject === 'string' ? obj.lastOpenedProject : null;
-  // Update-channel fields: defensive coercion with forward-compat defaults.
-  // A state.json lacking these keys returns a valid AppState whose four new
-  // fields match emptyState() defaults (no quarantine, no data loss).
   const versionPendingInstall =
     typeof obj.versionPendingInstall === 'string' ? obj.versionPendingInstall : null;
-  // Additive field: a state.json lacking it coerces to null (no staged
-  // installer known), matching emptyState(); no quarantine.
   const stagedInstallerPath =
     typeof obj.stagedInstallerPath === 'string' && obj.stagedInstallerPath.length > 0
       ? obj.stagedInstallerPath
       : null;
   const attemptedInstall = typeof obj.attemptedInstall === 'string' ? obj.attemptedInstall : null;
-  // Additive counters: a missing or invalid value coerces to 0 (a fresh failure
-  // budget, a fresh deferral bound), matching emptyState(); guards against
-  // negatives and non-integers from a corrupted state.json.
   const attemptedInstallSurfacedCount = nonNegativeIntOrZero(obj.attemptedInstallSurfacedCount);
   const attemptedInstallDeferredBoots = nonNegativeIntOrZero(obj.attemptedInstallDeferredBoots);
-  // Additive timing fields. Both are diagnostic-only: a missing or corrupt
-  // value coerces to null, which reads downstream as "unknown" and never as a
-  // misleading zero. Negatives are rejected — a clock moving backwards between
-  // staging and the install request cannot produce a real age.
   const versionPendingInstallStagedAt = nonNegativeIntOrNull(obj.versionPendingInstallStagedAt);
   const attemptedInstallStagingAgeMs = nonNegativeIntOrNull(obj.attemptedInstallStagingAgeMs);
   const attemptedInstallHandoffAt = nonNegativeIntOrNull(obj.attemptedInstallHandoffAt);
@@ -1127,9 +651,6 @@ export function parseAppState(raw: unknown): AppState | null {
   const lastSuccessfulCheckAt =
     typeof obj.lastSuccessfulCheckAt === 'string' ? obj.lastSuccessfulCheckAt : null;
   const stuckHintShown = obj.stuckHintShown === true;
-  // Defensive coercion — a state.json lacking
-  // this key returns null (no prior dismissal), matching emptyState()
-  // default; no quarantine.
   const dismissedRepairForBundle =
     typeof obj.dismissedRepairForBundle === 'string' ? obj.dismissedRepairForBundle : null;
   const schemaVersion =
@@ -1137,26 +658,15 @@ export function parseAppState(raw: unknown): AppState | null {
       ? obj.schemaVersion
       : 1;
   const projectSessions = parseProjectSessions(obj.projectSessions);
-  // Additive field: a state.json predating window-bounds memory (or a
-  // corrupted per-entry blob) coerces to the empty map — cascade placement.
   const projectWindowBounds = parseProjectWindowBounds(obj.projectWindowBounds);
   const noteWindowBounds = parseProjectWindowBounds(obj.noteWindowBounds);
   const terminalDockStates = parseTerminalDockStates(obj.terminalDockStates);
-  // Defensive: only string values survive; everything else (null, undefined,
-  // wrong type from a corrupted state.json) coerces to null and the read
-  // handler falls back to the platform default.
   const lastUsedProjectParent =
     typeof obj.lastUsedProjectParent === 'string' && obj.lastUsedProjectParent.length > 0
       ? obj.lastUsedProjectParent
       : null;
-  // Tolerant union parse (legacy `string[]` + new `RestoredWindow[]`); see
-  // `parsePendingWindowRestore`. A non-array (absent / legacy-null) returns
-  // null — the `lastOpenedProject` fallback path.
   const pendingWindowRestore = parsePendingWindowRestore(obj.pendingWindowRestore);
-  // Additive field: absent / corrupt → empty list (no Recent Files yet).
   const recentFiles = parseRecentFiles(obj.recentFiles);
-  // Additive field: a missing or non-boolean value coerces to the `true`
-  // default, so only an explicit persisted `false` keeps checking off.
   const spellCheckEnabled =
     typeof obj.spellCheckEnabled === 'boolean' ? obj.spellCheckEnabled : true;
   return {

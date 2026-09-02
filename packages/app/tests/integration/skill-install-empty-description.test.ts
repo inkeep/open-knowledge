@@ -6,14 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness';
 
-/**
- * install must be authoritative — succeed or fail loudly, never both.
- * An empty `description` used to hard-400, so an already-installed skill red-
- * errored on every install click. Now it installs (200) with a non-blocking
- * `no-description` warning, and re-installing an already-installed target is a
- * clean no-op success.
- *
- */
 let server: TestServer;
 let tmpHome: string;
 const base = () => `http://127.0.0.1:${server.port}`;
@@ -61,7 +53,6 @@ describe('install with an empty description (PRD-7596)', () => {
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
     expect(parsed.data.hosts).toContain('claude');
-    // No error, and nothing to warn about on a plain already-installed no-op.
     expect(parsed.data.warningCodes).not.toContain('no-description');
   });
 });

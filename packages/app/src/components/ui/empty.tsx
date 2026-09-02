@@ -4,23 +4,6 @@ import type * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-/**
- * Empty-state layout primitive: a centered media / title / description column
- * with an optional action block underneath.
- *
- * Installed from the project's configured `radix-nova` style, unmodified apart
- * from the `asChild` escape hatch on `EmptyTitle` described below. Every part is
- * an unstyled-ish `div` carrying a `data-slot`, so call sites whose visual
- * design predates the primitive keep their own spacing and colors by passing
- * `className` and still gain the shared structure and styling hooks.
- *
- * Deliberate divergence from upstream, recorded so a future `shadcn diff`
- * reviewer knows the drift is intentional rather than rot: `EmptyTitle` accepts
- * `asChild`. Upstream renders it as a plain `div`, which would strip heading
- * semantics from any empty state whose title is a real `<h2>` — a regression for
- * screen-reader users navigating by heading. `asChild` lets such a call site
- * keep its heading element and still pick up the title slot and styles.
- */
 function Empty({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div

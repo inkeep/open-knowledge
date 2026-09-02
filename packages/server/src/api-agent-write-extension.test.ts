@@ -1,17 +1,3 @@
-/**
- * Disk-output tests for the explicit `extension` hint on /api/agent-write-md
- * (`write_document({ docName: "x.mdx" })` used to land `x.md`).
- *
- * The handler pre-registers the requested extension before the persistence
- * flush — but only for a brand-new doc. For a doc that already exists under a
- * supported extension the recorded extension wins (switching it would orphan
- * the original file). These assertions read the real filesystem after the
- * write, since "wrong file on disk" is the bug under test — so they drive the
- * production persistence path via `createServer` (the bare-Hocuspocus +
- * `createApiExtension` harness other agent-write tests use has no persistence
- * extension and never lands a file).
- */
-
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -48,11 +34,6 @@ function makeRes(): { res: ServerResponse; captured: { status: number; body: str
   return { res, captured };
 }
 
-/**
- * POST to the production API extension wired into `createServer` (which also
- * wires the persistence extension that writes to disk). The API extension is
- * the `priority: 100` onRequest hook.
- */
 async function postAgentWriteMd(
   server: ReturnType<typeof createServer>,
   body: Record<string, unknown>,
@@ -78,12 +59,6 @@ async function waitForFile(filePath: string, timeoutMs = 5_000): Promise<void> {
   throw new Error(`File ${filePath} did not appear within ${timeoutMs}ms`);
 }
 
-/**
- * Poll until `filePath` contains `needle`. For a doc that already exists on
- * disk, mere existence is satisfied by the pre-created file — only the content
- * proves the new write actually persisted (a 200 with a silently-dropped store
- * would otherwise pass).
- */
 async function waitForFileContent(
   filePath: string,
   needle: string,
@@ -115,9 +90,6 @@ describe('agent-write-md explicit extension → disk (PRD-6836)', () => {
   }
 
   beforeEach(async () => {
-    // `docExtensionByName` is a module-global singleton — reset BEFORE the
-    // server's watcher scans, so a docName registered by a prior test can't
-    // shadow this test's fresh content dir.
     _resetDocExtensionsForTests();
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-write-ext-'));
     contentDir = tmpDir;
@@ -169,8 +141,6 @@ describe('agent-write-md explicit extension → disk (PRD-6836)', () => {
   });
 
   test('extension: ".mdx" is ignored when the doc already exists as .md (no orphan sibling)', async () => {
-    // Pre-existing on-disk file under .md — the server's watcher registers it
-    // on the initial scan, so the new-doc gate sees the doc already exists.
     writeFileSync(join(contentDir, 'existing.md'), '# Existing\n');
 
     const server = await bootServer();
@@ -182,11 +152,7 @@ describe('agent-write-md explicit extension → disk (PRD-6836)', () => {
         extension: '.mdx',
       });
       expect(status).toBe(200);
-      // Assert the NEW body landed on the original .md file — not just that the
-      // pre-created file still exists (which would pass even if the store was
-      // silently dropped).
       await waitForFileContent(join(contentDir, 'existing.md'), '# Replaced');
-      // The write stays on the original .md file — no .mdx sibling is spawned.
       expect(existsSync(join(contentDir, 'existing.mdx'))).toBe(false);
       expect(existsSync(join(contentDir, 'existing.md'))).toBe(true);
       expect(getDocExtension('existing')).toBe('.md');

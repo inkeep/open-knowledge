@@ -3,11 +3,6 @@ import { asBcp47Tag, type Bcp47Tag } from './bcp47.ts';
 import { AUTO_DETECTABLE_LOCALES, SUPPORTED_LOCALES, type SupportedLocale } from './locales.ts';
 import { type LocaleResolution, resolveLocale } from './resolve-locale.ts';
 
-/**
- * Build the shape a signal provider hands the resolver. Throws rather than
- * skipping, so a typo in a case table below surfaces as a failing fixture
- * instead of silently shortening the preference list under test.
- */
 function preferences(...values: readonly string[]): readonly Bcp47Tag[] {
   return values.map((value) => {
     const tag = asBcp47Tag(value);
@@ -16,7 +11,6 @@ function preferences(...values: readonly string[]): readonly Bcp47Tag[] {
   });
 }
 
-/** Resolve with only a platform signal, against the full enumerated set. */
 function fromSystem(...values: readonly string[]): LocaleResolution {
   return resolveLocale({
     override: undefined,
@@ -58,19 +52,11 @@ describe('resolveLocale negotiation', () => {
     expect(fromSystem('ja', 'en').source).toBe('system');
   });
 
-  // The requested side must be maximized at all: `zh-TW` carries no script, so
-  // a matcher comparing raw tags finds no `zh-TW` catalog and serves English to
-  // a reader who asked for Chinese.
   test('a region-only Chinese request finds its script', () => {
     expect(fromSystem('zh-TW').locale).toBe('zh-Hant');
     expect(fromSystem('zh-CN').locale).toBe('zh-Hans');
   });
 
-  // The supported side must be maximized too, and Latin-script requests are the
-  // only rows that prove it. A matcher that reduces the request but compares it
-  // against the raw catalog list still gets every Chinese row right, because
-  // `zh-Hans` and `zh-Hant` reduce to themselves — while sending es, fr, pt-BR
-  // and id to English, since a reduced `es-Latn` no longer equals a raw `es`.
   test('every Latin-script locale is reachable through a region tag', () => {
     expect(fromSystem('es-419').locale).toBe('es');
     expect(fromSystem('pt-PT').locale).toBe('pt-BR');
@@ -84,9 +70,6 @@ describe('resolveLocale negotiation', () => {
   });
 
   test('a platform signal cannot land on a locale held out of auto-detection', () => {
-    // An Arabic OS with nothing stored. `ar` has a catalog and is still in
-    // `supportedLocales`, so the only thing keeping it off the screen is the
-    // narrower set the platform tier negotiates over.
     expect(
       resolveLocale({
         override: undefined,
@@ -99,8 +82,6 @@ describe('resolveLocale negotiation', () => {
   });
 
   test('the walk continues past a held-out locale rather than ending at it', () => {
-    // Falling straight to English here would be the wrong repair: this reader
-    // named a second language the app can serve properly.
     expect(
       resolveLocale({
         override: undefined,
@@ -113,9 +94,6 @@ describe('resolveLocale negotiation', () => {
   });
 
   test('a held-out locale is still reachable by asking for it', () => {
-    // Both tiers above the platform signal negotiate over the full supported
-    // set, which is what keeps a translator able to run the app in the language
-    // they are checking.
     expect(
       resolveLocale({
         override: undefined,
@@ -138,8 +116,6 @@ describe('resolveLocale negotiation', () => {
   });
 
   test('an absent auto-detectable set means the whole supported set', () => {
-    // A surface with no chrome to lay out has nothing to hold back, so the
-    // default has to stay permissive rather than inheriting the chrome's list.
     expect(fromSystem('ar-EG')).toEqual({ locale: 'ar', source: 'system' });
   });
 
@@ -233,8 +209,6 @@ describe('resolveLocale tiers', () => {
     expect(sentinel).toEqual(unset);
   });
 
-  // A hand-edited config, or a locale withdrawn after someone had already
-  // chosen it. Boot must not fail, and the stored value is nobody's to rewrite.
   test('a saved choice with no catalog behind it falls through rather than being served', () => {
     expect(
       resolveLocale({
@@ -248,9 +222,6 @@ describe('resolveLocale tiers', () => {
 });
 
 describe('resolveLocale hostile input', () => {
-  // Values no provider should produce, in the shape a buggy or lying provider
-  // would produce them. The double cast is the point: it defeats the brand so
-  // the runtime guarantee can be exercised on its own.
   const hostile = [
     '',
     '   ',
@@ -316,10 +287,6 @@ describe('asBcp47Tag', () => {
     }
   });
 
-  // The one hostile input that does not announce itself: `Intl` accepts `POSIX`
-  // and silently yields `posix`, a syntactically valid tag with no language
-  // behind it. Rejecting it belongs to the POSIX conversion, so the sanctioned
-  // constructor lets it through — and the matcher has to be the backstop.
   test("'POSIX' canonicalizes without throwing, and still matches no catalog", () => {
     expect(asBcp47Tag('POSIX')).toBe('posix');
     expect(fromSystem('POSIX')).toEqual({ locale: 'en', source: 'fallback' });

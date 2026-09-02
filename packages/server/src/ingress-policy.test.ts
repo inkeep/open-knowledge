@@ -26,10 +26,6 @@ function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeCon
   };
 }
 
-/**
- * A tunneled deployment's runtime shape: declared public origin + consent on a
- * loopback bind — there is no dedicated tunnel policy shape.
- */
 const TUNNEL_EXPOSURE_RUNTIME: Partial<ServerRuntimeConfig> = {
   externalUrl: 'https://myproject.ngrok.app',
   allowExternal: true,
@@ -63,13 +59,11 @@ describe('buildIngressPolicy', () => {
       }),
     });
     expect(explicit.externalOrigin).toEqual({ host: 'laptop.tail:55222', protocol: 'http:' });
-    // No externalUrl → no external origin.
     const none = buildIngressPolicy({ serverRuntime: runtime({}) });
     expect(none.externalOrigin).toBeUndefined();
   });
 
   test('forwarded headers are tolerated only under consent + declared externalUrl', () => {
-    // A tunneled deployment lands exactly here: its config carries both keys.
     expect(
       buildIngressPolicy({ serverRuntime: runtime(TUNNEL_EXPOSURE_RUNTIME) })
         .tolerateForwardedHeaders,
@@ -82,15 +76,11 @@ describe('buildIngressPolicy', () => {
         }),
       }).tolerateForwardedHeaders,
     ).toBe(true);
-    // Consent without a declared public origin does NOT relax the tripwire —
-    // a proxy in front of a bind-exposed server still needs externalUrl.
     expect(
       buildIngressPolicy({
         serverRuntime: runtime({ allowExternal: true, loopbackOnly: false }),
       }).tolerateForwardedHeaders,
     ).toBe(false);
-    // A declared externalUrl without consent never tolerates them either
-    // (that combination is a boot refusal once the interlock enforces).
     expect(
       buildIngressPolicy({
         serverRuntime: runtime({
@@ -124,7 +114,6 @@ describe('isPeerAdmitted — consent relaxes the peer gate ONLY', () => {
 
 describe('isHostAdmitted — names validate in every mode, never widened by consent', () => {
   const case2 = buildIngressPolicy({
-    // Deck Case 2: tailnet bind + consent, externalUrl per the corrected deck.
     serverRuntime: runtime({
       bind: ['127.0.0.1', '100.64.0.7'],
       loopbackOnly: false,
@@ -141,7 +130,6 @@ describe('isHostAdmitted — names validate in every mode, never widened by cons
 
   test('the declared externalUrl host is admitted exactly (host:port)', () => {
     expect(isHostAdmitted('laptop.tail:55222', case2)).toBe(true);
-    // A different port is a different name — refused.
     expect(isHostAdmitted('laptop.tail:9999', case2)).toBe(false);
   });
 
@@ -160,9 +148,6 @@ describe('isHostAdmitted — names validate in every mode, never widened by cons
   });
 
   test('a malformed bracketed-IPv6 Host is refused (fail-closed parse)', () => {
-    // An opening `[` without a closing `]` fails to parse — it must refuse, not
-    // fall through to a loose comparison that could admit an attacker-shaped
-    // Host under consent.
     const v6 = buildIngressPolicy({
       serverRuntime: runtime({ bind: ['2001:db8::1'], loopbackOnly: false, allowExternal: true }),
     });
@@ -173,7 +158,6 @@ describe('isHostAdmitted — names validate in every mode, never widened by cons
 
 describe('isOriginAdmitted — if present, must match; scheme-matched for externalUrl', () => {
   const case3 = buildIngressPolicy({
-    // Deck Case 3: loopback bind behind a proxy, https externalUrl + consent.
     serverRuntime: runtime({
       allowExternal: true,
       externalUrl: 'https://notes.example.com',
@@ -219,9 +203,6 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for extern
   });
 
   test('a malformed / unparseable Origin fails closed under consent', () => {
-    // A garbage Origin must not fall through to admission — even under consent
-    // with a declared externalUrl, an Origin that `new URL()` cannot parse is
-    // refused rather than loosely compared.
     expect(isOriginAdmitted('http://[not-closed', case3)).toBe(false);
     expect(isOriginAdmitted('://missing-scheme', case3)).toBe(false);
     expect(isOriginAdmitted('not a url', case3)).toBe(false);
@@ -230,9 +211,6 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for extern
 });
 
 describe('tunnel admission via the ratified keys', () => {
-  // Behavior pins for a tunneled deployment, expressed through the ONE policy:
-  // the tunnel's public Host is admitted, its https origin is admitted,
-  // foreign names stay refused.
   const tunnel = buildIngressPolicy({ serverRuntime: runtime(TUNNEL_EXPOSURE_RUNTIME) });
 
   test('the tunnel public Host is admitted, with or without default-port suffix', () => {
@@ -296,8 +274,6 @@ describe('tripsForwardedHeaderTripwire', () => {
     expect(tripsForwardedHeaderTripwire({ headers: {} }, local)).toBe(false);
   });
 
-  // Pin EVERY vendor header the tripwire watches, so a refactor that drops one
-  // (a Cloudflare / Fastly / RFC 7239 proxy) can't silently stop tripping.
   test.each([
     'x-forwarded-for',
     'x-forwarded-proto',

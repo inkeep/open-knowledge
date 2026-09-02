@@ -47,22 +47,11 @@ const E2E_DIRS = [
 const APP_SRC_DIR = join(__dirname, '..', '..', 'src');
 
 interface FileLines {
-  /** Repo-relative path for failure messages. */
   path: string;
-  /** Absolute path for reading. */
   absPath: string;
-  /** Lines split on '\n', 0-indexed. */
   lines: string[];
 }
 
-/**
- * Enumerate every `*.e2e.ts` file across the three E2E directories
- * (`tests/stress`, `tests/visual`, `tests/a11y`). Each STOP rule applies
- * uniformly — a waitForTimeout in a visual/a11y test is as flaky as one in
- * stress. Previously scoped to stress/ only; broadened per a
- * review finding that every new visual/a11y test was shipping ~13 banned
- * `waitForTimeout` calls with no gate.
- */
 function listE2eFiles(): FileLines[] {
   const all: FileLines[] = [];
   for (const dir of E2E_DIRS) {
@@ -70,7 +59,6 @@ function listE2eFiles(): FileLines[] {
     try {
       entries = readdirSync(dir);
     } catch {
-      // Directory may not exist yet (future test suites add one).
       continue;
     }
     for (const name of entries) {
@@ -108,19 +96,6 @@ function listAppSrcTsFiles(): FileLines[] {
   return out;
 }
 
-/**
- * Core predicate of the spawn-isolation STOP rule, extracted so the rule's
- * planted-positive self-test can exercise it against inline fixtures (an
- * absence-checker without a planted positive is a vacuous no-op waiting to
- * happen). Returns one violation per missing key, anchored to the first
- * spawn line.
- *
- * Known limitation: the key check is FILE-scoped (`source.includes`), not
- * per-spawn-block — a file with one compliant and one non-compliant spawn
- * produces zero violations. No e2e file has two spawn blocks today; a
- * per-block check would need env-block span tracking this line scanner
- * doesn't do. The self-test pins this behavior explicitly.
- */
 const SPAWN_BUN_PATTERN = /spawn\(\s*['"]bun['"]/;
 const SPAWN_REQUIRED_ENV_KEYS = ['OK_TEST_VITE_CACHE_DIR', 'OK_TEST_SKIP_I18N_COMPILE'] as const;
 
@@ -142,17 +117,6 @@ function findSpawnIsolationViolations(
   return violations;
 }
 
-/**
- * Core predicate of the DEV-harness import STOP rule, extracted so the rule
- * carries a planted-positive self-test (an absence-checker without one is a
- * vacuous no-op waiting to happen).
- *
- * The harness reaches production only if something pulls it into the module
- * graph eagerly. Its one sanctioned reference is the dynamic `import()` inside
- * `AgentThreadClientBinder.tsx`'s `import.meta.env.DEV` branch, which Vite
- * folds away; a static import would survive that gate. Type-only imports are
- * erased before bundling, so they are left alone.
- */
 function isStaticDevHarnessImport(line: string): boolean {
   return /^\s*(?:import|export)\s+(?!type\b)[^;]*from\s+['"][^'"]*dev-thread-harness['"]/.test(
     line,
@@ -231,17 +195,6 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test("no keyboard.press('Meta+X') — use ControlOrMeta+X for cross-platform CI (D-Q10)", () => {
-    // Chromium on Linux CI treats `Meta` as the Super / Windows key. PM's
-    // `Mod-a` keymap resolves to `Ctrl+a` on Linux, so `keyboard.press('Meta+a')`
-    // on CI does not trigger PM's selectAll command — `simulateCopyAndRead`
-    // then returns an empty MIME map. `ControlOrMeta+X` (Playwright v1.37+)
-    // maps to `Meta+X` on macOS and `Control+X` elsewhere, matching
-    // `prosemirror-keymap`'s `Mod-` resolution.
-    //
-    // Scope: only keyboard shortcuts where the chord is meant to match a
-    // platform-aware key binding (select-all, copy, cut, paste, end-of-doc,
-    // start-of-doc, select-all-up, select-word-left/right). Plain `Meta`
-    // key references in prose / identifiers are not banned.
     const pattern = /keyboard\.press\(\s*['"`]Meta\+[A-Za-z][A-Za-z]*['"`]/;
     const violations = collectMatches(e2eFiles, (line) => pattern.test(line));
     if (violations.length > 0) {
@@ -252,11 +205,6 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('no inner-file helper imports — must use barrel ./_helpers (D-Q11)', () => {
-    // Banned: `from './_helpers/sidebar'`, `from './_helpers/provider'`, etc.
-    // Allowed: `from './_helpers'` (resolves to ./_helpers/index.ts).
-    // Also banned: deeper paths like `from '../_helpers/sidebar'`.
-    // `[a-zA-Z]` (not `[a-z]`) so future PascalCase-named helper files
-    // (e.g., `Clipboard.ts`) can't bypass the STOP rule via direct import.
     const innerImport = /from\s+['"]\.\.?(?:\/[^'"]*)?\/_helpers\/[a-zA-Z][\w-]*['"]/;
     const violations = collectMatches(e2eFiles, (line) => innerImport.test(line));
     if (violations.length > 0) {
@@ -268,15 +216,8 @@ describe('E2E STOP rule — zero allowlist', () => {
 
   test('no ungated window.__ writes outside dev-gate allowlist (US-006/US-026)', () => {
     const srcFiles = listAppSrcTsFiles();
-    // Match `window.__name = ` (assignment) and `window.__name = (...)` shapes.
     const writePattern = /window\.__[A-Za-z_][A-Za-z0-9_]*\s*=/;
-    // Exclude pure equality / comparison usages by requiring no `==` or `===` immediately after.
     const equalityPattern = /window\.__[A-Za-z_][A-Za-z0-9_]*\s*===?/;
-    // Match the `Object.defineProperty(window, '__name', …)` publication
-    // shape used by `DocumentContext.tsx` for `window.__activeProvider`.
-    // Without this, a new contributor adding a second
-    // `Object.defineProperty(window, '__x', …)` writer outside the
-    // allowlist would slip past the assignment-only regex above.
     const definePropertyPattern =
       /Object\.defineProperty\s*\(\s*window\s*,\s*['"]__[A-Za-z_][A-Za-z0-9_]*['"]/;
 
@@ -310,18 +251,6 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('no editor.mount( / editor.unmount( in V2 cache surfaces (precedent §25(a), SPEC US-001 Phase 1.0)', () => {
-    // TipTap's `Editor.mount(container)` / `Editor.unmount()` API is BLOCKED
-    // by `@tiptap/extension-drag-handle@4.x` (probe — closure-captured
-    // editor ref hits TipTap's throwing proxy during re-create). V2 ships the
-    // raw `editor.editorView.dom` reparent fallback instead. This STOP rule
-    // is mechanical defense against a future contributor "simplifying" the
-    // reparent back to the named API — which would silently regress the
-    // cache on any doc that has a drag-handle NodeView.
-    //
-    // Scope: the V2-cache surface files — not ALL of packages/app/src/ — so
-    // we don't forbid Editor.mount/unmount in unrelated test fixtures or
-    // future features that don't go through the cache. The surface list is
-    // small and explicit; add a new file here if a new cached surface lands.
     const V2_CACHE_SURFACES = [
       join(APP_SRC_DIR, 'editor', 'editor-cache.ts'),
       join(APP_SRC_DIR, 'editor', 'TiptapEditor.tsx'),
@@ -333,16 +262,12 @@ describe('E2E STOP rule — zero allowlist', () => {
       try {
         source = readFileSync(abs, 'utf-8');
       } catch {
-        // File may be moved in a future refactor; don't crash the test.
         continue;
       }
       const lines = source.split('\n');
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? '';
         if (!pattern.test(line)) continue;
-        // Allow references inside docstring/comment blocks — they're
-        // forbidding the API, not calling it. Heuristic: if the trimmed
-        // line starts with `*`, `//`, or contains the STOP marker, skip.
         const trimmed = line.trim();
         if (
           trimmed.startsWith('*') ||
@@ -362,30 +287,7 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('no waitForFunction(fn, { timeout/polling }) — options must be 3rd arg (precedent §20(j))', () => {
-    // Playwright's `page.waitForFunction(pageFunction, arg?, options?)` is
-    // strictly positional. When a test writes
-    //   `waitForFunction(fn, { timeout: 10_000 })`
-    // the `{ timeout: 10_000 }` is bound to `arg`, not `options` — the
-    // intended timeout is silently ignored and the action falls back to
-    // the test-level timeout (typically 120s). Empirical probe:
-    // `waitForFunction(fn, { timeout: 200 })` takes 56_736ms vs 202ms for
-    // `waitForFunction(fn, null, { timeout: 200 })` — same fn, only the
-    // signature differs.
-    //
-    // Required shape: `waitForFunction(fn, null, { timeout: N })` — pass
-    // `null` (or `undefined`, or a real arg value) as the 2nd positional,
-    // options as the 3rd. See precedent #20(j).
-    //
-    // Detection:
-    //   - Single-line:  `waitForFunction(...=>..., { timeout|polling: ...`
-    //   - Multi-line:   a line whose trim is `{ timeout: ...` or
-    //     `{ polling: ...` whose nearest previous non-blank, non-comment
-    //     line ends with `),` (function-body close directly followed by
-    //     options — no middle arg).
     const singleLinePattern = /waitForFunction\s*\([^)]*?=>\s*[^,]*,\s*\{\s*(timeout|polling)\s*:/;
-    // Multi-line: accept both `{ timeout: ...` and `{ timeout: ..., ...`
-    // trimmed-first-char shapes. No-intermediate-arg detected by the
-    // preceding line ending in `),` (the function body's close).
     const multiLineKeyword = /^\s*\{\s*(timeout|polling)\s*:/;
     const fnBodyCloseTerminator = /\)\s*,\s*$/;
 
@@ -394,19 +296,10 @@ describe('E2E STOP rule — zero allowlist', () => {
       for (let i = 0; i < file.lines.length; i++) {
         const line = file.lines[i] ?? '';
         if (singleLinePattern.test(line)) {
-          // Exclude the CORRECT multi-arg form where the arg is itself an
-          // object literal that happens to have a `timeout` field (rare
-          // but possible). Require: BEFORE the `{ timeout`/`{ polling`
-          // match, there is no bare `),` or `null,` / `undefined,` /
-          // `identifier,` argument sequence. Conservative approach: the
-          // single-line regex above already requires `=>` directly before
-          // the comma-options, which means the arrow function is the
-          // FIRST arg and the object is the SECOND — always buggy.
           violations.push(`  ${file.path}:${i + 1}    ${line.trim()}`);
           continue;
         }
         if (!multiLineKeyword.test(line)) continue;
-        // Find previous non-blank, non-comment-only line.
         let p = i - 1;
         while (p >= 0) {
           const prev = (file.lines[p] ?? '').trim();
@@ -419,11 +312,6 @@ describe('E2E STOP rule — zero allowlist', () => {
         if (p < 0) continue;
         const prev = file.lines[p] ?? '';
         if (!fnBodyCloseTerminator.test(prev)) continue;
-        // Guard: preceding line ends with `),` AND that `)` was a
-        // FUNCTION-BODY close (the arrow function's closing paren), not
-        // an argument value's closing. Approximate by: scan up to 8
-        // earlier lines; if a `waitForFunction(` occurs within the
-        // block, this is the buggy shape. Otherwise not a match.
         let scanUp = p;
         let foundCall = false;
         for (let k = 0; k < 10 && scanUp >= 0; k++, scanUp--) {
@@ -444,24 +332,6 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('e2e files that spawn a dev server must isolate shared mutable state (vite cache + i18n compile)', () => {
-    // A per-test `bun run … dev` spawn shares two single-writer resources
-    // with every concurrently booting peer server unless isolated:
-    //   1. Vite's default `<root>/node_modules/.vite` — the dependency
-    //      optimizer corrupts peers' chunk files mid-run, and each spawn
-    //      pays a cold scan+optimize under full 4-worker contention (the
-    //      init-load-byte-stable 12-run flake class).
-    //      Mint via `prepareViteCacheDir(...)` from `./_helpers` (also
-    //      copies the per-run warm seed) and pass OK_TEST_VITE_CACHE_DIR.
-    //   2. predev's `lingui compile` + `biome format --write` against the
-    //      shared src/locales catalogs — racing writers tear the JSON for
-    //      any concurrent reader (the corrupted-catalog playwright failure).
-    //      Pass OK_TEST_SKIP_I18N_COMPILE: '1';
-    //      the warm-cache globalSetup boot compiles once per run.
-    // Scope: `*.e2e.ts` only (listE2eFiles) — `_helpers/*.ts` is intentionally
-    // exempt. The warm-cache globalSetup spawn omits OK_TEST_SKIP_I18N_COMPILE
-    // on purpose: its uncontended boot is the one place the i18n catalogs
-    // compile each run. A new spawn helper under _helpers/ needs manual review
-    // against the two keys above; this rule will not catch it.
     const violations: string[] = [];
     for (const file of e2eFiles) {
       for (const v of findSpawnIsolationViolations(file.lines)) {
@@ -477,26 +347,16 @@ describe('E2E STOP rule — zero allowlist', () => {
     }
   });
 
-  /**
-   * Planted-positive + adjacent-negative self-test for the spawn-isolation
-   * rule above. The rule is an ABSENCE-checker (it passes by finding
-   * nothing), so without this fixture a rotted `spawn('bun'…)` regex would
-   * read as a perpetual green. The negative fixtures sit at the precision
-   * boundary: same shape with the keys present, and a non-bun spawn.
-   *
-   */
   test('spawn-isolation rule fires on a planted violation and not on adjacent negatives', () => {
     const planted = [
       "const proc = spawn('bun', ['run', '--silent', 'dev'], {",
       '  env: { ...process.env, VITE_PORT: String(port) },',
       '});',
     ];
-    // Missing BOTH keys → exactly 2 violations, anchored to the spawn line.
     const fired = findSpawnIsolationViolations(planted);
     expect(fired.length).toBe(2);
     expect(fired[0]?.line).toBe(1);
 
-    // Adjacent negative 1: same spawn shape with both keys present → 0.
     const compliant = [
       "const proc = spawn('bun', ['run', '--silent', 'dev'], {",
       "  env: { OK_TEST_VITE_CACHE_DIR: dir, OK_TEST_SKIP_I18N_COMPILE: '1' },",
@@ -504,16 +364,9 @@ describe('E2E STOP rule — zero allowlist', () => {
     ];
     expect(findSpawnIsolationViolations(compliant).length).toBe(0);
 
-    // Adjacent negative 2: a non-bun spawn without the keys → 0 (the rule
-    // scopes to dev-server boots, not arbitrary subprocesses).
     const otherSpawn = ["const proc = spawn('node', ['script.js'], { env: {} });"];
     expect(findSpawnIsolationViolations(otherSpawn).length).toBe(0);
 
-    // Half-compliant spawn (one key present, one absent) → exactly 1
-    // violation naming the missing key. Guards the per-key loop: a
-    // regression collapsing both checks into a single combined predicate
-    // would still produce 2 violations for the both-missing fixture above
-    // while silently passing single-key violations.
     const halfCompliant = [
       "const proc = spawn('bun', ['run', '--silent', 'dev'], {",
       '  env: { OK_TEST_VITE_CACHE_DIR: dir },',
@@ -523,10 +376,6 @@ describe('E2E STOP rule — zero allowlist', () => {
     expect(halfFired.length).toBe(1);
     expect(halfFired[0]?.missingKey).toBe('OK_TEST_SKIP_I18N_COMPILE');
 
-    // Known limitation, pinned: the check is file-scoped, so a second
-    // non-compliant spawn in a file whose first spawn carries both keys
-    // goes undetected. If this assertion ever fails, the rule gained
-    // per-block precision — update the docblock above.
     const multiSpawn = [
       "const p1 = spawn('bun', ['run', '--silent', 'dev'], {",
       "  env: { OK_TEST_VITE_CACHE_DIR: d, OK_TEST_SKIP_I18N_COMPILE: '1' },",
@@ -538,11 +387,6 @@ describe('E2E STOP rule — zero allowlist', () => {
     expect(findSpawnIsolationViolations(multiSpawn).length).toBe(0);
   });
 
-  /**
-   * Planted-positive + adjacent-negative self-test for the DEV-harness import
-   * rule, so the absence check above cannot rot into a no-op.
-   *
-   */
   test('dev-harness import rule fires on a static import and not on the sanctioned shapes', () => {
     expect(
       isStaticDevHarnessImport("import { installAcpThreadHarness } from './dev-thread-harness';"),
@@ -554,43 +398,18 @@ describe('E2E STOP rule — zero allowlist', () => {
     ).toBe(true);
     expect(isStaticDevHarnessImport("export * from './dev-thread-harness';")).toBe(true);
 
-    // Type-only: erased before bundling, so it cannot carry the module in.
     expect(
       isStaticDevHarnessImport("import type { AcpThreadHarness } from './dev-thread-harness';"),
     ).toBe(false);
-    // The sanctioned reference — a dynamic import Vite folds away with its gate.
     expect(
       isStaticDevHarnessImport("  void import('@/lib/acp/dev-thread-harness').then(fn);"),
     ).toBe(false);
-    // A neighbouring module whose name merely shares a prefix.
     expect(isStaticDevHarnessImport("import { x } from './thread-client';")).toBe(false);
   });
 
   test('window.__activeEditor is published only by DocumentContext.tsx (regression — PR #168 merge collision)', () => {
-    // `DocumentContext.tsx` owns `window.__activeEditor` via
-    // `Object.defineProperty(window, '__activeEditor', { get: ... })` —
-    // a getter-only accessor that derives the active editor from the
-    // `active-editor.ts` registry (populated by `registerEditor` /
-    // `unregisterEditor` in `TiptapEditor.tsx`). V8 rejects bare
-    // assignment to a getter-only accessor: any `window.__activeEditor = x`
-    // anywhere else throws `TypeError: Cannot set property __activeEditor
-    // of #<Window> which has only a getter` on the next editor mount in
-    // DEV, surfaced as an app-level error boundary crash.
-    //
-    // History: added a direct
-    // assignment in TiptapEditor.tsx that was harmless in isolation. It
-    // collided with main which introduced the
-    // getter-only defineProperty. Neither branch alone had the bug — it
-    // emerged in merge commit. Both sites touched different
-    // files, so git produced zero conflict markers. Fixed by
-    // deleting the direct-assignment useEffect.
-    //
-    // This test enforces the invariant at the static-scan layer so a
-    // future contributor cannot reintroduce a second publication path
-    // for the same global.
     const srcFiles = listAppSrcTsFiles();
     const directAssignPattern = /window\.__activeEditor\s*=/;
-    // Exclude equality comparisons (`window.__activeEditor === editor`).
     const equalityPattern = /window\.__activeEditor\s*===?/;
     const definePropertyPattern =
       /Object\.defineProperty\s*\(\s*window\s*,\s*['"]__activeEditor['"]/;
@@ -615,21 +434,6 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('selection-halo CSS rules use plugin-state propagation, not `:has()` (Precedent #34)', () => {
-    // Precedent #34: innermost-wins uses `data-has-child-selected` written
-    // by the SelectionStatePlugin, NOT a CSS `:has()` cascade. Reasons:
-    //   1. Firefox rollout gaps (Safari, Chrome, and Firefox all support
-    //      `:has()` now, but SSR environments + older browsers don't).
-    //   2. Large-doc perf — `:has()` can be quadratic on deep nested trees.
-    //   3. Debuggability — DOM `data-*` attrs are trivially inspectable;
-    //      a CSS `:has()` cascade is not.
-    //   4. SSR parity — plugin state survives without CSS support.
-    //
-    // Detection: match `:has(` on any line whose selector (i.e., the line
-    // itself or the containing selector block) includes a selection-related
-    // marker — `data-selected`, `data-has-child-selected`, or
-    // `--selection-halo`. Other `:has()` usages (chrome hover innermost-
-    // wins, slot hover, etc.) are out of scope — they don't govern
-    // selection state.
     const cssPath = join(APP_SRC_DIR, 'globals.css');
     const css = readFileSync(cssPath, 'utf-8');
     const lines = css.split('\n');
@@ -643,8 +447,6 @@ describe('E2E STOP rule — zero allowlist', () => {
       const line = lines[i] ?? '';
       if (!hasPattern.test(line)) continue;
 
-      // Check the line itself AND the surrounding selector block (up to 3
-      // lines back for multi-line selectors like `.foo:not(\n  :has(...))`).
       const windowStart = Math.max(0, i - 3);
       const windowEnd = Math.min(lines.length, i + 4);
       const selectorContext = lines.slice(windowStart, windowEnd).join('\n');
@@ -662,16 +464,10 @@ describe('E2E STOP rule — zero allowlist', () => {
   });
 
   test('selection-halo transition uses `var(--ease-out-strong)`, not bare `ease-out` (round-2 review fix)', () => {
-    // the halo opacity
-    // transition originally used bare `ease-out` but every other transition
-    // in globals.css (7 of them) uses `var(--ease-out-strong)`. Silent
-    // inconsistency regression is easy to re-introduce; guard statically.
     const cssPath = join(APP_SRC_DIR, 'globals.css');
     const css = readFileSync(cssPath, 'utf-8');
     const lines = css.split('\n');
 
-    // Find the halo-architecture section and look for a transition-opacity
-    // or transition: opacity line that uses bare `ease-out`.
     const haloStart = lines.findIndex((l) => /\/\*\s*7a\..*selection/i.test(l));
     if (haloStart === -1) {
       throw new Error(
@@ -687,15 +483,10 @@ describe('E2E STOP rule — zero allowlist', () => {
       }
     }
 
-    // Match `transition:*ease-out` (bare, no leading `-` or `--ease`) on the
-    // same line. Not a match: `var(--ease-out-strong)`, `ease-out-strong`.
-    // Is a match: `transition: opacity 180ms ease-out;`.
     const violations: string[] = [];
     for (let i = haloStart; i < haloEnd; i++) {
       const line = lines[i] ?? '';
       if (!line.includes('transition')) continue;
-      // Strip CSS custom property usage (`var(--ease-out-strong)`) so the
-      // bare-`ease-out` detector doesn't false-positive on the correct form.
       const stripped = line.replace(/var\([^)]*\)/g, '');
       if (/\bease-out\b/.test(stripped)) {
         violations.push(`  packages/app/src/globals.css:${i + 1}    ${line.trim()}`);
@@ -709,25 +500,6 @@ describe('E2E STOP rule — zero allowlist', () => {
     }
   });
 
-  /**
-   * predev MUST honor OK_TEST_SKIP_I18N_COMPILE by routing the i18n compile
-   * through `scripts/i18n-compile-unless-skipped.sh`.
-   *
-   * The spawn-isolation rule above asserts every e2e dev-server spawn SETS
-   * OK_TEST_SKIP_I18N_COMPILE=1; this rule is its consumer-side complement —
-   * predev must HONOR it. When predev calls the compile directly
-   * (`bun run i18n:compile` / `lingui compile`), the env var is dead: every
-   * concurrent `bun run dev` boot re-runs `biome format --write
-   * src/locales/<locale>/messages.json` against the SHARED catalog. The write is
-   * byte-identical but still bumps mtime, so Vite full-page-reloads every
-   * connected browser (`[vite] page reload src/locales/en/messages.json`),
-   * destroying any in-flight `page.evaluate`. The long, evaluate-dense
-   * `frozen-table-headers.e2e.ts` tests were the canary (context-destroyed
-   * evaluates at ~22% under --workers=4 --repeat-each). The guard was wired
-   * and silently reverted by an unrelated PR re-introducing the
-   * direct call — this rule makes that exact regression hard-fail.
-   *
-   */
   test('predev routes i18n compile through the OK_TEST_SKIP_I18N_COMPILE guard (not a direct compile)', () => {
     const pkgPath = join(__dirname, '..', '..', 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {

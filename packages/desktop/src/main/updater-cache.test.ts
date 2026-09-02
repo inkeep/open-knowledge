@@ -75,8 +75,6 @@ describe('readUpdaterCacheDirName', () => {
   });
 
   test('rejects multi-segment / traversal / absolute shapes (rm -rf safety net)', () => {
-    // Single-quoted YAML so the backslash case reaches the parser literally
-    // (double-quoted YAML would decode `\b` as a backspace escape).
     for (const bad of ['a/b', 'a\\b', '..', '.', '../evil', '/etc']) {
       expect(readUpdaterCacheDirName(`updaterCacheDirName: '${bad}'`)).toBeNull();
     }
@@ -96,7 +94,6 @@ describe('reclaimPendingUpdateCache', () => {
     }
   });
 
-  /** Lay out <root>/{resources/app-update.yml, cache/<name>/pending/...}. */
   async function scaffold(root: string, cacheDirName = 'ok-updater') {
     const configPath = join(root, 'resources', 'app-update.yml');
     await mkdir(join(root, 'resources'), { recursive: true });
@@ -123,7 +120,6 @@ describe('reclaimPendingUpdateCache', () => {
     const outcome = await reclaimPendingUpdateCache(linuxDeps(root, configPath));
     expect(outcome).toBe('reclaimed');
     await expect(stat(pendingDir)).rejects.toMatchObject({ code: 'ENOENT' });
-    // The enclosing updater cache dir survives — only pending/ is reclaimed.
     await expect(stat(join(root, 'cache', 'ok-updater'))).resolves.toBeDefined();
   });
 

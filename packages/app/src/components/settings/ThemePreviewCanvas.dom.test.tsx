@@ -9,7 +9,6 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-/** A scheme with a distinct hex per slot so a swatch can be traced to its slot. */
 function schemeOf(): Base16Scheme {
   const palette = {} as Base16Scheme['palette'];
   for (const [i, slot] of BASE16_SLOTS.entries()) {
@@ -23,7 +22,6 @@ async function renderCanvas(highlightSlot?: Base16Slot) {
   return render(<ThemePreviewCanvas scheme={schemeOf()} highlightSlot={highlightSlot} />);
 }
 
-/** The terminal strip is the row anchored by the `$` shell prompt. */
 function terminalStrip(getByText: (text: string) => HTMLElement): HTMLElement {
   return getByText('$').parentElement as HTMLElement;
 }
@@ -32,11 +30,6 @@ describe('ThemePreviewCanvas terminal strip', () => {
   afterEach(cleanup);
 
   test('labels the yellow swatch base0A — the slot that drives ansi-yellow — not base09', async () => {
-    // The strip pairs each ANSI accent with the slot ANSI_BY_SLOT maps it from:
-    // red→base08, yellow→base0A, green→base0B, cyan→base0C, blue→base0D,
-    // magenta→base0E. base09 is orange and has no ANSI slot, so it must not
-    // appear in the strip — mislabelling the yellow swatch base09 teaches the
-    // wrong slot→color association, which is the whole point of the preview.
     const { getByText } = await renderCanvas();
     const slots = [...terminalStrip(getByText).querySelectorAll('[data-slot]')].map((el) =>
       el.getAttribute('data-slot'),

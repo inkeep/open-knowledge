@@ -1,17 +1,3 @@
-/**
- * DOM-substrate tests for AlertDialog.
- *
- * This primitive exists for one reason: a destructive confirmation must not be
- * dismissible by an accidental pointer gesture. Every assertion below is either
- * that property, or one of the properties the confirmation dialogs built on top
- * of it depend on.
- *
- * Several tests render a plain `Dialog` alongside as a control. Without one, a
- * "did not dismiss" assertion passes just as happily when the synthetic gesture
- * never reached Radix at all, which is the failure mode that makes this whole
- * file worthless.
- */
-
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -65,13 +51,6 @@ function renderAlert({
   );
 }
 
-/**
- * Radix registers its outside-pointerdown listener inside a zero-delay timeout,
- * so the gesture that opened a layer cannot immediately close it again. A test
- * that dispatches an outside gesture before that tick elapses reaches no
- * listener at all, and every "did not dismiss" assertion downstream of it
- * passes for the wrong reason.
- */
 async function armOutsideDismissal() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -136,8 +115,6 @@ describe('AlertDialog semantics', () => {
 
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
 
-    // Control: the same query finds Dialog's close-X, so the assertion above is
-    // about AlertDialog and not about a query that never matches anything.
     cleanup();
     renderPlainDialog(() => {});
 
@@ -166,9 +143,6 @@ describe('AlertDialog dismissal', () => {
   });
 
   test('the same outside gesture does dismiss a plain Dialog', async () => {
-    // The control for the test above. If this ever stops dismissing, the
-    // synthetic gesture has stopped reaching Radix and the "does not dismiss"
-    // assertion has quietly become vacuous.
     const onOpenChange = vi.fn();
     renderPlainDialog(onOpenChange);
     await armOutsideDismissal();
@@ -217,9 +191,6 @@ describe('AlertDialog footer choices', () => {
   });
 
   test('activating the action choice closes the dialog immediately', () => {
-    // The reason both confirmation dialogs keep a plain Button for their
-    // destructive action: they await a request and report progress in the
-    // button's own label, which an immediate close would tear down.
     const onOpenChange = vi.fn();
     renderAlert({
       onOpenChange,
@@ -259,7 +230,6 @@ describe('AlertDialog footer choices', () => {
   });
 
   test('a disabled cancel choice does not close the dialog', () => {
-    // Both consumers disable Cancel while their action is in flight.
     const onOpenChange = vi.fn();
     renderAlert({
       onOpenChange,
@@ -314,12 +284,8 @@ describe('AlertDialog surface classes', () => {
         'pointer-events-none',
         'z-50',
       ]);
-      // The ordering IS the contract: after the overlay so it beats the no-drag
-      // blanket, before the content so a viewport-tall dialog's own close X and
-      // heading stay clickable rather than becoming drag region.
       expect(overlay?.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(content.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
-      // Opts into the globals.css rule that suspends drag under an open popper.
       expect(strip.hasAttribute('data-electron-drag')).toBe(true);
       expect(strip.getAttribute('aria-hidden')).toBe('true');
     } finally {
@@ -333,7 +299,6 @@ describe('AlertDialog surface classes', () => {
       renderAlert();
 
       const className = screen.getByRole('alertdialog').getAttribute('class') ?? '';
-      // Twice the 3rem band, because the dialog is vertically centered.
       expectVisualClassTokens(className, ['max-h-[calc(100dvh-6rem)]']);
       expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-2rem)]']);
     } finally {

@@ -1,8 +1,3 @@
-/**
- * Read-only listing of the keyboard shortcuts available in the editor
- * and workspace, grouped by category from the shared shortcut registry.
- */
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Badge } from '@/components/ui/badge';
 import { Kbd } from '@/components/ui/kbd';

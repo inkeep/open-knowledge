@@ -1,15 +1,3 @@
-/**
- * RTL behavior tests for EmptyEditorState's terminal-aware collapse.
- *
- * The empty state ("new tab" screen) must drop its composer bubble + starter
- * packs whenever a terminal is open — in EITHER dock position — because the
- * open terminal is its own AI entry point. Only the header pose differs:
- * bottom-anchored above a bottom dock, vertically centered beside a right
- * column. The full-view children (CreateView / OnboardingView subtrees) and
- * the document-list fetch are mocked at the module boundary so the assertions
- * pin exactly the branch this component owns.
- */
-
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -53,7 +41,6 @@ vi.doMock('@/hooks/use-is-embedded', () => ({
 vi.doMock('@/lib/documents-events', () => ({
   subscribeToDocumentsChanged: () => () => {},
 }));
-// One existing document → the non-onboarding (CreateView) branch of the full view.
 vi.doMock('@/lib/documents-fetch', () => ({
   fetchDocumentListShared: async () => ({
     ok: true,
@@ -63,8 +50,6 @@ vi.doMock('@/lib/documents-fetch', () => ({
 
 afterEach(cleanup);
 
-// Import the component AFTER the mocks above register so its transitive
-// dependencies bind to the stubs rather than the real modules.
 const { EmptyEditorState } = await import('./EmptyEditorState');
 
 describe('EmptyEditorState session-panel-aware collapse', () => {
@@ -85,7 +70,6 @@ describe('EmptyEditorState session-panel-aware collapse', () => {
     render(<EmptyEditorState agentsOpen />);
     const header = await screen.findByTestId('empty-state-header');
     expect(screen.queryByTestId('create-view')).toBeNull();
-    // The right column leaves the vertical space intact, so the header centers.
     expect(header.closest('.justify-center')).not.toBeNull();
   });
 

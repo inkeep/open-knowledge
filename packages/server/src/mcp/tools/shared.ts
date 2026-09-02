@@ -1,13 +1,3 @@
-/**
- * Shared helpers for MCP tool registration.
- *
- * Each tool file in this directory exports a `register(server)` function
- * that calls `server.registerTool(...)` with its name, description/input
- * schema, optional output schema/annotations, and handler. `index.ts`
- * aggregates the registrations into a single `registerAllTools` function
- * that `server.ts` calls during startup.
- */
-
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -45,28 +35,8 @@ export function agentIdentityFields(identity: AgentIdentity | undefined): Record
 export const ROUTED_CWD_DESCRIPTION =
   'Absolute host path inside the target OpenKnowledge project. Required when the MCP server is registered globally (e.g. `npx @inkeep/open-knowledge mcp` once at the host level, routing per call), unless the MCP client advertises exactly one root via the `roots` capability — that single root is then used as the implicit `cwd`. Optional when the server is anchored to a single project (the per-project HTTP MCP server defaults to its configured project root).';
 
-// ─── Agent-write summary schema (shared across the MCP write tools) ─────
-//
-// The 200-char Zod cap (transport-safety bound) and the "≤80 chars"
-// render-cap description (render bound, enforced server-side by
-// `MAX_SUMMARY_LENGTH` in packages/server/src/agent-write-summary.ts) live
-// here so the two bounds stay in sync across write, edit, move, and checkpoint
-// with one place to re-tune.
-
-/**
- * Transport-safety upper bound for `summary` at the MCP layer.
- * Rejects payloads > 200 chars BEFORE they hit the HTTP boundary. Separate
- * from the server-side render cap (80) — see `MAX_SUMMARY_LENGTH`.
- */
 const SUMMARY_TRANSPORT_CAP = 200;
 
-/**
- * Shared Zod schema for the `summary` param on write, edit, move, and
- * checkpoint. Includes the description that
- * surfaces in tool introspection for agents — keep the "(≤80 chars)" phrasing
- * here as the single source of truth (matches the API-side `MAX_SUMMARY_LENGTH`
- * constant).
- */
 export const summaryArgSchema = z
   .string()
   .max(SUMMARY_TRANSPORT_CAP)
@@ -75,49 +45,30 @@ export const summaryArgSchema = z
     'Optional one-line user-outcome description (≤80 chars). Appears as a bullet in the timeline.',
   );
 
-/**
- * `version` — the single cross-tool vocabulary for a saved restore point. A
- * 40-char commit SHA, produced by `checkpoint` (output `version`), listed by
- * `history` (output `entries[].version`), and consumed by `restore_version`
- * (input `version`). One name, all three sides, so the handoff is copy-paste.
- * The underlying git/shadow-repo field is `sha` — the rename to `version`
- * happens at the MCP tool layer only; the HTTP routes + editor UI keep `sha`.
- */
 export const VERSION_FIELD_DESCRIBE =
   'A 40-character commit SHA identifying a saved version. Produced by `checkpoint`, listed by `history` as `entries[].version`, and consumed here — the same `version` field name across all three.';
 
-/** Validated `version` INPUT leaf (40-char lowercase-hex SHA). */
 export const versionInputSchema = z
   .string()
   .length(40)
   .regex(/^[0-9a-f]+$/i)
   .describe(VERSION_FIELD_DESCRIBE);
 
-// ── Shared OUTPUT-schema leaves ──────────────────────────────────────────────
-// Reused across every tool that returns the common envelope, so the preview /
-// summary / error shapes stay identical (and stay in sync with what the
-// handlers actually emit). `.describe(...)` at a call site overrides the default
-// where a tool wants tool-specific wording without re-declaring the type.
-
-/** Route-only preview URL (`/#/<doc>`), or null when no UI is running. */
 export const previewUrlOutputField = z
   .string()
   .nullable()
   .describe('Route-only preview URL (`/#/<doc>`, no host:port), or null when no UI is running.');
 
-/** How a `previewUrl` was resolved (e.g. from the UI lock). */
 export const previewUrlSourceField = z
   .string()
   .optional()
   .describe('How the previewUrl was resolved (e.g. the UI lock).');
 
-/** Route of a now-removed/old path, so a client can close a stale preview tab. */
 export const previousPreviewUrlField = z
   .string()
   .optional()
   .describe('Route of the prior/removed path, for closing a stale preview tab.');
 
-/** Normalized change-note summary as emitted by the write-spine handlers. */
 export const summaryOutputSchema = z
   .object({
     value: z.string(),
@@ -126,44 +77,19 @@ export const summaryOutputSchema = z
   })
   .describe('Normalized change-note summary, when one was recorded.');
 
-/** An array of loose objects (records with arbitrary keys) — for pass-through row sets. */
 export const looseObjectArray = z.array(z.record(z.string(), z.unknown()));
 
-/**
- * Preview-attach hint envelope field — the uniform top-level `warning` that
- * write/edit emit (`{ action: 'attach-preview-once' | 'start-ui', previewUrl?,
- * message? }`). Part of the cross-tool preview contract, so it stays top-level
- * (not nested under a target key).
- */
 export const previewAttachWarningField = z
   .record(z.string(), z.unknown())
   .optional()
   .describe('Preview-attach hint (`{ action, previewUrl?, message? }`) when relevant.');
 
-/**
- * Base output fields of a single-document write/edit result, nested under the
- * `document` target key. `write` extends this with `hints`; `edit` uses it as
- * is. Keeps the two verbs' `document` result shape in sync.
- */
-/**
- * `brokenLinks` output field for write/edit. Always present — `[]` is the
- * positive "every outbound link resolves" confirmation, replacing the separate
- * `links({ kind: 'dead' })` round-trip. Report-only: the write always landed.
- * Consumed only by `documentResultBaseShape` below (write + edit share it).
- */
 const brokenLinksOutputField = z
   .array(BrokenLinkSchema)
   .describe(
     'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" }`. Report-only — the write landed regardless; fix in a follow-up edit.',
   );
 
-/**
- * The actual on-disk extension for an extension-less `docName` (`.mdx` wins
- * over `.md`, matching `SUPPORTED_DOC_EXTENSIONS` precedence), or `undefined`
- * when neither file exists. Lets a tool that knows only the docName resolve the
- * target's real extension instead of assuming `.md` — correct-by-construction
- * for an `.mdx` workspace.
- */
 export function docExtensionOnDisk(
   contentDir: string,
   docName: string,
@@ -194,13 +120,6 @@ export const documentResultBaseShape = {
     ),
 } as const;
 
-/**
- * Assemble a document write/edit `structuredContent`: the uniform preview
- * envelope (`previewUrl` / `previewUrlSource` / `warning`) stays top-level; the
- * document-specific fields nest under `document`. Shared by `write` + `edit` so
- * both produce the identical nesting. `preview` is typed structurally to avoid
- * a `preview-url.ts` import cycle; `docFields` is omitted when empty.
- */
 export function nestDocResult(
   preview: { url: string; source: string } | null | undefined,
   warning: Record<string, unknown> | undefined,
@@ -216,24 +135,12 @@ export function nestDocResult(
   return structured;
 }
 
-/**
- * `Error: <title> (<detail>)` for a failed `httpPost`/`httpGet` result.
- *
- * The server routinely puts the actionable sentence in RFC 9457 `detail` and
- * only the class of failure in `title` — "Skill not found." vs. 'Skill "x" not
- * found in project scope — create it with write({ skill }) first.' A tool that
- * prints `result.error` alone hands the agent the diagnosis without the remedy.
- */
 export function errorTextWithDetail(result: { [key: string]: unknown }): string {
   const detail = typeof result.detail === 'string' ? ` (${result.detail})` : '';
   const title = typeof result.error === 'string' ? result.error : 'request failed';
   return `Error: ${title}${detail}`;
 }
 
-/**
- * Wrap a single string into the content shape MCP tools require for text results.
- * Pass `isError: true` to signal a tool-level error to the caller.
- */
 export function textResult(text: string, isError?: boolean) {
   return {
     content: [{ type: 'text' as const, text }],
@@ -241,25 +148,6 @@ export function textResult(text: string, isError?: boolean) {
   };
 }
 
-/**
- * `text` is the auto-duplicated body channel `textPlusStructured` mirrors
- * into `structuredContent`. See the helper below for why we duplicate.
- *
- * MCP clients that strictly validate `structuredContent` against the tool's
- * declared JSON-schema (Claude does, via AJV) reject ANY field absent
- * from the schema — `text` included. Every tool that returns via
- * `textPlusStructured` AND registers with `server.registerTool({outputSchema:
- * ...})` MUST declare `text: optional()` so the emitted JSON-schema admits
- * the mirror field. `outputSchemaWithText(...)` is the single-source helper
- * that augments a raw shape with this field; use it instead of inlining the
- * declaration so the description stays in sync.
- *
- * Tools registered through the legacy `server.tool(...)` API bypass the
- * strict output-schema check and do not need this — but migrating to
- * `registerTool` requires routing the outputSchema through this helper or
- * the client rejects every call with `data must NOT have additional
- * properties`.
- */
 export const TEXT_CHANNEL_FIELD = z
   .string()
   .optional()
@@ -267,24 +155,6 @@ export const TEXT_CHANNEL_FIELD = z
     'Auto-duplicated body text. `textPlusStructured` mirrors the visible body here as a Claude / Claude Desktop client-quirk workaround (those clients hide `content[]` when `structuredContent` is present). Internal — programmatic consumers should prefer the `content[0].text` channel.',
   );
 
-/**
- * Wrap a raw outputSchema shape with the optional `text` field that
- * `textPlusStructured` injects into every `structuredContent` payload. See
- * `TEXT_CHANNEL_FIELD` above for the why — without this, strict clients
- * reject the mirror field with `data must NOT have additional properties`.
- *
- * The default `text` declaration is laid down BEFORE the caller's shape, so
- * a caller that intentionally overrides `text` with a richer schema (e.g.
- * a literal type, a different description) wins on both the data side AND
- * the schema side. This mirrors the spread order in `textPlusStructured`:
- * the runtime structuredContent lets the caller override the mirror, so the
- * schema declaration honors the same contract.
- *
- * The return type uses `Omit<..., keyof S>` so when `S` contains `text` the
- * default is dropped from the intersection and the caller's type alone wins
- * — preserving the documented override semantics at the type level, not just
- * at runtime.
- */
 export function outputSchemaWithText<S extends z.ZodRawShape>(
   shape: S,
 ): Omit<{ text: typeof TEXT_CHANNEL_FIELD }, keyof S> & S {
@@ -294,40 +164,7 @@ export function outputSchemaWithText<S extends z.ZodRawShape>(
   } as Omit<{ text: typeof TEXT_CHANNEL_FIELD }, keyof S> & S;
 }
 
-/**
- * Dual-channel result (text `content` + machine-readable `structuredContent`).
- * Used by every tool that returns enriched metadata in structured form
- * alongside human-visible body text.
- *
- * **Client-quirk workaround (single-source).** Claude and Claude Desktop
- * (and some other MCP clients) hide the text `content` stream when
- * `structuredContent` is present — the agent sees only the structured payload
- * and the visible body silently vanishes
- * ([anthropics/claude-code#55677](https://github.com/anthropics/claude-code/issues/55677)).
- * Without a structured mirror of the body, `exec` arrives at the
- * model as `{previewUrl: null}` (file contents dropped), etc.
- *
- * Mitigation: every result built by this helper carries the same visible body
- * under `structuredContent.text`. The key MUST NOT carry a leading underscore
- * — MCP-spec reserves `_meta` for host-only metadata, and Claude-class
- * clients generalize the convention to strip ALL `_`-prefixed keys from
- * `structuredContent` before the model sees it (see also Cursor: strips
- * `_meta` from `ui/notifications/tool-result` before forwarding). A tool that
- * genuinely needs a semantically distinct channel can add its own field
- * alongside rather than reusing `text` — but don't re-emit the visible body
- * under a second key just to have a "raw" copy: that is pure wire duplication. The
- * caller's `structured` keys merge on top of `text`, so a caller that wants to
- * override (none do today) still can.
- *
- * The mirror field MUST be declared on every tool's outputSchema via
- * `outputSchemaWithText(...)` above; strict JSON-schema clients (Claude)
- * reject any undeclared key with `data must NOT have additional properties`.
- */
 export function textPlusStructured<T>(text: string, structured: T, isError?: boolean) {
-  // Annotate as `{ text: string } & Record<string, unknown>` so the index
-  // signature survives the spread. A plain object-literal spread of
-  // `Record<string, unknown>` collapses to `{ text: string }` and breaks
-  // callers + tests that read other keys off `structuredContent`.
   const structuredContent: { text: string } & Record<string, unknown> = {
     text,
     ...(structured as unknown as Record<string, unknown>),
@@ -339,30 +176,14 @@ export function textPlusStructured<T>(text: string, structured: T, isError?: boo
   };
 }
 
-/** Error message for tools that require Hocuspocus to be running. */
 export const HOCUSPOCUS_NOT_RUNNING_ERROR =
   'Error: Hocuspocus server is not running. Start it with `ok start`, then retry.\nDo not fall back to native file edits for in-scope markdown; route writes through OpenKnowledge so attribution and live sync stay intact.';
 
-/**
- * Either an eagerly-known server URL, an absent URL, or a lazy resolver that
- * computes the URL per-call. The lazy resolver receives the effective cwd of
- * the current tool invocation when available so one MCP process can route
- * different tool calls to different OpenKnowledge project servers.
- *
- * See `packages/cli/src/mcp/server.ts` for the resolver wired in at startup.
- */
 export type ServerUrlOrResolver =
   | string
   | undefined
   | ((cwd?: string) => Promise<string | undefined>);
 
-/**
- * Normalize a `ServerUrlOrResolver` to a concrete URL (or `undefined` when the
- * server is not reachable). Call this at the top of every tool handler that
- * hits the Hocuspocus HTTP API. Exported for handlers that need the raw
- * resolver error rather than the flattened `resolveProjectServerContext`
- * shape (`preview_url` branches on the error's type).
- */
 export async function resolveServerUrl(
   x: ServerUrlOrResolver,
   cwd?: string,
@@ -370,12 +191,10 @@ export async function resolveServerUrl(
   return typeof x === 'function' ? await x(cwd) : x;
 }
 
-/** Normalize a `ConfigOrResolver` to a concrete config for the current cwd. */
 async function resolveConfig(x: ConfigOrResolver, cwd?: string): Promise<Config> {
   return typeof x === 'function' ? await x(cwd) : x;
 }
 
-/** Resolve the effective project cwd plus the matching config for this call. */
 export async function resolveProjectConfigContext(
   resolveCwd: (explicit?: string) => Promise<string>,
   config: ConfigOrResolver,
@@ -389,14 +208,6 @@ export async function resolveProjectConfigContext(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-  // `cwd` is the project root: `resolveCwd` walks UP from the passed path to the
-  // enclosing `.ok/config.yml`, and that root anchors config, server URL, lock
-  // dir, and content addressing for every tool. `executionCwd` is the literal
-  // path the caller passed, before the walk-up — the directory a command should
-  // actually run in. The two diverge only when the caller targets a
-  // subdirectory of the project; `executionCwd` is then a descendant of `cwd`
-  // (the walk-up started from it). Only `exec` consumes `executionCwd`; the
-  // doc-keyed tools address content server-side and need just the root.
   const executionCwd = explicitCwd !== undefined ? resolve(explicitCwd) : cwd;
   try {
     const resolvedConfig = await resolveConfig(config, cwd);
@@ -406,24 +217,6 @@ export async function resolveProjectConfigContext(
   }
 }
 
-/**
- * Resolve the effective project cwd/config for this tool call, then resolve
- * the matching project server URL. Returns a structured error instead of
- * throwing so tool handlers can surface config-load or auto-start failures as
- * normal tool errors.
- *
- * Handlers that need typed error discrimination (e.g. `AutoStartDisabledError`)
- * should call `resolveServerUrl` directly instead — this wrapper flattens the
- * error to a string. Reference pattern: `get-preview-url.ts`.
- */
-/**
- * `resolveProjectServerContext` plus the two guards every tool that talks to the
- * server repeats verbatim: surface a resolution failure, then require a running
- * server. Roughly twenty call sites carried the same three lines.
- *
- * On failure the caller returns `guard.result` unchanged, so the error text and
- * the `isError` flag stay exactly what those call sites produced.
- */
 export async function requireProjectServer(
   resolveCwd: (explicit?: string) => Promise<string>,
   config: ConfigOrResolver,
@@ -467,40 +260,6 @@ export async function resolveProjectServerContext(
   }
 }
 
-/**
- * Normalize a user-supplied `docName`. The server keys documents by the
- * extension-less docName, so a caller that passes `"notes/meeting.md"` would
- * otherwise produce `meeting.md.md`. The server auto-detects the extension
- * (`.md` vs `.mdx`) from what it finds on disk.
- *
- * Policy:
- * - Trailing `.md` / `.mdx` is stripped silently (case-insensitive). Repeated
- *   supported extensions collapse fully — `foo.md.md` → `foo` — so a single
- *   strip can't leave an embedded `.md` in the key that the create would turn
- *   into a doubled `foo.md.md` on disk.
- * - Trailing `.markdown` returns an error — unsupported extension.
- * - Any other trailing `.x` is left alone; a dotted docName is valid
- *   (e.g. `releases/v1.0`).
- * - The extension-less result is then checked against the structural docName
- *   contract (`validateDocName`): empty / blank, leading-or-trailing
- *   whitespace, control characters, path traversal, empty or hidden-dot path
- *   segments are rejected with a clear error rather than producing junk,
- *   hidden, or unaddressable files (or a 500 deep in the doc layer).
- *
- * Note: this strips the extension for keying; the caller's explicit suffix is
- * recovered separately. On a create, `write` forwards an explicit
- * `.mdx` (or `.md`) to the server so the new file lands with that extension;
- * for an existing doc the recorded on-disk extension wins.
- */
-/**
- * A `document` write/edit aimed at a reserved `.ok/` path is almost always an
- * agent reaching for the wrong target — skills, templates, and folder config
- * are authored via their own targets, never as a raw document under `.ok/`.
- * Map the rejected path to a path-aware teaching redirect so the agent retries
- * with the right shape instead of fighting the generic hidden-file rejection
- * (and falling back to native file tools — the real failure this prevents).
- * Returns null for non-`.ok/` paths so the normal docName error stands.
- */
 export function okReservedPathRedirect(path: string): string | null {
   const p = path.replace(/^\/+/, '');
   if (p !== '.ok' && !p.startsWith('.ok/')) return null;
@@ -523,12 +282,6 @@ export function normalizeDocName(
       error: `Error: "${raw}" ends in ".markdown", which is not a supported extension. Use ".md" or ".mdx", or strip the extension to let the server auto-detect.`,
     };
   }
-  // Strip EVERY trailing supported extension, not just one. A single strip
-  // turned `foo.md.md` into the key `foo.md`, which the create then wrote to
-  // disk as `foo.md.md` (the embedded `.md` survived). Loop until no supported
-  // extension remains so `foo.md.md` → `foo` (and `foo.mdx.md` → `foo`). A
-  // `.mdx` suffix never matches the `.md` check (it ends in `x`), so the two
-  // branches stay mutually exclusive per iteration.
   let candidate = raw;
   let lowerCandidate = lower;
   while (lowerCandidate.endsWith('.mdx') || lowerCandidate.endsWith('.md')) {
@@ -563,20 +316,6 @@ function normalizeResponse(
   res: { ok: boolean; status: number },
   body: unknown,
 ): { ok: boolean; [key: string]: unknown } {
-  // 2xx success path takes precedence over body-shape inspection.
-  // `res.ok` is the wire-level success/error discriminator; the
-  // problem+json shape and the non-object reject are only consulted on
-  // 4xx/5xx. Two shapes are admitted on 2xx:
-  //   - Object body: spread its fields onto the canonical record after
-  //     stripping a stray `ok` (boundary defense against an intermediary
-  //     that wraps a 2xx response with `{ok: false, ...}` — without the
-  //     strip the body's `ok` would win the spread).
-  //   - Array / null / primitive body: surface under a `data` field so
-  //     a future list-all endpoint returning `[…]` reaches consumers as
-  //     `result.data`. No destructuring on non-records — that produced
-  //     `{0: item, 1: item, ..., length: N}` wire garbage in the prior
-  //     order and the `null` body would have been misclassified as a
-  //     non-object error.
   if (res.ok) {
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       return { ok: true, data: body };
@@ -584,8 +323,6 @@ function normalizeResponse(
     const { ok: _ok, ...rest } = body as Record<string, unknown>;
     return { ok: true, ...rest };
   }
-  // 4xx/5xx with non-object body: nothing structured to canonicalize.
-  // Surface the HTTP status as a generic error string.
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return {
       ok: false,
@@ -593,27 +330,6 @@ function normalizeResponse(
     };
   }
   const record = body as Record<string, unknown>;
-  // RFC 9457 problem+json detection by field heuristic
-  // (`type`+`title` strings). Per §3, `Content-Type:
-  // application/problem+json` is the canonical signal, but consulting it
-  // adds no information to extraction logic: when both header and fields
-  // agree we extract; when only the header is set but fields are missing
-  // (malformed problem+json — server bug), extraction would produce
-  // `error: undefined` so we MUST fall through to generic-passthrough
-  // anyway. The field check is the load-bearing one. Intermediaries that
-  // strip headers but pass through bodies are also covered.
-  //
-  // Surface `title` as `error` (the human-readable diagnostic), pass
-  // through `type` (the closed `ProblemType` URN — RFC 9457 §4
-  // programmatic-dispatch handle for consumers that want to branch on
-  // the kind of error rather than parse `title` strings), preserve
-  // `instance` (correlation ID — grep handle between HTTP response and
-  // Pino log) and `detail`, and spread extensions (e.g. `colliding`)
-  // so structured fields remain accessible. Spread extensions FIRST so
-  // canonical fields (`ok`/`error`/`type`/`instance`/`detail`) win on
-  // key collision — RFC 9457 §3.2 doesn't reserve those names so a
-  // future server extension named `ok` or `error` would otherwise
-  // silently override the canonicalizer's contract.
   if (typeof record.type === 'string' && typeof record.title === 'string') {
     const { type, title, status, instance, detail, ...extensions } = record;
     return {
@@ -621,26 +337,11 @@ function normalizeResponse(
       ok: false,
       error: title,
       type,
-      // Preserve `status` for retry-class branching by SDK + MCP-tool consumers
-      // (4xx → fix-and-retry; 5xx → backoff-retry). Information destruction at
-      // the canonicalizer is the wrong default — `type` is the load-bearing
-      // handle for branching by error class, but `status` is the load-bearing
-      // handle for retry strategy. Cost is ~10 bytes per error response.
       ...(typeof status === 'number' ? { status } : {}),
       ...(typeof instance === 'string' ? { instance } : {}),
       ...(typeof detail === 'string' ? { detail } : {}),
     };
   }
-  // 4xx/5xx with non-RFC-9457 body (rare — test mocks or a non-server
-  // intermediary like a reverse proxy). Preserve whatever the body
-  // carries, force `ok: false`, AND guarantee an `error` string is
-  // present so MCP-tool consumers that do `'Error: ' + result.error`
-  // never surface `'Error: undefined'` on these intermediary responses.
-  // Source priority: body's own `error` → body's `message` (common
-  // alt-name for proxy/upstream error shapes) → generic HTTP-status
-  // sentence. The canonicalizer doesn't invent diagnostic content the
-  // body didn't carry — every fallback comes from somewhere the
-  // intermediary wrote.
   const { ok: _ok, error: bodyError, ...rest } = record;
   const fallbackError =
     typeof bodyError === 'string'
@@ -651,31 +352,12 @@ function normalizeResponse(
   return { ...rest, ok: false, error: fallbackError };
 }
 
-/**
- * Transport target for the Hocuspocus API helpers. A plain URL string keeps
- * the HTTP path (the stdio `ok mcp` proxy — a separate process from the
- * server). The object form additionally carries the in-process dispatch
- * (`ServerInstance.localApi`) available when the MCP session runs inside
- * the server process itself: collapsed endpoints then invoke their handler
- * as a function call, and paths outside the collapsed allowlist fall back
- * to HTTP against `url`. Both transports share the JSON-parse +
- * `normalizeResponse` tail, so the tool-facing result is identical either
- * way the same wire bytes arrive.
- */
 export type ApiTarget = string | { url: string; local: LocalApiDispatch };
 
-/** Build an {@link ApiTarget}: in-process dispatch when available, else HTTP. */
 export function apiTarget(url: string, local: LocalApiDispatch | undefined): ApiTarget {
   return local ? { url, local } : url;
 }
 
-/**
- * Run a collapsed call through the in-process dispatch, applying the same
- * response normalization as the HTTP path. Returns `null` when the path is
- * outside the collapsed allowlist (caller falls back to HTTP).
- * `includeHttpStatus` mirrors `httpGet`'s extra `httpStatus` field, which
- * `httpSend` deliberately does not carry.
- */
 async function localApiCall(
   local: LocalApiDispatch,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -720,13 +402,6 @@ async function localApiCall(
   return includeHttpStatus ? { ...normalized, httpStatus: raw.status } : normalized;
 }
 
-/**
- * HTTP GET helper for Hocuspocus API calls.
- * Returns `{ ok: false, error }` on network failure or non-JSON response.
- * Translates RFC 9457 problem+json + flat-success bodies into the
- * `{ ok, ...payload }` shape MCP-tool consumers expect — see
- * `normalizeResponse` above.
- */
 export async function httpGet(
   base: ApiTarget,
   path: string,
@@ -746,14 +421,6 @@ export async function httpGet(
   try {
     body = await res.json();
   } catch (parseErr) {
-    // 2xx-non-JSON on a JSON shim is always a contract violation, not a
-    // success. Surface as `ok: false` so the consumer's existing
-    // `if (!result.ok) return textResult(...)` guard catches it and
-    // surfaces the diagnostic to the user. The earlier `ok: true,
-    // warning: ...` shape produced silent-failure UX: consumers fell
-    // through the `!result.ok` guard, then `data.documents` was
-    // undefined, then `(data.documents ?? []).map(...)` produced an
-    // empty list with no error indication.
     const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
     if (res.ok) {
       return {
@@ -768,22 +435,9 @@ export async function httpGet(
       error: `Server returned HTTP ${res.status} with non-JSON body: ${detail}`,
     };
   }
-  // `httpStatus` is the wire-level HTTP status (distinct from any body-derived
-  // `status` field). Dedicated key so callers can distinguish a clean 404 from
-  // a transient 5xx/timeout — load-bearing for the cross-scope-move collision
-  // guard, which must NOT treat a transient destination-read failure as "free".
-  // The network-error catch above has no Response, so it omits httpStatus.
   return { ...normalizeResponse(res, body), httpStatus: res.status };
 }
 
-/**
- * `httpGet` + array-field unwrap. The read-only `skills` MCP paths all GET a
- * `{ [field]: unknown[] }` body and want that field as a row array (`[]` when
- * absent or non-array). Returns `{ error }` on a non-ok response so the caller
- * keeps its own `textResult` early-return; otherwise `{ rows, data }`, where
- * `data` is the ok-stripped body for callers that also read scalar fields
- * (e.g. search's `backend` / `degraded`).
- */
 export async function httpGetRows(
   base: ApiTarget,
   path: string,
@@ -801,23 +455,12 @@ export async function httpGetRows(
   return { rows, data };
 }
 
-/**
- * Shared HTTP helper for mutating Hocuspocus API calls (POST / PUT / DELETE).
- * Returns `{ ok: false, error }` on network failure or non-JSON response.
- * Translates RFC 9457 problem+json + flat-success bodies into the
- * `{ ok, ...payload }` shape MCP-tool consumers expect — see
- * `normalizeResponse` above. DELETE callers pass the query string in `path`
- * and omit `body`.
- */
 async function httpSend(
   method: 'POST' | 'PUT' | 'DELETE',
   base: ApiTarget,
   path: string,
   body?: Record<string, unknown>,
 ): Promise<{ ok: boolean; [key: string]: unknown }> {
-  // Pre-stringify with a typed fallback so an unserializable body (circular
-  // ref, BigInt, Error cause-chain cycle) doesn't crash the MCP tool process
-  // mid-fetch. Mirrors successResponse's pre-stringify guard precedent.
   let serializedBody: string | undefined;
   if (body !== undefined) {
     try {
@@ -849,9 +492,6 @@ async function httpSend(
   try {
     parsed = await res.json();
   } catch (parseErr) {
-    // See httpGet — 2xx-non-JSON on a JSON shim is a contract violation,
-    // surfaced as `ok: false` so the consumer's `!result.ok` guard
-    // catches it. Symmetric branch.
     const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
     if (res.ok) {
       return {
@@ -890,12 +530,6 @@ export function httpDelete(
   return httpSend('DELETE', base, path);
 }
 
-/**
- * Structured collision pair returned by `POST /api/rename-path` when two
- * affected docs would resolve to the same destination. The `move` tool
- * surfaces this in its error response so callers can render the offending
- * pairs without re-parsing the human-readable error message.
- */
 export interface RenameCollisionPair {
   existing: string;
   incoming: string;
@@ -913,35 +547,13 @@ export function parseRenameCollidingPairs(value: unknown): RenameCollisionPair[]
   });
 }
 
-/**
- * Audit output caps shared by the `lint` (project-audit shape) and `audit`
- * tools: a whole-project audit can carry thousands of diagnostics, which
- * would flood the calling agent's context. Totals stay uncapped; scoping via
- * `path` recovers omitted detail. One definition so the two tools' outputs
- * can never silently diverge for the same scope.
- */
 export const AUDIT_FILE_CAP = 10;
 export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;
 
-/**
- * Degradation warnings (unreadable files/dirs, an unavailable validator, a lint
- * plugin that threw) are agent-context-bound like the diagnostics, so the same
- * ceiling applies to both `lint`'s and `audit`'s project shapes — a project with
- * many unreadable files must not flood the agent through this channel. The HTTP
- * endpoints stay the uncapped surface for GUI consumers.
- */
 export const AUDIT_WARNING_CAP = 10;
 
 const ATTRIBUTED_VALIDATION_FAILURE = /^(?:source(?: family)?|validator) "/;
 
-/**
- * Keep validator-attributed failures visible when the agent-context warning
- * channel is capped. Those lines are the join between a selected `ran` family
- * and its degraded execution; generic file-system warnings remain in arrival
- * order behind them, and the uncapped HTTP response is left untouched. Config
- * problems deliberately stay generic: they are partial and name the offending
- * file rather than claiming an entire source family degraded.
- */
 export function capAuditWarnings(warnings: readonly string[]): {
   shownWarnings: string[];
   omittedWarningCount: number;
@@ -958,13 +570,6 @@ export function capAuditWarnings(warnings: readonly string[]): {
   };
 }
 
-/**
- * The degradation warnings rendered for the text channel. A bare `⚠` line
- * reads as a benign config nit beside the findings; the header states outright
- * that the findings above may be partial. One renderer for the `lint` and
- * `audit` tools so the framing can never silently diverge (same contract as
- * the shared caps above — the caps bound this channel, this shapes it).
- */
 export function degradationBlock(
   kind: 'Lint' | 'Audit',
   shown: readonly string[],
@@ -979,13 +584,6 @@ export function degradationBlock(
   ];
 }
 
-/**
- * Structural diagnostic shape the `lint` and `audit` text formatters read —
- * the intersection of both tools' wire payload types (all optional, since it
- * describes loosely-deserialized server output). One definition so the two
- * tools' human-facing summaries can never silently diverge (same contract as
- * the shared caps above).
- */
 export interface FormattableDiagnostic {
   severity?: string;
   range?: { start?: { line?: number } };
@@ -994,17 +592,14 @@ export interface FormattableDiagnostic {
   message?: string;
 }
 
-/** One diagnostic as a human-facing text line: `  ✘ line 12 markdownlint/MD010: Hard tabs`. */
 export function formatDiagnosticLine(d: FormattableDiagnostic): string {
   const marker = d.severity === 'error' ? '✘' : '⚠';
   const startLine = d.range?.start?.line;
-  // Text output is human-facing: display 1-based lines from the 0-based range.
   const where = startLine !== undefined ? `line ${startLine + 1}` : 'line ?';
   const flatId = d.source !== undefined && d.code !== undefined ? `${d.source}/${d.code}` : '?';
   return `  ${marker} ${where} ${flatId}: ${d.message ?? ''}`.trimEnd();
 }
 
-/** `2 errors, 1 warning` / `no problems` — the count clause in a summary header. */
 export function countSummary(errorCount: number, warningCount: number): string {
   const parts: string[] = [];
   if (errorCount > 0) parts.push(`${errorCount} error${errorCount === 1 ? '' : 's'}`);

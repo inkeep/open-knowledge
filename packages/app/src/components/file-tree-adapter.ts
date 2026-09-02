@@ -19,22 +19,10 @@ import { OK_SIDEBAR_DRAG_MIME } from '@/lib/sidebar-drag';
 const DEFAULT_TREE_EXTENSION = '.md';
 const TREE_EXTENSION_PATTERN = /\.(md|mdx)$/i;
 
-/**
- * Map a docName to the tree path the @pierre/trees model uses. `docExt`
- * carries the actual on-disk extension (`.md` / `.mdx`) — defaults to `.md`
- * for sites that don't have it yet. Two files with the same docName but
- * different extensions are distinct file system entries; passing the wrong
- * extension breaks tree-model mapping.
- */
 export function docNameToTreePath(
   docName: string,
   docExt: string = DEFAULT_TREE_EXTENSION,
 ): string {
-  // A Mermaid, Excalidraw, or editable-text docName already carries its
-  // extension (it IS the filename), so it maps to the tree path verbatim —
-  // appending `.md` would point at a nonexistent file and break tree-
-  // highlight matching (and, worse, cause the doc-open path to create a
-  // phantom `${docName}.md` on disk on first open).
   if (
     TREE_EXTENSION_PATTERN.test(docName) ||
     isMermaidDocFile(docName) ||
@@ -55,12 +43,6 @@ export function treeFilePathToDocumentDocName(
   documents: readonly FileEntry[],
 ): string {
   const normalized = stripTrailingSlash(treePath);
-  // Resolve against the same collection-aware mapping the rows were built
-  // from, or a visible row can act on the wrong file: a doubled extension and
-  // the real base file both map RAW to `name.md`, so a flip in listing order
-  // would silently point the `name.md` row's open / rename / delete at
-  // `name.md.md`. The raw pass stays as a fallback for tree paths this feed
-  // never produced — Pierre can move a node out from under the document list.
   const stemExtensions = markdownStemExtensions(documents);
   const exact =
     documents.find(
@@ -84,14 +66,6 @@ export function treeFilePathToDocumentDocName(
   return collidingEntry && TREE_EXTENSION_PATTERN.test(normalized) ? normalized : extensionless;
 }
 
-/**
- * The entry a tree path belongs to, resolved through the same collection-aware
- * mapping the rows are built from. Two documents can share a RAW tree path — a
- * doubled extension and its base file both map to `name.md` — so a raw match
- * hands back whichever the server happened to list first and points that row's
- * action at the other file. Raw matching stays as a fallback for tree paths
- * this feed never produced.
- */
 export function findEntryByTreePath(
   treePath: string,
   documents: readonly FileEntry[],
@@ -108,11 +82,6 @@ export function fileEntryToTreePath(entry: FileEntry): string {
   return isAssetEntry(entry) ? entry.path : docNameToTreePath(entry.docName, entry.docExt);
 }
 
-/**
- * Detect the markdown extension on a tree path. Returns `.md` or `.mdx`
- * (lowercased) when the path ends with one; undefined when neither matches
- * (e.g., a folder path).
- */
 function detectTreePathExtension(treePath: string): string | undefined {
   const match = stripTrailingSlash(treePath).match(TREE_EXTENSION_PATTERN);
   return match ? `.${match[1].toLowerCase()}` : undefined;
@@ -133,24 +102,6 @@ export function treePathToAppPath(treePath: string): string {
     : treeFilePathToDocName(treePath);
 }
 
-/**
- * Map every extension-suffixed document docName to the set of extensions seen
- * for its stem — the collection evidence for whether the server
- * extension-QUALIFIED a docName. When `note.md` and `note.mdx` share a
- * directory, the Show All walk emits BOTH docNames with their extension so
- * each file stays independently addressable, and those docNames already ARE
- * their filenames. A doubled extension on disk produces a docName of the same
- * shape (`name.md.md` strips to `name.md`) but means the opposite, and one
- * entry alone can't tell them apart.
- *
- * Counting extensions per stem approximates that decision; it is exact only
- * while at most one file per stem carries a doubled extension. Two doubled
- * files sharing a stem (`a.md.md` plus `a.mdx.mdx`) present as a qualified
- * pair and stay collapsed onto their stripped names. Extensions keep their
- * on-disk casing here because the server qualifies case-variant siblings too
- * (`name.md` beside `name.MD` on a case-sensitive filesystem) — folding case
- * would count that pair once and read both as doubled.
- */
 function markdownStemExtensions(documents: readonly FileEntry[]): Map<string, ReadonlySet<string>> {
   const byStem = new Map<string, Set<string>>();
   for (const entry of documents) {
@@ -165,20 +116,6 @@ function markdownStemExtensions(documents: readonly FileEntry[]): Map<string, Re
   return byStem;
 }
 
-/**
- * The tree path for an entry, resolved with collection context.
- *
- * `docNameToTreePath` returns any docName already ending in `.md`/`.mdx`
- * verbatim. That is right for a server-qualified docName and wrong for a
- * doubled extension: `name.md.md` arrives as docName `name.md`, maps to
- * `name.md`, and lands on the exact path the real `name.md` occupies. Sending
- * both to the model would throw `Duplicate path`; dropping one hides a real
- * file. Resolving the doubled entry to its true filename does neither.
- *
- * Only markdown docNames take this branch — mermaid and editable-text
- * docNames carry extensions that `TREE_EXTENSION_PATTERN` never matches, so
- * they keep `docNameToTreePath`'s verbatim handling.
- */
 function collectionTreePath(
   entry: FileEntry,
   stemExtensions: ReadonlyMap<string, ReadonlySet<string>>,
@@ -188,25 +125,11 @@ function collectionTreePath(
   const match = entry.docName.match(TREE_EXTENSION_PATTERN);
   if (!match) return treePath;
   const stem = entry.docName.slice(0, -match[0].length);
-  // Two extensions on one stem — the server qualified these docNames, so the
-  // docName is already the filename.
   if ((stemExtensions.get(stem)?.size ?? 0) > 1) return treePath;
   return `${entry.docName}${entry.docExt ?? DEFAULT_TREE_EXTENSION}`;
 }
 
 export function documentsToTreePaths(documents: readonly FileEntry[]): string[] {
-  // Every `resetPaths` call routes through here, and `@pierre/trees`
-  // `PathStoreBuilder` hard-throws `Duplicate path` on a repeat — which takes
-  // the whole editor down through the top-level error boundary. So the list
-  // this returns must be unique no matter what the server sent.
-  //
-  // Uniqueness alone is not enough: skipping a repeat silently deletes a row.
-  // That is correct only when the repeat is the SAME file twice (two refreshes
-  // racing a stale size=0 and a fresh size=40 into `documents` together), and
-  // wrong when two real files merely resolve to one path — then a file that
-  // exists on disk gets no row, no badge, and no warning. `collectionTreePath`
-  // separates the two by giving a doubled-extension file back its real
-  // filename, leaving only genuine repeats for the skip below.
   const stemExtensions = markdownStemExtensions(documents);
   const seen = new Set<string>();
   const paths: string[] = [];
@@ -239,14 +162,6 @@ export function collectTreeFolderPathsFromDocuments(
         ? entry.path
         : entry.docName;
     const segments = path.split('/').filter(Boolean);
-    // `.ok/` is an internal directory. Skills-as-content makes
-    // `.ok/skills/<name>/SKILL` real content docs and `.ok` itself
-    // index-descendable, so they now reach the document list — but by default
-    // `.ok` is never a user-visible tree folder (skills live in the Skills
-    // section), and excluding it keeps the folder set (expand/collapse-all
-    // iteration, expansion preservation across model resets) about VISIBLE
-    // folders only. When the Show .ok folders axis reveals `.ok` rows, the
-    // caller opts their folder paths in so they behave like any other folder.
     if (!options.includeOkFolders && segments.includes('.ok')) continue;
     if (isFolderEntry(entry)) {
       const folderPath = folderPathToTreeDirectoryPath(entry.path);
@@ -272,14 +187,6 @@ export function computeTreeAncestorPaths(path: string | null): string[] {
   return ancestors;
 }
 
-/**
- * Resolve the on-disk extension for a file target. The regex over the tree
- * path is the fast path for already-extended paths. When the regex misses —
- * Pierre's `#completeRenaming` can move a node to its extensionless basename
- * (`Untitled.md` → `Untitled`) without notifying us — fall back to the
- * authoritative `documents` list. A missing entry on an extensionless name
- * defaults to `.md`; asset classification happens before this helper.
- */
 function resolveFileDocExt(
   treePath: string,
   docName: string,
@@ -309,7 +216,6 @@ export function resolveExtensionlessAssetPath(
       return !name.includes('/') && name.startsWith(`${stem}.`);
     },
   );
-  // Ambiguous same-stem assets intentionally preserve the caller's conservative fallback.
   return candidates.length === 1 ? candidates[0].path : null;
 }
 
@@ -381,8 +287,6 @@ export function relativePathForTreeItem(item: ContextMenuItem): string {
 
 export function normalizeTreePathForKind(path: string, isFolder: boolean): string {
   if (isFolder) return folderPathToTreeDirectoryPath(path);
-  // Already-extended paths pass through (preserves authored .md/.mdx); bare
-  // names get the default extension appended for new-file placeholders.
   return TREE_EXTENSION_PATTERN.test(path) ? path : `${path}${DEFAULT_TREE_EXTENSION}`;
 }
 

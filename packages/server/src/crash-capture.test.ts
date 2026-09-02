@@ -24,9 +24,6 @@ afterEach(async () => {
 });
 
 function emitMonitor(err: unknown, origin: string): void {
-  // Manual emit runs the registered monitor listeners without crashing the
-  // test process — the observe-only contract means no listener can alter
-  // control flow, so this exercises the production wiring end to end.
   (process as unknown as NodeJS.EventEmitter).emit('uncaughtExceptionMonitor', err, origin);
 }
 
@@ -89,12 +86,9 @@ describe('writeCrashArtifacts', () => {
       buildCrashRecord(new Error('restart symptom'), 'uncaughtException'),
     );
 
-    // The standalone record is latest-only (truncate write).
     const crashJson = JSON.parse(readFileSync(crashJsonPath(), 'utf-8'));
     expect(crashJson.error.message).toBe('restart symptom');
 
-    // The full crash timeline — including the root-cause crash — survives in
-    // the append-mode JSONL sink, which the bundle collects alongside it.
     const messages = readFileSync(logsPath(), 'utf-8')
       .trim()
       .split('\n')
@@ -103,7 +97,6 @@ describe('writeCrashArtifacts', () => {
   });
 
   test('swallows write failures instead of throwing', () => {
-    // `.ok/local` as a regular file makes both artifact writes fail.
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'local'), 'not a directory');
     expect(() =>

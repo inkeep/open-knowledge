@@ -183,18 +183,11 @@ describe('derived-index API readiness gate', () => {
         toName: 'new-skill',
       });
 
-      // The response must land while the projection is STILL HELD: the queue
-      // serializes behind full ingests (boot, watcher re-ingest) and holding
-      // the rename response on it measured 20s+ on monorepo-sized roots. The
-      // client follows the rename by the response's own path, so projection
-      // freshness is eventual, not response-gating.
       await route.done;
       expect(route.captured.status).toBe(200);
 
       await started;
       releaseProjection();
-      // Let the deferred chain settle so the projection is still guaranteed
-      // to happen (deferred, never dropped).
       await vi.waitFor(() => {
         expect(recordDirectMutations).toHaveBeenCalledTimes(1);
       });

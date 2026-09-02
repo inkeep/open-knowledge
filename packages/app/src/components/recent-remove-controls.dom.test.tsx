@@ -16,8 +16,6 @@ describe('RecentRemoveButton', () => {
       />,
     );
     const button = screen.getByTestId('project-switcher-recent-remove-/projects/one');
-    // Mouse-only affordance: kept out of the menu's tab order (keyboard users
-    // remove via the context menu). See recent-remove-controls.tsx.
     expect(button.getAttribute('tabindex')).toBe('-1');
     expect(button.getAttribute('aria-label')).toBe('Remove One from recent projects');
     fireEvent.click(button);
@@ -37,7 +35,6 @@ describe('RecentItemContextMenu', () => {
         <div data-testid="recent-row">Two</div>
       </RecentItemContextMenu>,
     );
-    // No context content until the row is right-clicked.
     expect(screen.queryByTestId('command-palette-recent-context-remove-/projects/two')).toBeNull();
 
     fireEvent.contextMenu(screen.getByTestId('recent-row'));

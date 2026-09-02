@@ -52,14 +52,12 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-/** Seed full source (FM + body) onto a client's Y.Text. */
 function seedSource(client: TestClient, source: string): void {
   client.doc.transact(() => {
     client.ytext.insert(0, source);
   });
 }
 
-/** Append a paragraph with the given text to a client's XmlFragment. */
 function appendParagraph(client: TestClient, text: string): void {
   const paragraph = new Y.XmlElement('paragraph');
   const ytext = new Y.XmlText();
@@ -68,11 +66,6 @@ function appendParagraph(client: TestClient, text: string): void {
   client.fragment.push([paragraph]);
 }
 
-/**
- * HocuspocusProvider has a wider `on(event, listener)` signature than the
- * structural FrontmatterDocProvider expects ('synced' only). Wrap explicitly
- * rather than asserting through — the binding only listens for 'synced'.
- */
 function makeFmProvider(client: TestClient): FrontmatterDocProvider {
   return {
     document: client.doc,
@@ -93,12 +86,6 @@ function attachBinding(client: TestClient): { binding: FrontmatterBinding; dispo
   };
 }
 
-/**
- * FM-aware bridge invariant: Y.Text bytes (containing FM region + body) must
- * equal `prependFrontmatter(extractedFm, serialize(fragment))` after the
- * normalizeBridge tolerance set. Mirrors the watcher in
- * `attachBridgeInvariantWatcher` at the post-converged steady state.
- */
 function assertNestedBridgeInvariant(client: TestClient): void {
   const ytextStr = client.ytext.toString();
   const fm = stripFrontmatter(ytextStr).frontmatter;
@@ -113,12 +100,6 @@ function assertNestedBridgeInvariant(client: TestClient): void {
   }
 }
 
-/**
- * Poll until every marker appears in every client's Y.Text, then assert
- * cross-client Y.Text + fragment identity and the FM-aware bridge invariant.
- * Drop-in replacement for `assertAllConverged` that handles FM-region edits
- * (which body-only `assertBridgeInvariant` cannot).
- */
 async function assertConvergedAtDepth(
   clients: TestClient[],
   ytextMarkers: string[],
@@ -172,11 +153,6 @@ const ARRAY_OF_OBJECTS_FM = [
 ].join('\n');
 
 describe('C12: multi-client nested frontmatter convergence', () => {
-  /**
-   * Client A edits a nested leaf; client B converges; bridge
-   * invariant holds on both at depth.
-   *
-   */
   test('nested leaf edit on client A propagates to client B; bridge invariant holds at depth', async () => {
     const clients = await createTestClients(server.port, {
       count: 2,
@@ -211,17 +187,6 @@ describe('C12: multi-client nested frontmatter convergence', () => {
     }
   });
 
-  /**
-   * Two clients edit sibling nested keys with a sync gate between commits
-   * (the realistic panel UX — one binding commit per client at a time). Both
-   * edits land; the whole-subtree byte-range replace does not clobber.
-   *
-   * The "without clobber" expectation is documented as sequential-with-sync;
-   * truly concurrent FORM_WRITE_ORIGIN writes to the same FM region would
-   * interleave under Y.Text RGA at byte position 0 (a known whole-region
-   * tradeoff of the byte-range replace) — not exercised here.
-   *
-   */
   test('sibling nested key edits from two clients converge under whole-subtree merge', async () => {
     const clients = await createTestClients(server.port, {
       count: 2,
@@ -261,12 +226,6 @@ describe('C12: multi-client nested frontmatter convergence', () => {
     }
   });
 
-  /**
-   * Bridge-invariant-at-depth across the Observer A/B seam: client A edits the
-   * body via XmlFragment (WYSIWYG); client B edits a nested FM leaf. Both
-   * survive; the invariant holds at depth.
-   *
-   */
   test('body edit + nested-FM edit on two clients converge with bridge invariant at depth', async () => {
     const clients = await createTestClients(server.port, {
       count: 2,
@@ -301,11 +260,6 @@ describe('C12: multi-client nested frontmatter convergence', () => {
     }
   });
 
-  /**
-   * Array-of-objects seam at depth: client A appends a new object
-   * item; client B receives the convergence + bridge invariant.
-   *
-   */
   test('array-of-objects item append on client A propagates and converges at depth', async () => {
     const clients = await createTestClients(server.port, {
       count: 2,

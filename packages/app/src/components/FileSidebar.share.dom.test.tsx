@@ -4,9 +4,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-// Controls the mocked git-sync hook's hasRemote signal per test.
 let hasRemote = true;
-// Captures the input runShareAction receives.
 let lastShareInput: unknown;
 const runShareActionMock = vi.fn(async (input: unknown) => {
   lastShareInput = input;
@@ -48,7 +46,6 @@ function Button({
   variant?: unknown;
   [key: string]: unknown;
 }) {
-  // Radix menu items dispatch via onSelect; map it to onClick for the test.
   return (
     <button
       type="button"
@@ -205,8 +202,6 @@ vi.doMock('sonner', () => ({
 
 const { FileSidebar } = await import('./FileSidebar');
 
-// The real TooltipProvider, not a mock — the sidebar's toolbar renders Radix
-// tooltips that throw without a provider in scope.
 function renderSidebar() {
   return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
 }
@@ -216,7 +211,6 @@ describe('FileSidebar project-root Share', () => {
     hasRemote = true;
     lastShareInput = undefined;
     runShareActionMock.mockClear();
-    // Web mode (no okDesktop) keeps the test off the Electron header path.
     Object.defineProperty(window, 'okDesktop', { configurable: true, value: undefined });
   });
 
@@ -243,7 +237,6 @@ describe('FileSidebar project-root Share', () => {
     hasRemote = false;
     renderSidebar();
 
-    // Another always-present root item proves the menu rendered.
     await screen.findByTestId('empty-space-menu-new-file');
     expect(screen.queryByTestId('empty-space-menu-share')).toBeNull();
   });

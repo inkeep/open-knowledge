@@ -1,10 +1,3 @@
-/**
- * Slice 4 — projection mode (copy for acquired, symlink for local) + the
- * contentHash drift detector. Proves:a copy projection is a real dir that
- * survives the source being removed (the fresh-clone case); a symlink projection
- * stays a link.
- */
-
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,7 +28,6 @@ describe('projectSkill mode', () => {
     const dest = join(cwd, '.claude', 'skills', 'acquired');
     expect(lstatSync(dest).isSymbolicLink()).toBe(false);
     expect(lstatSync(dest).isDirectory()).toBe(true);
-    // Fresh-clone simulation: the .ok/skills source is gone, the copy remains.
     rmSync(src, { recursive: true, force: true });
     expect(existsSync(join(dest, 'SKILL.md'))).toBe(true);
   });

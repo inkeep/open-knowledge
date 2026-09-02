@@ -869,7 +869,7 @@ Homepage: https://github.com/gr2m/before-after-hook
 
 Copyright 2018 Gregor Martynus and other contributors.
 
-### `browser-fs-access@0.29.1`
+### `browser-fs-access@0.38.0`
 Homepage: https://github.com/GoogleChromeLabs/browser-fs-access#readme
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -1316,8 +1316,8 @@ Homepage: https://code.haverbeke.berlin/codemirror/search
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `@codemirror/state@6.6.0`
-Homepage: https://github.com/codemirror/state
+### `@codemirror/state@6.7.1`
+Homepage: https://code.haverbeke.berlin/codemirror/state
 
 Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
@@ -1351,7 +1351,17 @@ Homepage: https://github.com/clauderic/dnd-kit
 
 Copyright (c) 2021, Claudéric Demers
 
-### `@excalidraw/excalidraw@0.18.1`
+### `@excalidraw/common@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/element@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/excalidraw@0.18.0-abeeaeb`
 Homepage: https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
@@ -1364,6 +1374,11 @@ Copyright (c) 2023 Excalidraw
 Homepage: https://github.com/danestves/markdown-to-text.git
 
 Copyright (c) 2020 Daniel Esteves
+
+### `@excalidraw/math@0.18.0-abeeaeb`
+Homepage: https://github.com/excalidraw/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
 ### `@excalidraw/mermaid-to-excalidraw@2.2.2`
 
@@ -4729,11 +4744,6 @@ Homepage: https://github.com/sindresorhus/open
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `open-color@1.9.1`
-Homepage: https://github.com/yeun/open-color
-
-Copyright (c) 2016 heeyeun
-
 ### `ora@8.2.0`
 Homepage: https://github.com/sindresorhus/ora
 
@@ -6634,7 +6644,7 @@ Copyright (c) 2015, Yeoman team
 
 The following packages are under licenses that do not require attribution (BlueOak-1.0.0, 0BSD, WTFPL, Unlicense, CC0-1.0). Listed for completeness and traceability.
 
-- `fractional-indexing@3.2.0` — CC0-1.0
+- `@excalidraw/fractional-indexing@0.18.0-abeeaeb` — CC0-1.0
 - `isexe@3.1.5` — BlueOak-1.0.0
 - `minimatch@10.2.5` — BlueOak-1.0.0
 - `robust-predicates@3.0.3` — Unlicense
@@ -6688,6 +6698,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | Package | Patch file |
 | --- | --- |
 | `@handlewithcare/remark-prosemirror@0.1.5` | `patches/@handlewithcare%2Fremark-prosemirror@0.1.5.patch` |
+| `@hocuspocus/provider@4.0.0-rc.1` | `patches/@hocuspocus%2Fprovider@4.0.0-rc.1.patch` |
 | `@lingui/core@6.5.0` | `patches/@lingui%2Fcore@6.5.0.patch` |
 | `@pierre/diffs@1.3.6` | `patches/@pierre%2Fdiffs@1.3.6.patch` |
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |

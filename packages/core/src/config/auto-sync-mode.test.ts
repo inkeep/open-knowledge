@@ -50,7 +50,6 @@ describe('modeFromCommittedDefault', () => {
   test('accepts the widened mode strings verbatim', () => {
     expect(modeFromCommittedDefault('off')).toBe('off');
     expect(modeFromCommittedDefault('follow')).toBe('follow');
-    // Legacy alias: a committed 'pull' resolves to 'follow'.
     expect(modeFromCommittedDefault('pull')).toBe('follow');
     expect(modeFromCommittedDefault('full')).toBe('full');
   });
@@ -69,7 +68,6 @@ describe('modeFromCommittedDefault', () => {
 describe('resolveLocalAutoSyncMode', () => {
   test('an explicit mode wins over the legacy enabled boolean', () => {
     expect(resolveLocalAutoSyncMode({ mode: 'follow', enabled: true })).toBe('follow');
-    // Legacy alias: a stored 'pull' resolves to 'follow'.
     expect(resolveLocalAutoSyncMode({ mode: 'pull', enabled: true })).toBe('follow');
     expect(resolveLocalAutoSyncMode({ mode: 'off', enabled: true })).toBe('off');
   });
@@ -118,7 +116,6 @@ describe('resolveEffectiveAutoSyncMode', () => {
   });
 
   test('legacy-only config round-trips to the pre-mode behavior', () => {
-    // enabled:true → full (sync on); enabled:false → off; committed default:true seeds full.
     expect(resolveEffectiveAutoSyncMode({ local: { enabled: true }, committedDefault: null })).toBe(
       'full',
     );
@@ -131,8 +128,6 @@ describe('resolveEffectiveAutoSyncMode', () => {
 
 describe('resolveAutoSyncIntervals', () => {
   test('absent leaves resolve to the shipped defaults', () => {
-    // A config written before these keys existed must keep today's cadence
-    // rather than dropping to zero or NaN.
     for (const absent of [undefined, {}, { pullIntervalSeconds: null }]) {
       expect(resolveAutoSyncIntervals(absent)).toEqual({
         pullIntervalSeconds: DEFAULT_PULL_INTERVAL_SECONDS,
@@ -142,7 +137,6 @@ describe('resolveAutoSyncIntervals', () => {
   });
 
   test('pull and push resolve independently', () => {
-    // The whole point of two leaves: setting one must not disturb the other.
     expect(resolveAutoSyncIntervals({ pushIntervalSeconds: 900 })).toEqual({
       pullIntervalSeconds: DEFAULT_PULL_INTERVAL_SECONDS,
       pushIntervalSeconds: 900,
@@ -154,8 +148,6 @@ describe('resolveAutoSyncIntervals', () => {
   });
 
   test('a hand-edited out-of-range value clamps instead of failing the read', () => {
-    // The schema would reject these, which fails the WHOLE config read. Sync
-    // must survive one bad cadence, so the resolver clamps defensively.
     expect(resolveAutoSyncIntervals({ pullIntervalSeconds: 1 }).pullIntervalSeconds).toBe(
       MIN_SYNC_INTERVAL_SECONDS,
     );
@@ -165,8 +157,6 @@ describe('resolveAutoSyncIntervals', () => {
   });
 
   test('a non-finite or non-numeric value falls back rather than propagating NaN', () => {
-    // NaN would flow into setTimeout and fire immediately — a hot loop against
-    // the remote, the exact failure the floor exists to prevent.
     for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 'soon', {}, true]) {
       expect(
         resolveAutoSyncIntervals({ pullIntervalSeconds: bad as never }).pullIntervalSeconds,
@@ -175,7 +165,6 @@ describe('resolveAutoSyncIntervals', () => {
   });
 
   test('every offered preset survives resolution unchanged', () => {
-    // A preset that clamped would render as one value and persist as another.
     for (const seconds of SYNC_INTERVAL_PRESET_SECONDS) {
       expect(resolveAutoSyncIntervals({ pullIntervalSeconds: seconds }).pullIntervalSeconds).toBe(
         seconds,
@@ -184,8 +173,6 @@ describe('resolveAutoSyncIntervals', () => {
   });
 
   test('the defaults are themselves offered as presets', () => {
-    // Otherwise the control opens on a value absent from its own list, which
-    // renders as an empty trigger.
     expect(SYNC_INTERVAL_PRESET_SECONDS).toContain(DEFAULT_PULL_INTERVAL_SECONDS);
     expect(SYNC_INTERVAL_PRESET_SECONDS).toContain(DEFAULT_PUSH_INTERVAL_SECONDS);
   });
@@ -193,12 +180,6 @@ describe('resolveAutoSyncIntervals', () => {
 
 describe('interval leaves degrade to the leaf, not the layer', () => {
   test('a hand-edited out-of-range interval keeps the rest of the project-local layer', async () => {
-    // Regression: the leaves were plain .min()/.max(), so an out-of-range value
-    // was a hard schema rejection — and readConfigSafely degrades the WHOLE
-    // layer to defaults on any failure. `autoSync.mode` lives in that layer, so
-    // `pullIntervalSeconds: 15` silently dropped an explicit Manual choice and
-    // fell through to the committed default. On a project committing `full`
-    // that converts "never push for me" into automated commits.
     const { ConfigSchema } = await import('./schema.ts');
 
     const parsed = ConfigSchema.safeParse({
@@ -208,14 +189,12 @@ describe('interval leaves degrade to the leaf, not the layer', () => {
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
     expect(resolveLocalAutoSyncMode(parsed.data.autoSync)).toBe('off');
-    // The bad leaf falls to absent, and the resolver supplies the default.
     expect(resolveAutoSyncIntervals(parsed.data.autoSync).pullIntervalSeconds).toBe(
       DEFAULT_PULL_INTERVAL_SECONDS,
     );
   });
 
   test('an in-range interval still parses through untouched', () => {
-    // The catch must not swallow legitimate values.
     expect(resolveAutoSyncIntervals({ pullIntervalSeconds: 300 }).pullIntervalSeconds).toBe(300);
   });
 });

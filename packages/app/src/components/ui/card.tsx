@@ -2,29 +2,6 @@ import { Slot } from 'radix-ui';
 import type * as React from 'react';
 import { cn } from '@/lib/utils';
 
-/**
- * Card — bordered content shell with Header / Title / Description / Action /
- * Content / Footer slots.
- *
- * Taken from this project's configured `radix-nova` style rather than the
- * default one. Unlike that style's Spinner, its Card imports nothing but `cn`,
- * so it resolves here as-is and there was no reason to hand-author from the
- * default source.
- *
- * One deliberate divergence from upstream, recorded so a future `shadcn diff`
- * reviewer knows the drift is intentional rather than rot: `asChild` on the
- * root. Upstream Card is always a `<div>`, but the call sites here are named
- * `<section>` region landmarks, and swapping them for divs would drop a
- * landmark screen-reader users navigate by. `asChild` is the same Slot escape
- * hatch Button, Badge, and Sidebar already use in this directory. (Dialog and
- * Sheet also take an `asChild` prop, but theirs forwards to Radix's own
- * primitives rather than rendering through Slot here.)
- *
- * `size="sm"` drives the `--card-spacing` custom property, which every slot
- * reads for its padding. It is the right default for the narrow sidebar and
- * settings surfaces this app puts cards on; `default` is upstream's roomier
- * content-card spacing.
- */
 function Card({
   className,
   size = 'default',

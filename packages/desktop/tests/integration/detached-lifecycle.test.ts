@@ -1,46 +1,3 @@
-/**
- * Integration test for the desktop's detached-server lifecycle.
- *
- * Validates the invariant: the OK server spawned by the desktop runs
- * in its own process group and survives parent process exit. The test
- * does NOT need to actually run Electron — it exercises the spawn shape
- * that `WindowManager.spawnDetachedServer` uses in production wiring
- * (`packages/desktop/src/main/index.ts:ensureWindowManager`):
- *
- *     child_process.spawn(node, [cli.mjs, 'start', ...], {
- *       env: { ELECTRON_RUN_AS_NODE: '1', OK_LOCK_KIND: 'interactive' },
- *       detached: true,
- *       stdio: 'ignore',
- *       cwd: contentDir,
- *     }).unref()
- *
- * What the tests assert:
- *   1. The CLI bootstraps to a writeable `server.lock` with a non-zero port.
- *   2. The spawned pid is in a process group it owns (`pgid === pid`).
- *      This is the OS-level detachment property that decouples the server
- *      from Electron's process tree — closing the editor window or
- *      quitting Electron does not cascade SIGHUP/SIGTERM through this
- *      process group.
- *   3. An unref-ed detached child's death still reaches the parent, and the
- *      parent turns it into a `last-server-exit.json` on disk naming the
- *      exit code and the signal.
- *
- * Cleanup uses SIGKILL rather than SIGTERM-then-poll: production already
- * escalates to SIGKILL after `DEFAULT_SIGTERM_GRACE_MS` (`stopAllOwnedServers`),
- * a graceful-drain test is a separate concern, and a slow drain here would
- * only add flake to assertions that are not about shutdown.
- *
- * The test runs against the actually-built `packages/cli/dist/cli.mjs`. No
- * install hook produces it — `packages/cli` has no `prepare`/`postinstall`, so
- * `pnpm install` alone leaves it absent. The producer is this package's turbo
- * `test` task, whose `dependsOn: ["^build"]` builds `@inkeep/open-knowledge`
- * because `packages/desktop` depends on it via `workspace:*`. A bare
- * `vitest run --filter` bypasses that; run `pnpm build` from `packages/cli`
- * first, as the throw below says. When the build is absent the test fails loud,
- * because the absence of the CLI artifact IS a regression signal worth
- * surfacing.
- */
-
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -57,8 +14,6 @@ import {
   type ServerExitRecord,
 } from '../../src/main/server-exit-record.ts';
 
-// Resolve the built CLI relative to this test file so the test runs from
-// anywhere (root, packages/desktop, worktree).
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_MJS_PATH = resolve(HERE, '../../../cli/dist/cli.mjs');
 
@@ -86,9 +41,7 @@ async function waitForLock(lockDir: string): Promise<ServerLockMetadata> {
         if (typeof parsed.port === 'number' && parsed.port > 0) {
           return parsed;
         }
-      } catch {
-        // partial write; wait and retry
-      }
+      } catch {}
     }
     await wait(LOCK_POLL_INTERVAL_MS);
   }
@@ -96,8 +49,6 @@ async function waitForLock(lockDir: string): Promise<ServerLockMetadata> {
 }
 
 function getPgid(pid: number): number | null {
-  // `process.getpgid` is available on POSIX, including the macOS and Linux
-  // environments where this lifecycle helper is exercised.
   const getpgid = (process as unknown as { getpgid?: (pid: number) => number }).getpgid;
   if (typeof getpgid !== 'function') return null;
   try {
@@ -112,9 +63,6 @@ describe('detached-server lifecycle integration', () => {
 
   beforeEach(async () => {
     tmpDir = await mkdtemp(resolve(tmpdir(), 'ok-detached-lifecycle-'));
-    // `ok start` requires a real OK project root — `.ok/config.yml` must
-    // exist as a regular file. Seed manually so the test doesn't depend
-    // on `ok init`'s scaffolding behavior.
     const okDir = resolve(tmpDir, '.ok');
     mkdirSync(okDir, { recursive: true });
     writeFileSync(resolve(okDir, 'config.yml'), '', 'utf-8');
@@ -133,15 +81,10 @@ describe('detached-server lifecycle integration', () => {
     }
     const lockDir = resolve(tmpDir, '.ok', 'local');
 
-    // Production-shape spawn: `process.execPath` is the Node binary in
-    // tests; the same flag (`detached: true, stdio: 'ignore', .unref()`)
-    // applies under Electron's `ELECTRON_RUN_AS_NODE=1` in packaged
-    // builds. The OS-level process-group semantics are identical.
     const child = spawn(process.execPath, [CLI_MJS_PATH, 'start', '--port', '0'], {
       env: {
         ...process.env,
         OK_LOCK_KIND: 'interactive',
-        // Silent test mode so the CLI doesn't print the banner.
         NODE_ENV: 'test',
       },
       detached: true,
@@ -154,64 +97,30 @@ describe('detached-server lifecycle integration', () => {
     try {
       lock = await waitForLock(lockDir);
 
-      // 1. Lock has a valid port and our pid.
       expect(lock.port).toBeGreaterThan(0);
       expect(lock.pid).toBe(child.pid as number);
 
-      // 2. Spawned process is alive.
       expect(isProcessAlive(lock.pid)).toBe(true);
 
-      // 3. Process-group property — the invariant. The spawned child's
-      // own pid is its process-group leader (the kernel set this when
-      // `detached: true` triggered `setsid()` / equivalent), so a SIGHUP
-      // / SIGTERM to the parent's group does NOT propagate to it. This
-      // is the OS-level decoupling that lets the server outlive Electron
-      // parent exit.
       const pgid = getPgid(lock.pid);
       if (pgid !== null) {
         expect(pgid).toBe(lock.pid);
       }
 
-      // 4. Process-group decoupling from THIS test process. Even though
-      // we spawned the child, its pgid differs from our pgid — Electron
-      // parent quit would kill our group via SIGHUP cascade, but the
-      // detached child's group is independent.
       const myPgid = getPgid(process.pid);
       if (pgid !== null && myPgid !== null) {
         expect(pgid).not.toBe(myPgid);
       }
     } finally {
-      // Cleanup — force-kill the detached server. SIGKILL rather than
-      // SIGTERM-then-poll: production escalates to SIGKILL after
-      // `DEFAULT_SIGTERM_GRACE_MS` anyway (`stopAllOwnedServers`), the
-      // graceful-drain path is a separate test's concern, and waiting on a
-      // drain here would only let cleanup flake mask the assertions above.
       if (lock !== null) {
         try {
           process.kill(lock.pid, 'SIGKILL');
-        } catch {
-          // Already gone — fine for cleanup.
-        }
-        // Wait a moment for the OS to reap so the next test's tmpdir
-        // teardown doesn't race the dying process's open file handles.
+        } catch {}
         await wait(200);
       }
     }
   }, 60_000);
 
-  /**
-   * Pins the Node-level assumption the spawn-failure reporting rests on.
-   *
-   * `spawnDetachedServer` reports a child's exit code/signal by attaching an
-   * `'exit'` listener and then calling `.unref()`. That is only sound if
-   * `unref()` releases the event-loop reference WITHOUT detaching listeners —
-   * true, but a semantic that is easy to regress by reordering the two calls,
-   * and not something reading the code can confirm. A real detached child is
-   * the only way to check it.
-   *
-   * Without this, a reordering would silently restore the original defect: the
-   * parent again learns nothing about how the child died.
-   */
   test('an unref-ed detached child still reports its exit code and signal', async () => {
     async function captureExit(
       args: string[],
@@ -222,7 +131,6 @@ describe('detached-server lifecycle integration', () => {
         child.once('error', rej);
       });
 
-      // Same order as production: listener first, then unref.
       let exitRecord: { code: number | null; signal: string | null } | null = null;
       child.on('exit', (code, signal) => {
         exitRecord = { code, signal };
@@ -265,24 +173,6 @@ describe('detached-server lifecycle integration', () => {
     expect(exitRecord).toEqual({ code: null, signal: 'SIGKILL' });
   }, 30_000);
 
-  /**
-   * Spawn a real detached child running `script`, wire it through the same
-   * `attachServerExitObserver` production calls (over a real
-   * `createServerExitRecorder`, registered before `unref()`), kill it with
-   * `killWith` (or let it exit on its own when null), and return the record
-   * that landed on disk plus everything the injected logger captured.
-   *
-   * Going through `attachServerExitObserver` rather than rebuilding the
-   * registration by hand is what makes the exactly-one-line assertion below a
-   * pin on production's wiring: a second listener added inside that function
-   * would double the record and the log line here. What it still cannot reach
-   * is that `index.ts` calls it at all — the bypass-pin in
-   * `server-exit-wiring.test.ts` covers that.
-   *
-   * `lockDir` is derived with the same `getLocalDir` production uses rather
-   * than a hand-written `.ok/local`, so the record is asserted at the path the
-   * bundle collector harvests instead of at a duplicate of it.
-   */
   async function recordDeathOf(
     script: string,
     killWith: NodeJS.Signals | null,
@@ -305,8 +195,6 @@ describe('detached-server lifecycle integration', () => {
       logger: { warn: (_payload, msg) => warnings.push(msg) },
     });
 
-    // Production order: registered before unref(), and the pid read through the
-    // child, both of which `attachServerExitObserver` owns.
     attachServerExitObserver(child, {
       lockDir,
       recordExit: (info) => {
@@ -327,9 +215,6 @@ describe('detached-server lifecycle integration', () => {
           const record = JSON.parse(readFileSync(recordPath, 'utf-8')) as ServerExitRecord;
           return { record, infoLines, warnings };
         } catch (err) {
-          // Partial write — wait and retry, same posture as `waitForLock`.
-          // Retained so a serialization regression reports as "never parsed"
-          // rather than as the file never showing up.
           lastParseError = err;
         }
       }
@@ -354,7 +239,6 @@ describe('detached-server lifecycle integration', () => {
     expect(record.signal).toBe('SIGKILL');
     expect(record.pid).toBeGreaterThan(0);
     expect(new Date(record.at).toISOString()).toBe(record.at);
-    // One death, one line — not zero, and not doubled by the registration.
     expect(infoLines).toHaveLength(1);
     expect(infoLines[0]).toMatchObject({
       event: 'server-exit.detached-child-exited',
@@ -362,10 +246,6 @@ describe('detached-server lifecycle integration', () => {
       code: null,
       signal: 'SIGKILL',
     });
-    // No `child-process-gone` reason can describe a plain spawn child, so the
-    // detached path records none rather than borrowing another utility's, and
-    // the record says which host observed it so a reader can tell that null
-    // from a correlation window that produced nothing.
     expect(record.reason).toBeNull();
     expect(record.observer).toBe('detached-spawn');
     expect(warnings).toEqual([]);

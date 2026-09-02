@@ -1,15 +1,3 @@
-/**
- * `audit` MCP tool — unified read-only validation audit.
- *
- * One call runs every registered content validator — markdownlint rules AND
- * internal-link resolution — and returns the merged per-file diagnostic plane
- * from `GET /api/audit`. Broken links are reported under the SOURCE doc that
- * contains them (a dead link is fixed by editing its source), with a line
- * position. Report-only: there is no fix shape here — auto-fixable lint rules
- * go through `lint({ document, fix: true })`, link repairs through
- * `edit`/`write`.
- */
-
 import { validationCoverageLines } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
@@ -46,7 +34,6 @@ export const DESCRIPTION = [
 export const AUDIT_WARNINGS_DESCRIPTION =
   'Anything that made this run less than a full answer: unreadable files/dirs, config problems, a validator that could not run, or a family that ran only partially (`… validation degraded: …`). A source family named here is still listed in `ran` — it was selected, and a degraded family may still have contributed findings.';
 
-/** Fix routing is per-validator: lint has an auto-fix shape, links never do. */
 const FIX_ROUTING_HINT =
   'Auto-fix fixable lint findings with `lint({ document, fix: true })`; broken links need content edits via `edit`/`write`.';
 
@@ -158,8 +145,6 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
   const warningCount = data.warningCount ?? 0;
   const coverageLines = validationCoverageLines(data.ran);
 
-  // Both channels are agent-context-bound, so both get the cap; the HTTP
-  // endpoint stays the uncapped surface for GUI consumers.
   const shownFiles = files.slice(0, AUDIT_FILE_CAP).map((file) => {
     const diagnostics = file.diagnostics ?? [];
     const shown = diagnostics.slice(0, AUDIT_FILE_DIAGNOSTIC_CAP);
@@ -187,9 +172,6 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
     cwd,
   };
 
-  // Surface degradation warnings in the text channel too: an agent reads text,
-  // so a partial run (a skipped/unreadable file, an unavailable validator) must
-  // not be byte-indistinguishable from a genuinely clean one.
   const warningBlock = degradationBlock('Audit', shownWarnings, omittedWarningCount);
 
   const scope = path ? ` in ${path}` : '';

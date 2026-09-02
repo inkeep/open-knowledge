@@ -1,16 +1,3 @@
-/**
- * QA isolation probes for two anomalies the inverse-direction suite surfaced:
- *
- * 1. INV-06: a live external disk edit never reached Y.Text within 15s.
- *    Trajectory probe: poll ytext + disk every second for 30s, fire the
- *    test-rescan rescue at 10s, and record whether persistence clobbers the
- *    external edit back to the pre-edit bytes.
- *
- * 2. INV-09c: after killAndRestartOnSamePort the doc loaded EMPTY and the
- *    disk file was truncated. Variant probes: clean shutdown restart vs
- *    crash-sim restart, recording disk bytes at every step.
- */
-
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -55,8 +42,6 @@ describe('isolation: external disk edit trajectory', () => {
       expect(await settle(() => readTestDoc(server.contentDir, docName) === seed, 12_000)).toBe(
         true,
       );
-      // Give the persistence debounce a beat so the external write cannot be
-      // mistaken for our own store echo.
       await wait(1500);
 
       const withRuns = '\n\nAbove.\n\nBelow.\n\n\n';

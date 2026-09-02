@@ -25,7 +25,6 @@ function initRepo(dir: string): void {
   git(dir, 'config', 'user.name', 'Test User');
 }
 
-/** Write + git-add + commit a projected skill's SKILL.md. */
 function trackSkill(dir: string, hostRel: string, skillName: string, body: string): void {
   const rel = join(hostRel, 'skills', skillName, 'SKILL.md');
   const abs = join(dir, rel);
@@ -59,18 +58,11 @@ describe('untrackTrackedProjectSkillProjection', () => {
     expect(result.kind).toBe('untracked');
     if (result.kind !== 'untracked') throw new Error('unreachable');
     expect(result.dirs).toContain('.claude/skills/open-knowledge');
-    // Removed from the tree — no longer tracked.
     expect(tracked(dir, '.claude/skills/open-knowledge/')).toBe(false);
-    // Working file remains so the app self-heals on next open.
     expect(existsSync(join(dir, '.claude/skills/open-knowledge/SKILL.md'))).toBe(true);
-    // HEAD advanced by exactly one commit whose parent is the old HEAD.
     const headAfter = git(dir, 'rev-parse', 'HEAD').trim();
     expect(headAfter).not.toBe(headBefore);
     expect(git(dir, 'rev-parse', 'HEAD^').trim()).toBe(headBefore);
-    // Real index was reset to the new HEAD — no phantom STAGED addition of the
-    // now-untracked file (without a `.gitignore` here git reports the working
-    // file as merely untracked `??`, which is expected; a stale index would
-    // instead show it staged).
     expect(git(dir, 'diff', '--cached', '--name-only').trim()).toBe('');
   });
 
@@ -98,9 +90,7 @@ describe('untrackTrackedProjectSkillProjection', () => {
     const result = await untrackTrackedProjectSkillProjection(dir);
 
     expect(result.kind).toBe('untracked');
-    // Reserved bundle removed…
     expect(tracked(dir, '.claude/skills/open-knowledge/')).toBe(false);
-    // …authored skill preserved.
     expect(tracked(dir, '.claude/skills/my-authored-skill/')).toBe(true);
   });
 
@@ -112,7 +102,6 @@ describe('untrackTrackedProjectSkillProjection', () => {
     expect((await untrackTrackedProjectSkillProjection(dir)).kind).toBe('untracked');
     const headAfterFirst = git(dir, 'rev-parse', 'HEAD').trim();
     expect((await untrackTrackedProjectSkillProjection(dir)).kind).toBe('nothing-tracked');
-    // No second commit created.
     expect(git(dir, 'rev-parse', 'HEAD').trim()).toBe(headAfterFirst);
   });
 
@@ -126,8 +115,6 @@ describe('untrackTrackedProjectSkillProjection', () => {
     git(dir, 'commit', '-m', 'gitignore');
     await untrackTrackedProjectSkillProjection(dir);
 
-    // The still-present working file is now ignored, so a full `git status`
-    // is clean — no restamp can ever be staged again.
     expect(git(dir, 'status', '--porcelain').trim()).toBe('');
     expect(git(dir, 'check-ignore', '--', '.claude/skills/open-knowledge/SKILL.md').trim()).toBe(
       '.claude/skills/open-knowledge/SKILL.md',
@@ -156,7 +143,6 @@ describe('untrackTrackedProjectSkillProjection', () => {
     git(dir, 'checkout', '--detach', sha);
     const result = await untrackTrackedProjectSkillProjection(dir);
     expect(result).toEqual({ kind: 'skipped', reason: 'detached-head' });
-    // Left tracked — nothing committed on a detached HEAD.
     expect(tracked(dir, '.claude/skills/open-knowledge/')).toBe(true);
   });
 
@@ -164,7 +150,6 @@ describe('untrackTrackedProjectSkillProjection', () => {
     initRepo(dir);
     trackSkill(dir, '.claude', 'open-knowledge', 'x\n');
     git(dir, 'commit', '-m', 'seed');
-    // Fabricate an in-progress merge marker.
     writeFileSync(join(dir, '.git', 'MERGE_HEAD'), `${git(dir, 'rev-parse', 'HEAD').trim()}\n`);
     const result = await untrackTrackedProjectSkillProjection(dir);
     expect(result).toEqual({ kind: 'skipped', reason: 'operation-in-progress' });

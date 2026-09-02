@@ -1,9 +1,3 @@
-/**
- * Unit tests for `ok audit` — target-path translation, server-first dispatch
- * (planted lock + stubbed global fetch, mirroring `sync.test.ts`), report
- * rendering over the unified plane, and exit-code semantics.
- */
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,7 +7,6 @@ import { RUNTIME_VERSION } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { runAudit, toContentRelativeTarget } from './audit.ts';
 
-// `runAudit` only reads `content.dir` (via `resolveContentDir`) from config.
 const minimalConfig = { content: { dir: '.' } } as Config;
 
 function payload(over: Partial<ValidationAuditResponse> = {}): ValidationAuditResponse {
@@ -38,8 +31,6 @@ function diagnostic(over: Record<string, unknown> = {}) {
   };
 }
 
-// A links/dead-link finding for a missing local image, carrying the additive
-// evidence the audit plane attaches, positioned at the image occurrence.
 function imageDiagnostic() {
   return diagnostic({
     range: { start: { line: 5, character: 2 }, end: { line: 5, character: 2 } },
@@ -105,7 +96,6 @@ describe('runAudit', () => {
     dir = mkdtempSync(join(tmpdir(), 'ok-audit-test-'));
     const lockDir = join(dir, '.ok', 'local');
     mkdirSync(lockDir, { recursive: true });
-    // Minimal live lock: our own pid (alive), matching hostname, non-zero port.
     writeFileSync(
       join(lockDir, 'server.lock'),
       JSON.stringify({ pid: process.pid, hostname: hostname(), port: 54321 }),
@@ -237,7 +227,6 @@ describe('runAudit', () => {
     const code = await runAudit(undefined, { json: true }, minimalConfig, dir, dir, io);
 
     expect(code).toBe(1);
-    // The whole plane round-trips through the parse, evidence included.
     expect(JSON.parse(out.join('\n'))).toEqual(body);
   });
 
@@ -255,8 +244,6 @@ describe('runAudit', () => {
 
     expect(code).toBe(1);
     const text = out.join('\n');
-    // 1-based location from the 0-based occurrence range — the row points at the
-    // authored image, not the top of the doc.
     expect(text).toContain('6:3');
     expect(text).toContain('links/dead-link');
     expect(text).toContain('Image target "./logo.png" does not resolve to an existing file');

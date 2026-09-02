@@ -11,22 +11,6 @@ import * as Y from 'yjs';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the MCP and collab transports over the REAL composed
- * `bootServer` stack. The existing MCP tests prove the handler in isolation
- * (hand-rolled http server, stubbed `/api/agent-write-md`) or the mount with
- * a fake Hocuspocus; the collab tests prove admission and the message-size
- * cap but never a document drop→reconnect. This file closes those loops:
- * MCP tool calls land on the real API handlers and real persistence, and a
- * collab client can drop and rejoin a document without losing served state.
- *
- * Also pins a negative that matters to the migration: this server has NO
- * server-initiated MCP streaming surface today — `GET /mcp` without a
- * session is a plain 400, and no notification is ever pushed. Anything the
- * router migration does to `/mcp` only has to carry request/response
- * traffic plus the SDK's (idle) session SSE channel.
- */
-
 const MCP_PROTOCOL_VERSION = '2025-06-18';
 const JSON_HEADERS = {
   'content-type': 'application/json',
@@ -152,15 +136,6 @@ describe('MCP over the composed listener (real handlers, no stubs)', () => {
 });
 
 describe('collab connection lifecycle over the composed listener', () => {
-  // Deliberately connection-level, not content-level: `server-factory`
-  // registers `onAuthenticate` gates (instance-ID auth token), so an
-  // unauthenticated raw client's Sync frames are accepted on the wire but
-  // never applied to a document — and the connection never registers in
-  // `getConnectionsCount()` (whose baseline is the server's own internal
-  // DirectConnections). Content-level sync is covered by the app package's
-  // integration harness with a real client; what no test covered is the
-  // drop→rejoin lifecycle through the composed listener with the REAL
-  // Hocuspocus behind it (the admission tests use a fake).
   test('a raw client joins, hard-drops, and rejoins; each upgrade is admitted and the server survives', async () => {
     const seed = new Y.Doc();
     seed.getText('source').insert(0, 'collab payload\n');
@@ -174,16 +149,11 @@ describe('collab connection lifecycle over the composed listener', () => {
     });
     ws1.send(syncFrame('collab-reconnect-doc', update));
     await settle(300);
-    // Admitted and not rejected: the server holds the socket open even for
-    // an unauthenticated peer (frames parked pending auth, not refused).
     expect(ws1ClosedEarly).toBe(false);
 
-    // Hard drop — terminate without a close handshake (the crash shape).
     ws1.terminate();
     await settle(100);
 
-    // Rejoin on the same listener: admitted again, still parked-not-refused,
-    // and the server remains fully serviceable afterwards.
     const ws2 = await openCollab(booted.port);
     let ws2ClosedEarly = false;
     ws2.once('close', () => {

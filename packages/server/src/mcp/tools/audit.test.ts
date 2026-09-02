@@ -22,8 +22,6 @@ import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
 } from './shared.ts';
 
-// Skip-on-CI gate (oven-sh/bun#11892): same git-child-reaping issue the sibling
-// MCP tool tests guard against on ubuntu-latest GHA runners.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
@@ -79,10 +77,6 @@ let baseUrl: string;
 let tmpDir: string;
 const seenRequests: string[] = [];
 
-// Stub diagnostics mirror the real `/api/audit` plane (pinned by the
-// audit-http integration test): the lint validator emits markdownlint
-// warnings; the links validator emits `links/dead-link` errors whose message
-// names the unresolved target.
 function lintWarning(line: number) {
   return {
     range: { start: { line, character: 0 }, end: { line, character: 1 } },
@@ -103,8 +97,6 @@ function deadLinkError(line: number, target: string) {
   };
 }
 
-// A local-target (image) finding as the links validator emits it: the graph
-// triple plus additive `localTarget` evidence and an image-specific message.
 function deadImageWarning(line: number, href: string, resolved: string) {
   return {
     range: { start: { line, character: 0 }, end: { line, character: 0 } },
@@ -166,8 +158,6 @@ beforeAll(async () => {
           return Response.json(auditPayloadOf(AUDIT_FILE_CAP + 2, AUDIT_FILE_DIAGNOSTIC_CAP + 3));
         }
         if (path === 'degraded') {
-          // A validator degraded (e.g. no backlink index): no problems found,
-          // but the run is incomplete — a warning, no files.
           return Response.json({
             ok: true,
             files: [],
@@ -305,7 +295,6 @@ describe('audit — unified project audit', () => {
     expect(text).toContain('1 warning');
     expect(text).toContain('markdownlint/MD010');
     expect(text).toContain('links/dead-link');
-    // Text output displays 1-based lines from the 0-based wire range.
     expect(text).toContain('line 10');
     expect(text).toContain('"ghost"');
   });
@@ -317,7 +306,6 @@ describe('audit — unified project audit', () => {
     const s = result.structuredContent as {
       files: Array<{ diagnostics: Array<{ localTarget?: Record<string, unknown> }> }>;
     };
-    // The additive evidence survives the MCP structured channel verbatim.
     expect(s.files[0]?.diagnostics[0]?.localTarget).toEqual({
       href: './logo.png',
       targetKind: 'file',
@@ -327,8 +315,6 @@ describe('audit — unified project audit', () => {
       reason: 'no-such-file',
       resolutionMethod: 'source-relative',
     });
-    // The human-facing text distinguishes an image-file break from a doc link
-    // without relying on the structured evidence.
     const text = result.content[0]?.text ?? '';
     expect(text).toContain('Image target "./logo.png" does not resolve to an existing file');
     expect(text).toContain('links/dead-link');
@@ -365,11 +351,9 @@ describe('audit — degradation visibility', () => {
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ path: 'degraded' });
     const text = result.content[0]?.text ?? '';
-    // The warning reaches the text channel (the channel an agent reads)...
     expect(text).toContain(
       'source family "links" validation failed: backlink index is not configured',
     );
-    // ...and the summary flags the run as incomplete, not a bare "No problems.".
     expect(text).toContain('could not fully complete');
     expect(text).toContain('Audit incomplete');
     const s = result.structuredContent as { warnings?: string[] };
@@ -425,8 +409,6 @@ describe('audit — output cap', () => {
       expect(file.diagnostics).toHaveLength(AUDIT_FILE_DIAGNOSTIC_CAP);
       expect(file.omittedDiagnosticCount).toBe(3);
     }
-    // Totals mirror the server's full-scan counts, not the truncated view.
-    // The stub alternates warning/error, so of 13 per file, 6 are errors.
     const perFile = AUDIT_FILE_DIAGNOSTIC_CAP + 3;
     const errorsPerFile = Math.floor(perFile / 2);
     expect(s.fileCount).toBe(AUDIT_FILE_CAP + 2);
@@ -437,7 +419,6 @@ describe('audit — output cap', () => {
     expect(text).toContain(`${AUDIT_FILE_CAP + 2} of ${AUDIT_FILE_CAP + 2} documents`);
     expect(text).toContain('… and 3 more problems');
     expect(text).toContain('… and 2 more files with problems');
-    // Both validator sources survive the capped view.
     expect(text).toContain('markdownlint/MD010');
     expect(text).toContain('links/dead-link');
     const shownFileHeaders = text.match(/^doc-\d+\.md:$/gm) ?? [];

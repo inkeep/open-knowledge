@@ -2824,6 +2824,7 @@ msgstr "{repoName} 클론 중…"
 msgid "Cloning..."
 msgstr "클론 중…"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4779,7 +4780,6 @@ msgid "Disconnecting"
 msgstr "연결 해제 중"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
@@ -7317,6 +7317,10 @@ msgstr "잘못된 공유 URL입니다."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "잘못된 YAML"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "OpenKnowledge 및 해당 헬퍼 프로세스에 대해 macOS가 기록한 충돌 보고서도 추가합니다. 우리 것만 포함되며 다른 앱의 것은 절대 포함되지 않습니다."
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

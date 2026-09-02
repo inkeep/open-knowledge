@@ -6,7 +6,6 @@ import type {
   OkServerVersionDriftInfo,
 } from '@/lib/desktop-bridge-types';
 
-// Capture sonner calls so we can assert the toast wiring without a DOM.
 const toastWarning = vi.fn((_msg: string, _opts?: unknown) => 'warn-id');
 const toastSuccess = vi.fn((_msg: string) => 'success-id');
 const toastLoading = vi.fn((_msg: string, _opts?: unknown) => 'loading-id');
@@ -28,9 +27,6 @@ vi.doMock('sonner', () => ({
   ),
 }));
 
-// The listener imports the mocked `sonner`; bind the module after the mock is
-// registered so `toast.custom` is the captured stub (the mock facade only
-// rewrites imports resolved after the doMock call).
 type DriftModule = typeof import('@/lib/install-server-drift-listener');
 let driftToastBody: DriftModule['driftToastBody'];
 let installServerDriftListener: DriftModule['installServerDriftListener'];
@@ -54,7 +50,6 @@ const olderInfo: OkServerVersionDriftInfo = {
   appRuntime: '0.8.2',
 };
 
-/** Minimal bridge fake — only the surfaces the listener touches. */
 function makeBridge(opts?: { restartOutcome?: OkServerRestartOutcome; restartReject?: boolean }): {
   bridge: OkDesktopBridge;
   fireDrift: (info: OkServerVersionDriftInfo) => void;
@@ -156,8 +151,6 @@ describe('installServerDriftListener', () => {
     expect(h.unsubRestarted).toHaveBeenCalledTimes(1);
   });
 
-  // The drift toast renders a custom component via `toast.custom`; inspect the
-  // element the render fn returns rather than rendering it (no DOM needed).
   type DriftNode = {
     props: { body: string; warning: string; onRestart: () => void; onDismiss: () => void };
   };
@@ -212,8 +205,6 @@ describe('installServerDriftListener', () => {
     installServerDriftListener({ bridge: h.bridge });
     fireDriftAndRender(h).props.onRestart();
     await flush();
-    // The loading toast clears on any resolved outcome, not just failure, so a
-    // success reaching a still-live renderer can't strand it.
     expect(toastDismiss).toHaveBeenCalledWith('loading-id');
     expect(toastError).not.toHaveBeenCalled();
   });

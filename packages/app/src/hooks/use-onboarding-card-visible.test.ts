@@ -63,10 +63,6 @@ describe('evaluateFreshProject', () => {
   });
 
   test('freshly created (starter-pack seed) → activates, returning the seed count as baseline', async () => {
-    // A starter pack scaffolds content at create time; the `create-new` entry
-    // point sets `freshlyCreated`, so the card activates despite the entries —
-    // and the entry count becomes the file-step baseline so the seed's own
-    // templates don't auto-complete "create your first file".
     mockDocumentsResponse({ documents: [aDocument, { ...aDocument, docName: 'guide' }] });
     expect(
       await evaluateFreshProject(bridgeWith([{ path: CURRENT_PATH }], { freshlyCreated: true })),
@@ -74,10 +70,6 @@ describe('evaluateFreshProject', () => {
   });
 
   test('freshly created blank project (zero entries) → activates with baseline 0', async () => {
-    // The primary happy path for a blank `create-new` open: freshlyCreated with
-    // no content activates with baseline 0 (any first file then completes the
-    // file step). Guards against a future narrowing like `freshlyCreated &&
-    // entryCount > 0` silently suppressing the card for blank-project users.
     mockDocumentsResponse({ documents: [] });
     expect(
       await evaluateFreshProject(bridgeWith([{ path: CURRENT_PATH }], { freshlyCreated: true })),

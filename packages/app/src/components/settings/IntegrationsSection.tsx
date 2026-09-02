@@ -1,8 +1,3 @@
-/**
- * Integrations section — the "Install in Claude Desktop" row opens
- * `<InstallInClaudeDesktopDialog>` (its own internal Dialog).
- */
-
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import { useState } from 'react';

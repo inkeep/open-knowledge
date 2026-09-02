@@ -63,7 +63,6 @@ describe('extractDeltaSection', () => {
 
 - old: prior
 `;
-    // Just the trailing blank line between the two ## headings.
     expect(extractDeltaSection(input)).toBe('');
   });
 });
@@ -116,10 +115,6 @@ describe('parseSection', () => {
   });
 
   test('keeps a de-indented continuation line without truncating the entry', () => {
-    // When a changeset wraps an inline code span across a hard line break,
-    // prettier (run by `changeset version` over CHANGELOG.md) de-indents the
-    // second physical line to column 0. It is still part of the bullet, not a
-    // new entry — dropping it silently truncated a shipped release note.
     const section = `### Patch Changes
 
 - abc1234: intro sentence with a wrapped span \`ok diagnose
@@ -177,11 +172,6 @@ describe('renderNotes', () => {
   });
 
   test('drops top-level fixed-group sibling-bump bullets', () => {
-    // Changesets emits `- @inkeep/<pkg>@<version>` as a direct bullet in
-    // non-cli packages' CHANGELOG fragments. The version stamped is the
-    // pre-mode-computed bump (e.g., beta.6), which is unrelated to the
-    // workflow-resolved -beta.N tag (e.g., beta.46) the release ships as.
-    // These bullets are boilerplate cross-references — drop them.
     const packageDeltas = {
       core: `### Patch Changes
 
@@ -321,23 +311,14 @@ describe('round-trip: extractDeltaSection → parseSection → renderNotes', () 
       newCount: 2,
     });
 
-    // abc1234 should appear once despite being in both packages.
     const occurrences = (notes.match(/MCP wiring repair/g) || []).length;
     expect(occurrences).toBe(1);
-    // def5678 (app-only) should appear once.
     expect(notes).toContain('jsx selection UX');
-    // Updated dependencies bulletboard must not leak through.
     expect(notes).not.toContain('Updated dependencies');
-    // Marker at end.
     expect(notes).toMatch(/<!-- ok-consumed-set:.*-->$/);
   });
 
   test('does not truncate an entry whose body has a prettier-de-indented code-span wrap', () => {
-    // Reproduces the shape that truncated the v0.34.0 release note: a changeset
-    // wrapped an inline code span across a hard line break, and prettier — which
-    // `changeset version` runs over CHANGELOG.md — emitted the span's second
-    // line flush-left (column 0) while the surrounding lines stayed 2-space
-    // indented. The whole tail of the entry (and anything after it) was dropped.
     const cliChangelog = `# @inkeep/open-knowledge
 
 ## 0.34.0
@@ -362,12 +343,10 @@ describe('round-trip: extractDeltaSection → parseSection → renderNotes', () 
       prevBetaTag: 'v0.33.0-beta.12',
       newCount: 1,
     });
-    // Everything after the wrapped span must survive to the release notes.
     expect(notes).toContain('`ok diagnose');
     expect(notes).toContain('--redact` bundles now derive');
     expect(notes).toContain('HTTP 409');
     expect(notes).toContain('unhandled 500');
-    // Prior-version content across the second ## heading must NOT leak in.
     expect(notes).not.toContain('prior beta entry');
   });
 });
@@ -409,10 +388,6 @@ describe('maxBumpType', () => {
 });
 
 describe('computeBaseVersion — normative cadence vectors', () => {
-  // base = anchor bumped by the max bump-type accumulated since the
-  // last stable. Each row is the pile as it grows cut-by-cut from a clean
-  // 0.5.0 stable. -beta.N counter is owned by release.yml (tag scan), not
-  // here, so these only pin the base.
   const ANCHOR = '0.5.0';
 
   test('V1 — linear patches stay on one base', () => {
@@ -427,8 +402,6 @@ describe('computeBaseVersion — normative cadence vectors', () => {
     expect(computeBaseVersion(ANCHOR, ['patch', 'minor', 'patch'])).toBe('0.6.0');
   });
 
-  // Pins the math layer; check-no-major-changeset.sh prevents a 'major' from
-  // reaching here in a real cycle.
   test('V3 — a major dominates the whole cycle', () => {
     expect(computeBaseVersion(ANCHOR, ['major'])).toBe('1.0.0');
     expect(computeBaseVersion(ANCHOR, ['major', 'minor'])).toBe('1.0.0');

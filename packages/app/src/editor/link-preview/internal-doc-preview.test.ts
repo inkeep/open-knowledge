@@ -57,12 +57,6 @@ describe('deriveContentFields', () => {
   });
 });
 
-/**
- * Eviction coverage for the module-level content + backlink caches. Only the
- * network boundary (`globalThis.fetch`) is stubbed; the real caches, LRU touch,
- * and eviction run and are asserted through `loadDocContent` / `loadBacklinkCount`.
- * Each case uses fresh docNames so the module-level caches never bleed across it.
- */
 const originalFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -75,7 +69,6 @@ function jsonResponse(payload: unknown): Response {
   });
 }
 
-/** Fetch stub that answers both local read endpoints and records the docName of each call. */
 function countingFetch(): { docCalls: string[]; backlinkCalls: string[] } {
   const docCalls: string[] = [];
   const backlinkCalls: string[] = [];
@@ -106,8 +99,6 @@ describe('loadDocContent — bounded LRU content cache', () => {
     const { docCalls } = countingFetch();
     const victim = uniqueDoc();
     await loadDocContent(victim);
-    // A full cap of newer entries lands after the victim, so it must be gone
-    // regardless of what earlier tests left in the module-level cache.
     for (let i = 0; i < CONTENT_CACHE_MAX_ENTRIES; i += 1) {
       await loadDocContent(uniqueDoc());
     }
@@ -122,12 +113,10 @@ describe('loadDocContent — bounded LRU content cache', () => {
     for (let i = 0; i < CONTENT_CACHE_MAX_ENTRIES - 1; i += 1) {
       await loadDocContent(uniqueDoc());
     }
-    // The survivor is now the oldest entry; this hit must move it to the back.
     await loadDocContent(survivor);
     for (let i = 0; i < CONTENT_CACHE_MAX_ENTRIES - 1; i += 1) {
       await loadDocContent(uniqueDoc());
     }
-    // Without the recency bump the fillers above would have evicted it.
     await loadDocContent(survivor);
     expect(docCalls.filter((d) => d === survivor)).toHaveLength(1);
   });

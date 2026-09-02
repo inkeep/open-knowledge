@@ -62,41 +62,19 @@ import {
 import { type MarkInfo, markIdentityKey } from './mark-identity';
 import { MARK_ID_DATA_ATTR } from './mark-identity-decoration';
 
-/**
- * Shape of the plugin's internal state. `version` bumps on every refresh meta so
- * consumers inspecting the plugin state externally can see that a refresh fired
- * even though it doesn't influence the decorations output itself (PM re-runs
- * `props.decorations` whenever plugin state transitions on an apply).
- */
 type PluginStateShape = { version: number };
 
-/**
- * PluginKey — exported for state lookup + meta typing.
- */
 export const linkResolutionDecorationKey = new PluginKey<PluginStateShape>(
   'linkResolutionDecoration',
 );
 
-/**
- * Callback shape — maps `(markInfo, cache)` to an attrs object for the decoration
- * over that mark's range. Return null to skip emitting a decoration for this mark
- * (e.g. when `markInfo.attrs.href` is missing or when the attr set would be empty).
- */
 export type LinkResolutionAttrsComputer = (
   markInfo: MarkInfo,
   cache: PageListCacheSnapshot | null,
 ) => Record<string, string> | null;
 
 interface LinkResolutionDecorationOptions {
-  /**
-   * Mark type names to decorate. Typically `['link']` for internal-link; could
-   * also be `['wikiLink']` if wiki-links ever migrate from node to mark.
-   */
   markTypes: readonly string[];
-  /**
-   * Caller-provided attrs resolver. Receives the latest MarkInfo (with live
-   * from/to range) and the current cache snapshot (or null before first write).
-   */
   computeAttrs: LinkResolutionAttrsComputer;
 }
 
@@ -134,9 +112,6 @@ export function computeLinkResolutionDecorations(
   for (const info of byId.values()) {
     if (!markTypes.has(info.markType)) continue;
     const userAttrs = computeAttrs(info, cache);
-    // Merged-plugin attrs: data-mark-id always present; caller's resolution
-    // state attrs spread on top when computeAttrs returned non-null. Disjoint
-    // keys means no overwrite.
     const attrs: Record<string, string> = { [MARK_ID_DATA_ATTR]: info.id };
     if (userAttrs !== null) {
       Object.assign(attrs, userAttrs);
@@ -147,16 +122,6 @@ export function computeLinkResolutionDecorations(
   return DecorationSet.create(doc, decos);
 }
 
-/**
- * Plugin factory. Installs state (for refresh-meta version tracking), props
- * (reads markIdentityPlugin's byId + cache; emits decorations), and view (subscribes
- * to page-list-cache; dispatches refresh meta on every cache change; unsubscribes
- * cleanly on plugin destroy).
- *
- * Requires `markIdentityPlugin({ markTypes })` to be installed with overlapping
- * markTypes — otherwise `markIdentityKey.getState(state)` returns null and the
- * decorations function bails out.
- */
 export function linkResolutionDecorationPlugin(
   options: LinkResolutionDecorationOptions,
 ): Plugin<PluginStateShape> {
@@ -190,9 +155,6 @@ export function linkResolutionDecorationPlugin(
       },
     },
     view(view) {
-      // "Merged plugin active" signal. Single emit per editor mount;
-      // visible in DevTools Performance tab so local profiling can confirm
-      // the merged plugin is in use.
       mark(
         'ok/render/decoration-merge',
         { markTypes: Array.from(markTypeSet).join(',') },

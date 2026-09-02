@@ -1,13 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { revealBundle } from './bug-report-reveal.ts';
 
-/**
- * Pins the exact command + argv `revealBundle` hands the detached spawner per
- * platform — including a path containing a space, the shape that broke
- * Explorer's `/select,<path>` verb (Node quotes a spaced argv element, and a
- * quoted `"/select,…"` stops parsing as a switch). Windows and Linux therefore
- * pass a single bare directory argument, which quotes cleanly.
- */
 describe('revealBundle argv shape', () => {
   const SPACED = '/Users/Jane Doe/.ok/bug-reports/2026-08-04-bugreport.zip';
 
@@ -25,9 +18,6 @@ describe('revealBundle argv shape', () => {
     const [command, args] = spawn.mock.calls[0] as [string, string[]];
     expect(command).toBe('explorer.exe');
     expect(args).toHaveLength(1);
-    // On a darwin-run test suite node:path is posix, so pin the invariants
-    // rather than the separator-specific dirname result: one bare directory
-    // argument, no /select, verb glued to the path.
     expect(args[0]).not.toContain('/select,');
     expect(args[0]).not.toContain('report.zip');
   });

@@ -1,44 +1,3 @@
-/**
- * The checkpoint floor under a DEFERRED keystroke, on the REAL
- * `setupServerObservers` drain plus a real `AgentSessionManager` session.
- *
- * Staging is defer-then-trigger. A WYSIWYG keystroke sits un-propagated in the
- * fragment, a source-editor write drives an Observer B re-derive that the
- * derive-timing guard defers, and only then does a paired vector run. That
- * ordering matters: a defer moves Y.Text past Observer A's raw witness without
- * moving the witness, so the pre-drain planner's `witnessMatched` leg fails
- * closed BEFORE it ever reaches the overlap classification. Every paired vector
- * measured from this staging therefore lands on the checkpoint floor — the
- * pre-drain flush carries none of them. Each arm below pins that the floor
- * actually fired for its own vector: a `bridge-derive-loss` checkpoint whose
- * payload carries the keystroke, reachable as a restore row on the timeline.
- *
- * The paired-intake floor is a union of a substring-drop twin and a
- * whole-raw-line predicate; the deferred keystroke here is the intra-line
- * `bod`→`body.` shape that only the line predicate can express, so these arms
- * bind on that leg specifically.
- *
- * Not covered here, deliberately: the source-mode row. A source-editor edit
- * arriving after a defer leaves the keystroke live in the fragment and neither
- * carried into Y.Text nor checkpointed — it converges only on the next
- * fragment-side edit and does not survive an unload. That is an open liveness
- * gap, not intended behavior, so pinning it with a test would ratify it.
- *
- * A second residual, reachable from this rig but not from user typing: a stale
- * `sourceRaw` capture whose component children have advanced can drive a shape
- * that removes content from BOTH replicas. A real keystroke cannot present it —
- * `packages/app/src/editor/extensions/source-dirty-observer.ts` (~line 153)
- * flips `sourceDirty` on every component a user transaction edits, and
- * `packages/app/src/editor/utils/reconstruct-source.ts` (~line 14) takes the
- * verbatim `sourceRaw` fast path only while that flag is clean, with
- * `packages/core/src/bridge/structural-freshness.ts` as the server-side
- * backstop. It remains reachable in principle only on the raw-CRDT-peer surface
- * that structural-freshness explicitly delegates to the producer guard, and only
- * while a drain is freshness-suppressed (`server-observers.ts` ~line 1705). The
- * rig stamps those attrs by hand, which is why it can reach a shape the product
- * cannot.
- */
-
 import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -73,15 +32,8 @@ interface FloorHarness {
   readonly shadow: ShadowHandle;
   readonly ring: LossCaptureRing;
   readonly docName: string;
-  /** How many drains the derive-timing guard has deferred so far. */
   deferCount(): number;
-  /**
-   * Stage the un-propagated keystroke, then drive a source-editor write that
-   * the derive-timing guard defers. Asserts the defer actually fired, so an arm
-   * can never silently degrade into the never-deferred staging.
-   */
   stageDeferredKeystroke(): void;
-  /** Poll until the floor's async checkpoint lands, or give up. */
   awaitDetectorTrip(): Promise<LossCaptureEvent | undefined>;
   cleanup(): Promise<void>;
 }
@@ -117,8 +69,6 @@ async function createFloorHarness(docName: string): Promise<FloorHarness> {
     stageDeferredKeystroke: () => {
       wired.stageUnpropagatedKeystroke();
       const before = defers;
-      // A source-editor write inside the freshness-hot window is the drain the
-      // guard defers; `advanceFreshness: false` keeps the window hot.
       wired.rig.externalYtextEdit(
         'source-write',
         (yt) => yt.insert(yt.length, '\nAnother source line.\n'),
@@ -137,9 +87,7 @@ async function createFloorHarness(docName: string): Promise<FloorHarness> {
             readFileSync(lossCaptureCurrentPath(projectRoot), 'utf-8'),
           );
           trip = events.find((e) => e.event === 'detector-trip' && Boolean(e.checkpointSha));
-        } catch {
-          /* the capture file may not exist until the first record flushes */
-        }
+        } catch {}
         if (!trip) await new Promise((r) => setTimeout(r, 10));
       }
       return trip;
@@ -151,11 +99,6 @@ async function createFloorHarness(docName: string): Promise<FloorHarness> {
   };
 }
 
-/**
- * The shared floor assertions: a `bridge-derive-loss` checkpoint attributed to
- * `expectedSite`, whose payload carries the deferred keystroke, surfaced as a
- * restorable timeline row. The ring event itself stays content-free.
- */
 async function expectRestorableFloorCheckpoint(
   h: FloorHarness,
   expectedSite: string,
@@ -192,7 +135,6 @@ describe('checkpoint floor after a derive-timing defer', () => {
 
       h.wired.agentWriteWithPreDrain('An appended agent paragraph.', 'append');
 
-      // Neither replica carries it forward — the floor is the only survival path.
       expect(h.wired.ytextString()).not.toContain(WIRED_PENDING_LINE);
       expect(h.wired.serializeFragment()).not.toContain(WIRED_PENDING_LINE);
       await expectRestorableFloorCheckpoint(h, DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE);
@@ -219,7 +161,6 @@ describe('checkpoint floor after a derive-timing defer', () => {
   test('agent undo of a single frame: the deferred keystroke lands on the floor, restorable', async () => {
     const h = await createFloorHarness('floor-agent-undo');
     try {
-      // An agent write first, so the undo has exactly one frame to revert.
       h.wired.agentWrite('Agent appended line.', 'append');
       expect(h.wired.ytextString()).toContain('Agent appended line.');
 
@@ -227,7 +168,6 @@ describe('checkpoint floor after a derive-timing defer', () => {
 
       expect(h.wired.agentUndo('last')).toBe(true);
 
-      // The undo's own effect landed, and the keystroke went to the floor.
       expect(h.wired.ytextString()).not.toContain('Agent appended line.');
       expect(h.wired.ytextString()).not.toContain(WIRED_PENDING_LINE);
       expect(h.wired.serializeFragment()).not.toContain(WIRED_PENDING_LINE);
@@ -242,7 +182,6 @@ describe('checkpoint floor after a derive-timing defer', () => {
     try {
       h.stageDeferredKeystroke();
 
-      // A disk edit arriving at the live doc, through the production handler.
       const hocuspocus = {
         documents: new Map([[h.docName, h.wired.doc]]),
       } as unknown as Hocuspocus;

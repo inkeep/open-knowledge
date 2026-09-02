@@ -1,17 +1,3 @@
-/**
- * tests for the composer's `@`-mention input.
- *
- * Two groups:
- *   - Serialization: a directly-constructed TipTap editor (the same extension
- *     set the component mounts) exercises `serializeComposerContent` +
- *     `isComposerEmpty` — chips serialize inline as `@path`, mentions are
- *     ordered + de-duplicated.
- *   - Component: the rendered input exposes a `textbox`, routes Enter -> onSubmit
- *     (but not Shift+Enter), and — load-bearing — does NOT register itself in the
- *     active-editor registry, so `getEditorForDoc` keeps returning the real
- *     document editor (which selection-as-passage reads from).
- */
-
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Content, JSONContent } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
@@ -40,8 +26,6 @@ function mentionNode(path: string, label = path): Content {
   return { type: 'composerMention', attrs: { path, label } };
 }
 
-/** Reach the live editor from the rendered textbox — TipTap's EditorContent
- *  tags the contenteditable host node with the instance. */
 function getComposerEditor(box: HTMLElement): Editor {
   return (box as unknown as { editor: Editor }).editor;
 }
@@ -49,8 +33,6 @@ function getComposerEditor(box: HTMLElement): Editor {
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  // The editor's async mount emits act() warnings under jsdom; real failures
-  // still surface as missing-element assertion failures.
   consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -120,9 +102,6 @@ describe('serializeComposerContent / isComposerEmpty', () => {
   });
 
   test('a picked command pill serializes to /name and counts as content on EVERY surface', () => {
-    // The pill node is registered in the shared schema even for surfaces that
-    // can't create one (this editor has no slash corpus) — a draft holding a
-    // pill must restore and serialize everywhere, never drop to empty.
     const editor = makeEditor(
       paragraph(
         { type: 'composerCommand', attrs: { name: 'review', description: '', hint: '' } },
@@ -178,10 +157,6 @@ describe('ComposerMentionInput (component)', () => {
   });
 
   test('focusEnd places the caret at the end of the draft', () => {
-    // The card-whitespace affordance: clicking dead space means "continue
-    // typing", so the caret must land AFTER existing content — plain focus()
-    // restores the last selection, which after a blur can sit anywhere
-    // (including before a leading command pill).
     const ref = createRef<ComposerMentionInputHandle>();
     render(
       <ComposerMentionInput
@@ -215,10 +190,6 @@ describe('ComposerMentionInput (component)', () => {
       mentions: [],
       attachments: [],
     });
-    // Same contract `appendText` holds below. The host gates send-enabled, its
-    // placeholder, and context-chip tracking on emptiness, so filling an empty
-    // field without announcing it leaves all three believing nothing was
-    // written — a dead send button over visible text.
     expect(onEmptyChange).toHaveBeenLastCalledWith(false);
   });
 
@@ -251,7 +222,6 @@ describe('ComposerMentionInput (component)', () => {
     );
     ref.current?.appendText('line one\nline two');
     expect(ref.current?.getContent().instruction).toBe('line one\nline two');
-    // The send-enabled state must flip — `setContent` alone won't announce it.
     expect(onEmptyChange).toHaveBeenLastCalledWith(false);
   });
 
@@ -276,8 +246,6 @@ describe('ComposerMentionInput (component)', () => {
       instruction: '',
       mentions: [],
     };
-    // The chip survives as a chip (still on the mentions list), not flattened
-    // prose — the property that makes append safe mid-draft.
     expect(instruction).toBe('look at @notes.md\n\nrescued queue text');
     expect(mentions).toEqual(['notes.md']);
   });
@@ -296,13 +264,8 @@ describe('ComposerMentionInput (component)', () => {
     );
     const box = screen.getByRole('textbox', { name: 'Message Claude' });
     expect(box.getAttribute('contenteditable')).toBe('false');
-    // `contenteditable=false` is invisible to AT on a role="textbox" element —
-    // the disabled state must be announced, as the native `<textarea disabled>`
-    // this replaces did natively.
     expect(box.getAttribute('aria-disabled')).toBe('true');
-    // A disabled native textarea still shows its placeholder; so must this.
     expect(box.querySelector('[data-placeholder="Resuming the chat"]')).not.toBeNull();
-    // The handle still writes (the host seeds drafts regardless of state).
     ref.current?.appendText('kept');
     expect(ref.current?.getContent().instruction).toBe('kept');
 
@@ -321,10 +284,6 @@ describe('ComposerMentionInput (component)', () => {
   });
 
   test('mounting emits no onContentChange — only an edit mirrors into the draft', () => {
-    // The editable-sync effect must not push a synthetic update on mount:
-    // every composer runs it, and the Ask AI hosts mirror onContentChange into
-    // the persisted draft store — a mount-time emission is a redundant write on
-    // every doc navigation.
     const onContentChange = vi.fn(() => {});
     render(
       <ComposerMentionInput
@@ -361,41 +320,23 @@ describe('ComposerMentionInput (component)', () => {
         initialDoc={paragraph(mentionNode('notes.md', 'Notes')) as JSONContent}
       />,
     );
-    // The mention renders via its node view: a compact chip (`.composer-mention-chip`,
-    // styled single-line + ellipsis + max-width in globals.css so a long label never
-    // wraps) whose LEADING icon doubles as an aria-labeled remove control that
-    // deletes the node from the prompt — the inline counterpart of the top-row
-    // chip's leading-icon remove button.
     const removeBtn = screen.getByRole('button', { name: /Remove Notes/i });
     expect(removeBtn).toBeTruthy();
     const chip = removeBtn.closest('.composer-mention-chip');
     expect(chip).not.toBeNull();
-    // The chip surfaces its full name/path on hover (the label ellipsizes).
     expect(chip?.getAttribute('title')).toBe('Notes');
-    // The label carries the truncation hook so a long mention ellipsizes.
     expect(chip?.querySelector('.composer-mention-label')?.textContent).toBe('Notes');
-    // The remove control IS the LEADING icon cell (Cursor pattern): the
-    // `.composer-mention-icon` button — NOT a trailing ×. It holds two stacked
-    // glyphs (the file/type icon at rest, × on reveal) that cross-fade via
-    // opacity ONLY (the transition lives in CSS), so the cell never changes size
-    // and the chip box never reflows. There is NO trailing `.composer-mention-remove`
-    // slot.
     expect(removeBtn.classList.contains('composer-mention-icon')).toBe(true);
     expect(removeBtn.matches('.composer-mention-chip > .composer-mention-icon:first-child')).toBe(
       true,
     );
     expect(chip?.querySelector('.composer-mention-remove')).toBeNull();
-    // Both glyphs are inline SVGs (not the literal `@`/`×` text). The resting
-    // glyph is the same file-entry icon used by search/sidebar rows, and the
-    // hover glyph is the lucide X. Assert each cell holds an <svg>, not text.
     const restIcon = removeBtn.querySelector('.composer-mention-glyph-icon');
     const hoverIcon = removeBtn.querySelector('.composer-mention-glyph-x');
     expect(restIcon?.querySelector('svg')).not.toBeNull();
     expect(hoverIcon?.querySelector('svg')).not.toBeNull();
     expect(restIcon?.textContent).not.toContain('@');
     expect(hoverIcon?.textContent).not.toContain('×');
-    // The resting <svg> is the custom markdown file glyph for a `.md` mention,
-    // inheriting the chip color via currentColor.
     const restSvg = restIcon?.querySelector('svg');
     expect(restSvg?.getAttribute('fill')).toBe('currentColor');
     expect(ref.current?.getContent().mentions).toEqual(['notes.md']);
@@ -424,10 +365,6 @@ describe('ComposerMentionInput (component)', () => {
         }
       />,
     );
-    // The leading cell injects the same file-entry glyph the picker + top-row
-    // chip resolve for this path. Normalize both sides through the DOM: jsdom
-    // re-serializes the injected `<path .../>` as `<path ...></path>`, so compare
-    // parsed-element outerHTML, not raw strings.
     const normalizeSvg = (markup: string | undefined) => {
       const host = document.createElement('div');
       host.innerHTML = markup ?? '';
@@ -454,15 +391,10 @@ describe('ComposerMentionInput (component)', () => {
     expect(videoSvg).toBeDefined();
     expect(videoSvg).toBe(normalizeSvg(fileEntryPathIconToSvgString('clips/demo.mp4')));
 
-    // The two folder vs page glyphs are genuinely different (type-awareness, not
-    // a constant icon).
     expect(folderSvg).not.toBe(pageSvg);
   });
 
   test('mounting does NOT register in the active-editor registry', () => {
-    // Seed a real document editor for some doc; the composer must not displace
-    // it (getEditorForDoc keeps returning the document editor — the registry the
-    // selection-passage feature reads from).
     const docEditor = makeEditor();
     registerEditor('some-doc', docEditor);
     try {
@@ -477,33 +409,10 @@ describe('ComposerMentionInput (component)', () => {
   });
 });
 
-/**
- * Enter must defer to an open `@`-mention popup: while the suggestion plugin is
- * active, plain Enter commits the highlighted item (the plugin's own onKeyDown
- * owns that) and must NOT submit the prompt; with the popup closed, Enter
- * submits. This is a ProseMirror prop-precedence path — the component's
- * `editorProps.handleKeyDown` and the suggestion plugin's `props.handleKeyDown`
- * are both registered keydown handlers, and the fix makes the component's
- * handler yield (`return false`) when the popup is open.
- *
- * The component's editor is reached via the textbox DOM node, which TipTap
- * tags with the live `editor` instance — inserting `@foo` flips the suggestion
- * plugin's `active` state synchronously (it matches the `@`-trigger against the
- * doc text, independent of the async page fetch resolving), so the precedence
- * can be exercised with a real keydown.
- *
- * A Playwright case is still recommended to cover the full popup→arrow→Enter
- * keystroke flow (including the chip actually inserting); this jsdom test pins
- * the load-bearing branch: submit-vs-defer keyed on plugin `active` state.
- */
 describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    // The suggestion's async `items` step calls `fetch('/api/pages')`; jsdom
-    // has no backend, so stub a one-page corpus that matches the `@foo`
-    // trigger — deferral is keyed on the popup having a SELECTABLE item, so
-    // the tests below need the fetch to actually produce one.
     fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () =>
         new Response(
@@ -534,8 +443,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     return state?.active ?? false;
   }
 
-  /** Wait for the async corpus fetch to land in the popup's item list — the
-   *  published selectable count is exactly what the Enter guard reads. */
   async function waitForSelectableItem(editor: Editor): Promise<void> {
     for (let i = 0; i < 50; i++) {
       if (suggestionHasSelectableItem(editor.view)) return;
@@ -565,8 +472,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     const box = screen.getByRole('textbox', { name: 'Ask AI' });
     const editor = getComposerEditor(box);
 
-    // Typing `@foo` opens the mention popup (plugin `active` flips synchronously);
-    // deferral additionally waits on the corpus resolving a selectable item.
     editor.commands.insertContent('@foo');
     expect(isSuggestionActive(editor)).toBe(true);
     await waitForSelectableItem(editor);
@@ -576,9 +481,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   });
 
   test('Enter over an open @-popup with NO selectable item submits — never splits', async () => {
-    // A zero-hit query (or a still-loading corpus) keeps `active` true over an
-    // empty list; a blanket defer would fall through to TipTap's core
-    // splitBlock and turn "Enter to send" into a blank line.
     const onSubmit = vi.fn(() => {});
     render(
       <ComposerMentionInput ariaLabel="Ask AI" onEmptyChange={() => {}} onSubmit={onSubmit} />,
@@ -588,7 +490,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
 
     editor.commands.insertContent('@zzz');
     expect(isSuggestionActive(editor)).toBe(true);
-    // Let the corpus fetch resolve to a zero-hit list.
     for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 
     fireEvent.keyDown(box, { key: 'Enter' });
@@ -610,7 +511,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(0);
 
-    // Clearing the field tears the trigger down; Enter submits again.
     editor.commands.clearContent(true);
     expect(isSuggestionActive(editor)).toBe(false);
     fireEvent.keyDown(box, { key: 'Enter' });
@@ -618,10 +518,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   });
 
   test('Escape defers to the open @-popup and does not fire onEscape', () => {
-    // Load-bearing since the agent-thread composer wired onEscape to
-    // turn-cancellation: while the popup is open, Escape closes IT (the
-    // suggestion plugin owns the key) — the host must not hear the press, or
-    // dismissing the picker would stop a running agent turn.
     const onEscape = vi.fn(() => {});
     render(
       <ComposerMentionInput
@@ -639,7 +535,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     fireEvent.keyDown(box, { key: 'Escape' });
     expect(onEscape).toHaveBeenCalledTimes(0);
 
-    // Popup gone → Escape is the host's again.
     editor.commands.clearContent(true);
     expect(isSuggestionActive(editor)).toBe(false);
     fireEvent.keyDown(box, { key: 'Escape' });
@@ -647,15 +542,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
   });
 });
 
-/**
- * The IME-composition guard, against the real editor: Enter mid-composition is
- * the input method committing characters, never a send. Both halves of the
- * guard are exercised — the event's own `isComposing` flag and ProseMirror's
- * `view.composing` (they can disagree; the keydown that ends a composition
- * clears the event flag while the view still reports composing). The
- * ThreadView suites' textarea double reimplements only the event half, so this
- * is the coverage that pins production.
- */
 describe('ComposerMentionInput — Enter during IME composition', () => {
   test('neither guard half lets a composition Enter submit; a plain Enter does', () => {
     const onSubmit = vi.fn(() => {});
@@ -668,8 +554,6 @@ describe('ComposerMentionInput — Enter during IME composition', () => {
     fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
     expect(onSubmit).toHaveBeenCalledTimes(0);
 
-    // Same public-getter override the gfm-autolink suite uses — the view's
-    // `composing` is a getter, so define over it rather than assign.
     Object.defineProperty(editor.view, 'composing', { get: () => true, configurable: true });
     try {
       fireEvent.keyDown(box, { key: 'Enter' });
@@ -683,16 +567,8 @@ describe('ComposerMentionInput — Enter during IME composition', () => {
   });
 });
 
-/**
- * `setText` is how every host seeds this field with prose the user already
- * wrote — a comment being revised, a starter brief, a sent message being
- * edited. It has to hand back what it was given.
- */
 describe('ComposerMentionInput — setText round-trips the text it was given', () => {
   test('newlines survive, and angle brackets are not parsed as markup', () => {
-    // `setContent` treats a bare string as HTML: seeding this way used to
-    // collapse every line break and swallow anything that looked like a tag,
-    // so a host reading the draft straight back got different words out.
     const ref = createRef<ComposerMentionInputHandle>();
     render(<ComposerMentionInput ref={ref} ariaLabel="Ask AI" onEmptyChange={() => {}} />);
 
@@ -703,8 +579,6 @@ describe('ComposerMentionInput — setText round-trips the text it was given', (
   });
 
   test('seeding announces emptiness, the way appending does', () => {
-    // The two halves of the same handle disagreed: a host that gated its Send
-    // button on `onEmptyChange` stayed disabled on a field it had just filled.
     const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
     const ref = createRef<ComposerMentionInputHandle>();
     render(<ComposerMentionInput ref={ref} ariaLabel="Ask AI" onEmptyChange={onEmptyChange} />);

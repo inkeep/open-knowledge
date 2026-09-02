@@ -1,19 +1,3 @@
-/**
- * Trailing hardBreak through the real server bridge (Observer A/B).
- *
- * A WYSIWYG-created hard break at the end of a paragraph must not surface a
- * stray `\` in Y.Text ("forward slash at end of line" report), and the
- * fragment↔Y.Text pair must converge to the same bytes — the historical
- * failure was a split-brain where deleting the `\` from source left the
- * hardBreak node in the fragment and the next Observer A drain re-emitted it,
- * masked from the watchdog by parse-equivalence tolerance.
- *
- * The break must also SURVIVE: it reaches Y.Text as `<br />`, the one spelling
- * that survives its own re-parse. Dropping it instead would leave the
- * keystroke with no trace in the bytes and none in the view after the next
- * re-derivation. See `strip-trailing-edge.ts`.
- */
-
 import { updateYFragment } from '@tiptap/y-tiptap';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
@@ -62,16 +46,10 @@ describe('trailing hardBreak bridge convergence', () => {
       const ytext = client.ytext.toString();
       const fragMd = serializeFragment(client.fragment);
 
-      // The stray-character symptom: no backslash may reach source bytes.
       expect(ytext).not.toContain('\\');
-      // ...and the break is not silently discarded either: it lands in the one
-      // spelling that survives its own re-parse.
       expect(ytext).toBe('hello<br />\n');
-      // The split-brain: fragment serialization must equal Y.Text, so a
-      // subsequent Observer A drain cannot re-emit a deleted character.
       expect(fragMd).toBe(ytext);
 
-      // A later fragment change must not resurrect a trailing backslash.
       const pmDoc2 = schema.nodeFromJSON({
         type: 'doc',
         content: [

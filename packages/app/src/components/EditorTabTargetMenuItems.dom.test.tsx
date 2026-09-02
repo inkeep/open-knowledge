@@ -1,20 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Tab-context-menu action states for a template DOC tab.
- *
- * A template is a content doc now, so its tab target is an ordinary
- * `{ kind: 'doc' }` whose relative path carries a `.ok/templates/` segment. The
- * menu's mutation gate keys on `hasOkPathSegment(relativePathForTarget(target))`,
- * so those actions disable for template tabs with NO template-aware code — the
- * doc-name shape alone drives it. This renders the real component (its private
- * `relativePathForTarget` + the shared `FileTargetMenuItems` renderer stay live)
- * and asserts which items appear. The ordinary-doc control proves the actions
- * are only withheld because of the `.ok` shape, not because the menu is inert.
- *
- * The heavy context graph is stubbed the way the sibling `EditorTabs.dom` /
- * `FileTargetMenuItems.dom` tests do it — everything except the component under
- * test and the shared renderer is a marker.
- */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -126,7 +110,6 @@ function docTarget(docName: string): EditorTabFileTarget {
   return { kind: 'doc', target: docName, docName };
 }
 
-// The five `.ok`-gated mutation actions that must disappear for a template tab.
 const OK_GATED_ACTIONS = ['Import as template', 'Duplicate', 'Rename', 'Hide this file', 'Delete'];
 
 afterEach(() => {
@@ -146,9 +129,6 @@ describe('EditorTabTargetMenuItems — template doc tab', () => {
     renderMenu(docTarget('docs/.ok/templates/note'));
     const relativePath = screen.getByRole('menuitem', { name: 'Relative path' });
     fireEvent.click(relativePath);
-    // The template content doc name is ext-less; the copied path is the real
-    // file on disk (the `.md` the doc name elides), not the useless synthetic
-    // name the pre-migration tab copied.
     expect(scheduleClipboardWrite).toHaveBeenCalledWith('docs/.ok/templates/note.md');
   });
 
@@ -168,8 +148,6 @@ describe('EditorTabTargetMenuItems — template doc tab', () => {
 
 describe('EditorTabTargetMenuItems — ordinary doc control', () => {
   test('the same actions DO appear for a non-.ok doc, proving the gate is the .ok shape', () => {
-    // Acid test: if these were absent for every doc tab the template assertions
-    // above would pass vacuously. An ordinary doc offers the full mutation set.
     renderMenu(docTarget('docs/note'));
     for (const label of OK_GATED_ACTIONS) {
       expect(screen.getByRole('menuitem', { name: label })).toBeTruthy();

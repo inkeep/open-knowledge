@@ -80,14 +80,6 @@ function parseProcessList(raw: string): WindowsConsoleProcess[] {
   return processes;
 }
 
-/**
- * One PowerShell spawn per call. `processIds`, when given, is re-queried as a
- * single `ProcessId = a OR ProcessId = b` filter rather than one query each, so
- * a sweep costs at most two cold PowerShell/WMI starts no matter how many
- * console hosts leaked — this runs on the main process immediately before an
- * update installs. The ids are integers `parseProcessList` already validated,
- * so interpolating them into the filter cannot inject.
- */
 function listWindowsConsoleProcesses(
   env: NodeJS.ProcessEnv,
   processIds?: readonly number[],
@@ -158,12 +150,6 @@ function errorCode(error: unknown): string {
   return typeof code === 'string' ? code : 'unknown';
 }
 
-/**
- * Remove console hosts that can hold files inside the installed app tree open
- * while an in-place update replaces that tree. Process-name matching alone is
- * insufficient: conhost.exe is shared Windows infrastructure, so ownership is
- * proven by an executable path or command line rooted under this installation.
- */
 export function sweepWindowsUpdateSurvivors(
   options: WindowsUpdateSurvivorSweepOptions,
 ): WindowsUpdateSurvivorSweepResult {
@@ -207,10 +193,6 @@ export function sweepWindowsUpdateSurvivors(
         ? options.listProcesses().filter((entry) => processIds.includes(entry.processId))
         : listWindowsConsoleProcesses(options.env ?? process.env, processIds));
 
-  // One re-query for the whole candidate set, matched back by PID below: the
-  // scan-to-kill window is what makes revalidation necessary, but the re-query
-  // is itself an out-of-process call that can fail or time out, and a failure
-  // there leaves every identity unproven, so nothing gets terminated.
   const revalidated = new Map<number, WindowsConsoleProcess>();
   let revalidationFailed = false;
   if (candidates.size > 0) {

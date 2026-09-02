@@ -1,15 +1,3 @@
-/**
- * Slash command menu — behavioral E2E specification.
- *
- * Describes how the slash command menu works from a user's perspective:
- * triggering, filtering, keyboard navigation, item insertion, positioning,
- * and accessibility. Each test is a behavioral statement that should remain
- * true regardless of the internal implementation.
- *
- * Requires: Playwright browsers installed. Dev server started by
- * `playwright.config.ts` `webServer` on VITE_PORT (or default 5173).
- */
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
@@ -24,13 +12,7 @@ import {
   waitForSlashMenuOpen,
 } from './_helpers';
 
-// ---------------------------------------------------------------------------
-// Helpers — thin wrappers around the editor's observable surface
-// ---------------------------------------------------------------------------
-
 async function resetEditor(_api: ApiHelpers, page: Page, docName: string) {
-  // Each test creates a fresh unique doc in beforeEach; avoid extra reset/write
-  // traffic here so the editor selection cannot race a document truncate.
   await page.goto(`/#/${docName}`);
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   await waitForActiveProviderSynced(page);
@@ -82,7 +64,6 @@ async function getMenuState(page: Page) {
   });
 }
 
-/** Walks up from the menu to the body-attached fixed-position popup div. */
 async function getPopupInfo(page: Page) {
   return page.evaluate(() => {
     const menu = document.querySelector('[role="listbox"][aria-label="Slash commands"]');
@@ -122,10 +103,6 @@ async function getCursorRect(page: Page) {
     return range.getBoundingClientRect().toJSON();
   });
 }
-
-// ---------------------------------------------------------------------------
-// Triggering and filtering
-// ---------------------------------------------------------------------------
 
 test.describe('slash command — triggering and filtering', () => {
   let docName: string;
@@ -204,10 +181,6 @@ test.describe('slash command — triggering and filtering', () => {
     expect(await getEditorState(page).then((s) => s.text)).toContain('/xyz');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Item insertion
-// ---------------------------------------------------------------------------
 
 test.describe('slash command — item insertion', () => {
   let docName: string;
@@ -324,7 +297,6 @@ test.describe('slash command — item insertion', () => {
       .toBeGreaterThan(0);
 
     const s = await getEditorState(page);
-    // Some item was inserted (first item in the menu)
     expect(s.h1Count + s.h2Count + s.ulCount + s.blockquoteCount + s.tableCount).toBeGreaterThan(0);
     expect(s.text).not.toContain('/');
   });
@@ -341,10 +313,6 @@ test.describe('slash command — item insertion', () => {
     expect(s.ulCount).toBe(1);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Keyboard navigation
-// ---------------------------------------------------------------------------
 
 test.describe('slash command — keyboard navigation', () => {
   let docName: string;
@@ -364,8 +332,6 @@ test.describe('slash command — keyboard navigation', () => {
     await page.keyboard.type('/');
     await waitForSlashMenuOpen(page);
 
-    // Navigate down 3 times; expect.poll on the final selection-index absorbs
-    // keystroke-to-render latency without a per-iteration sleep.
     for (let i = 0; i < 3; i++) {
       await page.keyboard.press('ArrowDown');
     }
@@ -375,7 +341,6 @@ test.describe('slash command — keyboard navigation', () => {
     expect(m.open).toBe(true);
     if (!m.open) return;
 
-    // Exactly one item is selected, and it's the 4th (index 3)
     const selected = m.items.filter((i) => i.dataSelected === 'true');
     expect(selected).toHaveLength(1);
     expect(m.items.findIndex((i) => i.dataSelected === 'true')).toBe(3);
@@ -391,7 +356,6 @@ test.describe('slash command — keyboard navigation', () => {
     await waitForSlashMenuOpen(page);
 
     const initial = await getSelectedItemSnapshot(page);
-    // First item is selected by default (index 0). ArrowUp should wrap to the last item.
     await page.keyboard.press('ArrowUp');
     await expect
       .poll(() => getSelectedItemSnapshot(page).then((s) => s.index))
@@ -413,14 +377,11 @@ test.describe('slash command — keyboard navigation', () => {
     await page.keyboard.type('/');
     await waitForSlashMenuOpen(page);
 
-    // Navigate down 5 items (selection at index 5)
     for (let i = 0; i < 5; i++) {
       await page.keyboard.press('ArrowDown');
     }
     await expect.poll(() => getSelectedItemSnapshot(page).then((s) => s.index)).toBe(5);
 
-    // Now type a query that narrows to fewer items than current index
-    // Backspace to delete '/', then type '/h' — which should match heading items only (~3)
     await page.keyboard.press('Backspace');
     await expect(page.locator('.ProseMirror:not(.composer-prosemirror)')).not.toContainText('/');
     await page.keyboard.type('/heading');
@@ -429,7 +390,6 @@ test.describe('slash command — keyboard navigation', () => {
     const m = await getMenuState(page);
     expect(m.open).toBe(true);
     if (!m.open) return;
-    // Selection should be clamped to within the narrowed list, not beyond it
     const selectedIdx = m.items.findIndex((i) => i.dataSelected === 'true');
     expect(selectedIdx).toBeGreaterThanOrEqual(0);
     expect(selectedIdx).toBeLessThan(m.itemCount);
@@ -446,7 +406,6 @@ test.describe('slash command — keyboard navigation', () => {
     await waitForSlashMenuClosed(page);
 
     expect(await getMenuState(page).then((m) => m.open)).toBe(false);
-    // The / character remains — nothing was inserted or deleted
     expect(await getEditorState(page).then((s) => s.text)).toContain('/');
   });
 
@@ -457,7 +416,6 @@ test.describe('slash command — keyboard navigation', () => {
 
     const m = await getMenuState(page);
     if (!m.open) return;
-    // Press down enough times to reach the last item
     for (let i = 0; i < m.itemCount - 1; i++) {
       await page.keyboard.press('ArrowDown');
     }
@@ -479,10 +437,6 @@ test.describe('slash command — keyboard navigation', () => {
     await page.keyboard.press('Escape');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Accessibility
-// ---------------------------------------------------------------------------
 
 test.describe('slash command — accessibility', () => {
   let docName: string;
@@ -530,7 +484,6 @@ test.describe('slash command — accessibility', () => {
     await page.keyboard.type('/');
     await waitForSlashMenuOpen(page);
 
-    // Initial state: first item selected — aria-activedescendant should reference it
     const initial = await page.evaluate(() => {
       const menu = document.querySelector('[role="listbox"]');
       if (!menu) return null;
@@ -548,7 +501,6 @@ test.describe('slash command — accessibility', () => {
     expect(initial.exists).toBe(true);
     expect(initial.isSelected).toBe(true);
 
-    // Navigate down — aria-activedescendant should update to a different ID
     await page.keyboard.press('ArrowDown');
     await expect
       .poll(() => getSelectedItemSnapshot(page).then((s) => s.adId))
@@ -570,7 +522,6 @@ test.describe('slash command — accessibility', () => {
     expect(afterNav.adId).toBeTruthy();
     expect(afterNav.exists).toBe(true);
     expect(afterNav.isSelected).toBe(true);
-    // The referenced ID should have changed after navigation
     expect(afterNav.adId).not.toBe(initial.adId);
     await page.keyboard.press('Escape');
   });
@@ -580,14 +531,12 @@ test.describe('slash command — accessibility', () => {
     await page.keyboard.type('/');
     await waitForSlashMenuOpen(page);
 
-    // Initial live region should contain the first item's label
     const initialLive = await page.evaluate(() => {
       const live = document.querySelector('[role="listbox"] [aria-live="polite"]');
       return live?.textContent?.trim() ?? null;
     });
     expect(initialLive).toBeTruthy();
 
-    // Navigate down — live region should update to the new item's label
     await page.keyboard.press('ArrowDown');
     await expect
       .poll(() => getSelectedItemSnapshot(page).then((s) => s.liveText))
@@ -610,7 +559,6 @@ test.describe('slash command — accessibility', () => {
     const m = await getMenuState(page);
     expect(m.open).toBe(true);
     if (!m.open) return;
-    // There are category headers, and they have human-readable labels
     expect(m.legends.length).toBeGreaterThan(0);
     for (const legend of m.legends) {
       expect(legend.length).toBeGreaterThan(0);
@@ -639,10 +587,6 @@ test.describe('slash command — accessibility', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Positioning
-// ---------------------------------------------------------------------------
-
 test.describe('slash command — menu positioning', () => {
   let docName: string;
 
@@ -668,7 +612,6 @@ test.describe('slash command — menu positioning', () => {
     if (!popup || !cursor) return;
 
     const gap = popup.rect.top - cursor.bottom;
-    // Small positive gap (a few pixels of offset)
     expect(gap).toBeGreaterThan(0);
     expect(gap).toBeLessThan(20);
   });
@@ -678,7 +621,6 @@ test.describe('slash command — menu positioning', () => {
     api,
   }) => {
     await resetEditor(api, page, docName);
-    // Push cursor near the bottom of the viewport
     for (let i = 0; i < 18; i++) {
       await page.keyboard.type(`line ${i}`);
       await page.keyboard.press('Enter');
@@ -690,7 +632,6 @@ test.describe('slash command — menu positioning', () => {
     const viewport = await page.evaluate(() => window.innerHeight);
     expect(popup).not.toBeNull();
     if (!popup) return;
-    // Menu should be in the upper portion of the viewport (flipped above cursor)
     expect(popup.rect.top).toBeLessThan(viewport * 0.75);
     await page.keyboard.press('Escape');
   });
@@ -704,7 +645,6 @@ test.describe('slash command — menu positioning', () => {
     expect(popup).not.toBeNull();
     if (!popup) return;
 
-    // The CSS variable is set by the size middleware — its value is viewport-relative
     expect(popup.cssVar).toBeTruthy();
     expect(popup.cssVar).toMatch(/^\d+(\.\d+)?px$/);
     const maxHeightPx = parseFloat(popup.cssVar);
@@ -713,16 +653,4 @@ test.describe('slash command — menu positioning', () => {
     expect(maxHeightPx).toBeLessThanOrEqual(viewport * 0.5);
     await page.keyboard.press('Escape');
   });
-
-  // The former "menu repositions on editor scroll" test was deleted after
-  // TDD review found it testing Floating-UI's `autoUpdate` contract rather
-  // than any invariant we own. Scroll tracking is Floating-UI's
-  // responsibility; we configure middleware + virtual element, and the
-  // "menu appears just below the cursor" test above already exercises that
-  // our `startAutoUpdate` wiring is live (the popup would never reveal
-  // without autoUpdate's first synchronous `doPosition` resolving). The
-  // deleted test also ran up against Chromium's programmatic-scroll rebound
-  // — a browser-native ~150ms scroll correction that neutralized small
-  // `scrollTop` deltas and produced intermittent failures under CPU
-  // contention.
 });

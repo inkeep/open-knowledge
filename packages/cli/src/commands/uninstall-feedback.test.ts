@@ -17,7 +17,6 @@ function write(path: string, content: string): void {
   writeFileSync(path, content);
 }
 
-/** Records every submission so a test can assert the wire shape it was handed. */
 function recordingSubmit(result: UninstallFeedbackResult = { ok: true, reference: 'FB-1' }): {
   submissions: UninstallFeedbackSubmission[];
   submit: (submission: UninstallFeedbackSubmission) => Promise<UninstallFeedbackResult>;
@@ -50,17 +49,6 @@ function interactive(answers: UninstallFeedbackAnswers) {
 const ARROW_UP = '[A';
 const ENTER = '\r';
 
-/**
- * Answers each prompt as it appears on the output stream, so the sequence is
- * driven by what the user would actually see rather than by timing.
- *
- * Two details make the fake faithful. `_isStdio` is what stops inquirer's
- * piped MuteStream from closing the output when the select resolves — Node's
- * legacy `pipe` skips end-propagation for stdio, which is why the real stderr
- * survives to serve the prompts that follow. And the reply is deferred a tick
- * because writing during a render races the keypress listener that same render
- * is still installing.
- */
 function drive(steps: Array<{ when: string; send: string }>): {
   io: { input: PassThrough; output: PassThrough };
   transcript: () => string;
@@ -195,8 +183,6 @@ describe('promptUninstallFeedback submission', () => {
     expect(submissions).toEqual([]);
   });
 
-  // The caller proceeds either way, but the outcome must not call a POST that
-  // never landed "submitted" — that is the signal a schema drift would show up in.
   test('reports a send that never landed as undelivered, not submitted', async () => {
     const { submit } = recordingSubmit({ ok: false, reason: 'timeout' });
     const outcome = await promptUninstallFeedback({
@@ -224,7 +210,6 @@ describe('promptUninstallFeedback submission', () => {
 });
 
 describe('ok uninstall feedback step', () => {
-  /** A temp home with the machine-touching removal primitives stubbed out. */
   function uninstallFixture(): { home: string; cleanup: () => void } {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-fb-'));
     write(join(home, '.ok', 'auth.yml'), 'x\n');
@@ -258,11 +243,6 @@ describe('ok uninstall feedback step', () => {
               return { reason: 'missing-feature' };
             },
             submit: async (submission) => {
-              // Feedback is asked AFTER removal now, so by the time this settles
-              // the credentials are already gone — and the send is still awaited,
-              // so the fully-populated `order` after `runUninstall` proves the
-              // POST flushed before the process would exit (an un-awaited POST
-              // would resolve after teardown, i.e. after the process is gone).
               await new Promise((resolve) => setTimeout(resolve, 0));
               order.push(
                 existsSync(join(home, '.ok', 'auth.yml'))
@@ -274,9 +254,6 @@ describe('ok uninstall feedback step', () => {
           },
         },
       });
-      // The survey is deferred to the caller now, so the removal report prints
-      // before the prompt. Running it drives the survey and awaits the POST,
-      // which by now lands after cleanup (auth.yml already gone).
       await result.runFeedbackAfterReport?.();
       expect(order).toEqual(['asked', 'posted-after-cleanup']);
       expect(result.status).toBe('done');
@@ -305,19 +282,16 @@ describe('ok uninstall feedback step', () => {
         isStdinTTY: true,
         confirmStream: Readable.from(['y\n']),
         deps: {
-          discoverLockDirs: async () => ['/some/proj/.ok/local'], // → a stop-server op
+          discoverLockDirs: async () => ['/some/proj/.ok/local'],
           detectInstallMethods: () => [],
           runRemovalDeps: {
             ...stubbedRemoval,
-            // The SIGTERM fails → the removal outcome carries a failed op.
             stopServer: () => ({ stopped: 0, failed: [{ pid: 99, error: 'EPERM' }] }),
           },
           feedback: { collect, submit },
         },
       });
       expect(result.status).toBe('failed');
-      // No survey closure is even created on a failed removal — the structural
-      // contract, stronger than the mock-call-count assertions below.
       expect(result.runFeedbackAfterReport).toBeUndefined();
       expect(collect).not.toHaveBeenCalled();
       expect(submit).not.toHaveBeenCalled();
@@ -347,9 +321,6 @@ describe('ok uninstall feedback step', () => {
           },
         },
       });
-      // The survey is deferred to the caller now, so run it here to actually
-      // fire the SIGINT-throwing collect. promptUninstallFeedback absorbs the
-      // throw (resolve-never-throw), leaving the completed removal undisturbed.
       await result.runFeedbackAfterReport?.();
       expect(result.status).toBe('done');
       expect(result.exitCode).toBe(0);
@@ -359,9 +330,6 @@ describe('ok uninstall feedback step', () => {
     }
   });
 
-  // `echo y | ok uninstall` — stdout is a terminal but stdin is a pipe, so
-  // inquirer would render a prompt that can never receive a keystroke. Pins that
-  // the flow passes the stdin stream through, not stdout twice.
   test('a piped stdin on an interactive terminal is not surveyed', async () => {
     const { home, cleanup } = uninstallFixture();
     try {

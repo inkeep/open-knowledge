@@ -9,13 +9,6 @@ import {
   resolveGitHubAccountFromUrl,
 } from './github-account.ts';
 
-/**
- * The credential lookup delegates to a real `git config --get-urlmatch`, so
- * these tests pin git's own longest-prefix resolution rather than a
- * reimplementation of it. `GIT_CONFIG_NOSYSTEM` plus a temp `GIT_CONFIG_GLOBAL`
- * keeps them off the developer's own config, which on a macOS box carries a
- * system-scope `[credential]` section.
- */
 let dir: string;
 let globalConfig: string;
 const savedEnv: Record<string, string | undefined> = {};
@@ -42,7 +35,6 @@ function writeGlobalConfig(contents: string): void {
   writeFileSync(globalConfig, contents, 'utf-8');
 }
 
-/** A worktree git recognizes, so repo-local config scope actually applies. */
 function initRepo(name: string, config?: string): string {
   const root = join(dir, name);
   mkdirSync(root, { recursive: true });
@@ -51,7 +43,6 @@ function initRepo(name: string, config?: string): string {
   return root;
 }
 
-/** A `.git/config` on disk without a real repo — enough for the origin read. */
 function seedOrigin(name: string, config: string): string {
   const root = join(dir, name);
   mkdirSync(join(root, '.git'), { recursive: true });
@@ -90,10 +81,6 @@ describe('resolveGitHubAccountFromUrl', () => {
     });
   });
 
-  // Git consults credential helpers only for http(s) transports, and the scp
-  // form makes `git config --get-urlmatch` exit 128 (no scheme) — so a
-  // non-https origin must land on the floor without spawning the lookup at
-  // all.
   test('ssh and scp origins never consult the credential-config lookup', () => {
     let reads = 0;
     const counting: CredentialUrlMatchReader = () => {
@@ -115,9 +102,6 @@ describe('resolveGitHubAccountFromUrl', () => {
     expect(reads).toBe(0);
   });
 
-  // `https://:token@host/o/r` and placeholder-user forms reach the lookup
-  // (the userinfo declared no account), but the credential half must never
-  // ride into the subprocess argument.
   test('the credential-config lookup never receives a URL userinfo', () => {
     const seen: string[] = [];
     const recording: CredentialUrlMatchReader = (url) => {
@@ -207,10 +191,6 @@ describe('credential.<url>.username', () => {
     });
   });
 
-  // rc=128 (as opposed to the benign rc=1 no-match): a syntactically broken
-  // gitconfig fails the whole `git config` invocation. The lookup failure
-  // must read as "no declaration" and fall to the active-account floor —
-  // never throw out of the resolver or kill the credential.
   test('a broken gitconfig fails the lookup to the active-account floor', () => {
     writeGlobalConfig('[credential "https://github.com\n\tusername = personal\n');
     expect(resolveGitHubAccountFromUrl('https://github.com/mona/test', { cwd: dir })).toEqual({
@@ -243,9 +223,6 @@ describe('credential.<url>.username', () => {
     });
   });
 
-  // An unscoped `[credential] username` matches every URL git asks about, so a
-  // value set for some corporate non-GitHub host would otherwise be read as a
-  // GitHub account for every github.com remote on the machine.
   test('an unscoped credential username that is not a login stays out of the chain', () => {
     writeGlobalConfig('[credential]\n\tusername = alice@contoso.com\n');
     expect(resolveGitHubAccountFromUrl('https://github.com/mona/test.git', { cwd: dir })).toEqual({
@@ -311,7 +288,6 @@ describe('credential.<url>.username', () => {
 });
 
 describe('createCachedGitHubAccountResolver', () => {
-  /** A credential lookup whose calls the test can count and whose answer it can swap. */
   function countingReader(initial: string | null): {
     fn: CredentialUrlMatchReader;
     calls: () => number;
@@ -401,7 +377,6 @@ describe('createCachedGitHubAccountResolver', () => {
       login: 'alice',
       source: 'remote-url',
     });
-    // The declared-account URL needs no lookup, so the swap costs no spawn.
     expect(reader.calls()).toBe(1);
   });
 
@@ -415,9 +390,6 @@ describe('createCachedGitHubAccountResolver', () => {
   });
 
   test('projects do not share a cached resolution even for the same URL', () => {
-    // Repo-local `credential.<url>.username` entries make the answer
-    // project-specific, so a shared entry would leak one project's identity
-    // into another.
     const url = 'https://github.com/acme/kb.git';
     const one = seedOrigin('proj-one', originConfig(url));
     const two = seedOrigin('proj-two', originConfig(url));

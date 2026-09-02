@@ -1,10 +1,3 @@
-/**
- * QA probes: #3132 forward-direction verification + regressions the fix could
- * plausibly have introduced (write-surface matrix, FM separator, floor-guard
- * hazards, degenerate docs, concurrency, undo), plus the inverse-destruction
- * mirror of the original Miles report.
- */
-
 import { appendFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -157,11 +150,6 @@ describe('#3132 forward verification + regression checks', () => {
       a.doc.transact(() => {
         a.fragment.insert(0, [para(), para()]);
       });
-      // The head-run bytes on an FM doc: separator stays, run rides after it.
-      // Settle on the exact byte state so the later source nudge cannot race
-      // the still-in-flight run write (a weaker predicate returns at the
-      // pre-broadcast state and the concurrent keystroke CRDT-interleaves
-      // with the run insertion).
       const stableState = await settle(() => {
         const y = clients[0].ytext.toString();
         return (
@@ -180,7 +168,6 @@ describe('#3132 forward verification + regression checks', () => {
       expect(afterAuthor.startsWith('---\ntitle: Edge\n---\n'), 'FM region intact').toBe(true);
       expect(afterAuthor.endsWith('Above.\n')).toBe(true);
 
-      // Round-trip stability: a forced full re-derive must not move a byte.
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.toString().indexOf('Above'), 'Q');
       });
@@ -195,7 +182,6 @@ describe('#3132 forward verification + regression checks', () => {
       diag('FWD-05:nudged', { nudgeConverged, ytext: clients[0].ytext.toString() });
       expect(nudgeConverged, 'full re-derive keeps FM + head run byte-stable').toBe(true);
 
-      // WYSIWYG delete of the head run returns exactly to the nudged seed shape.
       a.doc.transact(() => {
         a.fragment.delete(0, 2);
       });
@@ -226,7 +212,6 @@ describe('#3132 forward verification + regression checks', () => {
     });
     expect(headingYtext, 'no phantom blank from the type-here affordance').toBe('## Head\n');
     expect(headingDisk).toBe('## Head\n');
-    // NOTE: cleanup() truncates the file via test-reset by design; read disk first.
     await c1.cleanup();
 
     const twoEmpties = `qa-fwd-floor-b-${crypto.randomUUID()}`;
@@ -352,7 +337,6 @@ describe('#3132 forward verification + regression checks', () => {
     try {
       const a = clients[0];
       const b = clients[1];
-      // Source-authored tail run (invisible to the WYSIWYG per the S1 finding).
       a.doc.transact(() => {
         a.ytext.insert(a.ytext.length, '\n\n');
       });
@@ -361,10 +345,6 @@ describe('#3132 forward verification + regression checks', () => {
         5000,
       );
 
-      // The other peer deletes the last CONTENT paragraph in the WYSIWYG —
-      // the mirror of the Miles destruction gesture. The run is visible in
-      // the fragment (two trailing empties), so the content paragraph beside
-      // it is index 1, not the last child.
       b.doc.transact(() => {
         b.fragment.delete(1, 1);
       });

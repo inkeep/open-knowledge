@@ -15,11 +15,6 @@ import {
 
 let unsubscribePromotion: (() => void) | undefined;
 
-/**
- * Minimal PM-transaction stand-in. The predicate reads exactly two properties,
- * and a real ProseMirror transaction needs a schema + doc that add nothing to
- * what is under test.
- */
 function pmTransaction(docChanged: boolean, syncMeta?: unknown) {
   return {
     docChanged,
@@ -27,7 +22,6 @@ function pmTransaction(docChanged: boolean, syncMeta?: unknown) {
   } as unknown as Parameters<typeof isUserIntentPmTransaction>[0];
 }
 
-/** A ViewUpdate stand-in carrying just the fields the predicate reads. */
 function cmUpdate(docChanged: boolean, userEvents: (string | undefined)[]): ViewUpdate {
   return {
     docChanged,
@@ -51,16 +45,10 @@ describe('isUserIntentPmTransaction', () => {
   });
 
   test('selection-only transactions are not edits', () => {
-    // Arrow keys and clicks produce these constantly; promoting on them would
-    // make every previewed doc permanent the moment it took focus.
     expect(isUserIntentPmTransaction(pmTransaction(false))).toBe(false);
   });
 
   test('a NodeView representation swap is not a user edit', () => {
-    // Built through the production stamp on a real transaction rather than a
-    // stub, so the test cannot pass by agreeing with itself about a meta key.
-    // A document holding an unregistered JSX component auto-converts it on
-    // open, so reading one must not make its preview tab permanent.
     const schema = getSchema(sharedExtensions);
     const state = PMEditorState.create({
       doc: schema.node('doc', null, [schema.node('paragraph', null, [schema.text('body')])]),
@@ -69,15 +57,10 @@ describe('isUserIntentPmTransaction', () => {
 
     expect(swap.docChanged).toBe(true);
     expect(isUserIntentPmTransaction(swap)).toBe(false);
-    // The same transaction without the stamp still reads as a user edit, so
-    // the stamp is what carries the property.
     expect(isUserIntentPmTransaction(state.tr.insertText('x', 1))).toBe(true);
   });
 
   test('any present sync meta counts as sync, whatever its shape', () => {
-    // The guard tests for the meta's presence, not for `isChangeOrigin`. That
-    // is deliberate: it fails closed, so a y-prosemirror change to the meta
-    // payload costs a missed promotion rather than a tab promoted by an agent.
     expect(isUserIntentPmTransaction(pmTransaction(true, {}))).toBe(false);
     expect(isUserIntentPmTransaction(pmTransaction(true, { isChangeOrigin: false }))).toBe(false);
   });
@@ -107,9 +90,6 @@ describe('isUserIntentCmUpdate', () => {
 });
 
 describe('isUserIntentCmUpdate against real CodeMirror transactions', () => {
-  // Pins the predicate to CodeMirror's actual annotation plumbing rather than
-  // the hand-rolled stand-in above, so an upstream change to how userEvent is
-  // carried fails here instead of silently disabling promotion.
   const state = EditorState.create({ doc: 'hello' });
 
   test('a userEvent-annotated change is detected', () => {
@@ -154,8 +134,6 @@ describe('the user-edit listener', () => {
   });
 
   test('an empty docName is dropped rather than forwarded', () => {
-    // A provider mid-teardown reports an empty name; forwarding it would make
-    // the consumer resolve a tab id of "".
     const listener = vi.fn();
     unsubscribePromotion = subscribePreviewTabPromotion(listener);
     requestPreviewTabPromotion('');

@@ -1,11 +1,3 @@
-/**
- * Unit tests for the composer slash-command surface's pure logic: the picker's
- * ranking filter, the leading-token parser, and the token-state resolver whose
- * three-way answer (known / unknown / no-claim) the hint line and decoration
- * both render. The suggestion + decoration plumbing is covered in
- * `composer-slash-input.dom.test.tsx`.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   filterSlashCommands,
@@ -28,8 +20,6 @@ describe('filterSlashCommands', () => {
 
   test('name-prefix matches rank ahead of name-substring and description matches', () => {
     const ranked = filterSlashCommands(COMMANDS, 're');
-    // `review` and `research_codebase` are prefix hits (advertised order kept);
-    // `create_plan` only matches `re` inside its name, so it ranks after them.
     expect(ranked.map((c) => c.name)).toEqual(['review', 'research_codebase', 'create_plan']);
   });
 
@@ -74,8 +64,6 @@ describe('resolveSlashTokenHint', () => {
   });
 
   test('a not-yet-advertised corpus (null) makes no claim either way', () => {
-    // "Not yet known" must not render as "unsupported" — the composer is
-    // typable while the handshake is still resolving.
     expect(resolveSlashTokenHint('/review', null)).toBeNull();
   });
 

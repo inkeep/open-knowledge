@@ -1,14 +1,3 @@
-/**
- * Conversation-history surfaces for the sessions dock's agent threads: the
- * history popover (reopen or delete an archived conversation) and the empty-dock
- * chooser (reopen a past conversation instead of facing a dead end).
- *
- * Closing a thread tab archives it (or discards it when it never received a
- * message); these are the only ways back to an archived conversation, and the
- * only place a permanent delete lives. Lifted out of the retired AgentThreadDock
- * so the unified dock keeps the recover-from-history contract.
- */
-
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t as tStatic } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
@@ -21,24 +10,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { getAgentThreadClient } from '@/lib/acp/thread-client';
 import { cn } from '@/lib/utils';
 
-/**
- * The past-conversations menu: archived threads, latest activity first, each
- * reopenable as a tab. Permanent delete lives here (and only here — a tab X
- * archives a conversation, or discards it when it never received a message),
- * behind a per-row inline confirm since there is no undo.
- */
 export function ThreadHistoryMenu({
   archived,
   openThreadIds,
   onOpenThread,
 }: {
   archived: readonly ThreadInfo[];
-  /**
-   * Threads currently open as a tab. Reopening an archived conversation does
-   * NOT unarchive it, so a row here can be the very transcript on screen —
-   * and deleting one out from under its own view leaves a tab bound to
-   * nothing. Those rows keep their reopen action and lose only delete.
-   */
   openThreadIds: ReadonlySet<string>;
   onOpenThread: (threadId: string) => void;
 }): ReactNode {
@@ -46,11 +23,7 @@ export function ThreadHistoryMenu({
   const client = getAgentThreadClient();
   const [open, setOpen] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  // Captured on open (event handler, not render) — React Compiler forbids
-  // impure Date.now() during render. Relative labels only show while open, so
-  // refreshing the reference time on each open is both correct and sufficient.
   const [now, setNow] = useState(0);
-  // Prefix for the per-row hidden reason a disabled delete points at.
   const reasonId = useId();
   const openTabReason = t`Close this chat's tab to delete it`;
   return (
@@ -85,10 +58,6 @@ export function ThreadHistoryMenu({
         <div className="max-h-80 overflow-y-auto">
           {archived.map((thread) => {
             const openAsTab = openThreadIds.has(thread.threadId);
-            // The open-as-tab check re-applies here, not just on the trash
-            // button: a thread can become open while its confirm is showing
-            // (e.g. restored from another window), and the confirm row would
-            // otherwise still offer a live Delete.
             if (confirmingId === thread.threadId && !openAsTab) {
               return (
                 <div
@@ -147,19 +116,13 @@ export function ThreadHistoryMenu({
                 </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    {/* The trigger sits on a wrapping span so Radix puts its own
-                        `aria-describedby` there while the button keeps pointing
-                        at the reason below. */}
+                    {}
                     <span className={cn('inline-flex', openAsTab && 'cursor-not-allowed')}>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-xs"
                         aria-label={t`Delete ${thread.title}`}
-                        // `aria-disabled` rather than `disabled`: a natively
-                        // disabled button leaves the tab order, so a keyboard
-                        // user could never reach the tooltip or this
-                        // description explaining why it won't act.
                         aria-disabled={openAsTab || undefined}
                         aria-describedby={openAsTab ? rowReasonId : undefined}
                         className={cn(
@@ -196,12 +159,6 @@ export function ThreadHistoryMenu({
   );
 }
 
-/**
- * The empty-dock chooser: past conversations, latest first, each reopenable in
- * one click — so an empty dock with history is a way back in, not a dead end.
- * The caller renders this only when there is archived history. Reopen is the
- * only action here, so it needs no open-tab guard.
- */
 export function ArchivedThreadChooser({
   archived,
   onOpen,
@@ -210,9 +167,6 @@ export function ArchivedThreadChooser({
   onOpen: (threadId: string) => void;
 }): ReactNode {
   const { t } = useLingui();
-  // Date.now() is impure — capture it in an effect (React Compiler forbids it in
-  // render). Refreshed each time the chooser mounts (the dock reaching zero open
-  // sessions), which is exactly when the relative labels below are shown.
   const [now, setNow] = useState(0);
   useEffect(() => {
     setNow(Date.now());
@@ -251,7 +205,6 @@ export function ArchivedThreadChooser({
   );
 }
 
-/** Coarse relative-time label for a conversation's last activity. */
 function formatRelative(ms: number, now: number): string {
   const diff = Math.max(0, now - ms);
   if (diff < 60_000) return tStatic`just now`;

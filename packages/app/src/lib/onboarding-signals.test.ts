@@ -67,9 +67,6 @@ describe('recordOnboardingFileStep', () => {
   });
 
   test('a starter-pack seed (count === baseline) does not complete the file step', async () => {
-    // Activated with a baseline of 2 (two seeded templates). A read that still
-    // shows exactly 2 entries is the seed itself — the user has not authored a
-    // file yet, so the step must stay incomplete.
     mockDocuments([aDocument, { ...aDocument, docName: 'guide' }]);
     const store = freshStore();
     store.activate(2);
@@ -78,7 +75,6 @@ describe('recordOnboardingFileStep', () => {
   });
 
   test('a user-authored file beyond the seed baseline completes the file step', async () => {
-    // Count rises to 3, above the baseline of 2 → the user created a doc.
     mockDocuments([
       aDocument,
       { ...aDocument, docName: 'guide' },
@@ -103,9 +99,6 @@ describe('recordOnboardingFileStep', () => {
     const fetchSpy = vi.fn(() => Promise.resolve(new Response('{}', { status: 200 })));
     globalThis.fetch = fetchSpy as never;
     const store = freshStore();
-    // activate() first so `initialized` is true — otherwise the guard's
-    // `!initialized` arm would pass this test even if the `steps.file` arm were
-    // removed. This isolates the already-complete branch.
     store.activate();
     store.markStepComplete('file');
     await recordOnboardingFileStep(store);

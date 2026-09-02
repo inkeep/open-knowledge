@@ -163,11 +163,6 @@ function classifyJson(raw: string, shape: TargetShape): RawClassification {
   const launcher = classifyMcpLauncherEntry(entry);
   if (launcher.kind === 'declined') return { kind: 'declined', reason: 'foreign-entry' };
 
-  // Mask only the launcher fields OK owns. Unknown fields inside our named
-  // entry (env, timeout, host policy, etc.) remain part of the unowned shell,
-  // just like sibling servers and top-level settings. This makes a change to
-  // one of those fields visible to the three-way safety proof instead of
-  // silently dropping it while selecting a newer launcher.
   let shellBody = body;
   const managedNodes = shape.managedKeys
     .map((key) => ({ key, node: findNodeAtLocation(root, [...entryPath, key]) }))
@@ -314,11 +309,6 @@ function chooseShell(
   return null;
 }
 
-/**
- * Produce a mutation-free reconciliation plan for one tracked MCP config.
- * The caller owns Git/filesystem transactions; this function owns only entry
- * classification, winner selection, and the proof that unowned bytes combine.
- */
 export function reconcileTrackedMcpConfig(input: {
   target: string;
   layers: RawMcpConfigLayers;

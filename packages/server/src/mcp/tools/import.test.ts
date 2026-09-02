@@ -1,9 +1,3 @@
-/**
- * Server-independent tests for the `import` MCP wrapper. The acquisition
- * machinery is tested in core; these tests pin the MCP contract that agents use:
- * forward marketplace rows / skills.sh URLs unchanged to `/api/skill/import`,
- * then surface the server's import result.
- */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerImport } from './import.ts';
@@ -73,8 +67,6 @@ describe('import MCP tool', () => {
     });
 
     expect(r.isError).toBeUndefined();
-    // Acquire, then place through the install path — the caller names WHERE,
-    // so an import can never leave the skill somewhere nobody asked for.
     expect(calls).toEqual([
       {
         url: 'http://localhost:4321/api/skill/import',
@@ -129,8 +121,6 @@ describe('import MCP tool', () => {
     expect(calls).toEqual([
       {
         url: 'http://localhost:4321/api/skill/import',
-        // A pasted skills.sh page URL is marketplace provenance, so the import
-        // rides the install-report rider; other source shapes never set it.
         body: {
           source: 'https://www.skills.sh/acme/skills/review-bot',
           install: false,
@@ -147,9 +137,6 @@ describe('import MCP tool', () => {
   });
 
   test('a partially-refused placement surfaces its warnings, not just the acquire half', async () => {
-    // A bulk `add` reports per-location failures on a 200, so the placement's
-    // warnings are the ONLY signal that a location was skipped. Reading just the
-    // acquire response calls this a clean import.
     globalThis.fetch = vi.fn(async (url: string | URL | Request) =>
       String(url).endsWith('/api/skill/import')
         ? new Response(
@@ -179,8 +166,6 @@ describe('import MCP tool', () => {
   });
 
   test('a failed placement is reported, not swallowed as a clean import', async () => {
-    // The acquire already happened, so the skill exists at its source folder.
-    // Reporting success here would tell the caller it landed where they asked.
     globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
       const ok = String(url).endsWith('/api/skill/import');
       return new Response(

@@ -180,7 +180,6 @@ describe('share-contract reader probe', () => {
       fetchImpl: flakyFetch,
     });
     expect(evidence.status).toBe('compatible');
-    // The blip on the first attempt was retried rather than paged on.
     expect(attempts).toBeGreaterThan(1);
   });
 

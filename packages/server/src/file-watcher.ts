@@ -1,18 +1,3 @@
-/**
- * Disk bridge — watches content directory for external .md file changes.
- *
- * External editor saves (VS Code, Cursor, vim) are detected via @parcel/watcher
- * and emitted as typed DiskEvent unions. Self-write detection prevents
- * feedback loops.
- *
- * Two-layer feedback prevention:
- *   Layer 1 (content hash): writeTracker records hashes of our own persistence writes.
- *     Watcher skips events matching a tracked hash (self-write detection).
- *   Layer 2 (skipStoreHooks): External changes are applied with Hocuspocus v4
- *     LocalTransactionOrigin { skipStoreHooks: true }, preventing persistence
- *     from re-writing the file we just loaded.
- */
-
 import { createHash } from 'node:crypto';
 import {
   type Dirent,
@@ -51,16 +36,12 @@ import { getMeter, withSpan } from './telemetry.ts';
 
 const log = getLogger('file-watcher');
 
-/** Subscription handle compatible with both @parcel/watcher and chokidar backends. */
 export interface AsyncSubscription {
   unsubscribe(): Promise<void>;
 }
 
 type WatcherBackend = 'parcel' | 'chokidar';
 
-// ─── DiskEvent taxonomy ──────────────────────────────────────────────────────
-
-// Subset of DiskEvent that classifyEvents emits — markdown-only.
 type MarkdownDiskEvent =
   | { kind: 'create'; path: string; docName: string; content: string }
   | {
@@ -68,7 +49,6 @@ type MarkdownDiskEvent =
       path: string;
       docName: string;
       content: string;
-      /** Rendered index fields before this update replaced the cached entry. */
       previousIndexedFields?: {
         title?: string;
         description?: string;
@@ -86,13 +66,6 @@ type MarkdownDiskEvent =
     }
   | { kind: 'conflict'; path: string; docName: string; content: string };
 
-// Asset events carry contentDir-relative paths instead of docNames —
-// assets aren't documents in the CRDT layer. No content payload (binary)
-// and no rename detection — Finder renames surface as delete+create
-// pair, and the basename index is idempotent under add/remove so the
-// end state matches. Rename-via-inode-pairing is scoped out to keep
-// hot-path binary handling simple (would require hashing to correlate
-// delete+create pairs).
 type AssetDiskEvent =
   | { kind: 'asset-create'; path: string; relativePath: string }
   | { kind: 'asset-delete'; path: string; relativePath: string };
@@ -101,13 +74,6 @@ type FolderDiskEvent =
   | { kind: 'folder-create'; path: string; relativePath: string }
   | { kind: 'folder-delete'; path: string; relativePath: string };
 
-// File events cover ANY ContentFilter-passing non-markdown file (every
-// extension, not just LINKABLE_ASSET_EXTENSIONS). Metadata-only — no content
-// read, no contentHash. Sibling to AssetDiskEvent: asset events maintain the
-// basenameIndex (render concern); file events maintain the in-memory file
-// index with `kind:'file'` entries so search / listings / `/api/documents` can
-// admit all-files without breaking the ~16 markdown-assuming `getFileIndex()`
-// consumers (the inversion happens at the accessor seam, not here).
 type FileDiskEvent =
   | {
       kind: 'file-create';
@@ -129,19 +95,9 @@ type FileDiskEvent =
 
 export type DiskEvent = MarkdownDiskEvent | AssetDiskEvent | FolderDiskEvent | FileDiskEvent;
 
-/**
- * Exhaustiveness guard for DiskEvent dispatch sites. Every consumer that
- * pattern-matches on `event.kind` should terminate with
- * `assertNeverDiskEvent(event)` so a new variant produces a TypeScript
- * error at every consumer until they explicitly handle it. The new
- * variant is discovered at compile time, not by silent drop-on-floor at
- * runtime.
- */
 export function assertNeverDiskEvent(event: never): never {
   throw new Error(`[DiskEvent] unhandled variant: ${JSON.stringify(event)}`);
 }
-
-// ─── File index ─────────────────────────────────────────────────────────────
 
 export interface FileIndexEntry {
   size: number;
@@ -149,35 +105,9 @@ export interface FileIndexEntry {
   canonicalPath: string;
   inode: number;
   aliases: string[];
-  /**
-   * Discriminator distinguishing markdown documents from name-only files.
-   *   - `'markdown'` = `.md` / `.mdx` (full CRDT semantics; docName / persistence /
-   *      backlink / wikilink-resolution all assume this — never widen).
-   *   - `'file'`     = any other ContentFilter-passing file (name / path / folder-only,
-   *      no body content read). Search and `/api/documents` admit these via the
-   *      explicit `getAllFilesIndex()` opt-in; `getFileIndex()` filters them out
-   *      so the ~16 markdown-assuming consumers stay safe.
-   */
   kind: 'markdown' | 'file';
-  /**
-   * Cached page title + icon for `kind:'markdown'` entries, derived from the
-   * file content already read for the content hash during the seed walk and
-   * live disk events — so `GET /api/pages` serves them from memory instead of
-   * re-reading + re-parsing every file per request. No extra disk reads: the
-   * `kind:'file'` branches stay read-free (seed readFile-count invariant).
-   * `undefined` for `kind:'file'` and for any entry built without enrichment
-   * (e.g. a bare test index); `handlePages` falls back to a one-off disk read
-   * when `title` is absent, so the field's presence is the "enriched" signal.
-   */
   title?: string;
   icon?: string;
-  /**
-   * Frontmatter `description` and `type`, cached on the same terms as `title`:
-   * derived from content already in hand, never a extra read. The generated
-   * root index groups by `type` and renders `description`, and it rebuilds on
-   * every qualifying write — re-reading every document per rebuild is the cost
-   * this avoids. Both stay `undefined` when the frontmatter omits them.
-   */
   description?: string;
   type?: string;
 }
@@ -189,12 +119,6 @@ export interface FolderIndexEntry {
   inode: number;
 }
 
-/**
- * Derive the cached page title + icon from markdown content already in hand
- * (the seed-walk hash read or a live disk event's `content`). Centralizes the
- * "enrich a markdown FileIndexEntry" step so the four index-write sites stay in
- * sync. See `FileIndexEntry.title`.
- */
 function derivePageMeta(
   content: string,
   docName: string,
@@ -212,18 +136,6 @@ function derivePageMeta(
   };
 }
 
-/**
- * `ReadonlyMap` view over the full file index that hides `kind:'file'`
- * entries — the on-the-wire shape `getFileIndex()` returns to existing
- * consumers (markdown-only by default).
- *
- * Memoized inside `startWatcher` behind a generation counter that bumps on
- * every `fileIndex` mutation (seed walk, live disk events, prune,
- * `mutateFileIndex`). Repeated `getFileIndex()` calls between mutations
- * return the same cached snapshot; rebuild cost is paid once per mutation
- * batch rather than per call (13+ call sites including the per-write
- * `findHubCandidates` hot path).
- */
 function markdownIndexView(
   inner: ReadonlyMap<string, FileIndexEntry>,
 ): ReadonlyMap<string, FileIndexEntry> {
@@ -235,125 +147,23 @@ function markdownIndexView(
 }
 
 export interface WatcherHandle {
-  /** Stop watching (unsubscribe from @parcel/watcher). */
   unsubscribe: () => Promise<void>;
-  /**
-   * Read the current file index — markdown-only by default.
-   *
-   * Returns ONLY `kind:'markdown'` entries so the ~16 markdown-assuming consumers
-   * (`safeContentPath` / CRDT persistence, `getOrphans`, `findHubCandidates`,
-   * `suggestLinks`, asset-rename rewrite, backlink-parse, the inline embeddable-
-   * pages predicate, …) keep observing exactly the entries they expect. A
-   * `kind:'file'` entry leaking to `safeContentPath` is the 1-way-door risk that
-   * motivated the invert-default — non-markdown CRDT persistence would corrupt
-   * the file. Call `getAllFilesIndex()` instead when you genuinely want both.
-   */
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
-  /**
-   * Read the current file index — ALL files, both `kind:'markdown'` and
-   * `kind:'file'` (the explicit opt-in to non-markdown admission).
-   *
-   * Allowlisted opt-in sites (3): the workspace-search corpus build, the
-   * `/api/documents` payload, and `workspaceSearchFingerprint` (the corpus
-   * cache key — admission predicate must match the build). Folder synthesis
-   * runs inside the corpus build, not via a separate accessor call. A
-   * `getFileIndex()`-caller meta-test fails CI when a new caller neither
-   * filters on `kind` nor is on the explicit allowlist.
-   */
   getAllFilesIndex: () => ReadonlyMap<string, FileIndexEntry>;
-  /**
-   * Monotonic counter bumped at every file-index mutation (seed, prune,
-   * rescan, live disk events, and `mutateFileIndex`) — the same generation
-   * that memoizes the markdown-only `getFileIndex()` view. Lets the workspace
-   * search corpus invalidate its cache in O(1) (compare the counter) instead
-   * of re-serializing the whole all-files index on every search request.
-   */
   getFileIndexGeneration: () => number;
-  /** Read the current folder index — filtered snapshot of known content folders. */
   getFolderIndex: () => ReadonlyMap<string, FolderIndexEntry>;
-  /** Map from alias docName → canonical docName (only symlink entries). */
   getAliasMap: () => ReadonlyMap<string, string>;
-  /** Map from alias folder docName → canonical folder docName (directory symlinks). */
   getFolderAliasIndex: () => ReadonlyMap<string, string>;
-  /**
-   * The structural-ignore roots the startup seed walk found below the content
-   * root, contentDir-relative. These are what the parcel backend prunes by
-   * prefix in place of the `**\/node_modules/**`-style globs it cannot be
-   * given (`toParcelIgnorePaths`), so reading it is how you tell whether a
-   * nested `node_modules` is actually being kept out of the watch.
-   * Snapshot-at-startup: a directory created later is not added.
-   */
   getStructuralIgnoreDirs: () => ReadonlySet<string>;
-  /**
-   * Apply a `DiskEvent` to the live file index synchronously. The typed
-   * mutator API for handlers that need to keep `/api/documents` consistent
-   * across the post-write window before the file-watcher's own delete /
-   * create event lands (delete, trash-cleanup, rename, create-page,
-   * duplicate-path). Bumps the index generation so the next `getFileIndex()`
-   * call rebuilds the markdown-only view.
-   *
-   * Replaces the pre-PR pattern of `getFileIndex()` + `as Map<...>` cast +
-   * `updateFileIndex(event, fileIndex)`; that pattern silently broke when
-   * `getFileIndex()` flipped to returning a snapshot (mutation landed on the
-   * throwaway copy, not the live map).
-   */
   mutateFileIndex: (event: DiskEvent) => void;
-  /**
-   * Walk the in-memory file index and delete entries whose canonical path is
-   * now excluded by the current ContentFilter. Required after a ContentFilter
-   * rebuild because the index is seeded once at boot and is otherwise only
-   * mutated by disk events — without this, files that were allowed at boot
-   * remain visible to `/api/documents` and other consumers even after a
-   * matching `.okignore` pattern is added.
-   *
-   * Returns the number of entries pruned. No-op when no ContentFilter is set.
-   */
   pruneFileIndexNowExcluded: () => number;
-  /**
-   * Walk the in-memory folder index and delete entries whose directory path is
-   * now excluded by the current ContentFilter. Required after a ContentFilter
-   * rebuild for the same reason as `pruneFileIndexNowExcluded`: ignore-file
-   * edits do not emit per-folder delete events for paths that became hidden.
-   *
-   * Returns the number of entries pruned. No-op when no ContentFilter is set.
-   */
   pruneFolderIndexNowExcluded: () => number;
-  /**
-   * Re-seed the in-memory file/folder/alias indexes from disk. Two
-   * production callers:
-   *   1. The @parcel/watcher + inotify race rescue exposed via
-   *      `POST /api/test-rescan-files` (Linux CI under CPU contention can
-   *      drop `create` events for files written into freshly-created
-   *      subdirectories — the recursive subwatch is registered asynchronously
-   *      after the IN_CREATE for the directory, so rapid follow-up file writes
-   *      race the registration).
-   *   2. The post-rebuild reconcile composed by
-   *      `reconcileFileIndexAfterFilterRebuild` — `.okignore` / `.gitignore`
-   *      edits do not emit per-entry FSEvents for paths whose included-ness
-   *      flipped, so the additive walk is the only thing that picks up
-   *      newly-included entries.
-   *
-   * Re-invokes the same `seedLastKnownHashes` walk used at startup. The walk
-   * is purely additive via `Map.set` — entries already in the index keep their
-   * inode/aliases/hash; missing entries get inserted. No in-flight write
-   * tracker entry is dropped (Cf. `BacklinkIndex.rebuildFromDisk()`, which is
-   * also additive and serves the parallel rescue at `/api/test-rescan-backlinks`).
-   */
   rescanFromDisk: () => Promise<void>;
 }
 
-// ─── Write tracker ───────────────────────────────────────────────────────────
-
-// Content-hash tracker — persistence layer registers writes via registerWrite().
-// Watcher checks this to skip self-writes. TTL cleanup prevents unbounded growth.
-// Stores a QUEUE of hashes per path so rapid sequential writes (e.g., XmlFragment
-// change followed by Observer A's Y.Text change) don't race: each filesystem event
-// consumes only its matching entry, leaving others intact for subsequent events.
-// Exported for test access; production code should use registerWrite().
 export const writeTracker = new Map<string, Array<{ hash: string; timestamp: number }>>();
 const WRITE_TRACKER_TTL_MS = 10_000;
 
-/** Register an upcoming persistence write so the watcher skips the resulting FSEvent. */
 export function registerWrite(filePath: string, hash: string): void {
   const queue = writeTracker.get(filePath) ?? [];
   queue.push({ hash, timestamp: Date.now() });
@@ -372,19 +182,10 @@ export function evictStaleTrackerEntries(): void {
   }
 }
 
-/** Compute SHA-256 hex hash of content string. */
 export function contentHash(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-// ─── Watcher decision ring ──────────────────────────────────────────────────
-
-/**
- * Bounded-cardinality reasons a raw watcher event never reaches
- * `onDiskEvent`. Every silent `continue`/`filter` in the pipeline maps to
- * one of these so "my file didn't sync" is diagnosable from a bundle
- * instead of requiring a live repro.
- */
 type WatcherDropReason =
   | 'symlink-escape'
   | 'filter-excluded'
@@ -394,16 +195,9 @@ type WatcherDropReason =
 
 type WatcherDecision = 'dispatched' | 'self-write-skip' | `drop-${WatcherDropReason}`;
 
-/**
- * One entry in the recent-decisions ring. `path` is pre-normalized via
- * `normalizeFsPath` (last two segments) at record time — the ring is
- * diagnostic data that lands in bundles and API responses, never a raw
- * absolute path (cardinality + privacy rule shared with span attributes).
- */
 export interface WatcherDecisionRecord {
   ts: number;
   decision: WatcherDecision;
-  /** Raw watcher event type (`create`/`update`/`delete`) or classified DiskEvent kind. */
   kind: string;
   path: string;
   pathRole: string;
@@ -412,11 +206,9 @@ export interface WatcherDecisionRecord {
 const WATCHER_DECISION_RING_CAPACITY = 256;
 const watcherDecisionRing: WatcherDecisionRecord[] = [];
 
-/** Cumulative per-reason drop totals since watcher start (summary payload). */
 const watcherDropCounts = new Map<WatcherDropReason, number>();
 let watcherDispatchedCount = 0;
 let watcherSelfWriteSkipCount = 0;
-/** Drops accrued since the last summary line — the summary emits only when non-zero. */
 let watcherDropsSinceLastSummary = 0;
 
 function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath: string): void {
@@ -444,24 +236,12 @@ function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath:
   _fileWatcherDropsCounter().add(1, { 'disk.drop_reason': reason });
 }
 
-/**
- * Snapshot the recent-decisions ring, oldest first. Entries are copies —
- * callers (the `/api/metrics/watcher-recent` handler, tests) cannot mutate
- * ring state through the returned array.
- */
 export function getWatcherDecisionRingSnapshot(): WatcherDecisionRecord[] {
   return watcherDecisionRing.map((record) => ({ ...record }));
 }
 
-/** How often the periodic drop-count summary line is considered (and emitted when drops accrued). */
 const WATCHER_DROP_SUMMARY_INTERVAL_MS = 60_000;
 
-/**
- * Emit the periodic drop-count summary. Silent when no event was dropped
- * since the previous summary — steady-state healthy watchers add zero log
- * volume. Cumulative per-reason totals (not per-window deltas) so a single
- * line orients a bundle reader without diffing successive summaries.
- */
 export function logWatcherDropSummary(): void {
   if (watcherDropsSinceLastSummary === 0) return;
   const droppedSinceLastSummary = watcherDropsSinceLastSummary;
@@ -481,12 +261,6 @@ export function logWatcherDropSummary(): void {
   );
 }
 
-/**
- * Reset ring + counters. Called from `unsubscribe()` alongside the
- * `writeTracker`/`lastKnownHash` clears (same rationale: successive
- * watchers in one test process must not observe prior instances' state)
- * and directly by unit tests.
- */
 export function resetWatcherDecisionDiagnostics(): void {
   watcherDecisionRing.length = 0;
   watcherDropCounts.clear();
@@ -495,34 +269,18 @@ export function resetWatcherDecisionDiagnostics(): void {
   watcherDropsSinceLastSummary = 0;
 }
 
-/**
- * Detect a symlink whose canonical target escapes contentDir.
- *
- * Both backends are now configured to NOT follow symlinks
- * (@parcel/watcher's default; chokidar gets `followSymlinks: false`).
- * However, the symlink itself remains a real entry inside contentDir, so
- * `add`/`change` events still fire for it. Without this guard,
- * `classifyEvents` would readFile() the symlink path (which dereferences
- * the link) and emit external content as a contentDir-scoped DiskEvent —
- * publishing arbitrary readable files into the CRDT layer.
- *
- * Returns false on lstat ENOENT (likely a delete) so existing delete
- * semantics are preserved; deletes don't read content. Returns true for
- * broken symlinks (realpath fails) — drop them out of an abundance of
- * caution; the seed walk treats them the same way.
- */
 function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   let lst: ReturnType<typeof lstatSync>;
   try {
     lst = lstatSync(rawPath);
   } catch (e) {
     const code = errnoCode(e);
-    if (code === 'ENOENT') return false; // deleted between event and check
+    if (code === 'ENOENT') return false;
     log.warn(
       { path: rawPath, code },
       `lstat failed for escape check on ${rawPath} (${code}), dropping event`,
     );
-    return true; // fail closed on unexpected errors
+    return true;
   }
   if (!lst.isSymbolicLink()) return false;
   let canonical: string;
@@ -541,7 +299,6 @@ function eventEscapesContentDir(rawPath: string, contentDir: string): boolean {
   return !isWithinContentDir(canonical, contentDir);
 }
 
-/** Map absolute file path to Hocuspocus document name (e.g., 'test-fixture'). */
 export function pathToDocName(absPath: string, contentDir: string): string {
   const rel = toPosix(relative(contentDir, absPath));
   return stripDocExtension(rel);
@@ -585,12 +342,6 @@ export function removeFolderIndexEntries(
   return removed;
 }
 
-/**
- * Extract the supported doc extension from a path with its original casing,
- * or null if the path does not end in a supported extension. Casing is
- * preserved so persistence can round-trip back to the same filename on disk
- * (`Foo.MD` stays `.MD`, not normalized to `.md`).
- */
 function extractDocExtension(path: string): string | null {
   const ext = extname(path);
   if (ext === '') return null;
@@ -599,42 +350,23 @@ function extractDocExtension(path: string): string | null {
   return null;
 }
 
-// ─── Last known hash map — for rename detection ─────────────────────────────
-
-/**
- * Tracks the last known content hash for each watched .md file path.
- * Used to detect renames: when a delete+create pair in the same batch
- * has matching content hashes, it's emitted as a single Rename event.
- */
 export const lastKnownHash = new Map<string, string>();
 
-/** Update last known hash after reading a file. */
 export function updateLastKnownHash(filePath: string, hash: string): void {
   lastKnownHash.set(filePath, hash);
 }
 
-/** Remove last known hash (on delete). Returns the removed hash if any. */
 export function removeLastKnownHash(filePath: string): string | undefined {
   const hash = lastKnownHash.get(filePath);
   lastKnownHash.delete(filePath);
   return hash;
 }
 
-// ─── Batch classification ────────────────────────────────────────────────────
-
 interface RawFileEvent {
   type: 'create' | 'update' | 'delete';
   path: string;
 }
 
-/**
- * Classify a batch of raw parcel events into typed DiskEvents.
- *
- * Rename detection: if a delete+create pair in the same batch has matching
- * content hashes, emit a single Rename event instead of Delete + Create.
- *
- * When a ContentFilter is provided, events for excluded paths are silently dropped.
- */
 export async function classifyEvents(
   rawEvents: RawFileEvent[],
   contentDir: string,
@@ -648,7 +380,6 @@ export async function classifyEvents(
   for (const event of rawEvents) {
     if (!isSupportedDocFile(event.path)) continue;
 
-    // Apply content filter if provided
     if (contentFilter) {
       const relPath = toPosix(relative(contentDir, event.path));
       if (contentFilter.isExcluded(relPath)) {
@@ -662,9 +393,6 @@ export async function classifyEvents(
         deletes.push(event);
         break;
       case 'create':
-        // Editors like VS Code do atomic saves (write tmp → rename over original).
-        // @parcel/watcher reports this as 'create' even though the file existed.
-        // If we already have a hash for this path, it's an update, not a create.
         if (lastKnownHash.has(event.path)) {
           updates.push(event);
         } else {
@@ -677,16 +405,12 @@ export async function classifyEvents(
     }
   }
 
-  // Read content for creates and updates
   const createContents = new Map<string, string>();
   const updateContents = new Map<string, string>();
   for (const event of creates) {
     try {
       createContents.set(event.path, await readFile(event.path, 'utf-8'));
     } catch (e) {
-      // ENOENT included: the file vanished between the kernel event and the
-      // read (delete race) — the event is silently dropped downstream, so the
-      // ring is the only record it ever existed.
       recordWatcherDecision('drop-read-failed', event.type, event.path);
       if (errnoCode(e) !== 'ENOENT') {
         log.warn({ path: event.path, err: e }, `Failed to read ${event.path}`);
@@ -708,8 +432,6 @@ export async function classifyEvents(
     const raw = pathToDocName(rawPath, contentDir);
     if (!aliasMap) return raw;
 
-    // Live lstat + realpath for unknown paths (new symlinks post-startup)
-    // or repointed aliases (existing alias whose target changed).
     let lst: ReturnType<typeof lstatSync> | null = null;
     try {
       lst = lstatSync(rawPath);
@@ -726,12 +448,10 @@ export async function classifyEvents(
     }
 
     if (!lst.isSymbolicLink()) {
-      // Regular file: if it was an alias that got replaced, clear the stale entry
       if (aliasMap.has(raw)) aliasMap.delete(raw);
       return raw;
     }
 
-    // Symlink: resolve canonical, update aliasMap (handles both new and repointed)
     let canonical: string;
     try {
       canonical = realpathSync(rawPath);
@@ -759,19 +479,16 @@ export async function classifyEvents(
   const pairedCreates = new Set<string>();
   const pairedDeletes = new Set<string>();
 
-  // Rename detection: match deletes to creates by content hash
   for (const del of deletes) {
     const deletedHash = removeLastKnownHash(del.path);
     if (!deletedHash) continue;
 
-    // Look for a create in the same batch with matching hash
     for (const create of creates) {
       if (pairedCreates.has(create.path)) continue;
       const content = createContents.get(create.path);
       if (content === undefined) continue;
       const hash = contentHash(content);
       if (hash === deletedHash) {
-        // Rename detected
         pairedCreates.add(create.path);
         pairedDeletes.add(del.path);
         updateLastKnownHash(create.path, hash);
@@ -788,7 +505,6 @@ export async function classifyEvents(
     }
   }
 
-  // Emit remaining deletes (not paired as renames)
   for (const del of deletes) {
     if (pairedDeletes.has(del.path)) continue;
     removeLastKnownHash(del.path);
@@ -799,7 +515,6 @@ export async function classifyEvents(
     });
   }
 
-  // Emit remaining creates (not paired as renames)
   for (const create of creates) {
     if (pairedCreates.has(create.path)) continue;
     const content = createContents.get(create.path);
@@ -824,7 +539,6 @@ export async function classifyEvents(
     }
   }
 
-  // Emit updates
   for (const update of updates) {
     const content = updateContents.get(update.path);
     if (content === undefined) continue;
@@ -851,45 +565,19 @@ export async function classifyEvents(
   return results;
 }
 
-// ─── Self-write check ────────────────────────────────────────────────────────
-
-/**
- * Check if an event is a self-write (our own persistence write).
- * If so, consume the tracker entry and return true.
- */
 export function isSelfWrite(filePath: string, hash: string): boolean {
   const queue = writeTracker.get(filePath);
   if (!queue) return false;
   const idx = queue.findIndex((e) => e.hash === hash);
   if (idx < 0) {
-    // The file has moved to bytes we did not author. Any older registrations
-    // for this path describe writes that the filesystem has already passed,
-    // even when a backend coalesced away their individual events. Retaining
-    // them could misclassify a later external edit that happens to restore
-    // those bytes as one of our own writes.
     writeTracker.delete(filePath);
     return false;
   }
-  // Reaching a later queued hash also proves every earlier registered write
-  // has been observed or coalesced. Keep only registrations for writes that
-  // were made after the matching one.
   queue.splice(0, idx + 1);
   if (queue.length === 0) writeTracker.delete(filePath);
   return true;
 }
 
-// ─── Watcher ─────────────────────────────────────────────────────────────────
-
-/**
- * Seed lastKnownHash with existing .md files so first edits classify as 'update'
- * not 'create'. Also populates the in-memory file index.
- *
- * When a ContentFilter is provided, excluded files are skipped.
- *
- * Async per-entry fs calls so the event loop stays responsive during the boot
- * walk on large content dirs — the synchronous variant blocked signal handlers
- * and collab/API traffic until the whole tree was read and hashed.
- */
 async function seedLastKnownHashes(
   dir: string,
   contentDir: string,
@@ -899,8 +587,6 @@ async function seedLastKnownHashes(
   aliasMap: Map<string, string>,
   folderAliasIndex: Map<string, string>,
   visitedInodes?: Set<number>,
-  /** Collects every structural-ignore-root occurrence the walk prunes, so the
-   *  parcel backend can prune the same subtrees without a glob. */
   structuralIgnoreDirs?: Set<string>,
 ): Promise<void> {
   const visited = visitedInodes ?? new Set<number>();
@@ -944,10 +630,6 @@ async function seedLastKnownHashes(
         try {
           const canonStat = await stat(canonical);
           if (visited.has(canonStat.ino)) {
-            // Inode already visited. A file registers an alias on its canonical
-            // entry; a directory records an alias EDGE instead of being re-walked
-            // — its subtree is projected from the canonical at /api/documents
-            // time, so the index stays O(symlinks), never O(symlinks × subtree).
             if (canonStat.isFile() && isSupportedDocFile(entry.name)) {
               const aliasDocName = pathToDocName(fullPath, contentDir);
               const canonicalDocName = pathToDocName(canonical, contentDir);
@@ -974,10 +656,6 @@ async function seedLastKnownHashes(
             if (contentFilter) {
               if (!relPath || contentFilter.isDirExcluded(relPath)) continue;
             }
-            // Record the symlink as an alias EDGE rather than a folder entry at
-            // the symlink path. The canonical subtree is materialized once below
-            // (under canonical docNames) and projected under this alias prefix at
-            // /api/documents time — index stays O(symlinks), not O(tree).
             folderAliasIndex.set(
               pathToDocName(fullPath, contentDir),
               pathToDocName(canonical, contentDir),
@@ -1033,16 +711,6 @@ async function seedLastKnownHashes(
               }
             }
           } else if (canonStat.isFile()) {
-            // Admit ANY ContentFilter-passing non-markdown file as a name-only
-            // `kind:'file'` entry. Metadata only — NO readFile, NO contentHash,
-            // NO lastKnownHash: the seed readFile count must be unchanged vs the
-            // markdown-only baseline.
-            // Use `isPathIgnored` (NOT `isExcluded`): the latter applies the
-            // extension allowlist + sibling-asset admission and would default-
-            // exclude every non-md non-asset file (e.g. `.ts`, `.json`). We
-            // want the gitignore / .okignore / BUILTIN_SKIP_DIRS gate without
-            // the extension allowlist — which is precisely what `isPathIgnored`
-            // already exposes.
             if (contentFilter) {
               const relPath = toPosix(relative(contentDir, canonical));
               if (contentFilter.isPathIgnored(relPath)) continue;
@@ -1065,8 +733,6 @@ async function seedLastKnownHashes(
         const relPath = contentRelativePath(contentDir, fullPath);
         if (contentFilter) {
           if (!relPath || contentFilter.isDirExcluded(relPath)) {
-            // This walk stops here, and so should the watcher's — record the
-            // ones it can prune by prefix before dropping the subtree.
             const structural = relPath && structuralIgnoreOccurrence(relPath);
             if (structural) structuralIgnoreDirs?.add(structural);
             continue;
@@ -1105,8 +771,6 @@ async function seedLastKnownHashes(
                 { docName, effective: reg.effective, shadowed: reg.shadowed },
                 `docName "${docName}" has both "${reg.effective}" and "${reg.shadowed}" on disk; "${reg.effective}" wins (industry convention). Rename or delete one to disambiguate.`,
               );
-              // When .md is shadowed by an already-registered .mdx (or vice-versa),
-              // skip registering this file in the index — the winning entry remains.
               if (!reg.changed) continue;
             }
           }
@@ -1131,11 +795,6 @@ async function seedLastKnownHashes(
           }
         }
       } else if (lst.isFile()) {
-        // Admit ANY ContentFilter-passing non-markdown file as a name-only
-        // `kind:'file'` entry. Metadata only — NO readFile, NO contentHash,
-        // NO lastKnownHash: the seed readFile count must be unchanged vs the
-        // markdown-only baseline.
-        // Use `isPathIgnored`.
         if (visited.has(lst.ino)) continue;
         visited.add(lst.ino);
 
@@ -1163,16 +822,7 @@ async function seedLastKnownHashes(
   }
 }
 
-/**
- * Update the file index after a disk event.
- * Called unconditionally for every classified event (including self-writes)
- * to keep the index in sync with actual disk state.
- */
 export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileIndexEntry>): void {
-  // Asset and folder events are tracked by their own indexes, not by the
-  // docName-keyed file index — short-circuit here. Asset events also fire for
-  // many of the same files file events do (a `.png` is both an asset and a
-  // `kind:'file'` entry); they update different state and are independent.
   if (
     event.kind === 'asset-create' ||
     event.kind === 'asset-delete' ||
@@ -1181,9 +831,6 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
   ) {
     return;
   }
-  // File events maintain `kind:'file'` entries — name-only, no content/hash.
-  // The synthetic doc guard runs against a path-derived docName (no extension
-  // stripping for non-md).
   if (
     event.kind === 'file-create' ||
     event.kind === 'file-update' ||
@@ -1199,9 +846,6 @@ export function updateFileIndex(event: DiskEvent, fileIndex: Map<string, FileInd
       return;
     }
     const existing = fileIndex.get(docName);
-    // Never overwrite a markdown entry with a `kind:'file'` entry (defense-
-    // in-depth: a markdown file should never produce a file-create event, but
-    // a hypothetical write-race must not corrupt the markdown discriminator).
     if (existing && existing.kind === 'markdown') return;
     fileIndex.set(docName, {
       size: event.size,
@@ -1278,11 +922,6 @@ function updateFolderIndexFromRawEvents(
   folderIndex: Map<string, FolderIndexEntry>,
 ): { events: FolderDiskEvent[]; untrackedFiles: string[] } {
   const events: FolderDiskEvent[] = [];
-  // Absolute paths of regular files discovered inside freshly-created folders
-  // during the rescan below — candidates whose own create events were dropped
-  // by the same inotify registration race (see the rescan comment). The
-  // caller re-injects them as synthetic raw creates after deduping against
-  // the batch and the known-file state.
   const untrackedFiles: string[] = [];
 
   for (const raw of rawEvents) {
@@ -1335,16 +974,6 @@ function updateFolderIndexFromRawEvents(
     upsertFolderIndexEntry(folderIndex, contentDir, raw.path, folderStat, canonicalPath);
     if (!hadFolder) {
       events.push({ kind: 'folder-create', path: raw.path, relativePath });
-      // `mkdir -p a/b/c` creates all three levels faster than parcel-watcher
-      // can call inotify_add_watch on each new directory, so kernel events
-      // for the inner levels are emitted into watches that don't exist yet
-      // and are dropped. Without this rescan, /api/documents silently misses
-      // `a/b` and `a/b/c` until a server restart. Files inside the new
-      // levels lose their create events to the same race (`mkdir d && cp
-      // x.md d/` — the file write lands before the subwatch registers), so
-      // the rescan collects untracked regular files too; the caller
-      // re-injects them as synthetic creates so the file index, CRDT load,
-      // and CC1 push all fire exactly as if the kernel event had arrived.
       scanForUntrackedSubfolders(
         canonicalPath,
         contentDir,
@@ -1367,8 +996,6 @@ function scanForUntrackedSubfolders(
   events: FolderDiskEvent[],
   untrackedFiles: string[],
 ): void {
-  // BFS so consumers see parent-before-child folder-create order, matching
-  // the natural creation order of `mkdir -p`.
   const queue: string[] = [startPath];
   while (queue.length > 0) {
     const dir = queue.shift();
@@ -1386,18 +1013,10 @@ function scanForUntrackedSubfolders(
     }
 
     for (const entry of entries) {
-      // Regular files inside a freshly-created directory are victims of the
-      // same dropped-event race as its subdirectories — collect them for the
-      // caller's synthetic-create re-injection. Symlinked files are skipped
-      // like symlinked dirs below: their own raw event carries the
-      // escape-check + alias resolution this scan doesn't replicate.
       if (entry.isFile()) {
         untrackedFiles.push(join(dir, entry.name));
         continue;
       }
-      // Dirent.isDirectory() returns false for symbolic links to directories;
-      // symlinks are handled explicitly when their own raw event arrives.
-      // Skipping them here keeps the rescan cycle-free without a visited set.
       if (!entry.isDirectory()) continue;
 
       const fullPath = join(dir, entry.name);
@@ -1429,15 +1048,6 @@ function scanForUntrackedSubfolders(
   }
 }
 
-// ─── Shared event handler ───────────────────────────────────────────────────
-
-/**
- * Process a batch of raw file events through the classification + self-write
- * detection pipeline. Shared by both @parcel/watcher and chokidar backends.
- *
- * Exported for unit-level coverage of the md-before-asset ordering invariant
- * — see the same-batch-create test in `file-watcher.test.ts`.
- */
 export async function handleRawEvents(
   rawEvents: Array<{ type: 'create' | 'update' | 'delete'; path: string }>,
   contentDir: string,
@@ -1447,18 +1057,8 @@ export async function handleRawEvents(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap?: Map<string, string>,
 ): Promise<void> {
-  // Drop events whose canonical path escapes contentDir (defense-in-depth
-  // against hostile symlinks created at runtime, e.g. `<contentDir>/x.md`
-  // → `/etc/passwd`). Both backends are configured not to follow symlinks,
-  // but the link itself still surfaces as an entry in contentDir, so its
-  // create/change event fires regardless. Without this filter, the
-  // downstream readFile() would dereference the link and publish external
-  // content as a contentDir-scoped DiskEvent.
   const safeEvents = rawEvents.filter((e) => {
     if (!eventEscapesContentDir(e.path, contentDir)) return true;
-    // The escape check fails closed on unexpected lstat errors too; both
-    // shapes record under `symlink-escape` (the log line above carries the
-    // errno when it was a stat failure).
     recordWatcherDecision('drop-symlink-escape', e.type, e.path);
     log.warn({ path: e.path, type: e.type }, `Symlink escape: ${e.path}, dropping ${e.type} event`);
     return false;
@@ -1471,15 +1071,6 @@ export async function handleRawEvents(
     folderIndex,
   );
 
-  // Re-inject files the new-folder rescan found whose own create events were
-  // dropped by the inotify subwatch-registration race (`mkdir d && cp x.md d/`
-  // on Linux under load). Synthetic creates run the identical downstream
-  // pipeline — classification, self-write check, index update, onDiskEvent —
-  // so a rescued file is indistinguishable from one whose kernel event
-  // arrived. Dedupe against the batch (macOS FSEvents usually coalesces the
-  // mkdir+write into one batch, so both events are present) and against
-  // already-known files (md via lastKnownHash, others via indexed canonical
-  // paths); apply the same symlink-escape gate as the batch events.
   let rescuedCreates: RawFileEvent[] = [];
   if (untrackedFiles.length > 0) {
     const batchPaths = new Set(safeEvents.map((e) => e.path));
@@ -1506,12 +1097,6 @@ export async function handleRawEvents(
       );
     }
   }
-  // Linux can collapse `rm -r folder` to one unlinkDir event. Re-expand that
-  // event from the last trustworthy file-index snapshot so descendants leave
-  // every downstream index even when the backend emitted no per-file unlink.
-  // Explicit child deletes already present in the batch win, and the normal
-  // classifier handles rename pairing when the folder was moved rather than
-  // destroyed.
   const batchPaths = new Set(safeEvents.map((event) => event.path));
   const collapsedDeletes: RawFileEvent[] = [];
   for (const folderEvent of folderEvents) {
@@ -1530,11 +1115,6 @@ export async function handleRawEvents(
   const assetEvents = fileEvents.filter((e) =>
     isSupportedAssetFile(e.path, LINKABLE_ASSET_EXTENSIONS),
   );
-  // ANY non-markdown file (every extension, not just LINKABLE_ASSET_EXTENSIONS).
-  // Asset events still fire for the basenameIndex (render concern); file events
-  // maintain the in-memory fileIndex as `kind:'file'` for search /
-  // `/api/documents`. A `.png` create fires both events independently —
-  // different state, different consumers.
   const nonMdRawEvents = fileEvents.filter((e) => !isSupportedDocFile(e.path));
   if (
     mdEvents.length === 0 &&
@@ -1545,21 +1125,6 @@ export async function handleRawEvents(
     return;
   }
 
-  // Process md events FIRST so the content filter's `dirCount` is current
-  // when asset events run `isExcluded()`. Same-batch atomic creates like
-  // `mkdir foo && cp note.md foo/ && cp pic.png foo/` arrive in a single
-  // watcher callback — @parcel/watcher's FSEvents backend coalesces with
-  // `latency=0.001` (1ms; FSEventsBackend.cc), and the chokidar fallback
-  // pools into a 50ms `BATCH_WINDOW_MS`. Both windows easily span a quick
-  // mkdir+cp+cp sequence. With assets-first ordering the asset event
-  // hits `isExcluded()` while dirCount is still 0; assets that admit
-  // only via the sibling-asset rule (extension in LINKABLE_ASSET_EXTENSIONS +
-  // dirCount > 0) get silently dropped from basenameIndex until next
-  // server restart. Md-first puts `incrementMdDir` (`create`
-  // branch) ahead of the asset loop, lifting dirCount from 0 → 1 before
-  // the asset is filtered. The watcher API path is unaffected — self-
-  // writes already call `incrementMdDir` synchronously at the write
-  // site.
   const diskEvents =
     mdEvents.length > 0 ? await classifyEvents(mdEvents, contentDir, contentFilter, aliasMap) : [];
 
@@ -1618,18 +1183,7 @@ export async function handleRawEvents(
 
     updateFileIndex(event, fileIndex);
 
-    // Update the content filter's dirCount only for external changes. Self-
-    // writes (e.g. `/api/create-page`, agent-write, persistence store) call
-    // `contentFilter.incrementMdDir` synchronously at their own write site
-    // so sibling assets dropped immediately after can pass the filter's
-    // `LINKABLE_ASSET_EXTENSIONS + dirCount > 0` rule without racing this async
-    // watcher callback. Incrementing here on self-writes would double-count.
     if (contentFilter && !isSelf) {
-      // `event` here is narrowed to MarkdownDiskEvent by classifyEvents above
-      // (asset events route through a separate path); the explicit no-op cases
-      // make dirCount-unaffected variants visible, and assertNeverDiskEvent
-      // fires if a new MarkdownDiskEvent variant is ever added without
-      // updating this site.
       switch (event.kind) {
         case 'create':
           contentFilter.incrementMdDir(dirname(event.docName));
@@ -1643,7 +1197,6 @@ export async function handleRawEvents(
           break;
         case 'update':
         case 'conflict':
-          // Content edits don't add/remove a markdown directory entry.
           break;
         default:
           assertNeverDiskEvent(event);
@@ -1676,8 +1229,6 @@ export async function handleRawEvents(
       `[file-watcher] Dispatching: ${event.kind}`,
     );
     _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: false });
-    // Normalize + classify the path to bound span-attribute cardinality
-    // (AGENTS.md STOP rule — raw paths blow up the trace index).
     const rawPath = event.kind === 'rename' ? event.newPath : event.path;
     recordWatcherDecision('dispatched', event.kind, rawPath);
     await withSpan(
@@ -1710,12 +1261,6 @@ export async function handleRawEvents(
     );
   }
 
-  // Emit asset events independently. Skip content reading (binary),
-  // reconciliation, and rename-via-hash detection — basename index is
-  // idempotent on add/remove/rename so a Finder rename surfacing as
-  // delete+create produces the correct end state. Runs AFTER the md
-  // loop so dirCount reflects same-batch md creates (see ordering note
-  // at the top of the function).
   for (const raw of assetEvents) {
     if (contentFilter) {
       const relPath = toPosix(relative(contentDir, raw.path));
@@ -1733,12 +1278,6 @@ export async function handleRawEvents(
     await onDiskEvent(event);
   }
 
-  // Emit `file-*` events for every ContentFilter-passing non-markdown file so
-  // the in-memory fileIndex gains `kind:'file'` entries. Metadata only — `stat`
-  // for size/mtime/inode, no readFile and no contentHash. The seed walk's
-  // readFile count must stay unchanged vs the markdown-only baseline; this live
-  // path mirrors that contract.
-  // Filter through `isPathIgnored` (NOT `isExcluded`): see seed-walk rationale.
   for (const raw of nonMdRawEvents) {
     const relativePath = toPosix(relative(contentDir, raw.path));
     if (contentFilter?.isPathIgnored(relativePath)) {
@@ -1758,13 +1297,6 @@ export async function handleRawEvents(
       continue;
     }
 
-    // Stat synchronously so we have size/mtime/inode at admission time.
-    // `lstatSync` does not follow symlinks; if the entry is a symlink, re-stat
-    // with `statSync` so `isFile()` / `size` / `mtime` / `ino` reflect the
-    // canonical target — matching the seed walk's `canonStat` admission. The
-    // symlink-escape filter already vetted in-bounds above, so following the
-    // link here cannot escape `contentDir`. Broken links surface as ENOENT
-    // from `statSync` and are dropped by the existing guard.
     let st: ReturnType<typeof lstatSync>;
     try {
       st = lstatSync(raw.path);
@@ -1777,8 +1309,6 @@ export async function handleRawEvents(
       }
       continue;
     }
-    // Not a drop: directory raw events reach here (nonMdRawEvents is only
-    // extension-filtered) and are handled by the folder pipeline above.
     if (!st.isFile()) continue;
 
     const event: DiskEvent =
@@ -1821,21 +1351,8 @@ function _fileWatcherDropsCounter() {
   return _fwDropsCounterCache;
 }
 
-// ─── Backend: @parcel/watcher ───────────────────────────────────────────────
-
-/** Any character `is-glob` could read as a pattern, which is what routes an
- *  `ignore` entry to the native regex matcher instead of the prefix compare. */
 const GLOB_METACHARACTER_RE = /[*?[\]{}()!+@|\\]/;
 
-/**
- * The contentDir-relative path of a directory that IS an occurrence of a
- * structural ignore root, at any depth — `packages/app/node_modules`, a nested
- * `.git`, `sub/.ok/local`. `null` for anything else.
- *
- * The seed walk uses this to enumerate what a plain prefix cannot express.
- * `WATCHER_STRUCTURAL_IGNORE_DIRS` covers one- and two-segment roots, so the
- * suffix test is against the whole entry rather than the last segment.
- */
 function structuralIgnoreOccurrence(relativePath: string): string | null {
   for (const dir of WATCHER_STRUCTURAL_IGNORE_DIRS) {
     if (relativePath === dir || relativePath.endsWith(`/${dir}`)) return relativePath;
@@ -1843,69 +1360,6 @@ function structuralIgnoreOccurrence(relativePath: string): string | null {
   return null;
 }
 
-/**
- * Build the `ignore` list for `@parcel/watcher` out of entries its native
- * matcher can handle WITHOUT a regex.
- *
- * The native backend splits `ignore` in two: a glob-shaped entry is compiled to
- * a `std::regex` and evaluated with `std::regex_match` against every path it
- * walks or reports, while a plain path is resolved to one absolute prefix and
- * compared with `std::string::compare`. Only the first form is dangerous —
- * `std::regex_match` recurses proportionally to the subject's UTF-8 BYTE
- * length and runs on the backend's own thread, so a long enough path overruns
- * that thread's stack and takes the process down where no JS `catch` can
- * see it (`STATUS_STACK_BUFFER_OVERRUN` / exit `0xC0000409` on Windows,
- * `SIGSEGV` elsewhere). Bytes are what count, not characters, so a directory
- * named in a non-Latin script trips the limit at roughly a third of the path
- * length an ASCII one needs — which is why this surfaced as "non-ASCII project
- * paths crash on startup" (parcel-bundler/watcher#250).
- *
- * The prefix form is therefore the only form handed over, and only for
- * `WATCHER_STRUCTURAL_IGNORE_DIRS`: a prefix ignores an entire subtree, a
- * strictly stronger claim than the per-path glob it replaces, and one that
- * holds only because those roots have no carve-out inside them. An ordinary
- * user exclusion does not qualify — a prefix-ignored `drafts/` hides the
- * admitted `drafts/.ok/templates/*.md` — so those are left to the
- * ContentFilter, which `handleRawEvents` consults on every surviving event
- * anyway.
- *
- * Leaving them there is a pre-filter decision, not a correctness one, with one
- * asymmetry worth knowing: `onRawBatch` runs ahead of `handleRawEvents` and is
- * gated on its own skills-path pattern rather than on the ContentFilter. An
- * event matching that pattern but no structural prefix therefore reaches the
- * debounced in-place-skill re-scan even where the ContentFilter would drop it.
- * The re-scan broadcasts nothing unless the canonical skill set changed, so
- * the cost is a wasted scan, not a wrong result.
- *
- * A prefix cannot express "at any depth", so `discoveredStructuralDirs`
- * carries the nested occurrences the seed walk found, keeping the pruning the
- * dropped `**\/node_modules/**` globs used to do. That pruning is load-bearing
- * rather than cosmetic: parcel's Unix walk skips an ignored directory outright
- * (`FTS_SKIP`) and records every surviving entry in an in-memory tree, one
- * inotify watch each on Linux.
- *
- * Those paths come off disk, so unlike the structural roots they can genuinely
- * contain a glob metacharacter — a directory really named `a[0-9]`. Such an
- * entry is dropped rather than handed over, since `is-glob` would route it
- * straight back to the crashing branch.
- *
- * Two bounds on the discovered set, both from it riding the seed walk. It is a
- * startup snapshot, so a `node_modules` created later is not pruned until the
- * next start. And the walk stops at every excluded directory, not just the
- * structural ones, so a structural root below (say) `vendor/` is never
- * reached; `vendor` itself cannot stand in for it, because an in-place skill
- * root can sit anywhere and `isDirExcluded` admits its ancestors ahead of the
- * builtin skip list.
- *
- * That same ordering is what keeps the set free of admitted content: an entry
- * is recorded only where the walk itself refused to descend, so a directory
- * holding anything the ContentFilter admits is never a candidate.
- *
- * Nothing is recorded for a structural root reachable only through a symlink,
- * and nothing needs to be: parcel walks with `FTS_PHYSICAL` and never descends
- * one. A canonical target inside `contentDir` is reached by its own route and
- * recorded there; one outside is refused as a symlink escape.
- */
 export function toParcelIgnorePaths(
   watcherIgnoreGlobs: readonly string[],
   discoveredStructuralDirs: Iterable<string> = [],
@@ -1931,10 +1385,6 @@ async function startParcelWatcher(
   try {
     parcel = await import('@parcel/watcher');
   } catch (err) {
-    // Expected in packaged builds: @parcel/watcher is a native module that
-    // isn't bundled, so we fall back to chokidar. The `watching … backend:
-    // chokidar` info line records the outcome — this is debug-only so the
-    // terminal stays clean (it's a routine fallback, not an error).
     log.debug(
       { err: err instanceof Error ? err.message : String(err) },
       '[file-watcher] @parcel/watcher import failed; falling back to chokidar',
@@ -1960,9 +1410,6 @@ async function startParcelWatcher(
           return;
         }
         try {
-          // Raw (pre-admission) batch hook — the live in-place-skill re-scan
-          // trigger reads paths admission drops (a NEW skill dir is excluded
-          // until re-scanned).
           onRawBatch?.(events.map((e) => e.path));
           await handleRawEvents(
             events.map((e) => ({ type: e.type, path: e.path })),
@@ -1973,9 +1420,6 @@ async function startParcelWatcher(
             onDiskEvent,
             aliasMap,
           );
-          // Bump the markdown-view generation after every batch. Coarse-
-          // grained (per batch, not per event) but correct: the next
-          // `getFileIndex()` call rebuilds the cached snapshot.
           onAfterMutation();
         } catch (handleErr) {
           log.error({ err: handleErr }, 'parcel batch error');
@@ -1991,23 +1435,6 @@ async function startParcelWatcher(
   }
 }
 
-// ─── Backend: chokidar ──────────────────────────────────────────────────────
-
-/**
- * chokidar `ignored` predicate — decides both whether to emit an event for a
- * path AND (load-bearing) whether to descend into a directory.
- *
- * chokidar invokes this WITHOUT `stats` at the subwatch gate that decides
- * whether a freshly-discovered directory gets its own watcher (readdirp entries
- * carry lstat stats, but that gate does not). With no stats we cannot tell a
- * directory from a file, and routing a real subdirectory through the file-only
- * `isExcluded` — which default-excludes any non-`.md`/non-asset name — prunes
- * the whole subtree, so the fallback silently stops watching every content
- * subfolder. `lstatSync` (not `statSync`, to match `followSymlinks: false`)
- * resolves the type; any stat error admits the path (return `false`) so a
- * just-deleted file still emits its delete and a transiently-missing path is
- * never pruned.
- */
 export function isChokidarPathIgnored(
   contentDir: string,
   contentFilter: ContentFilter,
@@ -2027,18 +1454,9 @@ export function isChokidarPathIgnored(
     }
   }
   if (isDirectory) {
-    // Never prune dirs that ARE or LEAD TO a skills root — an excluded-yet-
-    // watched skills tree is how the live re-scan hears about a host dir's
-    // FIRST skill on this backend (the raw pre-admission batch fires off the
-    // bundle-dir event; admission flips via the rebuild). Shape-matched like
-    // the scan (any `.x/skills`), so custom roots need no ledger read; bounded
-    // to root + one bundle level so the extra watch surface stays tiny. `.ok`
-    // stays fully pruned (retiring store; internal state).
     const m = /^(\.[A-Za-z0-9_-]+)(\/skills(\/[^/]+)?)?$/.exec(rel);
     if (m && m[1] !== '.ok') {
-      if (m[2] !== undefined) return false; // `.x/skills` (+ bundle dir)
-      // Bare `.x`: watch only when it actually carries a skills dir — keeps
-      // `.git` and friends pruned.
+      if (m[2] !== undefined) return false;
       if (existsSync(join(contentDir, rel, 'skills'))) return false;
     }
     return contentFilter.isDirExcluded(rel);
@@ -2046,11 +1464,6 @@ export function isChokidarPathIgnored(
   return contentFilter.isExcluded(rel);
 }
 
-/**
- * Upper bound on how long `startWatcher` waits for chokidar's `ready` event
- * before returning anyway. `ready` normally fires in well under a second; the
- * cap only guards against a pathological initial scan wedging server boot.
- */
 const CHOKIDAR_READY_TIMEOUT_MS = 10_000;
 
 async function startChokidarWatcher(
@@ -2061,22 +1474,12 @@ async function startChokidarWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
-  // NOTE: chokidar prunes excluded dirs at the ignored() predicate, so a
-  // host dir with no admitted skill yet emits no events — the live re-scan
-  // trigger is parcel-first; on the chokidar fallback a brand-new first
-  // skill in a host dir still needs a restart (or an ignore-file touch).
   onRawBatch?: (absPaths: readonly string[]) => void,
 ): Promise<AsyncSubscription> {
   const { watch } = await import('chokidar');
-  // The chosen backend is already recorded on the `watching … backend:
-  // chokidar` info line, so no separate fallback warning is needed here.
 
   const watcher = watch(contentDir, {
     ignoreInitial: true,
-    // Match @parcel/watcher's default — never traverse INTO symlinked
-    // directories or watch through symlink targets. Combined with the
-    // escape filter in `handleRawEvents`, this prevents a symlink in
-    // contentDir from sourcing events for an arbitrary location on disk.
     followSymlinks: false,
     ignored: contentFilter
       ? (filePath: string, stats?: Stats) =>
@@ -2086,10 +1489,6 @@ async function startChokidarWatcher(
 
   watcher.on('error', (err) => log.error({ err }, 'chokidar error'));
 
-  // Batch chokidar events to match @parcel/watcher's coalescing behavior.
-  // Without batching, a file rename (mv old.md new.md) produces separate
-  // delete + create calls, breaking classifyEvents' rename detection which
-  // requires both events in the same batch.
   const BATCH_WINDOW_MS = 50;
   let pendingEvents: Array<{ type: 'create' | 'update' | 'delete'; path: string }> = [];
   let batchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2121,13 +1520,6 @@ async function startChokidarWatcher(
   watcher.on('addDir', (path) => queueEvent('create', path));
   watcher.on('unlinkDir', (path) => queueEvent('delete', path));
 
-  // chokidar's `watch()` returns before its initial scan and per-directory
-  // watch registration finish; unlike @parcel/watcher's `subscribe()`, the
-  // returned watcher is not yet observing. Awaiting `ready` makes `startWatcher`
-  // resolve only once external edits are actually detectable — otherwise an
-  // edit landing in the setup window (routine on slower inotify hosts) is
-  // silently missed. Bounded so a pathological scan never wedges boot: past the
-  // cap we proceed anyway (the watcher keeps arming in the background).
   await new Promise<void>((resolveReady) => {
     let settled = false;
     const settle = () => {
@@ -2151,31 +1543,12 @@ async function startChokidarWatcher(
   };
 }
 
-// ─── Watcher ─────────────────────────────────────────────────────────────────
-
-/**
- * Start watching a content directory for external .md file changes.
- * Calls onDiskEvent for each classified event (not our own persistence writes).
- *
- * Uses @parcel/watcher when available, falls back to chokidar otherwise.
- *
- * When a ContentFilter is provided:
- * - Excluded files are skipped during the initial scan
- * - Excluded events are dropped in classifyEvents
- * - The prefix-ignorable subset of the ignore list is passed to
- *   @parcel/watcher as a best-effort pre-filter (see `toParcelIgnorePaths`)
- *
- * Returns a WatcherHandle with unsubscribe() and getFileIndex().
- */
 export async function startWatcher(
   contentDirRaw: string,
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   contentFilter?: ContentFilter,
   opts: {
     forceBackend?: 'parcel' | 'chokidar';
-    /** Raw PRE-admission event-batch hook (absolute paths) — fires before
-     *  `handleRawEvents` filters, so callers can react to paths admission
-     *  drops (the live in-place-skill re-scan trigger). */
     onRawBatch?: (absPaths: readonly string[]) => void;
   } = {},
 ): Promise<WatcherHandle> {
@@ -2190,17 +1563,8 @@ export async function startWatcher(
   const fileIndex = new Map<string, FileIndexEntry>();
   const folderIndex = new Map<string, FolderIndexEntry>();
   const aliasMap = new Map<string, string>();
-  // Alias EDGES for directory symlinks: aliasFolderDocName → canonicalFolderDocName.
-  // One entry per symlinked directory (O(symlinks)); the subtree is projected from
-  // the canonical at /api/documents time, never materialized per descendant.
   const folderAliasIndex = new Map<string, string>();
 
-  // Memoize the markdown-only view returned by `getFileIndex()`. Bumped at
-  // every mutation point — seed, prune, rescan, the live disk-event loop
-  // (`handleRawEvents` callback below), and the `mutateFileIndex` accessor.
-  // Cache invalidates by generation mismatch; the rebuild O(n) is paid once
-  // per mutation batch instead of per call (`findHubCandidates` and the
-  // workspace search corpus call it on the per-write hot path).
   let fileIndexGeneration = 0;
   let cachedMarkdownView: ReadonlyMap<string, FileIndexEntry> | null = null;
   let cachedMarkdownViewGeneration = -1;
@@ -2208,9 +1572,6 @@ export async function startWatcher(
     fileIndexGeneration++;
   };
 
-  // Filled by the seed walk below, read by `startParcelWatcher` after it — the
-  // ordering is what lets the parcel backend prune nested structural dirs by
-  // prefix instead of by the glob that crashes its matcher.
   const structuralIgnoreDirs = new Set<string>();
 
   await seedLastKnownHashes(
@@ -2231,16 +1592,8 @@ export async function startWatcher(
 
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
-  // Packaged-parity escape hatch: the packaged app always runs the chokidar
-  // fallback (no bundled @parcel/watcher), so tests + local debugging can
-  // force that backend to exercise the same code path.
   const forceChokidar = process.env.OK_FILE_WATCHER_BACKEND === 'chokidar';
   try {
-    // `forceBackend` is a test seam (mirrors head-watcher): 'chokidar' skips
-    // the parcel attempt so the fallback can be exercised on a host where the
-    // native module IS resolvable; 'parcel' throws instead of degrading so a
-    // test can't silently pass on the wrong backend. The `OK_FILE_WATCHER_BACKEND`
-    // env var (packaged-parity escape hatch) forces chokidar the same way.
     const parcelSub =
       forceChokidar || opts.forceBackend === 'chokidar'
         ? null
@@ -2288,26 +1641,12 @@ export async function startWatcher(
     async unsubscribe() {
       clearInterval(evictionInterval);
       clearInterval(dropSummaryInterval);
-      // Clear the module-level writeTracker on unsubscribe so test suites
-      // that spin up successive watchers don't accumulate stale entries
-      // across instances. Production: unsubscribe = shutdown, no consumers
-      // remain. Tests: next startWatcher sees an empty tracker, which is
-      // the correct starting state for a fresh isolation boundary.
       writeTracker.clear();
       lastKnownHash.clear();
       resetWatcherDecisionDiagnostics();
       return originalUnsubscribe();
     },
     getFileIndex() {
-      // Return a markdown-only view. The internal
-      // `fileIndex` map holds BOTH `kind:'markdown'` and `kind:'file'` entries;
-      // call sites that pass through this accessor observe markdown-only so
-      // the ~16 markdown-assuming consumers stay safe by default.
-      //
-      // Memoized — rebuild only when a mutation has bumped the generation
-      // since the last call. 13+ call sites hit this per request cycle
-      // (including the per-write `findHubCandidates` hot path), so amortizing
-      // the O(n) rebuild matters at corpus scale.
       if (cachedMarkdownView && cachedMarkdownViewGeneration === fileIndexGeneration) {
         return cachedMarkdownView;
       }
@@ -2342,15 +1681,6 @@ export async function startWatcher(
       let pruned = 0;
       for (const [docName, entry] of fileIndex) {
         const relPath = toPosix(relative(contentDir, entry.canonicalPath));
-        // Mirror the admission predicate: `kind:'file'` entries are admitted
-        // via `isPathIgnored` (gitignore/okignore + skip-dir floor, no
-        // extension allowlist), so eviction must use the same gate. Using
-        // `isExcluded` here — which default-excludes every non-md/non-asset
-        // file — would evict every `kind:'file'` entry on each ignore-file
-        // edit, churning the file tier and emitting a "files emptied"
-        // window between prune and rescan. Markdown still uses `isExcluded`
-        // so newly-shadowed `.md` files (e.g. listed in `.gitignore`) drop
-        // out.
         const excluded =
           entry.kind === 'file'
             ? contentFilter.isPathIgnored(relPath)
@@ -2375,18 +1705,6 @@ export async function startWatcher(
       return pruned;
     },
     async rescanFromDisk() {
-      // Re-seed using the same walk as startup — additive via Map.set, so
-      // any entries already present keep their inode/aliases; missing entries
-      // get inserted. Two production callers consume this:
-      //   1. The Linux IN_CREATE-race rescue exposed via `POST /api/test-rescan-files`
-      //      (dropped @parcel/watcher events for files written into freshly-
-      //      created subdirectories under CI CPU contention).
-      //   2. The post-rebuild reconcile inverse of `pruneFileIndexNowExcluded`:
-      //      after a `.okignore` / `.gitignore` change *removes* a pattern,
-      //      files no longer excluded by the pattern set need to be picked
-      //      up, since they get no per-entry
-      //      disk event. The additive walk picks them up. See
-      //      `reconcileFileIndexAfterFilterRebuild` below.
       await seedLastKnownHashes(
         contentDir,
         contentDir,
@@ -2401,29 +1719,6 @@ export async function startWatcher(
   };
 }
 
-/**
- * Reconcile the watcher's file/folder indexes with the current ContentFilter
- * state after a successful `rebuildIgnorePatterns()`.
- *
- * Required because ignore-file edits (`.okignore`, `.gitignore`) do NOT emit
- * per-entry disk events for paths whose included-ness flipped — the indexes
- * are otherwise only mutated by per-path FSEvents. Two symmetric steps:
- *
- *   1. Prune now-excluded entries (a pattern was added that matches them).
- *   2. Re-scan disk for now-included entries (a pattern was removed that
- *      excluded them).
- *
- * Calling only step 1 (the pre-fix shape) leaves the index stale after a
- * pattern removal: files on disk that should now be visible to
- * `/api/documents` stay hidden until the next server restart. Calling only
- * step 2 leaves now-excluded files visible until they're re-walked and
- * filtered out — but `seedLastKnownHashes` is purely additive, so it can't
- * remove entries on its own.
- *
- * Both steps together = the symmetric pair. Returns the prune counts for
- * telemetry; the rescan is unmeasured because the additive walk does not
- * track which entries are new vs. unchanged.
- */
 export async function reconcileFileIndexAfterFilterRebuild(
   watcher: WatcherHandle | null | undefined,
 ): Promise<{
@@ -2431,16 +1726,6 @@ export async function reconcileFileIndexAfterFilterRebuild(
   prunedFolders: number;
 }> {
   if (!watcher) return { prunedFiles: 0, prunedFolders: 0 };
-  // Both steps required — neither alone covers both directions: prune
-  // removes entries the new filter excludes (the additive rescan can't
-  // remove anything), and rescan inserts entries the new filter now
-  // includes (the prune can't add anything). Order between the two is
-  // not load-bearing: `seedLastKnownHashes` re-applies the kind-specific
-  // admission predicate per entry — `isExcluded` for markdown,
-  // `isPathIgnored` for `kind:'file'` — and `pruneFileIndexNowExcluded`
-  // now mirrors the same split, so a rescan running before the prune
-  // would still skip newly-excluded entries; the prune just sweeps out
-  // whatever the rescan didn't touch.
   const prunedFiles = watcher.pruneFileIndexNowExcluded();
   const prunedFolders = watcher.pruneFolderIndexNowExcluded();
   await watcher.rescanFromDisk();

@@ -1,41 +1,4 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button> awaiting shadcn Button migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-/**
- * Synchronous shell for the Settings modal — bundled in the main chunk.
- *
- * Owns the Dialog primitives, the sidebar (group computation + active-
- * section state + sidebar UI), and a Suspense boundary wrapping the
- * lazy body. The shell stays light so Cmd-, paints the dialog frame +
- * sidebar + a content-area skeleton on the same frame as the trigger,
- * while the heavy body (schema-form harness, RHF, ConfigSchema,
- * schema-walker, Sync/Templates/Okignore/Integrations sections) loads
- * in parallel and swaps in once resolved.
- *
- * The user-scope ConfigBinding is owned by ConfigProvider for the app
- * session; the shell consumes { userBinding, userSynced } from
- * useConfigContext() and gates the prop passed into the body so the
- * body's dispatch sees a synced binding or null — preserving the gating
- * semantics the dialog had before the shell/body split. Closing and
- * reopening Settings is flash-free because the provider stays warm and
- * the body chunk is cached after the first open.
- *
- * Sidebar IA:
- *   USER         → Preferences, Configure agents, Hotkeys, Account, Plugins
- *                  (user-scope manage), Skills, AI tools & CLI (Electron host
- *                  only)
- *   THIS PROJECT → Preferences (Attachments + Content rules + Terminal
- *                  stacked as subsections), Sync & sharing (Sync + Config
- *                  sharing stacked as subsections), Search, Plugins
- *                  (project-scope manage), Link previews (hidden on the
- *                  packaged file:// renderer), AI tools (Electron host only),
- *                  Templates, Skills, Ignore patterns
- *   PLUGINS      → one panel per enabled plugin (project + user, side by side)
- *   INTEGRATIONS → Claude Desktop (hidden when desktopPresent === false)
- *
- * Small-knob pages merge into the per-scope Preferences pages; manager
- * surfaces (list editors, install managers) keep their own sidebar row. A
- * merged former section stays searchable via its subsection entry (see
- * `SidebarSubsection`).
- */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
@@ -71,35 +34,16 @@ import {
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
 import type { SidebarGroup, SidebarItem, SidebarSubsection } from './settings-sidebar-types';
 
-/**
- * GitHub Releases tag URL — mirrors `releaseUrlFor` in the desktop main
- * process (`packages/desktop/src/main/auto-updater.ts`), the same URL the
- * "What's new" release-notifier toast opens. Renderer-side duplicate
- * because the main-process module can't cross the preload boundary; the
- * URL shape is stable, and `encodeURIComponent` is defensive against a
- * malformed version producing a path-confusion URL.
- */
 function releaseNotesUrl(version: string): string {
   return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
 }
 
-/**
- * Former standalone sections that merged into another page. Deep links
- * (`#settings/<id>`) and in-dialog navigation to the old ids land on the page
- * that absorbed them instead of falling back to Preferences.
- */
 const LEGACY_SECTION_ALIASES: Record<string, { sectionId: string; anchor: string }> = {
   'content-rules': { sectionId: 'project-preferences', anchor: 'section:content-rules' },
   terminal: { sectionId: 'project-preferences', anchor: 'section:terminal' },
   sharing: { sectionId: 'sync', anchor: 'section:sharing' },
 };
 
-/**
- * Page plus the block within it, because the absorbing pages stack several
- * blocks: resolving to the page alone drops an old deep link at the top of a
- * multi-block page with no indication of which block it asked for. The anchor
- * feeds the same scroll-to-flash a search result uses.
- */
 function resolveSectionTarget(sectionId: string): { sectionId: string; anchor: string | null } {
   const alias = LEGACY_SECTION_ALIASES[sectionId];
   return alias ? { sectionId: alias.sectionId, anchor: alias.anchor } : { sectionId, anchor: null };
@@ -111,11 +55,6 @@ function resolveSectionId(sectionId: string): string {
 
 interface SettingsDialogShellProps {
   open: boolean;
-  /**
-   * Sidebar section to open on the `open` edge (from a `#settings/<id>` deep
-   * link). Null opens the default (Preferences). An unknown id also falls back
-   * to Preferences via the sidebar's no-match behavior.
-   */
   initialSection?: string | null;
   onOpenChange: (open: boolean) => void;
 }
@@ -131,18 +70,8 @@ export function SettingsDialogShell({
     useConfigContext();
   const { desktopPresent } = useClaudeDesktopIntegration();
 
-  // On each fresh open, honor the deep-link section (`#settings/<id>`, e.g.
-  // `#settings/account` from the GHES trust-gate "Connect" flow) if one was
-  // given, else default to USER → Preferences. No in-session memory of
-  // last-viewed section beyond the open edge; sidebar clicks update activeId
-  // locally without touching the hash.
   const [activeId, setActiveId] = useState(resolveSectionId(initialSection ?? 'preferences'));
   const [searchQuery, setSearchQuery] = useState('');
-  // Navigation tokens set by a search-result click. fieldFlash re-fires its
-  // consuming effect via object identity alone (each click sets a fresh
-  // object, same path or not). ruleQuery carries a nonce because its consumer
-  // (the markdownlint browser) keys its re-seed effect on primitive values
-  // threaded through props — identical query strings need the nonce to re-fire.
   const [fieldFlash, setFieldFlash] = useState<{ path: string } | null>(null);
   const [ruleQuery, setRuleQuery] = useState<{ query: string; nonce: number } | null>(null);
   const navNonceRef = useRef(0);
@@ -157,11 +86,6 @@ export function SettingsDialogShell({
     }
   }, [open, initialSection]);
 
-  // Deep links fired while the dialog is ALREADY open (the plugin-enable
-  // notice's "Open settings") arrive here, not via `initialSection` — an
-  // in-dialog hash write is a `replaceState` and fires no `hashchange`, and its
-  // target can equal the current hash after a sidebar click moved `activeId`
-  // without it.
   useEffect(
     () =>
       subscribeToSettingsSection((sectionId) => {
@@ -172,13 +96,6 @@ export function SettingsDialogShell({
     [],
   );
 
-  // Imperative scroll-to-flash for a field the search navigated to. The target
-  // renders inside the lazily-loaded body and, for schema sections, only once
-  // its config binding has synced — so it can appear well after this effect
-  // fires. Rather than a fixed-frame retry (which can expire before the field
-  // mounts), watch the content subtree with a capped MutationObserver and flash
-  // the moment the `[data-field]` node appears. Uses a dedicated one-shot class
-  // no field's React `className` owns, so a re-render can't strip it mid-flash.
   useEffect(() => {
     if (!fieldFlash) return;
     const container = contentRef.current;
@@ -200,7 +117,6 @@ export function SettingsDialogShell({
     };
 
     if (!tryFlash()) {
-      // Field not mounted yet — watch for it, capped so we never observe forever.
       observer = new MutationObserver(() => {
         if (tryFlash()) observer?.disconnect();
       });
@@ -216,45 +132,19 @@ export function SettingsDialogShell({
     };
   }, [fieldFlash]);
 
-  // hasProject signals whether the project-scope binding is a valid
-  // editing target. In current OK the editor UI always has a project
-  // when `collabUrl` is set; the disabled-THIS-PROJECT branch is
-  // defensive (e.g. Cmd-, before a project loads). Real "no project"
-  // detection (e.g. `ok mcp` standalone before init) would gate via
-  // a separate signal.
   const hasProject = collabUrl !== null;
 
-  // Shared with SettingsDialogBody so the item/search entry and the block that
-  // renders it cannot disagree about whether the host supports them.
   const isOkDesktopHost = isOkDesktopHostGate();
   const terminalSettingsAvailable = isTerminalSettingsAvailable();
 
-  // One sidebar item per ENABLED project-scope plugin. These populate the
-  // "Project plugins" sidebar group; the manage page (which toggles membership)
-  // lives under "This project".
   const enabledPluginItems: SidebarItem[] = LINT_PLUGIN_META.filter(
     (p) => projectConfig?.contentRules?.[p.id]?.enabled === true,
   ).map((p) => ({ id: `plugin:${p.id}`, label: p.label }));
 
-  // The theme is a user-scope plugin, toggled on the Plugins-manage page
-  // (`appearance.colorThemeEnabled`, default on). When off it drops out of the
-  // "User plugins" sidebar group.
   const themeEnabled = merged?.appearance?.colorThemeEnabled !== false;
 
-  // Slides is a user-scope plugin like Themes, but ships OFF (`slides.enabled`
-  // default false) — so the gate is `=== true`, not Themes' `!== false`. Its
-  // panel appears in the Plugins group only once the user opts in.
   const slidesEnabled = merged?.slides?.enabled === true;
 
-  // The packaged desktop renderer loads over file:// (desktop main's
-  // loadFile), so its POST /api/link-preview requests carry Origin: null,
-  // which the route's anti-proxy gate rejects by design (see
-  // packages/server/src/link-preview/request-gate.ts). External link
-  // previews can never render on that host, so hide the toggle instead of
-  // promising a setting that cannot work. The DEV desktop renderer loads
-  // from http://localhost (loopback Origin, gate passes) and keeps the
-  // item. Remove this gate when a loopback-origin/desktop discriminator
-  // ships.
   const isFileProtocolRenderer = isFileProtocolPage();
 
   const groups: SidebarGroup[] = [
@@ -267,14 +157,8 @@ export function SettingsDialogShell({
         { id: 'configure-agents', label: t`Configure agents` },
         { id: 'hotkeys', label: t`Hotkeys` },
         { id: 'account', label: t`Account` },
-        // User-scope plugin management (toggle personal plugins like Themes).
         { id: 'user-plugins-manage', label: t`Plugins` },
-        // The user-scope half of the Skills surface: the skills OK ships plus
-        // the user-home skill folders. Project skills live under This project.
         { id: 'user-skills', label: t`Skills Studio` },
-        // Machine-level OK CONNECTIONS (per-editor MCP entries, the ok PATH
-        // command) — user-scoped, and desktop-only because the install actors
-        // live in the Electron main process. Skills moved to Skills Studio.
         ...(isOkDesktopHost ? [{ id: 'ai-tools', label: t`AI tools & CLI` }] : []),
       ],
     },
@@ -283,11 +167,6 @@ export function SettingsDialogShell({
       label: t`This project`,
       enabled: hasProject,
       items: [
-        // The project-scope sibling of User → Preferences: small-knob blocks
-        // stacked on one page. A host gate sits at whichever level the surface
-        // occupies: the pty gate hides the Terminal SUBSECTION (and its search
-        // entry) below, while the file:// gate hides the whole `link-previews`
-        // ROW further down, since that one is still its own page.
         {
           id: 'project-preferences',
           label: t`Preferences`,
@@ -328,22 +207,13 @@ export function SettingsDialogShell({
         },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        // Per-project MCP wiring — desktop-only because the install actors
-        // live in the Electron main process. The project skill moved to
-        // Skills Studio.
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
-        // Expose-via-tunnel controls — desktop-only (writes the project-local
-        // exposure consent + restarts this window's server via the bridge).
         ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Remote control` }] : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills Studio` },
         { id: 'okignore', label: t`Ignore patterns` },
       ],
     },
-    // Dedicated group listing every ENABLED plugin's own panel — project-scope
-    // lint plugins (shown when a project is open) and the user-scope theme
-    // plugin, side by side. Membership is toggled on the per-scope Plugins
-    // manage pages (User → Plugins, This project → Plugins).
     {
       id: 'plugins',
       label: t`Plugins`,
@@ -365,10 +235,6 @@ export function SettingsDialogShell({
     },
   ];
 
-  // Deep search corpus, derived from `groups` so every enablement gate
-  // (disabled THIS-PROJECT, absent/disabled plugins, desktop-only items) is
-  // inherited — disabled-plugin rules never surface. `t` resolves the FieldDef
-  // `MessageDescriptor` labels, the same call the body renders them with.
   const searchEntries = buildSettingsSearchIndex({ groups, translate: t });
 
   function handleNavigate(entry: SettingsSearchEntry) {
@@ -380,17 +246,12 @@ export function SettingsDialogShell({
     } else if (entry.kind === 'rule' && entry.ruleId) {
       setRuleQuery({ query: entry.ruleId, nonce });
     }
-    // Clearing the query collapses the results and restores the plain group nav
-    // on the now-active section.
     setSearchQuery('');
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        // Own max-h, so DialogContent's drag-band clearance loses to it by
-        // cn() precedence — re-applied here, last, to win back on the desktop
-        // host. In the browser it is a no-op and the 4rem cap stands.
         className={cn(
           'flex h-[700px] max-h-[calc(100dvh-4rem)] w-[900px] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[220px_1fr] sm:max-w-[min(900px,calc(100%-2rem))]',
           electronDragBandClearance(),
@@ -465,25 +326,12 @@ function SettingsSidebar({
   const fieldResults = results.filter((entry) => entry.kind === 'field');
   const ruleResults = results.filter((entry) => entry.kind === 'rule');
 
-  // Single navigation landmark with an explicit label. A complementary
-  // landmark wrapping an unlabeled navigation produced two nested
-  // landmarks for one sidebar — landmark navigation surfaced both
-  // stops for what is one navigation surface. The sidebar IS the
-  // primary navigation for the dialog content (clicks swap the active
-  // body section), not tangentially-related content, so the
-  // navigation role is the semantically correct outer element.
   return (
     <nav
       aria-label={t`Settings sections`}
       className="flex shrink-0 gap-x-3 overflow-x-auto overscroll-contain subtle-scrollbar scroll-fade-mask-x-max-sm border-b bg-muted/30 px-3 py-2 max-sm:pt-10 sm:h-full sm:min-h-0 sm:flex-col sm:gap-0 sm:overflow-x-visible sm:border-r sm:border-b-0 sm:py-4"
     >
-      {/* cmdk surface wraps ONLY the search input + results — its roving focus
-          never touches the plain-button group nav below (which keeps its
-          aria-current + disabled-group semantics). The popover-styled base
-          classes are reset; the input wrapper is boxed like a shadcn Input
-          (its stock border-b divider only ever bordered the box bottom here)
-          and the results render flush on the sidebar background, like the
-          group nav they replace while searching. */}
+      {}
       <Command
         shouldFilter={false}
         className="h-auto w-full shrink-0 bg-transparent sm:mb-3 [&_[data-slot=command-input-wrapper]]:h-9 [&_[data-slot=command-input-wrapper]]:rounded-lg [&_[data-slot=command-input-wrapper]]:border [&_[data-slot=command-input-wrapper]]:border-input"
@@ -496,9 +344,7 @@ function SettingsSidebar({
           className="py-0"
           data-testid="settings-search-input"
         />
-        {/* Polite result-count announcement — cmdk's listbox semantics don't
-            tell SR users how many results a keystroke produced. Always mounted
-            (empty when idle) so the live region exists before it updates. */}
+        {}
         <span aria-live="polite" className="sr-only" data-testid="settings-search-result-count">
           {query !== '' ? <Plural value={results.length} one="# result" other="# results" /> : null}
         </span>
@@ -547,11 +393,9 @@ function SettingsSidebar({
         ) : null}
       </Command>
 
-      {/* Scroll region — keeps the search box above pinned in view while the
-          group list scrolls. `contents` on mobile leaves the group chips in the
-          nav's horizontal row unchanged; sm+ it becomes the vertical scroller. */}
+      {}
       <div className="contents subtle-scrollbar sm:flex sm:min-h-0 sm:flex-1 sm:flex-col sm:overflow-y-auto sm:overscroll-contain">
-        {/* Plain group nav — the sole content when not searching. */}
+        {}
         {query === ''
           ? groups.map((group) => (
               <SettingsSidebarGroup
@@ -568,10 +412,6 @@ function SettingsSidebar({
   );
 }
 
-/**
- * One search result row. The label's matched substrings are emphasized via the
- * command-palette's `splitTextByQueryMatches` helper (reused, not reinvented).
- */
 function SettingsSearchResultItem({
   entry,
   query,
@@ -587,10 +427,7 @@ function SettingsSearchResultItem({
       onSelect={() => onNavigate(entry)}
       data-testid={`settings-search-result-${entry.id}`}
     >
-      {/* `min-w-0` is what makes `truncate` work here: a flex item refuses to
-          shrink below its content width without it, so the label would overflow
-          the row rather than ellipsize — especially now that the context span
-          shares the row. */}
+      {}
       <span className="min-w-0 truncate">
         {splitTextByQueryMatches(entry.label, query).map((segment) =>
           segment.match ? (
@@ -602,9 +439,7 @@ function SettingsSearchResultItem({
           ),
         )}
       </span>
-      {/* Labels collide across groups (User and This project both have a
-          Preferences page), so the location is what makes two otherwise
-          identical rows tellable apart. */}
+      {}
       {entry.context !== undefined ? (
         <span className="ms-auto shrink-0 truncate ps-3 text-1sm text-muted-foreground">
           {entry.context}
@@ -614,24 +449,6 @@ function SettingsSearchResultItem({
   );
 }
 
-/**
- * Bottom-pinned version + release-notes link. `mt-auto` works in the
- * sm+ vertical flex-col layout; in the max-sm horizontal layout the
- * footer trails after the last group (no `mt-auto` effect when the
- * parent is `flex-row`), which is the natural mobile behavior.
- *
- * Source of the version string:
- *   - Electron (`window.okDesktop?.appVersion`) — trusted, read from
- *     `app.getVersion()` at boot via the bridge contract.
- *   - Web — no equivalent runtime signal; the footer is suppressed
- *     entirely so we never render `v` or `vundefined`.
- *
- * Click action mirrors the "What's new" toast (Notice B in
- * `UpdateNotices.shared.ts`): `bridge.shell.openExternal(releaseUrl)`
- * routes through the main-process asset allowlist. The bridge is
- * guaranteed present whenever `appVersion` is — both are properties of
- * the same Electron preload contract.
- */
 function SettingsSidebarVersion() {
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const version = bridge?.appVersion;
@@ -698,22 +515,8 @@ function SettingsSidebarGroup({
           <li key={item.id}>
             <button
               type="button"
-              // `aria-current="page"` is the specific match for an in-
-              // dialog navigator that swaps the body content — wrapped
-              // in a navigation landmark, each click is page-like
-              // navigation within the dialog. Screen readers announce
-              // "current page" instead of the less-informative generic
-              // "current" that the unscoped `'true'` value produces.
               aria-current={activeId === item.id ? 'page' : undefined}
               aria-disabled={group.enabled ? undefined : true}
-              // Disabled buttons get the same caption the group header
-              // does — without this, a SR user who navigates directly
-              // to a disabled button (form/button rotor, arrow keys in
-              // browse mode) hears "Sync, dimmed, button" with no
-              // context for why it's disabled. tabIndex=-1 keeps them
-              // out of sequential tab order; aria-describedby surfaces
-              // the "Open a project to edit." caption when they reach
-              // the control by other means.
               aria-describedby={group.enabled ? undefined : captionId}
               tabIndex={group.enabled ? 0 : -1}
               disabled={!group.enabled}
@@ -737,21 +540,7 @@ function SettingsSidebarGroup({
   );
 }
 
-/**
- * Paints inside the already-rendered dialog frame while the body chunk
- * resolves. The shell ships in the main bundle so the dialog frame +
- * sidebar are visible immediately and the content area shows shape-
- * matching placeholders that swap to real content without a frame flash.
- */
 function SettingsContentSkeleton() {
-  // The skeleton IS the async loading state for the lazy body chunk.
-  // Announce it as a polite live region with aria-busy so AT users get
-  // a non-interrupting signal that content is loading — without this,
-  // a screen-reader user opening Settings hears the landmarks and
-  // sidebar then encounters a silent content pane until the body
-  // resolves. Mirrors the `role="status" aria-live="polite"` precedent
-  // used by SavedIndicator in the body. Suspense unmounts this on body
-  // resolve, so aria-busy doesn't need to flip — it's just gone.
   return (
     <div
       role="status"

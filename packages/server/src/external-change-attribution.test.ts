@@ -34,16 +34,12 @@ describe('external-change attribution claims', () => {
   });
 
   test('a claim is single-use', () => {
-    // The second external change to a doc is a genuinely new event; reusing the
-    // actor would be a guess, and a wrong name is worse than no name.
     claimExternalChange('notes/roadmap', ALICE, T0);
     expect(takeExternalChangeAttribution('notes/roadmap', T0 + 100)).toEqual(ALICE);
     expect(takeExternalChangeAttribution('notes/roadmap', T0 + 200)).toBeUndefined();
   });
 
   test('an expired claim yields nothing rather than a stale name', () => {
-    // The failure mode that matters: a claim whose write never arrived must not
-    // sit there and mis-credit some later, unrelated edit to the same doc.
     claimExternalChange('notes/roadmap', ALICE, T0);
     expect(takeExternalChangeAttribution('notes/roadmap', T0 + 60_000)).toBeUndefined();
   });
@@ -56,7 +52,6 @@ describe('external-change attribution claims', () => {
   });
 
   test('a re-claim on one doc takes the later actor', () => {
-    // Two people resolving the same file: whoever wrote last owns the bytes.
     claimExternalChange('notes/roadmap', ALICE, T0);
     claimExternalChange('notes/roadmap', BOB, T0 + 10);
     expect(takeExternalChangeAttribution('notes/roadmap', T0 + 100)).toEqual(BOB);
@@ -66,8 +61,6 @@ describe('external-change attribution claims', () => {
     for (let i = 0; i < 400; i += 1) {
       claimExternalChange(`notes/doc-${i}`, ALICE, T0);
     }
-    // Oldest evicted first, so the most recent claims are the ones that survive
-    // to be consumed.
     expect(takeExternalChangeAttribution('notes/doc-399', T0 + 100)).toEqual(ALICE);
     expect(takeExternalChangeAttribution('notes/doc-0', T0 + 100)).toBeUndefined();
   });
@@ -94,9 +87,6 @@ describe('releasing a claim whose write never landed', () => {
 
 describe('a claim window sized to its own write', () => {
   test('a caller-supplied window expires the claim ahead of the default', () => {
-    // The resolve handler's case: several ordinary successes never produce an
-    // ingest to consume the claim, so at the default window it sat waiting to
-    // credit the actor for whoever edited that file next.
     claimExternalChange('notes/roadmap', ALICE, T0, 3_000);
     expect(takeExternalChangeAttribution('notes/roadmap', T0 + 5_000)).toBeUndefined();
   });

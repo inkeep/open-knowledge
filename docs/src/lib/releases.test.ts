@@ -65,7 +65,6 @@ describe('parseChangelog', () => {
   });
 });
 
-/** A GitHub "list releases" entry, dates-relevant fields only. */
 function apiRelease(
   tag: string,
   opts: { draft?: boolean; prerelease?: boolean; published_at?: string | null } = {},
@@ -117,7 +116,6 @@ const fullPage = (page: number) =>
 
 describe('fetchReleaseDates (best-effort)', () => {
   test('paginates until it has enough stable dates, then stops', async () => {
-    // Each full page carries 1 stable + 99 betas, so reaching 2 dates needs 2 pages.
     const dates = await fetchReleaseDates(
       2,
       mockFetch((p) => json(fullPage(p))),

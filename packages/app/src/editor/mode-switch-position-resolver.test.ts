@@ -19,24 +19,17 @@ const md = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
 const resolver = createApproxResolver(md);
 
-/** Narrow a nullable resolver result before using it, without a `!` assertion. */
 function present<T>(value: T | null | undefined): T {
   if (value == null) throw new Error('expected a value, got null/undefined');
   return value;
 }
 
-/**
- * A both-representations snapshot for a markdown string. The PM doc is built
- * from the frontmatter-stripped body (frontmatter lives in Y.Text, never the PM
- * doc), while `source` stays the full string so full-Y.Text offsets are tested.
- */
 function snap(markdown: string): DocSnapshot {
   const { body } = stripFrontmatter(markdown);
   const doc = schema.nodeFromJSON(md.parse(body));
   return { source: markdown, doc };
 }
 
-/** PM position just inside top-level block `index`. */
 function pmPosOfBlock(doc: PmNode, index: number): number {
   let pos = 0;
   for (let i = 0; i < index; i++) pos += doc.child(i).nodeSize;
@@ -44,13 +37,6 @@ function pmPosOfBlock(doc: PmNode, index: number): number {
 }
 
 describe('invalid-MDX resilience', () => {
-  // The single positioned parse (`parseToEditorMdast`) throws on structurally invalid
-  // MDX — an unclosed or mismatched JSX tag, a common transient state while
-  // editing raw source. The plain toggle captures the source anchor
-  // synchronously as the mode flips, so a throw here would abort the flip and
-  // strand the user in the mode they were leaving. `computeSourceBlocks` is the
-  // shared parse chokepoint every consumer routes through, so it must degrade to
-  // no-blocks (reproducing the pre-feature no-anchor flip) rather than throw.
   const invalid = 'Intro paragraph.\n\n<Foo>hi</Bar>\n\nMismatched JSX tag above.';
 
   test('computeSourceBlocks returns no blocks instead of throwing', () => {
@@ -59,9 +45,6 @@ describe('invalid-MDX resilience', () => {
   });
 
   test('the degradation leaves a mark, so a parse regression is not silent', () => {
-    // No-blocks is indistinguishable from an empty body downstream, and every
-    // mode switch would quietly land at the top of the document. The mark is the
-    // only thing separating "invalid MDX mid-edit" from a broken parser.
     const marks = vi.spyOn(performance, 'mark').mockImplementation(() => ({}) as PerformanceMark);
     try {
       computeSourceBlocks(invalid, md);
@@ -137,7 +120,6 @@ describe('confidence grades', () => {
   test('same ordinal, different kind resolves ordinal', () => {
     const source = '# A\n\nparagraph';
     const { doc } = snap(source);
-    // Content differs (so not exact) and kind differs (heading vs list).
     const anchor: BlockAnchor = { blockIndex: 0, kind: 'list', content: 'a stale list item' };
     expect(resolver.resolveInSource(anchor, { source, doc })?.confidence).toBe('ordinal');
   });
@@ -148,7 +130,6 @@ describe('confidence grades', () => {
     const anchor: BlockAnchor = { blockIndex: 9, kind: 'paragraph', content: 'gone' };
     const resolved = present(resolver.resolveInSource(anchor, { source, doc }));
     expect(resolved.confidence).toBe('clamped');
-    // Clamped lands on the last block, never off the end of the document.
     expect(resolved.blockStart).toBeLessThanOrEqual(source.length);
     expect(resolved.blockStart).toBe(source.indexOf('only two blocks'));
   });
@@ -156,20 +137,14 @@ describe('confidence grades', () => {
 
 describe('count tripwire', () => {
   test('a ProseMirror/mdast block-count mismatch degrades the grade and never reports exact', () => {
-    // Source has three paragraphs; the PM doc is built from a two-paragraph
-    // version, so the top-level counts disagree.
     const source = 'para zero\n\npara one\n\npara two';
     const { doc } = snap('para zero\n\npara one');
     const anchor = present(resolver.captureFromSource(source, source.indexOf('para one')));
-    // The anchor content matches the source block at that ordinal, yet the
-    // mismatch caps the grade below exact.
     expect(anchor.content).toBe('para one');
     expect(resolver.resolveInSource(anchor, { source, doc })?.confidence).toBe('ordinal');
   });
 
   test('the tripwire reads the comparable ProseMirror child count, not a children.length', () => {
-    // A heading-final doc renders with a trailing empty "type here" paragraph
-    // that has no source counterpart: mdast sees N blocks, the live PM doc N+1.
     const source = '# A\n\nbody\n\n## Tail';
     const baseJson = md.parse('# A\n\nbody\n\n## Tail') as { type: string; content: unknown[] };
     const affordanceDoc = schema.nodeFromJSON({
@@ -178,17 +153,10 @@ describe('count tripwire', () => {
     });
     const mdastCount = computeSourceBlocks(source, md).blocks.length;
 
-    // The comparable count subtracts the affordance paragraph and aligns with
-    // mdast; the raw child count is one higher and would report a false mismatch.
     expect(comparableChildCount(affordanceDoc)).toBe(mdastCount);
     expect(affordanceDoc.childCount).toBe(mdastCount + 1);
-    // A resolver that read the raw `children.length` (as if the PM node were an
-    // mdast root) counts the affordance paragraph too, so it would mis-compare
-    // against mdast's count on every heading-final doc.
     expect(affordanceDoc.children.length).toBe(mdastCount + 1);
 
-    // With the comparable count the landing is trusted (exact); the raw count
-    // would have degraded it.
     const anchor = present(
       resolver.captureFromWysiwyg(affordanceDoc, pmPosOfBlock(affordanceDoc, 0)),
     );
@@ -199,10 +167,6 @@ describe('count tripwire', () => {
   });
 
   test('a source-carried trailing blank run stays in the comparable count', () => {
-    // The affordance allowance and a doc-edge blank run put the same shape at
-    // the end of the doc, so subtracting unconditionally would under-count
-    // every document the user ended with two or more blank lines — and the
-    // tripwire failure is silent, so nothing would report it.
     const carried = '# A\n\nbody\n\n\n';
     const doc = snap(carried).doc;
     const blocks = computeSourceBlocks(carried, md).blocks;
@@ -210,8 +174,6 @@ describe('count tripwire', () => {
     expect(blocks.length).toBe(4);
     expect(comparableChildCount(doc)).toBe(blocks.length);
 
-    // The affordance twin, for contrast: same trailing shape, one paragraph
-    // shorter, no source counterpart, so it does come off the count.
     const affordanceOnly = '## H\n';
     const headingJson = md.parse(affordanceOnly) as { type: string; content: unknown[] };
     const affordanceDoc = schema.nodeFromJSON({
@@ -225,10 +187,6 @@ describe('count tripwire', () => {
   });
 
   test('a leading blank run is never subtracted, at or below the floor', () => {
-    // Only the TAIL carries an artifact the source does not spell. Every
-    // leading empty paragraph came from source bytes, so reasoning by symmetry
-    // and subtracting a sub-floor head run would under-count and disable
-    // decorations permanently on documents that open with blank lines.
     for (const source of ['\n\n# A\n\nbody\n', '\n\n\n# A\n\nbody\n']) {
       const doc = snap(source).doc;
       expect(comparableChildCount(doc)).toBe(computeSourceBlocks(source, md).blocks.length);
@@ -245,7 +203,6 @@ describe('content-equality gating', () => {
     const anchor = present(resolver.captureFromSource(source, source.indexOf('target'), jumpOpts));
     const resolved: ResolvedPosition = present(resolver.resolveInSource(anchor, { source, doc }));
     expect(resolved.confidence).toBe('exact');
-    // The refined point sits past the block start (at the captured selection).
     expect(resolved.point).toBeGreaterThan(resolved.blockStart);
     expect(resolved.point).toBe(source.indexOf('target'));
   });
@@ -271,7 +228,6 @@ describe('offset normalization', () => {
     const { doc } = snap(source);
     const anchor = present(resolver.captureFromSource(source, source.indexOf('Body paragraph')));
     const resolved = present(resolver.resolveInSource(anchor, { source, doc }));
-    // The landed offset is a full-source offset, past the frontmatter fence.
     expect(resolved.blockStart).toBe(source.indexOf('Body paragraph'));
     expect(resolved.blockStart).toBeGreaterThan(source.indexOf('---'));
   });
@@ -317,13 +273,6 @@ describe('no-anchor and purity', () => {
 });
 
 describe('per-source parse reuse', () => {
-  /**
-   * A resolver over a `MarkdownManager` that counts the positioned parses. The
-   * count is the cost being pinned: one mode switch drives three of the four
-   * methods over the same source inside one synchronous frame, and a parse per
-   * call puts three or four full mdast builds on the main thread before the
-   * landing's first dispatch.
-   */
   function countingResolver() {
     let parses = 0;
     const counting = Object.create(md) as MarkdownManager;
@@ -339,8 +288,6 @@ describe('per-source parse reuse', () => {
     const { doc } = snap(source);
     const counted = countingResolver();
 
-    // The source-to-WYSIWYG shape: capture the topmost block, derive its source
-    // range for the pin, re-anchor off the pin, then resolve into the PM doc.
     const anchor = present(counted.resolver.captureFromSource(source, 0));
     counted.resolver.resolveInSource(anchor, { source, doc });
     const reAnchored = present(counted.resolver.captureFromSource(source, 0));
@@ -357,13 +304,10 @@ describe('per-source parse reuse', () => {
     counted.resolver.captureFromSource(before, 0);
     expect(counted.parses()).toBe(1);
 
-    // The last block of the edited source only exists in the new parse, so a
-    // stale entry could not answer this.
     const anchor = present(counted.resolver.captureFromSource(after, after.indexOf('second')));
     expect(anchor.content).toBe('second');
     expect(counted.parses()).toBe(2);
 
-    // Reverting the source is an ordinary key change, not a cache hit.
     counted.resolver.captureFromSource(before, 0);
     expect(counted.parses()).toBe(3);
   });
@@ -383,7 +327,6 @@ describe('cross-mode consistency', () => {
       const fromWysiwyg = present(resolver.captureFromWysiwyg(doc, pmPosOfBlock(doc, b)));
       const inSource = present(resolver.resolveInSource(fromWysiwyg, { source, doc }));
       expect(inSource.confidence).toBe('exact');
-      // Re-capturing at the landed source offset yields the same ordinal.
       expect(resolver.captureFromSource(source, inSource.blockStart)?.blockIndex).toBe(b);
 
       const fromSource = present(resolver.captureFromSource(source, inSource.blockStart));
@@ -401,10 +344,7 @@ function alignedCorpus(): string[] {
       const { blocks } = computeSourceBlocks(ex.markdown, md);
       if (blocks.length === 0) continue;
       if (comparableChildCount(snap(ex.markdown).doc) === blocks.length) examples.push(ex.markdown);
-    } catch {
-      // Examples the PM parse can't round-trip aren't valid inputs to the
-      // ordinal bridge; they're covered by the corpus contract's breaker set.
-    }
+    } catch {}
   }
   return examples;
 }
@@ -447,10 +387,6 @@ describe('fidelity corpus', () => {
       if (pm === mdast) aligned++;
       else breakers.push(`${ex.section}: pm=${pm} mdast=${mdast}`);
     }
-    // The parse-time bridge keeps the ordinal mapping 1:1 for every corpus
-    // document. The constructs that DO misalign are runtime states — the live
-    // trailing-paragraph affordance and a mid-edit divergence between the two
-    // representations — enumerated in the count-tripwire suite above.
     expect(aligned).toBeGreaterThan(200);
     expect(breakers).toEqual([]);
   });

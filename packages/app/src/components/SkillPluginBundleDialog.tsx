@@ -41,75 +41,34 @@ import {
   placeSkill,
 } from '@/lib/skills-api';
 
-/**
- * One source that carries several skills, normalized across the two ways we
- * learn that. A cloned repo can declare a PLUGIN manifest (`plugin` names it,
- * and the manifest also lists capabilities OK never installs); a website
- * source has no manifest at all — its `.well-known` index simply lists every
- * skill on that origin, which is a bundle in every sense that matters here
- * (`plugin: null`). Both feed the same picker.
- */
 export interface SkillBundleDisclosure {
-  /** Plugin name when a manifest declares one; null for a bare multi-skill source. */
   plugin: string | null;
-  /** Every skill the source carries, including the one being previewed. */
   names: readonly string[];
-  /** Optional descriptions for sources that are already known locally. */
   descriptions?: Readonly<Record<string, string | null>>;
-  /** Executable capabilities the plugin ships. Named only, never installed. */
   capabilities?: PluginBundleMetadata['capabilities'];
   repositoryUrl?: string;
 }
 
-/**
- * Installation seam for app-owned skill bundles. Returning `null` keeps the
- * dialog open (the installer has already surfaced the error); a map closes the
- * dialog and follows the same installed-skill handoff as a remote import.
- *
- * The scope is fixed because app-owned installers own their placement policy.
- * Remote skills continue through the existing scope + editor picker below.
- */
 interface SkillBundleInstallOverride {
   scope: SkillScope;
   installSelected: (names: readonly string[]) => Promise<ReadonlyMap<string, string> | null>;
 }
 
 interface SkillPluginBundleDialogProps {
-  /** `null` keeps the dialog closed. */
   bundle: SkillBundleDisclosure | null;
-  /** The import source the preview was opened with (repo, site, or skills.sh URL). */
   source: string;
   defaultScope: SkillScope;
-  /** App-owned bundles can reuse the picker while retaining their acquisition
-   * and collision policy. Omit for the normal skills.sh / plugin import path. */
   installOverride?: SkillBundleInstallOverride;
-  /** Skills that landed, keyed BOTH by what was requested and by the on-disk
-   *  name (they differ on a collision rename). The preview tab that hosts this
-   *  banner uses it to stop showing a preview of a skill the user now owns. */
   onInstalled?: (landed: ReadonlyMap<string, string>) => void;
   onOpenChange: (open: boolean) => void;
-  /** Restore focus for controlled dialogs opened without a Radix trigger. */
   returnFocus?: () => void;
 }
 
-/**
- * Pick which of a source's bundled skills to install. Reached from the
- * "part of a plugin" / "this source has N skills" disclosure on an un-imported
- * preview.
- *
- * A PICKER, deliberately not a one-click "install all 41": dozens of unreviewed
- * skills all competing to trigger is a worse outcome than the three the user
- * actually wanted, and every row here lands in the agent's context. The whole
- * selection imports through ONE server-side clone
- * (`POST /api/skills/import-bulk`), which is the reason this exists rather than
- * the per-skill Install menu run N times.
- */
 export function SkillPluginBundleDialog(props: SkillPluginBundleDialogProps) {
   if (!props.bundle) return null;
   return <OpenSkillPluginBundleDialog {...props} bundle={props.bundle} />;
 }
 
-/** The open dialog is a child so closing fully resets picker state on remount. */
 function OpenSkillPluginBundleDialog({
   bundle,
   source,
@@ -127,26 +86,15 @@ function OpenSkillPluginBundleDialog({
     installOverride ? new Set(bundle.names) : new Set(),
   );
   const [busy, setBusy] = useState(false);
-  // Descriptions come from the same enumeration the Import picker uses. The
-  // manifest's `bundledSkills` is the fallback: names alone still install, and a
-  // flaked discover shouldn't empty the list.
   const [described, setDescribed] = useState<ReadonlyMap<string, string | null>>(
     () => new Map(Object.entries(bundle.descriptions ?? {})),
   );
-  // Which agents the selection is projected into. Seeded from the project's
-  // configured targets — the set the server would have auto-projected into —
-  // so the common case is one click, and any other set is a deliberate change.
   const skillTargets = useSkillTargets();
   const [editors, setEditors] = useState<ReadonlySet<SkillTargetEditor> | null>(null);
   const configuredTargets =
     skillTargets.state.status === 'ready' ? skillTargets.state.data.targets : null;
   const effectiveEditors: ReadonlySet<SkillTargetEditor> =
     editors ?? new Set(configuredTargets ?? []);
-  // Only OFFER editors installable on THIS machine — the same rule (and the
-  // same same-scope fallback source) the per-skill install menu uses via
-  // `skill-install-rows`. Installing into an undetected editor silently no-ops,
-  // so a static list promises writes that can't happen. null = no data yet →
-  // offer everything (never over-hide); anything already ticked stays visible.
   const skillsState = useSkills();
   const installableList =
     skillsState.status === 'ready'
@@ -155,19 +103,10 @@ function OpenSkillPluginBundleDialog({
   const offeredEditors = INSTALL_EDITORS.filter(
     (e) => !installableList || installableList.includes(e) || effectiveEditors.has(e),
   );
-  // Skills the picker offers that are ALREADY managed at the target scope:
-  // rendered pre-checked with an Installed badge (state, not a choice — the
-  // checkbox is disabled so unchecking can't read as an uninstall) and
-  // excluded from Select all / the CTA count. A re-import would be a no-op
-  // server-side anyway.
   const installedNames: ReadonlySet<string> =
     skillsState.status === 'ready'
       ? new Set(skillsState.data.filter((s) => s.scope === scope).map((s) => s.name))
       : new Set();
-  // Custom skill roots, offered beside the editor checkboxes exactly like the
-  // per-skill install menu offers them: every declared root the targets config
-  // knows for this scope (non-editor host rows), plus every root any
-  // same-scope skill has a recorded custom placement under.
   const [customRoots, setCustomRoots] = useState<ReadonlySet<string>>(new Set());
   const offeredCustomRoots: readonly string[] = (() => {
     const roots = new Set<string>();
@@ -222,18 +161,11 @@ function OpenSkillPluginBundleDialog({
       onOpenChange(false);
       return;
     }
-    // Acquire with `install: false`, then project explicitly into the agents the
-    // user ticked. Letting the server auto-project would silently install into
-    // whatever it detects, which is the one thing a destination picker exists to
-    // prevent — and the same set-exact contract the single-skill menu uses.
     const result = await importSkillsBulk({
       source,
       skills: [...selected],
       scope,
       install: false,
-      // The bundle disclosure only exists on the Explore (skills.sh) flavor —
-      // same marketplace-provenance condition the single-skill path uses — so
-      // the whole selection is reported as one batched install event.
       marketplace: true,
     });
     if (!result.ok) {
@@ -246,8 +178,6 @@ function OpenSkillPluginBundleDialog({
       .filter((n): n is string => typeof n === 'string');
     const agents = [...effectiveEditors];
     if (agents.length > 0) {
-      // Sequential: each is a local projection, and the shared placements ledger
-      // is a read-modify-write that concurrent installs would clobber.
       for (const skillName of landed) {
         const projected = await installSkill({
           scope,
@@ -258,8 +188,6 @@ function OpenSkillPluginBundleDialog({
         if (!projected.ok) toast.error(t`Couldn't install ${skillName}: ${projected.error}`);
       }
     }
-    // Custom-root placements ride the same sequential run, one placeSkill per
-    // skill x root — the same primitive the per-skill menu's custom rows use.
     for (const root of customRoots) {
       for (const skillName of landed) {
         const placed = await placeSkill({ scope, name: skillName, dir: root, mode: 'link' });
@@ -269,8 +197,6 @@ function OpenSkillPluginBundleDialog({
     setBusy(false);
     const { imported, alreadyImported, failed } = result;
     if (failed > 0) {
-      // Name the failures: a count alone leaves the user unable to retry the
-      // right rows. The successes are already on disk either way.
       const failedNames = result.results
         .filter((r) => r.status === 'failed' || r.status === 'not-found')
         .map((r) => r.requested)
@@ -283,10 +209,6 @@ function OpenSkillPluginBundleDialog({
     } else {
       toast.success(t`Installed ${imported} skills from ${plugin ?? source}`);
     }
-    // Report what landed BEFORE closing: the host may replace this whole subtree
-    // (a preview tab swaps itself for the real skill), and a callback fired
-    // after that never arrives. Keyed by BOTH the requested name and the on-disk
-    // one — a collision rename makes them differ, and the caller may know either.
     const landedByRequest = new Map<string, string>();
     for (const r of result.results) {
       if (r.status !== 'imported' && r.status !== 'already-imported') continue;
@@ -344,8 +266,7 @@ function OpenSkillPluginBundleDialog({
               {allSelected ? <Trans>Clear</Trans> : <Trans>Select all</Trans>}
             </Button>
           </div>
-          {/* The list scrolls inside the dialog: a 40-skill plugin would
-              otherwise push the footer off-screen. */}
+          {}
           <div className="max-h-72 overflow-y-auto rounded-md border border-border divide-y divide-border">
             {names.map((name) => {
               const description = described.get(name);
@@ -380,10 +301,7 @@ function OpenSkillPluginBundleDialog({
               );
             })}
           </div>
-          {/* Destination — a summary, not a form. The skills are the decision;
-              where they land is a default (the project's configured targets +
-              the preview's scope) stated in the app's usual icon language and
-              adjustable behind Change for the minority who want different. */}
+          {}
           <div
             className="flex flex-wrap items-center gap-1.5 text-1sm text-muted-foreground"
             data-testid="plugin-bundle-destination"
@@ -402,9 +320,6 @@ function OpenSkillPluginBundleDialog({
                     iconClassName="size-3.5"
                   />
                 ) : (
-                  // Not an error: the skills still land as project skills you
-                  // can install later. Say so, so an empty set doesn't read as
-                  // a failure.
                   <Trans>no agents — saved, not installed anywhere</Trans>
                 )}
                 <Popover>
@@ -464,10 +379,7 @@ function OpenSkillPluginBundleDialog({
                             {EDITOR_LABELS[editor] ?? editor}
                           </Label>
                         ))}
-                        {/* The scope's known custom skill roots — the same
-                            rows the per-skill install menu offers: declared
-                            roots from the targets config plus any root a
-                            same-scope skill has a recorded placement under. */}
+                        {}
                         {offeredCustomRoots.map((root) => (
                           <Label
                             key={root}
@@ -516,8 +428,6 @@ function OpenSkillPluginBundleDialog({
             ) : selected.size === 0 ? (
               <Trans>Install</Trans>
             ) : (
-              // The verb carries the count — "Install selected" never said how
-              // much lands.
               <Plural value={selected.size} one="Install # skill" other="Install # skills" />
             )}
           </Button>

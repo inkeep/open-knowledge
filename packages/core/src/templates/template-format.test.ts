@@ -44,10 +44,8 @@ describe('parseTemplateFile', () => {
     const m = parseTemplateFile(SINGLE_BLOCK);
     expect(m.identity.title).toBe('Research Log');
     expect(m.identity.description).toContain('Provisional analysis');
-    // starterContent is the doc-frontmatter block + markdown the new doc gets.
     expect(m.starterContent).toContain('status: provisional');
     expect(m.starterContent).toContain('## Question');
-    // identity keys do NOT leak into starter content.
     expect(m.starterContent).not.toContain('title: Research Log');
     expect(m.starterContent).not.toContain(`${TEMPLATE_IDENTITY_KEY}:`);
   });
@@ -63,7 +61,6 @@ describe('parseTemplateFile', () => {
     const m = parseTemplateFile(raw);
     expect(m.identity.title).toBe('T');
     expect(m.identity.description).toBe('D');
-    // The doc-frontmatter after the identity block is not swallowed into it.
     expect(m.starterContent).toContain('status: provisional');
     expect(m.starterContent).not.toContain('title: T');
   });
@@ -73,7 +70,6 @@ describe('parseTemplateFile', () => {
     const modern = parseTemplateFile(SINGLE_BLOCK);
     expect(legacy.identity.title).toBe(modern.identity.title);
     expect(legacy.identity.description).toBe(modern.identity.description);
-    // Both produce starter content carrying the doc frontmatter + body.
     expect(legacy.starterContent).toContain('status: provisional');
     expect(legacy.starterContent).toContain('## Question');
     expect(legacy.starterContent).not.toContain('title: Research Log');
@@ -89,7 +85,6 @@ describe('composeTemplateFile + round-trip', () => {
   test('compose produces a single block with template: first and no second fence', () => {
     const m = parseTemplateFile(SINGLE_BLOCK);
     const composed = composeTemplateFile(m.identity, m.starterContent);
-    // exactly one frontmatter block (one leading ---, one closing ---)
     const fenceCount = (composed.match(/^---[ \t]*$/gm) ?? []).length;
     expect(fenceCount).toBe(2);
     expect(composed).toContain(`${TEMPLATE_IDENTITY_KEY}:`);
@@ -109,7 +104,7 @@ describe('composeTemplateFile + round-trip', () => {
     const legacy = parseTemplateFile(LEGACY_TWO_BLOCK);
     const composed = composeTemplateFile(legacy.identity, legacy.starterContent);
     const fenceCount = (composed.match(/^---[ \t]*$/gm) ?? []).length;
-    expect(fenceCount).toBe(2); // single block, not the legacy two
+    expect(fenceCount).toBe(2);
     expect(parseTemplateFile(composed).identity.title).toBe('Research Log');
   });
 });
@@ -121,7 +116,6 @@ describe('instantiateDoc', () => {
     expect(doc).toContain('## Question');
     expect(doc).not.toContain('title: Research Log');
     expect(doc).not.toContain(`${TEMPLATE_IDENTITY_KEY}:`);
-    // {{date}}/{{user}} survive (substitution is the caller's job).
     expect(doc).toContain('{{date}}');
   });
 

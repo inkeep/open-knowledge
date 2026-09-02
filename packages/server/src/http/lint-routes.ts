@@ -1,24 +1,3 @@
-/**
- * The lint + audit read family — `lint/config`, `lint/frontmatter-schemas`,
- * `lint`, `lint/audit`, `audit` — the fifth natively-routed Wave 2 group. The
- * editor reads the effective lint config through `lint/config`; the Settings
- * GUI's write side (native `.markdownlint.*` rules) stays in the extension. Same
- * lift shape as `link-graph-routes.ts` / `metrics-routes.ts` /
- * `document-routes.ts` / `config-system-routes.ts`: what the handlers closed
- * over in the extension arrives as {@link LintRouteDeps}, the handler bodies
- * are unchanged, and the extension composes this group's table into its
- * `nativeApi` handle while the legacy dispatch record loses the paths in the
- * same change.
- *
- * The write-side lint routes (`lint/markdownlint-config`,
- * `lint/frontmatter-schema`, `lint/fix`) ride the legacy MUTATING_ROUTES gate
- * and stay in the extension; they share `unmatchedGlobProblems` and
- * `readAuditGeneration` (the config-epoch reader coupled to the lint-config CC1
- * emitter), which therefore arrive here as deps rather than moving. The
- * per-server audit cache + single-flight are read-only-owned, so they move into
- * this group.
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
@@ -66,13 +45,9 @@ export interface LintRouteDeps {
   contentDir: string;
   projectDir: string | undefined;
   contentFilter: ContentFilter | undefined;
-  /** The extension's docName safety predicate (path-traversal refusal). */
   isSafeDocName: (docName: string) => boolean;
-  /** docName → traversal-confined content-relative file path (null on refusal). */
   resolveDocFilePath: (contentDir: string, docName: string) => string | null;
-  /** Rejects absolute / traversing scope params before they reach the walker. */
   isValidRelativeContentPath: (path: string) => boolean;
-  /** The extension's Show All Files walker (schema-file discovery consumes it). */
   streamShowAllEntries: (opts: {
     contentDir: string;
     contentFilter: ContentFilter;
@@ -83,23 +58,12 @@ export interface LintRouteDeps {
   getLinksValidationSetting: (() => LinksValidationSetting) | undefined;
   derivedDocumentIndex: DerivedDocumentIndexApiPort | undefined;
   collectAdmittedDocNames: () => Promise<Set<string>>;
-  /**
-   * Zero-match `appliesTo` detection over the project doc list — shared with
-   * the write-side lint handlers that stay in the extension.
-   */
   unmatchedGlobProblems: (effective: LinterConfig) => string[];
-  /**
-   * The lint-config epoch + branch + local-target generation reader — coupled
-   * to the extension's `signalLintConfigChanged` CC1 emitter, so it stays there
-   * and arrives here as a dep.
-   */
   readAuditGeneration: () => string;
 }
 
 export interface LintRoutes {
-  /** Hono patterns for the native mount (`NativeApiHandle.paths`). */
   paths: readonly string[];
-  /** The group's view for the shared /api/* admission pipeline. */
   table: ApiRouteTable;
 }
 
@@ -121,42 +85,13 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     readAuditGeneration,
   } = deps;
 
-  /**
-   * Live CRDT source for a currently-loaded doc, else null. Lint reads must
-   * see the same bytes the editor and `/api/lint/fix` operate on: the disk
-   * file lags the CRDT behind the persistence debounce, and if a flush is
-   * ever lost the two diverge durably — a disk-only audit then reports
-   * problems the live doc no longer has and the Fix all sweep no-ops forever.
-   * Unloaded docs have no live copy; disk is authoritative for them.
-   */
   const liveLintSourceFor = (docRelPath: string): string | null => {
     const docName = docRelPath.replace(/\.(md|mdx)$/i, '');
     const doc = hocuspocus.documents.get(docName);
     return doc === undefined ? null : doc.getText('source').toString();
   };
 
-  // One cache per server instance (not module-scoped): its keys carry contentDir,
-  // but a per-server lifetime also means a restart starts cold, which is the
-  // right blast radius for a disk-stamp-keyed cache.
   const auditCache = new AuditCache();
-  /**
-   * Audits in flight, keyed by scope + config fingerprint. Every window runs the
-   * freshness triggers independently, and the Problems panel can refresh at the
-   * same moment, so a single config change can ask for the same whole-project
-   * walk several times over. Coalescing makes them one walk instead of N cold
-   * ones that each finish too late to warm the others' cache.
-   *
-   * The walk yields to the event loop, so a request issued after a config
-   * mutation or a branch switch IS parsed while an earlier walk is still
-   * running and could attach to it. The fingerprint alone would not stop that:
-   * it covers the BASE config, which never carries markdownlint `rules` (those
-   * come from the native `.markdownlint.*` cascade) nor frontmatter-schema
-   * bodies, and says nothing at all about which branch's content is on disk.
-   * {@link readAuditGeneration} is what makes the key move, which is why it is
-   * read here per request rather than captured once. The per-file cache keys on
-   * the fully-resolved config and the file's disk stamp, so nothing is cached
-   * under the wrong rules or the wrong branch's bytes either way.
-   */
   const auditFlight = createSingleFlight<ValidationAuditResult>();
 
   function runCoalescedAudit(
@@ -168,14 +103,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     return auditFlight.run(key, () => runValidationAudit(validators, { targetPath })).promise;
   }
 
-  /**
-   * A superseded walk has no plane to report, so the caller gets a retryable
-   * 409 rather than a stale or mixed one. The store-side effect is exactly the
-   * effect of any failed audit — previous entries stand — and whichever change
-   * superseded this walk has already broadcast its own CC1 channel
-   * (`lint-config` for a config mutation, `branch-switched` for a switch), so
-   * the corrective walk is scheduled without the caller doing anything.
-   */
   function respondAuditSuperseded(res: ServerResponse, handler: string): void {
     errorResponse(
       res,
@@ -190,9 +117,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     EmptyRequestSchema,
     async (req, res) => {
       try {
-        // A `?doc=` is accepted (the editor passes the active doc) but the
-        // effective config resolves per doc (cli2 cascade: nearest native
-        // file on the doc→root walk governs); no `?doc=` → root-level.
         const url = new URL(req.url ?? '', 'http://localhost');
         const docName = url.searchParams.get('doc');
         if (docName !== null && (docName === '' || !isSafeDocName(docName))) {
@@ -235,21 +159,11 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     { handler: 'lint-config', method: 'GET', skipBodyParse: true },
   );
 
-  // Enumerate the project's `.ok/schemas/*.json` files (flat, top-level only)
-  // as project-root-relative paths for the mapping picker. A missing dir is
-  // an empty list, not an error; bounded so a pathological schemas dir can't
-  // produce an unbounded response.
   const handleFrontmatterSchemasList = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
       try {
         const root = resolve(projectDir ?? contentDir);
-        // Two discovery sources: the flat tool-created `.ok/schemas/` scan,
-        // plus a filtered content walk for the ecosystem `*.schema.json`
-        // convention anywhere in the project. The walk deliberately does NOT
-        // re-admit `.ok`: the scan above already covers `.ok/schemas/`, and
-        // lifting ContentFilter's always-skip floor here would let this
-        // surface enumerate the rest of OK's internal state to find schemas.
         const { schemas, truncated } = listProjectSchemaFiles(root);
         const found = new Set(schemas);
         let walkTruncated = false;
@@ -325,9 +239,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           onConfigProblem: (problem) => configWarnings.push(problem),
           liveSourceFor: liveLintSourceFor,
         });
-        // Absent when there is nothing to report, matching the schema's
-        // documented contract and the three sibling lint emitters. `ran` is the
-        // field that is always present; do not carry that rule across to this one.
         const lintWarnings = [...configWarnings, ...summarizeLintPluginFailures(result.failures)];
         successResponse(
           res,
@@ -359,9 +270,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
         const url = new URL(req.url ?? '', 'http://localhost');
         const rawTarget = url.searchParams.get('path');
         const target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
-        // Absolute paths and traversal must not reach the walker: an audit
-        // response carries offending-text snippets, so an unchecked scope is
-        // an arbitrary-directory read for any connected agent.
         if (target !== undefined && !isValidRelativeContentPath(target)) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
             handler: 'lint-audit',
@@ -393,10 +301,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     { handler: 'lint-audit', method: 'GET', skipBodyParse: true },
   );
 
-  // Unified validation audit: every registered project validator (markdownlint
-  // walk + derived-index dead-link read) merged into one source-tagged plane.
-  // Additive alongside /api/lint/audit and /api/dead-links, which keep their
-  // single-validator contracts.
   const handleAudit = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -404,21 +308,12 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
         const url = new URL(req.url ?? '', 'http://localhost');
         const rawTarget = url.searchParams.get('path');
         let target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
-        // Absolute paths and traversal must not reach the validators: the
-        // lint walk reads file bytes under this scope, so an unchecked path
-        // is an arbitrary-directory read for any connected caller.
         if (target !== undefined && !isValidRelativeContentPath(target)) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
             handler: 'audit',
           });
           return;
         }
-        // `doc` scopes by docName (extension-less). The client freshness path
-        // knows docNames from disk-ack frames, never file extensions, so the
-        // extension resolution has to happen here. A doc indexed from a live
-        // CRDT session may not be on disk yet — fall back to the default
-        // extension so the links validator can still scope to it (mirrors the
-        // links validator's own fallback).
         const rawDoc = url.searchParams.get('doc');
         const docParam = rawDoc === null || rawDoc === '' ? undefined : rawDoc;
         if (docParam !== undefined) {
@@ -448,9 +343,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           target,
           AuditCache.fingerprintConfig(baseConfig),
         );
-        // `counts=1` tallies the same plane instead of enumerating it — the
-        // freshness path behind file-tree tints wants per-file counts, and on a
-        // large KB the enumerated bodies are tens of MB it discards on arrival.
         if (url.searchParams.get('counts') === '1') {
           successResponse(
             res,
@@ -492,10 +384,6 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
       }
       return null;
     },
-    // `isMutating` tracks legacy MUTATING_ROUTES membership, not actual side
-    // effects. Every route here is a read and none rode that gate; the
-    // write-side lint routes (markdownlint-config / frontmatter-schema / fix)
-    // stay in the extension on it.
     isMutating: () => false,
   };
 

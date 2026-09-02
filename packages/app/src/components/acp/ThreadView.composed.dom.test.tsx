@@ -1,17 +1,3 @@
-/**
- * The classifier-to-renderer join, exercised end to end.
- *
- * Every other ThreadView suite doubles `@/lib/acp/thread-client` and hands the
- * view a hand-authored render model, so a classifier that never fires or a
- * render arm that is never reached passes green in all of them. Here the only
- * double on the data path is the browser's own `WebSocket`: raw server frames
- * enter through the real client's socket handler, the real incremental fold
- * builds the model, and the real ThreadView draws it.
- *
- * Fixtures carry the producer's exact bytes and are shared with the core
- * predicate, the server boundary guard, and the fold, so the four cannot drift.
- */
-
 import type {
   SessionUpdate,
   ThreadEvent,
@@ -27,14 +13,6 @@ import fixture from '../../../../../test-support/fixtures/codex-legacy-warning-e
 };
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
-/**
- * Environment doubles, not seam doubles: the editor context and workspace hook
- * need providers this suite has no reason to stand up, and the composer's real
- * field is a ProseMirror contentEditable jsdom cannot host. None of them sits
- * between a server frame and a transcript row. `AgentMarkdown` is deliberately
- * NOT doubled here — the notice card is supposed to reach the same renderer a
- * reply does, and a double would hide it if it stopped.
- */
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ systemProvider: null }),
 }));
@@ -52,21 +30,9 @@ const CODEX = fixture.agents.codexRegistry;
 const SOCKET_URL = 'ws://localhost:5173/collab/thread';
 
 type AgentIdentity = typeof fixture.agents.codexRegistry;
-/**
- * The fixture records a near miss's identity as a KEY into `agents`. Two of
- * them are near misses only because of who sent them, so subscribing under a
- * raw key would reject them for being malformed and prove nothing about the
- * identity gate.
- */
 const agentNamed = (name: string | undefined): AgentIdentity =>
   name === undefined ? CODEX : (fixture.agents as Record<string, AgentIdentity>)[name];
 
-/**
- * The transport, and only the transport. The client owns everything above it —
- * frame parsing, the event log, dedupe, the fold — so this stands in for the
- * browser primitive alone: construct, open, deliver a payload, record what was
- * sent back.
- */
 class FakeSocket {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -106,12 +72,6 @@ class FakeSocket {
 
 const realWebSocket = globalThis.WebSocket;
 let socket: FakeSocket;
-/**
- * The client is a module singleton whose store outlives every test in this
- * file, and it dedupes by seq — so a scenario that reused a thread id would
- * have its frames silently dropped as stale and then assert against whatever
- * the previous scenario left on screen. Every subscription takes a fresh id.
- */
 let threadId: string;
 let threadCounter = 0;
 
@@ -130,8 +90,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  // Drops the socket and its reconnect timer before the next test opens one;
-  // without it the singleton keeps a live backoff timer per test.
   act(() => {
     getAgentThreadClient().setUrl(null);
   });
@@ -139,7 +97,6 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** Subscribe a brand-new thread and hand back the info the view renders. */
 function openThread(overrides?: Omit<Partial<ThreadInfo>, 'threadId'>): ThreadInfo {
   threadCounter += 1;
   threadId = `composed-${threadCounter}`;
@@ -160,25 +117,18 @@ function openThread(overrides?: Omit<Partial<ThreadInfo>, 'threadId'>): ThreadIn
   return info;
 }
 
-/** One event frame, the shape a mid-turn single send uses. */
 function pushEvent(event: ThreadEvent, seq: number): void {
   act(() => {
     socket.deliver({ op: 'event', threadId, seq, event });
   });
 }
 
-/** A batch frame — both live coalescing and history replay use this shape. */
 function pushEvents(events: readonly ThreadEvent[], fromSeq: number): void {
   act(() => {
     socket.deliver({ op: 'events', threadId, fromSeq, events: [...events] });
   });
 }
 
-/**
- * Fixture updates are untyped wire JSON on purpose: several negatives are
- * shapes the SDK's types forbid, and those are exactly the ones that have to
- * reach the fold unclassified rather than be filtered out by a cast here.
- */
 const asUpdate = (value: unknown): SessionUpdate => value as SessionUpdate;
 
 let eventTs = 0;
@@ -195,7 +145,6 @@ function chunk(text: string, messageId?: string): ThreadEvent {
   });
 }
 
-/** Row-level testids only: nested controls would pollute the ordering. */
 const ROW_TESTIDS = [
   'agent-thread-agent-notice',
   'agent-thread-agent-message',
@@ -205,7 +154,6 @@ const ROW_TESTIDS = [
   'agent-thread-tool-call',
 ] as const;
 
-/** What the reader ends up with: each transcript row's kind and visible text, in order. */
 function transcriptRows(): [string, string][] {
   const transcript = screen.getByTestId('agent-thread-transcript');
   const selector = ROW_TESTIDS.map((id) => `[data-testid="${id}"]`).join(',');
@@ -229,11 +177,8 @@ describe('composed transcript: a Codex warning becomes a warning card', () => {
     expect(cards).toHaveLength(1);
     const card = cards[0];
     expect(card).toBe(screen.getByRole('note'));
-    // The label and the glyph are the two cues that survive when the amber
-    // fill does not — a reader on forced colors, or one skimming.
     expect(card.textContent).toContain('Warning');
     expect(card.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-    // The producer's own words, through the same markdown path a reply takes.
     const body = candidate.update.content.text.trim();
     expect(card.textContent).toContain(body.split('\n')[0]);
     expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
@@ -249,8 +194,6 @@ describe('composed transcript: a Codex warning becomes a warning card', () => {
     expect(noticeCards()).toHaveLength(1);
     const card = noticeCards()[0];
     expect(card.textContent).toContain('Ignored 2 invalid entries in config.toml.');
-    // The detail paragraph the summary line alone would lose. Markdown turns
-    // it into a list and eats the backticks, so the assertion is on the words.
     const bullets = within(card).getAllByRole('listitem');
     expect(bullets.map((bullet) => bullet.textContent)).toEqual([
       'model_reasoning_effort: expected one of low, medium, high',
@@ -259,13 +202,6 @@ describe('composed transcript: a Codex warning becomes a warning card', () => {
   });
 
   test('a warning body renders producer markdown, so its links and fences are real controls', () => {
-    // The card's own chrome contributes no control, but the body goes through
-    // the same renderer as a reply, and the producer interpolates an arbitrary
-    // runtime message into it. A warning that points at a docs URL or quotes a
-    // config block therefore brings whatever that text brings anywhere else in
-    // the transcript. That is the decided behaviour rather than an oversight,
-    // and pinning it here means a later tightening of the card's contract is a
-    // deliberate change instead of a rediscovery.
     render(<ThreadView info={openThread()} />);
 
     pushEvent(
@@ -311,8 +247,6 @@ describe('composed transcript: near misses stay ordinary prose', () => {
     const agent = agentNamed((negative as { agent?: string }).agent);
     render(<ThreadView info={openThread({ agent })} />);
 
-    // The sentinel carries an id, so it never merges with the near miss and
-    // its presence proves the transcript actually drew something.
     pushEvents([su(negative.update), chunk(SENTINEL, 'sentinel')], 0);
 
     expect(noticeCards()).toHaveLength(0);
@@ -337,9 +271,6 @@ describe('composed transcript: near misses stay ordinary prose', () => {
   });
 
   test('a historical event that already merged chrome with a warning is one prose bubble', () => {
-    // What the log holds for a thread recorded before the boundary guard: the
-    // producer's two events coalesced into one. It no longer starts with the
-    // prefix, so it fails closed — and is never carved apart at the blank line.
     const merged =
       fixture.neighbors.contextCompacted.update.content.text +
       fixture.candidates[0].update.content.text;
@@ -356,7 +287,6 @@ describe('composed transcript: near misses stay ordinary prose', () => {
 });
 
 describe('composed transcript: delivery shape does not change what is drawn', () => {
-  /** Prose, a warning, more prose, a second warning, then a settled answer. */
   function sourceEvents(): ThreadEvent[] {
     return [
       { kind: 'user_message', content: 'check the skills', ts: 1 },
@@ -368,12 +298,6 @@ describe('composed transcript: delivery shape does not change what is drawn', ()
     ];
   }
 
-  /**
-   * `lastSeq` is the wire's own replay upper bound: a live thread has already
-   * folded everything the server retains, a reopened one has not. Both use the
-   * same `events` frame, so this is the only thing that distinguishes history
-   * from a live burst — and neither may change what the transcript draws.
-   */
   function drawnWith(
     deliver: (events: ThreadEvent[]) => void,
     retainedThrough = -1,
@@ -397,15 +321,11 @@ describe('composed transcript: delivery shape does not change what is drawn', ()
       pushEvents(events.slice(2, 4), 2);
       pushEvents(events.slice(4), 4);
     });
-    // A reopened thread: the whole log is already retained, and history walks
-    // back to the client in chunks behind the subscription.
     const replayed = drawnWith((events) => {
       pushEvents(events.slice(0, 3), 0);
       pushEvents(events.slice(3), 3);
     }, sourceEvents().length - 1);
 
-    // Pinned outright, not only compared: four empty transcripts are equal to
-    // each other and would say nothing about boundaries.
     expect(live.map(([id]) => id)).toEqual([
       'agent-thread-user-message',
       'agent-thread-agent-message',
@@ -470,7 +390,6 @@ describe('composed transcript: existing rows keep their behaviour', () => {
       await userEvent.click(retry);
     });
 
-    // The click reached the real client, which put a retry on the wire.
     expect(socket.sent.map((frame) => JSON.parse(frame).op)).toContain('retry');
   });
 
@@ -551,8 +470,6 @@ describe('composed transcript: existing rows keep their behaviour', () => {
       0,
     );
 
-    // The warning is chrome the agent emitted while still working; treating it
-    // as the end of the turn would drop the indicator mid-answer.
     expect(noticeCards()).toHaveLength(1);
     expect(screen.getByTestId('agent-thread-working')).not.toBeNull();
 

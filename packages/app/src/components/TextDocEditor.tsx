@@ -63,17 +63,12 @@ export function TextDocEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const { resolvedTheme } = useTheme();
   const ytext = provider.document.getText('source');
-  // Stable across theme-driven view rebuilds so undo history survives them
-  // (yCollab would otherwise mint a fresh UndoManager per rebuild). Not
-  // destroyed in cleanup — same StrictMode rationale as MermaidDocEditor.
   const [undoManager] = useState(() => new Y.UndoManager(ytext));
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const theme = resolvedTheme === 'dark' ? darkTheme : lightTheme;
-    // Language pack loads async; a Compartment lets it slot in without
-    // rebuilding the view (which would drop cursor/scroll state).
     const languageSlot = new Compartment();
     const wrapSlot = new Compartment();
     const hasGrammar =
@@ -87,8 +82,6 @@ export function TextDocEditor({
           yCollab(ytext, provider.awareness, { undoManager }),
           languageSlot.of([]),
           syntaxHighlighting(propEditorHighlight),
-          // Plain-text formats (txt / log / csv — no grammar) read better
-          // wrapped; code keeps horizontal scroll like an IDE.
           wrapSlot.of(hasGrammar ? [] : EditorView.lineWrapping),
           EditorView.theme({ '&': { height: '100%' } }),
           theme,
@@ -111,7 +104,6 @@ export function TextDocEditor({
       disposed = true;
       view.destroy();
     };
-    // Rebuild only on doc identity / theme change — yCollab keeps content synced.
   }, [ytext, provider, resolvedTheme, docName, undoManager]);
 
   return (

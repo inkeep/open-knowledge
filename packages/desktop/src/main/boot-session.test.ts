@@ -13,7 +13,6 @@ describe('readBootSessionUuid', () => {
   onDarwin('returns a stable per-boot UUID on macOS', () => {
     const first = readBootSessionUuid('darwin');
     expect(first).toMatch(/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i);
-    // Stable within one kernel session — the whole point of the identity.
     expect(readBootSessionUuid('darwin')).toBe(first);
   });
 
@@ -24,10 +23,6 @@ describe('readBootSessionUuid', () => {
   });
 
   test('a probe failure fails open to null rather than throwing', () => {
-    // Probing the "wrong" platform's code path always fails on any real
-    // host — the darwin branch's absolute sysctl path doesn't exist on
-    // Linux/Windows, and the linux branch's /proc file doesn't exist on
-    // macOS/Windows — exercising the catch-to-null contract unconditionally.
     const crossPlatformProbe =
       process.platform === 'linux' ? readBootSessionUuid('darwin') : readBootSessionUuid('linux');
     expect(crossPlatformProbe).toBeNull();

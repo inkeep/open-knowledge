@@ -2824,6 +2824,7 @@ msgstr "正在複製 {repoName}…"
 msgid "Cloning..."
 msgstr "正在複製…"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4779,7 +4780,6 @@ msgid "Disconnecting"
 msgstr "正在中斷連接"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
@@ -7317,6 +7317,10 @@ msgstr "分享網址無效。"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "無效的 YAML"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "它還會加入 macOS 為 OpenKnowledge 及其輔助程序記錄的當機報告，僅包含我們的報告，絕不包含其他應用程式的報告。"
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

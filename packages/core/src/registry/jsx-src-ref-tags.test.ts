@@ -4,10 +4,6 @@ import { JSX_SRC_REF_TAGS } from './jsx-src-ref-tags.ts';
 
 describe('JSX_SRC_REF_TAGS registry', () => {
   test('module load fails when a registry tagName has no descriptor', async () => {
-    // A real negative for the module-load guard: drop Mirror from the
-    // descriptor set and re-import. The guard must throw — proving it can
-    // reject a mismatched tagName, not merely ratify the happy path the
-    // static import already exercised.
     vi.resetModules();
     vi.doMock('./built-ins.ts', async (importOriginal) => {
       const actual = await importOriginal<typeof import('./built-ins.ts')>();

@@ -77,10 +77,6 @@ describe('resolveInternalHref', () => {
     expect(resolveInternalHref('../../../way-out.md', 'deep/a/b')).toBeNull();
   });
 
-  // A CommonMark link destination is URI-shaped: a literal space cannot appear
-  // in an unbracketed destination, so percent-escapes are the only valid way to
-  // link a doc whose name needs them (RFC 3986). Resolving the encoded href of
-  // a path must therefore yield the same docName as resolving the path itself.
   describe('percent-encoded hrefs', () => {
     test('decodes %20 in a relative href to reach the real doc', () => {
       expect(resolveInternalHref('./Agent%20Memory.md', 'blogs/drafts/index')).toEqual({
@@ -122,21 +118,12 @@ describe('resolveInternalHref', () => {
     });
 
     test('an escaped extension dot still refuses the href as an asset', () => {
-      // The non-markdown-extension guard has to read the same bytes the
-      // resolved docName is built from. `%2E` carries no literal dot, so a
-      // guard that runs before decoding sees an extension-less path, admits
-      // the asset as a doc, and the click dispatcher navigates the router to a
-      // doc named `notes/file.pdf` that cannot exist.
       expect(resolveInternalHref('./file%2Epdf', 'notes/index')).toBeNull();
       expect(resolveInternalHref('/assets/photo%2Ejpg', 'notes/index')).toBeNull();
-      // The escaped-dot form and the plain form must agree.
       expect(resolveInternalHref('./file.pdf', 'notes/index')).toBeNull();
     });
 
     test('an escaped dot in a markdown filename still resolves as a doc', () => {
-      // Precision guard for the reorder above: the decoded extension decides,
-      // so an escaped dot in front of `md` stays a doc rather than being
-      // refused wholesale as an asset.
       expect(resolveInternalHref('./v1%2E2%20notes.md', 'notes/index')).toEqual({
         docName: 'notes/v1.2 notes',
         anchor: null,
@@ -144,10 +131,6 @@ describe('resolveInternalHref', () => {
     });
 
     test('%2F never becomes a path separator', () => {
-      // RFC 3986: an escaped slash inside a segment is data, not hierarchy.
-      // Decoding it into a separator would let one segment become two.
-      // Pinned by exact value: a variant that refuses the href outright
-      // (returning null) is also wrong, and a negative assertion would miss it.
       expect(resolveInternalHref('./a%2Fb.md', 'blogs/drafts/index')).toEqual({
         docName: 'blogs/drafts/a%2Fb',
         anchor: null,
@@ -162,8 +145,6 @@ describe('resolveInternalHref', () => {
     });
 
     test('%5C never becomes a path separator', () => {
-      // A backslash is a separator on Windows, so a decode that mints one is
-      // the same hierarchy-minting the `%2F` refusal exists to prevent.
       expect(resolveInternalHref('./a%5Cb.md', 'blogs/drafts/index')).toEqual({
         docName: 'blogs/drafts/a%5Cb',
         anchor: null,
@@ -175,11 +156,6 @@ describe('resolveInternalHref', () => {
     });
 
     test('encoded dot-segments stay data — they never become traversal', () => {
-      // The traversal check reads the DECODED segment, so the escape surviving
-      // as data is `decodeHrefPathSegment`'s doing, not the walk's: it refuses
-      // any decode whose result is `.` or `..`, so `%2E%2E` never becomes a
-      // segment the pop could see. That refusal is the load-bearing dependency
-      // here — if it ever softened, these hrefs would start traversing.
       expect(resolveInternalHref('./%2E%2E/secret.md', 'blogs/drafts/index')).toEqual({
         docName: 'blogs/drafts/%2E%2E/secret',
         anchor: null,
@@ -197,9 +173,6 @@ describe('resolveInternalHref', () => {
       });
     });
 
-    // The guard reads the extension off decoded bytes, so the strip has to as
-    // well — otherwise an escaped `.md` is admitted as a doc and then carried
-    // into the docName, which is extension-less by contract.
     test('an escaped doc extension is stripped, not carried into the docName', () => {
       expect(resolveInternalHref('./meeting%2Emd', 'notes/index')).toEqual({
         docName: 'notes/meeting',
@@ -211,10 +184,6 @@ describe('resolveInternalHref', () => {
       });
     });
 
-    // What the extension strip leaves behind is still a path segment: `...md`
-    // reduces to `..` and must pop, never land in the docName. A docName
-    // carrying `.`/`..` is indexed, graphed, and offered for creation as a
-    // wrong-doc resolution well before downstream containment sees it.
     test('a stripped extension that exposes a traversal segment traverses', () => {
       expect(resolveInternalHref('./...md', 'notes/index')).toBeNull();
       expect(resolveInternalHref('./...md', 'index')).toBeNull();
@@ -224,16 +193,11 @@ describe('resolveInternalHref', () => {
       });
     });
 
-    // The escaped spelling reduces to the same segment as the plain one, so it
-    // has to reach the same verdict — `decodeHrefPathSegment` refuses a segment
-    // that IS `.`/`..`, but `...md` is neither until the extension comes off.
     test('an escaped traversal-after-strip matches its plain spelling', () => {
       expect(resolveInternalHref('./%2E%2E%2Emd', 'notes/index')).toBeNull();
       expect(resolveInternalHref('./..%2Emd', 'notes/index')).toBeNull();
     });
 
-    // A segment that is nothing BUT an extension contributes nothing, rather
-    // than emptying the accumulated path.
     test('a bare extension segment resolves to its containing directory', () => {
       expect(resolveInternalHref('./.md', 'notes/index')).toEqual({
         docName: 'notes',
@@ -245,11 +209,6 @@ describe('resolveInternalHref', () => {
       });
     });
 
-    // A colon decodes, drive-letter-shaped or not. Refusing the escaped spelling
-    // would leave the plain one (`/D:foo.md`, which never reaches the decoder)
-    // untouched, so it would not actually contain anything — while making
-    // `D:plan`, a legal POSIX filename, permanently unresolvable through an
-    // encoded link. Containment lives downstream, where it covers both spellings.
     test('a colon decodes rather than being refused', () => {
       expect(resolveInternalHref('./notes%3A2026.md', 'notes/index')).toEqual({
         docName: 'notes/notes:2026',
@@ -262,8 +221,6 @@ describe('resolveInternalHref', () => {
     });
 
     test('escaped octets decode exactly once', () => {
-      // RFC 3986 §2.4: `%2520` denotes the literal bytes `%20` in the filename.
-      // A second decode pass would collapse it to a space and miss the doc.
       expect(resolveInternalHref('./100%2520done.md', 'notes/index')).toEqual({
         docName: 'notes/100%20done',
         anchor: null,
@@ -271,8 +228,6 @@ describe('resolveInternalHref', () => {
     });
 
     test('malformed escapes fall back to the raw bytes without throwing', () => {
-      // Hrefs are user-authored strings parsed out of markdown bytes; a stray
-      // `%` must degrade to a literal lookup, never a URIError.
       expect(resolveInternalHref('./100%ZZ.md', 'notes/index')).toEqual({
         docName: 'notes/100%ZZ',
         anchor: null,
@@ -284,10 +239,6 @@ describe('resolveInternalHref', () => {
     });
   });
 
-  // A skill's SKILL.md links to its references with skill-relative paths
-  // (`references/setup.md`). With the file's own bundle doc as the base, those
-  // resolve to the sibling reference doc instead of a nonexistent content path —
-  // the fix for §8.3 (valid skill references rendering as broken links).
   describe('skill bundle relative references (§8.3)', () => {
     for (const scope of ['global', 'project'] as const) {
       test(`references/setup.md from a ${scope} SKILL.md → the reference doc`, () => {
@@ -309,10 +260,6 @@ describe('resolveInternalHref', () => {
 });
 
 describe('encodeHrefPathSegment', () => {
-  // The encode/decode pair is the contract this whole module exists to hold:
-  // every href OK emits must resolve back to the name it was built from.
-  // Splitting the halves is what let an encoded link and a decoding resolver
-  // disagree in the first place.
   const names = [
     'Agent Memory',
     'team plan (draft) #1',
@@ -332,10 +279,6 @@ describe('encodeHrefPathSegment', () => {
   }
 
   test('does not round-trip a separator-bearing name — by design', () => {
-    // The decoder refuses any decode that would mint hierarchy, so a name
-    // containing `/` or `\` survives as its escaped form rather than decoding
-    // back. Such a name cannot address a real file through an href; wiki links
-    // are the escape hatch. This is the deliberate limit of the pair above.
     expect(decodeHrefPathSegment(encodeHrefPathSegment('a/b'))).toBe('a%2Fb');
     expect(decodeHrefPathSegment(encodeHrefPathSegment('a\\b'))).toBe('a%5Cb');
   });

@@ -25,7 +25,6 @@ let activeTarget: unknown = { kind: 'doc' };
 let sidebarState: 'expanded' | 'collapsed' = 'expanded';
 let paneCount = 1;
 let singleFile = false;
-// Captures the `input` prop EditorHeader hands to ShareButton.
 let lastShareInput: unknown;
 const onOpenSearch = vi.fn(() => {});
 
@@ -386,7 +385,6 @@ describe('EditorHeader runtime behavior', () => {
 
     try {
       const header = await renderHeader(<div>tabs</div>);
-      // 300px actions + 137px reserve - 200px outside the tab host.
       expect(header.style.getPropertyValue('--editor-header-trailing-width')).toBe('237px');
     } finally {
       computedStyle.mockRestore();
@@ -544,7 +542,6 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('nothing open or selected defaults to sharing the project root', async () => {
-    // No target, no doc → empty editor defaults to the content root.
     activeDocName = null;
     activeTarget = null;
     await renderHeader();
@@ -553,7 +550,6 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('a managed-artifact doc (skill/template) keeps the share trigger disabled', async () => {
-    // Managed-artifact doc name (`__skill__/<scope>/<name>`) must not be shareable.
     activeDocName = '__skill__/project/my-skill';
     activeTarget = { kind: 'doc' };
     await renderHeader();
@@ -562,7 +558,6 @@ describe('EditorHeader runtime behavior', () => {
   });
 
   test('a non-shareable asset target keeps the share trigger disabled', async () => {
-    // Asset target has no shareable doc name and must not fall through to root.
     activeDocName = null;
     activeTarget = { kind: 'asset', assetPath: 'img/logo.png' };
     await renderHeader();

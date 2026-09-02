@@ -13,38 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { trashNounLabel } from '@/lib/platform-labels';
 
-/**
- * VSCode-parity fallback modal. When `shell.trashItem` fails for one or more
- * targets, this modal asks the user whether to fall back to
- * a hard delete via `POST /api/delete-path` (which bypasses the OS Trash and
- * uses `unlinkSync`/`rmSync`), to retry the IPC call, or to cancel.
- *
- * Copy is VSCode-parity (split into AlertDialogTitle + AlertDialogDescription
- * so the `text-base leading-none` title primitive doesn't wrap a 2-sentence
- * string to 3 lines with zero leading; semantics preserved):
- *   Title:       "Couldn't move to Trash"
- *   Description: "<target context> Do you want to permanently delete instead?"
- *                (per-target detail appended for single-target failures)
- *   Buttons:     [Cancel] [Retry] [Delete Permanently]
- *
- * Button visual order follows macOS HIG + the sibling DeleteConfirmationDialog
- * precedent: Cancel on the left, Retry in the middle, Delete Permanently on
- * the right as the destructive primary action.
- *
- * Tab close happens AFTER trash IPC success in the caller;
- * Cancel here just dismisses the modal — the user's editor tab is still open.
- * No special handling needed in this component.
- */
-
-/**
- * **DRIFT WARNING — this display-only union mirrors the reason declared on
- * `OkDesktopBridge.shell.trashItem` in the canonical core desktop-bridge
- * contract.** Keep the two unions in lockstep.
- *
- * TypeScript catches structural drift at the bridge-contract level (the cast
- * site in FileTree.tsx narrows via `coerceTrashFailureReason` below); the
- * unions themselves must stay structurally identical.
- */
 type TrashFailureReason = 'not-found' | 'permission-denied' | 'system-error' | 'path-escape';
 
 const TRASH_FAILURE_REASONS: ReadonlyArray<TrashFailureReason> = [
@@ -54,15 +22,6 @@ const TRASH_FAILURE_REASONS: ReadonlyArray<TrashFailureReason> = [
   'path-escape',
 ];
 
-/**
- * Narrow an unknown IPC `reason` string back to `TrashFailureReason` at the
- * trust boundary. The IPC wire is a different process, so the declared
- * TypeScript shape isn't a runtime
- * guarantee — a future contract bump that widens the union would silently
- * land an unmapped reason in `trashReasonLabel` (TypeScript would be happy,
- * the switch would hit no case). Defaults to `'system-error'` so the user
- * sees a generic recoverable message rather than a blank row.
- */
 export function coerceTrashFailureReason(reason: unknown): TrashFailureReason {
   return typeof reason === 'string' &&
     (TRASH_FAILURE_REASONS as ReadonlyArray<string>).includes(reason)
@@ -72,12 +31,9 @@ export function coerceTrashFailureReason(reason: unknown): TrashFailureReason {
 
 export interface TrashFailedTarget {
   kind: 'folder' | 'file' | 'asset';
-  /** Project-relative or absolute path; used as the React key (must be unique). */
   path: string;
-  /** Basename + extension for display. */
   name: string;
   reason: TrashFailureReason;
-  /** Free-form OS message (e.g. NSError.localizedDescription). */
   detail?: string;
 }
 
@@ -89,13 +45,6 @@ interface TrashFailureModalProps {
   onCancel: () => void;
 }
 
-// This file localizes via the `@lingui/core/macro` `t`/`plural` throughout —
-// component body included — rather than `useLingui()`. `formatTrashFailureDetail`
-// is a module-level helper (exported + unit-tested) that can't call the hook, so
-// the core macro is required there; using it consistently file-wide is cleaner
-// than mixing core macros in the helper with `useLingui` in the component.
-
-/** Localized label for each trash-failure reason. */
 function trashReasonLabel(reason: TrashFailureReason): string {
   switch (reason) {
     case 'not-found':
@@ -169,10 +118,7 @@ export function TrashFailureModal({
         >
           <Trans>Cancel</Trans>
         </AlertDialogCancel>
-        {/* Retry and Delete Permanently stay plain Buttons: both await IPC and
-            report progress in their own labels, and an AlertDialogAction would
-            close the dialog on activation. Retry in particular must keep the
-            dialog mounted so a second failure can repopulate the same list. */}
+        {}
         <Button
           variant="outline"
           className="font-mono uppercase"

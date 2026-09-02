@@ -1,37 +1,3 @@
-/**
- * Bounded worker_threads pool that moves the bridge-intake markdown parse
- * off the server's single event-loop thread.
- *
- * Division of labor (the load-bearing boundary): workers do PURE COMPUTE —
- * markdown body in, ProseMirror JSON out (`parse-worker.ts`). The main
- * thread keeps every CRDT mutation inside the caller's
- * `session.dc.document.transact(fn, session.origin)` and the three
- * bridge-intake primitives. The pool's output is only ever consumed as a
- * `PrecomputedParse` whose byte-identity guard lives in `bridge-intake.ts`:
- * a precompute whose `rawContent` no longer matches the bytes being applied
- * is silently discarded and the primitive parses inline, so a doc that
- * moved during the `await` can never receive a stale fragment.
- *
- * Every failure mode (no worker file in this packaging, spawn failure,
- * worker error/exit, task timeout, saturated queue) degrades to "return
- * undefined" — the caller applies the write exactly as before this pool
- * existed, parsing inline inside the transact. Offload is an optimization,
- * never a correctness dependency.
- *
- * Worker-file resolution covers the three packaging shapes:
- *   1. `./parse-worker.mjs` sibling — the server's own dist AND the
- *      published CLI bundle (`packages/cli` emits a `parse-worker` entry
- *      next to `dist/cli.mjs`; the packaged desktop app spawns that same
- *      bundle).
- *   2. `./parse-worker.ts` sibling — source mode (vitest, tsx dev server).
- *      Node 24 runs the .ts entry via native type stripping; its imports
- *      resolve `@inkeep/open-knowledge-core` through the `default` export
- *      condition (the built core dist), so run a build after editing core
- *      or the worker parses stale code.
- *   3. Package-resolved server dist — contexts that bundled the server
- *      into another app but still have node_modules (electron-vite desktop
- *      dev). When even that misses, the inline fallback engages.
- */
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { availableParallelism } from 'node:os';
@@ -52,32 +18,16 @@ import { getMeter, onTelemetryShutdown } from './telemetry.ts';
 
 const log = getLogger('parse-pool');
 
-/**
- * Bodies below this size parse inline: at ~1ms/KB measured parse cost the
- * sub-8KB range blocks the loop for under ~8ms, which is cheaper
- * end-to-end than a worker round-trip and keeps small-write latency
- * unchanged.
- */
 export const PARSE_OFFLOAD_MIN_BYTES = 8 * 1024;
 
-/**
- * Generous per-task ceiling: a legitimate multi-MB doc parses in seconds
- * (~1.5s/MB measured), and `parseWithFallback`'s internal budget already
- * bounds pathological fallback recursion. On expiry the task's worker is
- * terminated (it may be wedged mid-parse) and the caller falls back inline.
- */
 const PARSE_TASK_TIMEOUT_MS = 30_000;
 
-/** Reject dispatches beyond this backlog; callers parse inline instead. */
 const MAX_PENDING_TASKS = 32;
 
-/** Terminate workers idle this long; the pool respawns lazily on demand. */
 const WORKER_IDLE_REAP_MS = 30_000;
 
 const POOL_SIZE = Math.max(1, Math.min(4, availableParallelism() - 1));
 
-/** Embed-resolver context accepted by `precomputeParse` (mirrors the
- * bridge-intake `EmbedResolverContext` shape). */
 export interface ParsePoolEmbedResolver {
   resolveEmbed: (basename: string, sourcePath: string) => string | null;
   resolveSize?: (basename: string, sourcePath: string) => number | null;
@@ -91,8 +41,6 @@ type DispatchMode =
   | 'inline-busy'
   | 'inline-timeout'
   | 'inline-error';
-
-// ── Telemetry (bounded cardinality: mode is a 6-value enum) ─────────
 
 type Meter = ReturnType<typeof getMeter>;
 let dispatchCounter: ReturnType<Meter['createCounter']> | null = null;
@@ -141,8 +89,6 @@ function installGauges(): void {
     });
 }
 
-// ── Pool state (module singleton; lazily spawned, lazily respawned) ──
-
 interface PendingTask {
   task: ParseWorkerTask;
   resolve: (result: ParseWorkerResult) => void;
@@ -161,14 +107,12 @@ let nextTaskId = 1;
 let idleReapTimer: NodeJS.Timeout | null = null;
 let workerUrlOverride: URL | null | undefined;
 
-/** Test hook: force the worker URL (or `null` = unavailable). `undefined` resets. */
 export function _overrideParseWorkerUrlForTests(url: URL | null | undefined): void {
   workerUrlOverride = url;
 }
 
 let taskTimeoutMs = PARSE_TASK_TIMEOUT_MS;
 
-/** Test hook: shrink the per-task timeout. `undefined` resets. */
 export function _overrideParseTaskTimeoutForTests(ms: number | undefined): void {
   taskTimeoutMs = ms ?? PARSE_TASK_TIMEOUT_MS;
 }
@@ -189,15 +133,11 @@ function resolveWorkerUrl(): URL | null {
         ),
       ),
     );
-  } catch {
-    // No resolvable node_modules (fully bundled install) — siblings only.
-  }
+  } catch {}
   for (const candidate of candidates) {
     try {
       if (existsSync(fileURLToPath(candidate))) return candidate;
-    } catch {
-      // Non-file URL — skip.
-    }
+    } catch {}
   }
   return null;
 }
@@ -205,8 +145,6 @@ function resolveWorkerUrl(): URL | null {
 function spawnWorker(url: URL): PoolWorker | null {
   try {
     const worker = new Worker(url);
-    // An idle pool must never hold the process open: teardown paths that
-    // miss destroyParsePool() (crash handlers, test rigs) still exit.
     worker.unref();
     const poolWorker: PoolWorker = { worker, current: null, timer: null };
     worker.on('message', (result: ParseWorkerResult) => {
@@ -250,8 +188,6 @@ function pumpQueue(): void {
   while (queue.length > 0) {
     let idle = workers.find((w) => w.current === null);
     if (idle === undefined && workers.length < POOL_SIZE) {
-      // A timed-out or crashed worker was removed while tasks were queued —
-      // respawn so the backlog drains instead of waiting out its timeout.
       const url = resolveWorkerUrl();
       const spawned = url === null ? null : spawnWorker(url);
       if (spawned !== null) {
@@ -270,8 +206,6 @@ function pumpQueue(): void {
 function assignTask(poolWorker: PoolWorker, pending: PendingTask): void {
   poolWorker.current = pending;
   poolWorker.timer = setTimeout(() => {
-    // The worker may be wedged inside a pathological parse — terminate it
-    // (the pool respawns lazily) and let the caller fall back inline.
     poolWorker.current = null;
     removeWorker(poolWorker);
     void poolWorker.worker.terminate();
@@ -351,13 +285,6 @@ class ParsePoolBusyError extends Error {
   }
 }
 
-/**
- * Terminate every worker and reject the backlog. NOT a permanent shutdown:
- * the next `precomputeParse` respawns lazily, so multiple server instances
- * in one process (test rigs, dev-server restarts) can each tear down
- * without wedging the others — a rejected in-flight task simply falls back
- * to the inline parse.
- */
 export async function destroyParsePool(): Promise<void> {
   if (idleReapTimer !== null) {
     clearTimeout(idleReapTimer);
@@ -376,11 +303,6 @@ export async function destroyParsePool(): Promise<void> {
   await Promise.allSettled(terminating);
 }
 
-/**
- * Offload one parse to the pool, throwing on any pool-level failure.
- * Exported for the equivalence tests (loud failures beat silent fallback
- * there); production callers use `precomputeParse`.
- */
 export async function offloadParse(
   body: string,
   embedResolver?: ParsePoolEmbedResolver,
@@ -400,9 +322,6 @@ export async function offloadParse(
   if (first.requestedTargets === undefined || first.requestedTargets.length === 0) {
     return first.parsedJson;
   }
-  // Pass 2: the parser asked for embed targets the worker cannot resolve
-  // (fs + basename index are main-thread state). Resolve them here and
-  // re-parse with the table so the output matches inline byte-for-byte.
   const resolver = embedResolver as ParsePoolEmbedResolver;
   const embedTable: Record<string, ParseWorkerEmbedResolution> = {};
   for (const target of first.requestedTargets) {
@@ -421,17 +340,6 @@ export async function offloadParse(
   return second.parsedJson;
 }
 
-/**
- * Precompute the bridge-intake parse for `rawContent` (full doc bytes,
- * frontmatter + body) off-thread. Returns `undefined` whenever the inline
- * path should run instead — small doc, pool unavailable/saturated, worker
- * error or timeout. Never throws.
- *
- * The returned `PrecomputedParse` is only honored by the bridge-intake
- * primitives when its `rawContent` byte-matches the bytes being applied,
- * so callers may compute it from a pre-transact snapshot without any
- * staleness risk.
- */
 export async function precomputeParse(
   rawContent: string,
   embedResolver?: ParsePoolEmbedResolver,

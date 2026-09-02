@@ -1,13 +1,3 @@
-/**
- * Document-open UX — hybrid Activity + Suspense + ErrorBoundary.
- *
- * Covers the core navigation UX properties of the hybrid render tree.
- *
- * Requires: Playwright browsers installed. Server provided per-worker by
- * the `workerServer` fixture in `_helpers/fixtures.ts`; the `baseURL`
- * fixture resolves `page.goto('/…')` against it.
- */
-
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,27 +11,8 @@ const PERF_BASELINE: {
   readFileSync(join(fileURLToPath(import.meta.url), '..', 'perf-baseline.json'), 'utf-8'),
 );
 
-/**
- * Ceiling on `shellSnap(mark-heavy doc) / shellSnap(trivial doc)`.
- *
- * Both terms are the same code path measured in the same run on the same
- * machine; they differ only in the weight of the editor mount the navigation
- * kicks off. A uniformly slower or busier runner scales both and leaves the
- * quotient alone, which is exactly what an absolute wall-clock budget cannot
- * do — that budget's headroom silently evaporates as runner speed drifts,
- * which is how the previous 500ms constant went red on healthy code.
- */
 const SHELL_SNAP_COUPLING_CEILING = PERF_BASELINE.f0ShellSnapCoupling.couplingCeiling;
 
-/**
- * Absolute ceiling on the heavy-doc shell snap.
- *
- * The coupling ratio is blind to a regression that slows every navigation
- * equally (both terms grow, quotient holds) — an O(n^2) sidebar re-render
- * would pass it. This backstop covers that class only. It is deliberately far
- * above observed healthy values so it is never the flaky term; the ratio, not
- * this number, is what catches the shell-waits-for-editor bug.
- */
 const SHELL_SNAP_BACKSTOP_MS = PERF_BASELINE.f0ShellSnapCoupling.absoluteBackstopMs;
 
 async function openFromSidebar(
@@ -50,31 +21,12 @@ async function openFromSidebar(
   options: { verifyNavigation?: boolean } = {},
 ) {
   const row = page.getByRole('treeitem', { name: filename, exact: true });
-  // The URL hash is `#/<extension-less docName>[#<anchor>]` (see
-  // `hashFromDocName`); row activation sets it synchronously with the nav
-  // intent, before any provider sync — so it verifies the CLICK landed,
-  // independent of the error/sync outcome the test may be arming downstream.
-  // Compared by exact doc-segment equality, not substring: a prefix-sibling
-  // doc (`doc-a2` when verifying `doc-a`) must still count as a missed click.
   const expectedDocName = filename.replace(/\.(md|mdx)$/i, '');
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    // Render-gate before acting: a bare bounded click conflates "app/tree not
-    // rendered yet" with "row missing", and its hand-rolled budget sat below
-    // the config-owned expect budget the suite calibrates for CI contention.
-    // Gate visibility web-first (inherits the config budget), then click.
     await expect(row).toBeVisible();
     await row.click();
-    // Rapid-sequence callers (F11) opt out: verifying each intermediate
-    // click would serialize the navigations and destroy the coalescing
-    // premise under test.
     if (options.verifyNavigation === false) return;
-    // Verify the activation registered. The tree is a virtualized,
-    // row-recycling list rendered from watcher-fed data; a reflow between
-    // the click's actionability check and dispatch can land the click on a
-    // recycled/shifted row (observed in the e2e-stability runs as wrong-doc
-    // actives and 60s provider-sync timeouts). Re-click instead of letting
-    // every downstream gate burn its full budget on a nav that never fired.
     try {
       await expect
         .poll(
@@ -95,8 +47,6 @@ async function openFromSidebar(
       return;
     } catch (err) {
       if (attempt === maxAttempts) {
-        // .catch: a crashed/closed page here must not preempt the diagnostic
-        // throw below with a raw secondary Playwright error.
         const hash = await page.evaluate(() => window.location.hash).catch(() => '(unavailable)');
         throw new Error(
           `sidebar click on ${filename} never registered after ${maxAttempts} attempts (hash=${hash})`,
@@ -111,23 +61,8 @@ function sidebarItem(page: Page, filename: string) {
   return page.getByRole('treeitem', { name: filename, exact: true });
 }
 
-/**
- * Time a warm sidebar navigation from the trusted click to the moment the
- * row's `aria-selected` flips — the shell-snap signal.
- *
- * The clock lives entirely in-page (capture-phase click listener +
- * MutationObserver), so Playwright's protocol latency and the poll
- * granularity below sit outside the measured window. That matters because
- * callers divide two of these against each other: any measurement overhead
- * that leaked in would land in only one term and corrupt the quotient.
- *
- * Callers must ensure the target doc is already warm — a cold mount measures
- * a different code path than the cache-HIT reparent.
- */
 async function measureShellSnapMs(page: Page, filename: string): Promise<number> {
   const row = sidebarItem(page, filename);
-  // Resolve Playwright's actionability work before timing so scrolling and
-  // locator stability do not count against the measured window.
   await row.click({ trial: true });
   await row.evaluate((target) => {
     window.__f0Result = null;
@@ -150,10 +85,6 @@ async function measureShellSnapMs(page: Page, filename: string): Promise<number>
     );
   });
   await row.click();
-  // 2s poll ceiling: above this the shell is so far gone that the measured
-  // number stops mattering. Keep it above SHELL_SNAP_BACKSTOP_MS so a blown
-  // backstop reports as a budget failure with the real number rather than as
-  // an opaque "never captured".
   await expect
     .poll(async () => (await page.evaluate(() => window.__f0Result)) !== null, {
       timeout: 2_000,
@@ -174,30 +105,6 @@ const DOC_E = '# Doc E Heading\n\nDoc E unique body paragraph.';
 
 test.describe('docs-open — hybrid navigation UX', () => {
   test('F0: shell snaps on click, editor mount is deferred', async ({ page, api }) => {
-    // Shell-snap guarantee: on warm-nav click, the sidebar active-highlight
-    // and the header document title MUST update independently of the editor
-    // subtree's mount/re-render cost. The user perceives "shell froze" when
-    // shell state waits for a heavy editor mount — that's the bug this
-    // guards against.
-    //
-    // Test shape: seed a doc with many MARKS (wikilinks + inline code)
-    // because PM's per-mark React portal reconciliation is the slow path
-    // V2 cache protects against. Keep this fixture below the document open
-    // cap so the test still exercises editor navigation rather than the
-    // large-file state.
-    // first cold mount runs the full create-view + mark-view path (~2-3s
-    // `ok/editor/create-tiptap` in dev for 768 views) and is what
-    // exercises shell-snap; subsequent revisits go through the cache-HIT
-    // reparent path. The shell-snap guarantee must hold on both paths.
-    //
-    // If the shell freezes alongside the editor mount, this test's 250ms
-    // budget on aria-current movement fails. If shell state is decoupled
-    // (useDeferredValue or equivalent), aria-current flips in <50ms.
-    // Sized as a mark-heavy doc (90 sections × 20+ wiki links ≈ 1800+
-    // marks) that exercises the full cold-mount path on first visit and
-    // stays cold-loadable within CI's 30s timeout. The cold load itself
-    // is what stresses shell-snap; subsequent revisits go through the
-    // V2 cache-HIT reparent path.
     const MARK_LINE = Array.from({ length: 20 }, (_, i) => `[[Link ${i}]]`).join(' ');
     const PARAGRAPH = `${MARK_LINE} and some \`inline code\` plus more [[wiki links]] here.`;
     const SECTION_FILLER = 'Extended prose paragraph to make the doc mark-heavy. '.repeat(20);
@@ -214,10 +121,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     ]);
 
     await page.goto('/');
-    // Warm both docs (cold loads do pay the full cost — that's fine).
-    // 30s timeouts because mark-heavy big.md cold-mount runs 10-20s on
-    // contended CI runners (default 5s toContainText timeout flakes);
-    // this matches the 30s syncPromise hard-reject boundary.
     await openFromSidebar(page, 'small.md');
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -228,7 +131,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     ).toBeVisible({
       timeout: 30_000,
     });
-    // Go back so the NEXT click (to big.md) is a warm cache-HIT nav.
     await openFromSidebar(page, 'small.md');
     await waitForActiveProviderSynced(page);
     await expect(
@@ -237,17 +139,8 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // The sidebar's active-row indicator is `aria-selected="true"` — driven
-    // by `activeDocName` directly. Before the click
-    // it's on small.md's row; after the click we want it to move to big.md.
-    // This is the load-bearing SHELL signal — completely independent of the
-    // editor subtree rendering. If shell state is decoupled from editor
-    // mount, this flips in one frame.
-    // Pre-assertion: small.md is currently active in the sidebar.
     await expect(sidebarItem(page, 'small.md')).toHaveAttribute('aria-selected', 'true');
 
-    // Heavy leg: navigating to the mark-heavy doc starts an expensive editor
-    // mount. If shell state is coupled to that mount, this is where it shows.
     const shellHeavyMs = await measureShellSnapMs(page, 'big.md');
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Big Doc' }),
@@ -255,10 +148,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Light leg: the same navigation code path, but the editor mount it
-    // starts is trivial. This is the control — it holds steady whether or not
-    // the shell is coupled, so it reads as "what a shell snap costs on THIS
-    // machine right now" and serves as the contention denominator below.
     const shellLightMs = await measureShellSnapMs(page, 'small.md');
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Small' }),
@@ -267,37 +156,16 @@ test.describe('docs-open — hybrid navigation UX', () => {
     });
 
     const coupling = shellHeavyMs / shellLightMs;
-    // Log for diagnostic visibility in CI output. These three numbers are the
-    // raw material for any future recalibration — keep them printed.
     console.log(
       `[F0] shellHeavyMs=${shellHeavyMs.toFixed(1)} shellLightMs=${shellLightMs.toFixed(1)} coupling=${coupling.toFixed(3)}`,
     );
 
-    // Primary gate. Healthy code keeps the heavy leg a bounded multiple of
-    // the light leg because the shell re-render only competes with the editor
-    // mount for the main thread; it does not wait on it. Coupling the two
-    // makes the heavy leg scale with editor weight while the light leg stays
-    // flat, so the quotient — not either term alone — is the bug signal.
     expect(coupling).toBeLessThan(SHELL_SNAP_COUPLING_CEILING);
 
-    // Secondary gate; see SHELL_SNAP_BACKSTOP_MS. Catches only the regression
-    // class that inflates both legs together, which the quotient cannot see.
     expect(shellHeavyMs).toBeLessThan(SHELL_SNAP_BACKSTOP_MS);
   });
 
   test('F0b: warm reopen of a V2-admit doc shows NO EditorSkeleton', async ({ page, api }) => {
-    // Warm-reopen contract: when both `mountTiptapEditorPromise` and
-    // `syncPromise` have resolved cache entries for the target docName,
-    // switching back from another doc must NOT show the EditorSkeleton.
-    // `EditorArea.tsx`'s `useDeferredValue` overlay queries
-    // `mountPromiseHasResolved` + `syncPromiseHasResolved` and skips the
-    // skeleton when both are true — `use(promise)` short-circuits
-    // synchronously, the deferred commit lands in 1 frame, and painting
-    // a skeleton creates a perceptible "cold load" flash on a genuinely
-    // warm reopen.
-    //
-    // Sibling F0c covers the V2-refuse case (mount-promise invalidated on
-    // park, skeleton MUST appear). F3 covers cold-mount skeleton.
     const SMALL_A = '# Doc A\n\nSmall body A.';
     const SMALL_B = '# Doc B\n\nSmall body B.';
     await api.seedDocs([
@@ -307,10 +175,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
 
     await page.goto('/');
 
-    // Warm both docs through the full mount path so both mount-promise +
-    // sync-promise caches hold settled-resolved entries. After this
-    // priming, both Activity entries exist in the pool and React has
-    // observed `.status='fulfilled'` on both promises.
     await openFromSidebar(page, 'doc-warm-a.md');
     await waitForActiveProviderSynced(page);
     await expect(
@@ -326,7 +190,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Install skeleton-sighting observer BEFORE the warm-back click.
     await page.evaluate(() => {
       window.__f0bSkeletonSeen = false;
       window.__f0bSkeletonAppearances = [];
@@ -343,8 +206,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       window.__f0bObserverCleanup = () => observer.disconnect();
     });
 
-    // Warm-switch back to doc A. Both promises are pre-resolved → overlay
-    // must skip → no skeleton appearances.
     await openFromSidebar(page, 'doc-warm-a.md');
     await waitForActiveProviderSynced(page);
     await expect(
@@ -357,36 +218,11 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const seen = await page.evaluate(() => window.__f0bSkeletonSeen);
     const appearances = await page.evaluate(() => window.__f0bSkeletonAppearances ?? []);
 
-    // Load-bearing assertion. If this fails, diagnose:
-    //   (a) `parkTiptapEditor` invalidating the mount-promise cache on
-    //       V2-admit park (regression of the park-preserves-cache fix), so
-    //       `mountPromiseHasResolved` returns false on warm-back;
-    //   (b) `syncPromise` being invalidated on tab switch, so
-    //       `syncPromiseHasResolved` returns false;
-    //   (c) The overlay condition in EditorArea ignoring the cache helpers
-    //       and unconditionally painting during the deferred-value gap.
     expect(
       seen,
       `EditorSkeleton appeared during warm reopen — appearances at: ${JSON.stringify(appearances)}`,
     ).toBe(false);
   });
-
-  // F0c (V2-refuse warm reopen → skeleton appears) is intentionally NOT
-  // shipped as an e2e. The contract is unit-tested at
-  // `editor-cache.test.ts` (park-on-uncached invalidates
-  // mount-promise) + `mount-promise.test.ts`
-  // (`mountPromiseHasResolved` returns false after invalidate). An e2e
-  // exercising it via `BYTES_CACHE_THRESHOLD = 1` override hits a
-  // StrictMode-dev artifact: Pattern D's effect cleanup destroys the
-  // editor under `__uncached` without a useState-recovery loop, so the
-  // double-invoke leaves the JSX referencing a destroyed editor and the
-  // `<EditorContent>` never re-mounts within the same commit. In
-  // production (StrictMode-off bundle) the path works correctly. Pinning
-  // it down would require either disabling StrictMode for one test or a
-  // real >8MB doc — both add disproportionate setup cost relative to the
-  // unit-tier coverage that already exists. F0b (V2-admit warm reopen →
-  // NO skeleton) covers the load-bearing user-observable contract; F3
-  // covers cold-mount skeleton.
 
   test('F1: warm-nav preserves content atomically (scroll position survives A→B→A)', async ({
     page,
@@ -398,7 +234,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     ]);
 
     await page.goto('/');
-    // Open doc A first (cold mount) and wait for sync + content render.
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -408,19 +243,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Scroll to a meaningful non-zero position with headroom on either side.
-    // Scrolling to `scrollHeight` (the maximum) makes the test fragile because
-    // PM's scrollHeight is sensitive to scroll-driven viewport materialization
-    // (decoration plugins, BlockDragHandle visibility, chunk content-visibility
-    // hydration) — the post-scroll scrollHeight is typically larger than the
-    // pre-scroll one, and the post-warm-revisit scrollHeight may be smaller
-    // still since restoration does not re-trigger the same viewport pass.
-    // Saving the cap-clamped scrollTop and asserting near-equality after
-    // warm-revisit then trips on a few px of layout drift even though the
-    // user-facing invariant ("scroll position survived A→B→A") holds.
-    // Scrolling to a midpoint with headroom (1500px) pins the same invariant
-    // robustly: the saved position fits well within the warm-revisit
-    // scrollable area regardless of small scrollHeight drift.
     const scroller = page
       .getByTestId('editor-scroll-container')
       .filter({ hasText: 'Doc A Bottom Marker' });
@@ -430,7 +252,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const scrollBeforeNav = await scroller.evaluate((el) => el.scrollTop);
     expect(scrollBeforeNav).toBeGreaterThan(500);
 
-    // Nav to doc B (cold mount, enters pool).
     await openFromSidebar(page, 'doc-b.md');
     await waitForActiveProviderSynced(page);
     await expect(
@@ -439,8 +260,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Nav back to doc A — warm path via <Activity mode="visible">. Scroll
-    // position should be preserved; no skeleton render in-between.
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
     await expect(
@@ -449,38 +268,18 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Poll because Activity visibility-swap may take a render tick to settle.
     await expect
       .poll(async () => scroller.evaluate((el) => el.scrollTop), {
         timeout: 3_000,
         intervals: [50, 100, 200],
       })
-      .toBeGreaterThan(scrollBeforeNav - 50); // allow minor rounding; position must not reset to 0
+      .toBeGreaterThan(scrollBeforeNav - 50);
   });
-
-  // F2 was removed with the skeleton-first cold-path split (precedent #18(f)
-  // narrowed to warm-only). Content-continuity on warm paths is a React
-  // `startTransition` behavior — warm nav completes in a single commit
-  // because `syncPromise` is already resolved, so there is no observable
-  // pending window for a MutationObserver to sample. Cold-path skeleton
-  // appearance is covered by F3; warm-reopen contracts (V2-admit
-  // no-skeleton vs V2-refuse skeleton) are covered by F0b + F0c.
-  //
-  // F4 (cold + warm session-wide skeleton-sightings) was retired. Its
-  // assertions split cleanly
-  // into F3 (cold) + F0b (V2-admit warm — inverted, NO skeleton) + F0c
-  // (V2-refuse warm — skeleton). The session-wide MutationObserver pattern
-  // added no contract over the focused per-tier tests.
 
   test('F3: cold-nav paints EditorSkeleton immediately (no content-continuity flash)', async ({
     page,
     api,
   }) => {
-    // Skeleton-first cold path (supersedes prior NavigationPendingBar test).
-    // When the target doc's provider is NOT yet synced, openDocumentTransition
-    // skips `startTransition` and lets React's default Suspense behavior paint
-    // `<EditorSkeleton />` immediately — so the user sees motion rather than
-    // the stale previous-doc content stretching through the mount window.
     await api.seedDocs([
       { name: 'doc-a', markdown: DOC_A },
       { name: 'doc-b', markdown: DOC_B },
@@ -491,8 +290,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Capture skeleton appearances via a MutationObserver so sub-100ms
-    // transient mounts aren't missed by poll-based assertions.
     await page.evaluate(() => {
       window.__f3SkeletonEverVisible = false;
       const skeletonSelector = '[role="status"][aria-label="Loading document"]';
@@ -507,13 +304,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       window.__f3ObserverCleanup = () => observer.disconnect();
     });
 
-    // Nav to doc-b — cold path (provider not yet created). Skeleton should
-    // appear at least once during the mount window. Use `hasText` filter
-    // to disambiguate from doc-a's parked ProseMirror that lives in
-    // Activity-hidden DOM (display:none) — without the filter, Playwright's
-    // `.ProseMirror` locator resolves to multiple elements and the
-    // ambiguity makes `toContainText` racey under Pattern D's mount
-    // timing.
     await openFromSidebar(page, 'doc-b.md');
     await waitForActiveProviderSynced(page);
     await expect(
@@ -527,8 +317,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const skeletonSeen = await page.evaluate(() => window.__f3SkeletonEverVisible);
     expect(skeletonSeen).toBe(true);
 
-    // Skeleton must not be stuck visible after convergence — the nav settled
-    // and the real editor should have taken over.
     await expect(page.locator('[role="status"][aria-label="Loading document"]')).toHaveCount(0);
   });
 
@@ -546,32 +334,18 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Arm a rejection for doc-b's NEXT syncPromise creation BEFORE
-    // navigation. The arm fires on promise creation (race-free) so the
-    // error boundary renders deterministically on localhost where real
-    // sync completes in <10ms and a post-hoc polling reject would miss
-    // the pending window. See sync-promise.ts `__test_armPendingRejection`.
     await page.evaluate(() => {
       window.__test_armPendingRejection?.('doc-b', 'timeout');
     });
     await openFromSidebar(page, 'doc-b.md');
 
-    // ErrorBoundary fallback should render with role=alert + user-facing
-    // "Couldn't load document" copy (precedent #15 error vocabulary; no
-    // internal "sync" jargon — see errorCopy discipline in
-    // DocumentErrorBoundary.tsx).
     const errorAlert = page.locator('[data-slot="document-error-boundary"]');
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
     await expect(errorAlert).toContainText("Couldn't load document");
     await expect(errorAlert).toContainText('doc-b');
 
-    // Click "Try again" → onReset fires → invalidateSyncPromise → re-enter
-    // Suspense with a fresh promise → real sync completes → content shows.
     await errorAlert.getByRole('button', { name: 'Try again' }).click();
 
-    // The retry should succeed because the real provider already synced
-    // (hasSynced=true on the pool entry), so the fresh syncPromise resolves
-    // immediately from the next emitted 'synced' (or already-synced state).
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Doc B Heading' }),
     ).toBeVisible({
@@ -595,8 +369,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Arm B's syncPromise creation to reject. See F5 rationale — the arm is
-    // race-free on localhost.
     await page.evaluate(() => {
       window.__test_armPendingRejection?.('doc-b', 'predisconnect');
     });
@@ -606,13 +378,10 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
     await expect(errorAlert).toContainText('Connection dropped');
 
-    // "Go back" is present when previousDocName is set
-    // (it was — doc A was last successfully opened before the error on B).
     const backButton = errorAlert.getByRole('button', { name: 'Go back' });
     await expect(backButton).toBeVisible();
     await backButton.click();
 
-    // Navigation should resolve back to doc A.
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), {
         timeout: 5_000,
@@ -639,21 +408,15 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // Snapshot the rendered content BEFORE the disconnect — we'll assert it
-    // stays intact across the WS drop + reconnect.
     const expectedText = await page
       .locator('.ProseMirror:not(.composer-prosemirror)')
       .textContent();
     expect(expectedText).toContain('Doc A Heading');
 
-    // Drop the WebSocket. Provider is already-synced, so hasSynced=true on
-    // the pool entry — the Y.Doc content stays rendered regardless of
-    // connection state.
     await page.evaluate(() => {
       window.__test_closeActiveWebSocket?.();
     });
 
-    // Simulate sleep → wake by dispatching visibilitychange events.
     await page.evaluate(() => {
       Object.defineProperty(document, 'visibilityState', {
         configurable: true,
@@ -662,7 +425,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    // Content MUST still be in DOM during the hidden phase.
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Doc A Heading' }),
     ).toBeVisible({
@@ -677,16 +439,12 @@ test.describe('docs-open — hybrid navigation UX', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
 
-    // Post-wake: content stays rendered. HocuspocusProvider reconnects
-    // transparently since hasSynced was true.
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Doc A Heading' }),
     ).toBeVisible({
       timeout: 30_000,
     });
 
-    // Error boundary must NOT have rendered (post-sync disconnect is handled
-    // transparently, not surfaced as an error).
     const errorAlert = page.locator('[data-slot="document-error-boundary"]');
     await expect(errorAlert).toHaveCount(0);
   });
@@ -705,34 +463,21 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Fire 4 clicks in rapid sequence (no waitForTimeout between them).
-    // React's transition semantics should coalesce — the final click wins
-    // and no nav is left pending indefinitely.
-    //
-    // STOP — do NOT switch this to Promise.all. Playwright's per-click
-    // actionability checks (visible/stable/attached) settle in
-    // non-deterministic order across concurrent invocations, so the click
-    // dispatch order is NOT guaranteed to match array order. Sequential
-    // await guarantees the doc-e click fires last (its order is the test's
-    // load-bearing premise) without injecting any test-side wait — each
-    // click takes ~5-30ms (actionability bound), so the 4 clicks still
-    // dispatch within ~100ms.
-    // Pre-assert every target row visible BEFORE the burst so the in-burst
-    // per-click visibility gates are all instant cache hits — a cold row
-    // mid-sequence would silently serialize the timing premise.
+    /*
+     * STOP: keep this burst sequential — never Promise.all. Playwright's
+     * per-click actionability checks settle in non-deterministic order across
+     * concurrent invocations, and doc-e clicking last is this test's premise.
+     * The pre-assert below keeps every in-burst visibility gate a cache hit so
+     * a cold row cannot serialize the timing.
+     */
     for (const name of ['doc-b.md', 'doc-c.md', 'doc-d.md', 'doc-e.md']) {
       await expect(page.getByRole('treeitem', { name, exact: true })).toBeVisible();
     }
-    // verifyNavigation:false on the intermediate clicks — per-click nav
-    // verification would serialize the sequence and destroy the coalescing
-    // premise. The final click keeps verification: doc-e's activation is the
-    // test's load-bearing outcome.
     await openFromSidebar(page, 'doc-b.md', { verifyNavigation: false });
     await openFromSidebar(page, 'doc-c.md', { verifyNavigation: false });
     await openFromSidebar(page, 'doc-d.md', { verifyNavigation: false });
     await openFromSidebar(page, 'doc-e.md');
 
-    // Wait for final state: doc E is active and visible.
     await waitForActiveProviderSynced(page);
     await expect
       .poll(async () => page.evaluate(() => window.location.hash), {
@@ -747,8 +492,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 30_000,
     });
 
-    // EditorSkeleton must not be stuck visible after convergence — the nav
-    // settled and the real editor should have taken over.
     await expect
       .poll(async () => page.locator('[role="status"][aria-label="Loading document"]').count(), {
         timeout: 5_000,
@@ -771,32 +514,18 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Switch to source mode. 15s timeout handles the deferred-commit
-    // window on CI — mode-toggle state update triggers a fresh render
-    // pass that may need to wait for the editor subtree's deferred
-    // commit before CM content renders (the skeleton overlay covers
-    // the pool during that window).
     await page.getByRole('radio', { name: 'Markdown source' }).click();
     await page.waitForSelector('.cm-content', { timeout: 15_000 });
     await expect(page.locator('.cm-content').first()).toContainText('Doc A Heading', {
       timeout: 15_000,
     });
 
-    // Nav to doc B (cold mount inside source mode).
     await openFromSidebar(page, 'doc-b.md');
     await waitForActiveProviderSynced(page);
-    // Scope to VISIBLE cm-content. With V2 cache / Activity the prior
-    // doc's CM stays in the DOM (Activity hidden); `.first()` returns
-    // DOM order which matches pool MRU — the ACTIVE doc's editor is
-    // positioned last in the Activity list... actually since DOM order
-    // may vary, widen the assertion to `at-least-one-cm-content-has`.
     await expect(page.locator('.cm-content').filter({ hasText: 'Doc B Heading' })).toBeVisible({
       timeout: 15_000,
     });
 
-    // Nav back to doc A — should be Activity-warm. The CodeMirror editor
-    // for doc A should still be in the DOM (just hidden) and its content
-    // should become visible when Activity re-shows it.
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
     await expect(page.locator('.cm-content').filter({ hasText: 'Doc A Heading' })).toBeVisible({
@@ -818,10 +547,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // EditorSkeleton — catch a11y attrs on a race: the skeleton renders
-    // transiently during cold nav; use a MutationObserver to snapshot its
-    // attributes if/when it appears. Post-NavigationPendingBar, the
-    // skeleton is the only surface that announces "loading" to ATs.
     await page.evaluate(() => {
       window.__f13BarAttrs = null;
       const observer = new MutationObserver(() => {
@@ -850,18 +575,9 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const barAttrs = await page.evaluate(() => window.__f13BarAttrs);
     expect(barAttrs).not.toBeNull();
     expect(barAttrs?.role).toBe('status');
-    // EditorSkeleton uses aria-busy="true" (implicit live-region semantics)
-    // rather than aria-live="polite" — the Radix Skeleton primitive the
-    // fallback is built on provides aria-busy as the canonical loading
-    // affordance. `ariaLive` is intentionally null on this surface.
     expect(barAttrs?.ariaLive).toBeNull();
-    // Field reused from the legacy bar attrs shape — carries aria-busy here.
     expect(barAttrs?.ariaHidden).toBe('true');
 
-    // Error boundary a11y — arm a rejection on a fresh navigation to observe
-    // role=alert on the fallback. We nav to doc-c (seeded fresh below) so
-    // DocumentBoundary creates a brand-new syncPromise entry that the arm
-    // can reject on creation. See F5 for the arm-vs-reject timing rationale.
     await api.createPage('doc-c.md');
     await api.replaceDoc('doc-c', DOC_C);
     await page.evaluate(() => {
@@ -874,11 +590,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await expect(errorAlert).toHaveAttribute('role', 'alert');
     await expect(errorAlert).toHaveAttribute('aria-labelledby', 'document-error-title');
   });
-
-  // ── Compositional error-path coverage ──
-  // These test the error-boundary state machine's composition with navigation,
-  // retry, and visibility events. Unblocked by __test_armPendingRejection
-  // (race-free arm-before-create; see sync-promise.ts).
 
   test('QA-022: error → retry succeeds → continue editing (compositional)', async ({
     page,
@@ -894,9 +605,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Arm a single rejection for doc-b. After the Try-again invalidates the
-    // cache, the fresh syncPromise resolves normally (real provider is already
-    // in-pool from any prior setup, or freshly synced on recycle).
     await page.evaluate(() => {
       window.__test_armPendingRejection?.('doc-b', 'timeout');
     });
@@ -906,7 +614,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
     await expect(errorAlert).toContainText('doc-b');
 
-    // Retry re-enters Suspense, sync completes, editor mounts with content.
     await errorAlert.getByRole('button', { name: 'Try again' }).click();
     await expect(
       page.locator('.ProseMirror:not(.composer-prosemirror)', { hasText: 'Doc B Heading' }),
@@ -914,13 +621,9 @@ test.describe('docs-open — hybrid navigation UX', () => {
       timeout: 10_000,
     });
 
-    // Compositional tail: user continues editing after retry-recovery.
-    // The persisted text round-trips to Y.Doc content readable via the
-    // same editor surface — proves the recovered editor is fully functional,
-    // not just displaying stale content.
     const editor = page.locator('.ProseMirror:not(.composer-prosemirror)').first();
     await editor.click();
-    await page.keyboard.press('End'); // move cursor to end of existing content
+    await page.keyboard.press('End');
     await page.keyboard.type(' post-recovery typed content');
     await expect(editor).toContainText('post-recovery typed content', { timeout: 5_000 });
   });
@@ -939,7 +642,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Force error on doc-b.
     await page.evaluate(() => {
       window.__test_armPendingRejection?.('doc-b', 'timeout');
     });
@@ -948,16 +650,8 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const errorAlert = page.locator('[data-slot="document-error-boundary"]');
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
 
-    // Navigate AWAY via sidebar (not via the error-boundary "Back" button —
-    // the sidebar path does NOT invalidate the errored-doc's cache).
-    // Under per-Activity scoping, doc-b's error boundary
-    // stays in error state but its Activity flips to hidden via display:none,
-    // so the user no longer sees it.
     await openFromSidebar(page, 'doc-a.md');
 
-    // Error UI must no longer be visible to the user. DOM may persist in
-    // the hidden Activity subtree (other scenarios rely on this persistence),
-    // but `toBeHidden()` is true when an ancestor has `display:none`.
     await expect(errorAlert).toBeHidden({ timeout: 5_000 });
     await expect(page.locator('.ProseMirror:not(.composer-prosemirror)').first()).toContainText(
       'Doc A Heading',
@@ -978,10 +672,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Arm one rejection for doc-b. After it fires once, the cache entry
-    // holds the rejected promise — revisiting doc-b via sidebar without
-    // invalidating (i.e., without clicking Try again or the Back-nav button)
-    // must re-throw from the same cached rejection.
     await page.evaluate(() => {
       window.__test_armPendingRejection?.('doc-b', 'predisconnect');
     });
@@ -990,17 +680,9 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const errorAlert = page.locator('[data-slot="document-error-boundary"]');
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
 
-    // Navigate away via sidebar (no invalidate). Under per-Activity scoping
-    // doc-b's error UI goes hidden via Activity display:none.
     await openFromSidebar(page, 'doc-a.md');
     await expect(errorAlert).toBeHidden({ timeout: 5_000 });
 
-    // Re-visit doc-b WITHOUT re-arming (arms are one-shot; the persistence
-    // property we're testing is the syncPromise cache itself, not the arm).
-    // The error must re-appear — either (a) doc-b's Activity flips back to
-    // visible with its prior error-boundary state still tripped, OR (b) if
-    // doc-b was evicted from the MRU mount list, a fresh boundary instance
-    // re-throws from the cached rejection held by `sync-promise.ts`.
     await openFromSidebar(page, 'doc-b.md');
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
     await expect(errorAlert).toContainText('doc-b');
@@ -1017,17 +699,10 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Pre-sync failure scenario: before doc-b finishes its initial sync, a
-    // sleep→wake cycle occurs. The error boundary must show, not silently
-    // leave a blank editor. Modeled via arm-rejection (the user-facing
-    // outcome — error boundary rendered with recoverable UX — is the same
-    // whether the root cause is real WS drop or synthetic rejection).
     await page.evaluate(() => {
       window.__test_armPendingRejection?.('doc-b', 'predisconnect');
     });
 
-    // Simulate sleep before the nav fires — purely to cover the compositional
-    // path (visibility change + error-boundary interaction).
     await page.evaluate(() => {
       Object.defineProperty(document, 'visibilityState', {
         configurable: true,
@@ -1047,17 +722,10 @@ test.describe('docs-open — hybrid navigation UX', () => {
     const errorAlert = page.locator('[data-slot="document-error-boundary"]');
     await errorAlert.waitFor({ state: 'visible', timeout: 10_000 });
     await expect(errorAlert).toContainText('doc-b');
-    // Recovery path is reachable — Try again button is present + focused.
     const tryAgain = errorAlert.getByRole('button', { name: 'Try again' });
     await expect(tryAgain).toBeVisible();
   });
 
-  // ── Provider-pool recycle on sustained disconnect (RECYCLE_DEBOUNCE_MS = 4000) ──
-  // Validated here via page.clock —
-  // virtual time advances past the debounce without burning real wall-clock.
-  // The test-only __test_closeActiveWebSocket hook closes the live WS, pool
-  // enters pendingRecycleTimer, clock.runFor(5s) fires the setTimeout inside
-  // RECYCLE_DEBOUNCE_MS, destroyEntry runs → invalidateSyncPromise + re-create.
   test('QA-015: provider-pool 4s recycle exercised via page.clock', async ({ page, api }) => {
     await page.clock.install();
 
@@ -1068,8 +736,6 @@ test.describe('docs-open — hybrid navigation UX', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Snapshot pre-recycle state so we can assert the entry survived the
-    // debounce window AND is a fresh instance after recycle.
     const before = await page.evaluate(() => {
       const pool = window.__providerPool;
       return {
@@ -1080,16 +746,10 @@ test.describe('docs-open — hybrid navigation UX', () => {
     expect(before.activeDocName).toBe('doc-a');
     expect(before.poolSize).toBe(1);
 
-    // Close the active WS → HocuspocusProvider fires 'disconnect' →
-    // provider-pool starts the 4s pendingRecycleTimer.
     await page.evaluate(() => {
       window.__test_closeActiveWebSocket?.();
     });
 
-    // Advance past RECYCLE_DEBOUNCE_MS = 4000. The setTimeout inside the pool
-    // fires; destroyEntry runs (invalidateSyncPromise + provider destroy +
-    // fresh PoolEntry construction). Pool size should stabilise at ≤1 —
-    // either the entry is re-created fresh (size=1) or evicted (size=0).
     await page.clock.runFor(5_000);
 
     const after = await page.evaluate(() => ({
@@ -1103,56 +763,24 @@ test.describe('docs-open — hybrid navigation UX', () => {
     page,
     api,
   }) => {
-    // End-to-end proof of first-class .mdx admission: an .mdx file on disk
-    // must appear in the sidebar, be clickable, and render its body in the
-    // editor. Pairs with the integration-tier coverage in
-    // `packages/app/tests/integration/mdx-extension.test.ts` (which exercises
-    // watcher→CRDT) — this test adds the browser-side DOM path that
-    // integration can't reach (sidebar DOM → hash nav → editor mount).
     const docName = 'mdx-sidebar-proof';
     const mdxBody = '# MDX Sidebar Proof\n\nContent rendered from a .mdx file via sidebar click.\n';
-    // seedDocs (extension-qualified name → authors .mdx) rather than raw
-    // createPage/replaceDoc: it clears cross-spec leftovers and settles the
-    // watcher index pre-goto, so the sidebar click can't race the tree.
     await api.seedDocs([{ name: `${docName}.mdx`, markdown: mdxBody }]);
 
     await page.goto('/');
-    // The sidebar displays the filename with extension — so the text to click
-    // is `${docName}.mdx`, not the extension-less docName.
     await openFromSidebar(page, `${docName}.mdx`);
     await waitForActiveProviderSynced(page);
 
-    // The body content must be in the live editor DOM. Wait for it — the
-    // editor mount is async after the shell snaps, and the full
-    // sidebar-click → hash-nav → provider-sync → editor-mount → render
-    // chain runs cold here; 30s matches the suite's other cold
-    // content-render budgets (10s flaked under 4-worker CI contention).
     await expect(page.getByText('Content rendered from a .mdx file')).toBeVisible({
       timeout: 30_000,
     });
-    // Shell confirmation: the rename-affordance button in the editor header
-    // renders the filename-with-extension as its accessible name. Proves the
-    // header is extension-aware (reads from PageListContext.pageMeta.docExt)
-    // rather than hard-coding `.md`. Scoped to main so we don't collide with
-    // the identically-named sidebar list item.
     await expect(
       page.getByRole('main').getByRole('button', { name: `${docName}.mdx`, exact: true }),
     ).toBeVisible();
   });
 });
 
-// ── WS-interception tests (context.routeWebSocket before goto) ──────────
-// These tests use context.routeWebSocket() registered BEFORE page.goto() to
-// intercept HocuspocusProvider's /collab WebSocket at the Chromium network
-// shim level. This is required because page-level routeWebSocket registered
-// AFTER goto doesn't intercept (timing — Playwright docs: "Only WebSockets
-// created after routeWebSocket was called will be routed"). Context-level
-// routes + pre-goto registration solve both the timing issue and the context-
-// reuse bug (playwright#34045). These tests destructure `{ context }` instead
-// of `{ page }` and create their own page.
-
 test.describe('docs-open — WS-interception scenarios', () => {
-  // ── Pre-sync WebSocket disconnect → PreSyncDisconnectError ──
   test('QA-014: pre-sync WS close → PreSyncDisconnectError → "Connection dropped"', async ({
     context,
     api,
@@ -1162,7 +790,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
       { name: 'doc-b', markdown: DOC_B },
     ]);
 
-    // Track WS connections; passthrough initially, close after toggle.
     let blockMode: 'passthrough' | 'close' = 'passthrough';
     await context.routeWebSocket(/collab/, (ws) => {
       if (blockMode === 'close') {
@@ -1178,7 +805,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
 
-    // Toggle: next WS connection (doc-b) will be closed immediately.
     blockMode = 'close';
     await openFromSidebar(page, 'doc-b.md');
 
@@ -1188,15 +814,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
     await expect(errorAlert).toContainText('doc-b');
   });
 
-  // ── warm-recycle with hung WS — Suspense fallback + eventual timeout ──
-  // The F3 test already validates that EditorSkeleton appears during cold nav
-  // via a MutationObserver that catches transient DOM mounts. This
-  // scenario adds a recycle-path validation: after recycling a warm doc with
-  // WS blocked, the Suspense fallback (EditorSkeleton) renders and eventually
-  // the 30s syncPromise timeout fires the ErrorBoundary.
-  //
-  // This test validates the structural claim: on a warm-recycle with hung WS,
-  // the doc eventually times out via the real 30s path (not stuck forever).
   test('QA-012: warm-recycle with hung WS → doc-b unsynced, eventually errors', async ({
     context,
     api,
@@ -1215,7 +832,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
     const page = await context.newPage();
     await page.goto('/');
 
-    // Warm both docs
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -1225,17 +841,12 @@ test.describe('docs-open — WS-interception scenarios', () => {
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
 
-    // Block + recycle doc-b
     blockMode = 'hang';
     await page.evaluate(() => {
       window.__providerPool?.recycle('doc-b');
     });
     await openFromSidebar(page, 'doc-b.md');
 
-    // doc-b is unsynced (WS hung) — wait for the pool to register doc-b as
-    // active (provider lifecycle), then assert isSynced=false
-    // remains stable. activeDoc updates synchronously when the pool's
-    // open() resolves; isSynced stays false because the WS handshake hangs.
     await expect
       .poll(() => page.evaluate(() => window.__providerPool?.getActiveDocName() ?? null))
       .toBe('doc-b');
@@ -1247,16 +858,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
     expect(state.isSynced).toBe(false);
   });
 
-  // ── Real syncPromise timeout via hung WS → ErrorBoundary ──
-  // Same warm-recycle approach. After warm-up, scales down the
-  // sync-timeout dial via `__okPerfOverrides.SYNC_TIMEOUT_MS` so the real
-  // production `setTimeout` callback inside `syncPromise` fires without a
-  // 30s wall-clock wait. The override mechanism (env-override.ts) was
-  // designed for exactly this surface; tuning the dial does NOT
-  // short-circuit the timeout path the way `__test_armPendingRejection`
-  // would. The production default (30_000 ms) is pinned by a unit test
-  // in `sync-promise.test.ts` so this dial-down doesn't degrade
-  // prod-config coverage.
   test('QA-013: real syncPromise timeout → "Couldn\'t load document"', async ({ context, api }) => {
     await api.seedDocs([
       { name: 'doc-a', markdown: DOC_A },
@@ -1272,10 +873,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
     const page = await context.newPage();
     await page.goto('/');
 
-    // Warm both docs under the production-default 30s timeout — the
-    // override below only fires for `syncPromise(...)` calls that arm a
-    // fresh timer (i.e. the post-recycle re-open of doc-b). Warm-up
-    // entries settle to resolved sentinels long before the dial change.
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
@@ -1285,10 +882,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
     await openFromSidebar(page, 'doc-a.md');
     await waitForActiveProviderSynced(page);
 
-    // Lower the dial AFTER warm-up. `readNumericOverride` is read per-
-    // `setTimeout` call inside `syncPromise`, so existing settled entries
-    // are unaffected; the next syncPromise creation (after recycle) reads
-    // 2_000.
     await page.evaluate(() => {
       window.__okPerfOverrides = {
         ...window.__okPerfOverrides,
@@ -1296,9 +889,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
       };
     });
 
-    // Block + recycle doc-b. The fresh syncPromise armed by re-open
-    // reads the dial above and fires its timeout callback in ~2s, taking
-    // the real production reject → React error-boundary path.
     blockMode = 'hang';
     await page.evaluate(() => {
       window.__providerPool?.recycle('doc-b');
@@ -1313,7 +903,6 @@ test.describe('docs-open — WS-interception scenarios', () => {
   });
 });
 
-// Global type augmentation for the test-only window properties used above.
 declare global {
   interface Window {
     __f0Start?: number;

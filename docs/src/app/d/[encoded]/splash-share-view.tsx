@@ -8,13 +8,8 @@ import { buildCloneCommand, SPLASH_INSTALL_COMMAND, type SplashView } from '@/li
 import { SplashCtaPanel } from './splash-cta-panel';
 import { SplashFallbackCta } from './splash-fallback-cta';
 
-/** The decoded, well-formed share view (blob → doc, tree → folder). */
 type OkSplashView = Extract<SplashView, { kind: 'ok' }>;
 
-/**
- * The "ok" share splash: headline + repo/branch context + the OS-aware CTA
- * panel, in the shared page shell (chrome + footer).
- */
 export function SplashShareView({ encoded, view }: { encoded: string; view: OkSplashView }) {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-slide-bg font-[family-name:var(--font-dm-sans)]">
@@ -106,9 +101,6 @@ export function SplashShareView({ encoded, view }: { encoded: string; view: OkSp
   );
 }
 
-// Shared page chrome: the dot-pattern background pair + the home-linking
-// wordmark header. Both SplashShareView and SplashFallback render this once so
-// the texture sizing/opacity lives in a single place.
 function SplashChrome() {
   return (
     <>
@@ -124,8 +116,7 @@ function SplashChrome() {
       <header className="relative z-10 px-6">
         <div className="container mx-auto flex pt-8 md:pt-10">
           <Link href="/" aria-label="OpenKnowledge home" className="inline-flex items-center">
-            {/* Link already names the control; hide the wordmark's own label to
-                avoid a doubled "OpenKnowledge" announcement. */}
+            {}
             <OkWordmark aria-hidden="true" className="h-8 w-auto text-slide-text" />
           </Link>
         </div>
@@ -134,14 +125,6 @@ function SplashChrome() {
   );
 }
 
-/**
- * Rendered for the `invalid` and `unsupported-version` decode outcomes.
- *
- * Both arrive with no decoded share, but they are not the same problem, so
- * each passes its own `description`: one visitor has the app and needs a newer
- * build, the other has a link that never resolved to anything. A single shared
- * line could only be vague enough to fit both.
- */
 export function SplashFallback({ heading, description }: { heading: string; description: string }) {
   return (
     <main className="relative flex min-h-screen flex-col overflow-hidden bg-slide-bg font-[family-name:var(--font-dm-sans)]">
@@ -155,10 +138,7 @@ export function SplashFallback({ heading, description }: { heading: string; desc
 
           <p className="mt-4 max-w-xl text-slide-muted">{description}</p>
 
-          {/* One CTA, not two. The old pairing put a download beside an "Open
-              with CLI" button whose panel had no share to open — it could only
-              offer a bare install, which is a step the caret here already
-              carries alongside every desktop build. */}
+          {}
           <div className="mt-10 flex flex-wrap items-center gap-4">
             <SplashFallbackCta />
           </div>

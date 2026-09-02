@@ -1,21 +1,3 @@
-/**
- * Playwright E2E for the unified validation surface: the Problems
- * panel's project scope renders lint AND broken-link findings from
- * `GET /api/audit` with per-row source tags, and the file tree tints + badges
- * problem rows inside the real `@pierre/trees` shadow root — the rung jsdom
- * structurally cannot cover (unsafeCSS paints only in a browser).
- *
- * Three freshness triggers are exercised against the live persistence pipeline,
- * the real rule-write endpoint, and the real Settings switches — each asserting
- * on an UNOPENED doc's row, because "correct without opening each file" is the
- * behavior at issue:
- *   - trigger 3: an agent write tints via the CC1 disk-ack relay, no audit;
- *   - trigger 4: enabling a plugin (markdownlint AND frontmatter) or toggling a
- *     rule off re-audits, so rows update without being reopened;
- *   - trigger 5: a doc whose problems predate the page load tints on open, with
- *     nothing in the session touched at all.
- */
-
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -30,10 +12,8 @@ import {
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
 
-// A hard tab trips markdownlint MD010 (warning under OK's tuned defaults).
 const HARD_TAB_BODY = '# Heading\n\n\tindented with a hard tab\n';
 
-/** Open the right-rail Problems tab. */
 async function openProblemsTab(page: Page) {
   await page.locator('#tab-problems').click();
   await expect(
@@ -41,14 +21,12 @@ async function openProblemsTab(page: Page) {
   ).toBeVisible({ timeout: 5_000 });
 }
 
-/** Activate project scope and wait for the audit snapshot to land. */
 async function openProjectScope(page: Page) {
   await page.getByTestId('panel-scope-project').click();
   await expect(page.getByTestId('problems-project-scope')).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('problems-audit-summary')).not.toBeEmpty({ timeout: 15_000 });
 }
 
-/** The file tree's shadow row for a tree path, evaluated in the live shadow root. */
 function treeRowHandle(page: Page, treePath: string) {
   return page.locator('file-tree-container').evaluateHandle((host, path) => {
     return (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot?.querySelector(
@@ -63,7 +41,6 @@ let lintDocName = '';
 let linkDocName = '';
 
 test.beforeEach(async ({ page, api, workerServer }) => {
-  // markdownlint is opt-in; enable it so the lint plane carries findings.
   mkdirSync(join(workerServer.contentDir, '.ok'), { recursive: true });
   writeFileSync(
     join(workerServer.contentDir, '.ok', 'config.yml'),
@@ -107,22 +84,16 @@ test.describe('unified Problems — project scope', () => {
     await openProblemsTab(page);
     await openProjectScope(page);
 
-    // Both seeded files group in the plane.
     await expect(page.getByText(`${lintDocName}.md`)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(`${linkDocName}.md`)).toBeVisible();
 
-    // Groups mount collapsed; open them to assert the row-level chips.
     await page.getByTestId('problems-audit-expand-toggle').click();
 
-    // Rows name their producing validator, not a generic category.
     const tags = page.getByTestId('problems-source-tag');
     await expect(tags.filter({ hasText: 'markdownlint' }).first()).toBeVisible();
     await expect(tags.filter({ hasText: 'links' }).first()).toBeVisible();
 
-    // The chip carries the producer, so the subline shows the bare rule code.
     await expect(page.getByText('dead-link').first()).toBeVisible();
-    // `getByText` substring-matches by default, so asserting `dead-link` alone
-    // also passes against the old `links/dead-link`. Pin the absence too.
     await expect(page.getByText('links/dead-link')).toHaveCount(0);
   });
 });
@@ -134,8 +105,6 @@ test.describe('unified Problems — file-tree indicators', () => {
     await openProblemsTab(page);
     await openProjectScope(page);
 
-    // The tint attribute lands on the real shadow-DOM rows. Broken links are
-    // warnings by default (validation.links), like the lint findings.
     await expect
       .poll(
         async () => {
@@ -152,9 +121,6 @@ test.describe('unified Problems — file-tree indicators', () => {
       })
       .toBe('warning');
 
-    // Count badge is injected next to the label, and carries its own hover
-    // explanation. Both halves of that need the real browser: the DOM test can
-    // only read the stylesheet source, and jsdom never resolves hit-testing.
     const badge = await (await treeRowHandle(page, `${linkDocName}.md`)).evaluate((el) => {
       const node = el?.querySelector('[data-ok-problem-badge]');
       if (!node) return null;
@@ -165,13 +131,9 @@ test.describe('unified Problems — file-tree indicators', () => {
       };
     });
     expect(badge?.text).toBe('1');
-    // Not `none`: the cursor has to resolve on the badge, or it falls through
-    // to the row and surfaces the row's full-path title instead.
     expect(badge?.pointerEvents).not.toBe('none');
     expect(badge?.title).toBe('1 warning in this file. Open the Problems panel for details.');
 
-    // The unsafeCSS actually paints: a tinted row's label color differs from a
-    // clean row's — the pixels jsdom cannot verify.
     const colors = await page.locator('file-tree-container').evaluate(
       (host, paths) => {
         const shadow = (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
@@ -191,14 +153,6 @@ test.describe('unified Problems — file-tree indicators', () => {
   });
 
   test('the badge is a keyboard-reachable control with a real hit target', async ({ page }) => {
-    // The rung nothing below can reach: jsdom implements no sequential focus
-    // navigation, resolves no layout, and never matches :focus-visible, so
-    // "can this badge hold focus, does it paint a ring, is it big enough to
-    // hit, and does Enter open the panel" are all invisible until a real
-    // browser runs it. The badge is a tabindex'd span INSIDE the host's row
-    // <button>, and the host re-seats DOM focus onto that button from a layout
-    // effect, so its ability to keep focus is a property of the host, not of
-    // this code — pin it here or it regresses on a dependency bump.
     await openProblemsTab(page);
     await openProjectScope(page);
     await expect
@@ -216,7 +170,6 @@ test.describe('unified Problems — file-tree indicators', () => {
       .locator('file-tree-container')
       .locator(`${rowSelector} [data-ok-problem-badge]`);
 
-    // Focus the row the way a click would, then Tab: the badge is the next stop.
     await page.locator('file-tree-container').evaluate((host, selector) => {
       const shadow = (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
       (shadow?.querySelector(selector) as HTMLElement | null)?.focus();
@@ -229,10 +182,6 @@ test.describe('unified Problems — file-tree indicators', () => {
       if (!active?.hasAttribute('data-ok-problem-badge')) return null;
       const style = getComputedStyle(active);
       const box = active.getBoundingClientRect();
-      // The painted chip stays small; the TARGET is expanded around it, so
-      // probe the extremes of the required 24px box by hit-testing rather than
-      // measuring the chip. Half a pixel inside each edge, so a target that is
-      // exactly 24px does not fail on a rounding boundary.
       const probe = (dy: number) =>
         shadow?.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2 + dy) ?? null;
       return {
@@ -246,25 +195,18 @@ test.describe('unified Problems — file-tree indicators', () => {
       };
     });
 
-    // Tab reached it and the host did not pull focus back onto the row.
     expect(focused).not.toBeNull();
     expect(focused?.role).toBe('button');
-    // DOM role/name alone are insufficient here: a role nested under a native
-    // button can be flattened out of the accessibility tree. Chromium must
-    // expose this exact control to assistive technology, not merely focus it.
     expect(await badge.ariaSnapshot()).toContain(
       'button "1 problem. 1 warning in this file. Open the Problems panel for details."',
     );
-    // A ring that resolves to zero width or a transparent color is no ring.
     expect(focused?.outlineStyle).not.toBe('none');
     expect(focused?.outlineWidth).not.toBe('0px');
     expect(focused?.outlineColor).not.toMatch(/transparent|rgba\(0, 0, 0, 0\)/);
-    // Vertically the target clears 24px, which the painted chip alone does not.
     expect(focused?.chipHeight).toBeLessThan(24);
     expect(focused?.hitsAbove).toBe(true);
     expect(focused?.hitsBelow).toBe(true);
 
-    // Enter on the focused badge is the whole feature, from the keyboard.
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('panel-scope-doc')).toHaveAttribute('data-state', 'on', {
       timeout: 10_000,
@@ -274,8 +216,6 @@ test.describe('unified Problems — file-tree indicators', () => {
   });
 
   test('a modified click on the badge stays the tree multi-select gesture', async ({ page }) => {
-    // The badge sits inside the row, so a gesture it swallows is a gesture the
-    // tree never sees. Only a real browser resolves the host's selection model.
     await openProblemsTab(page);
     await openProjectScope(page);
     const badge = page
@@ -299,26 +239,12 @@ test.describe('unified Problems — file-tree indicators', () => {
 
     await badge.click({ modifiers: ['Meta'] });
 
-    // Cmd-click ADDS to the selection. Activating the badge instead would
-    // collapse it to one row and destroy the selection being assembled.
     await expect.poll(selected).toEqual([`${lintDocName}.md`, `${openDocName}.md`].sort());
   });
 
   test('enabling the plugin from Settings lights up an UNOPENED doc row', async ({ page, api }) => {
-    // The settings panel now carries the shared cold-chunk budget, and this
-    // test already spends three 30s freshness polls around it, so the sum of
-    // its long budgets no longer fits the config's 120s slot. Sizing the slot
-    // keeps each of those assertions able to reach its own budget and fail by
-    // name; it cannot mask a regression, because whichever wait stalls still
-    // exhausts that budget first.
     test.setTimeout(180_000);
 
-    // The report's headline symptom: "you enable the plugin, nothing lights up."
-    // Driven through the real Settings switch rather than an API call, because
-    // the plugin toggle takes a DIFFERENT route to the freshness trigger than a
-    // rule write does — it patches the project config doc and relies on the
-    // server's CC1 lint-config broadcast after that doc persists, with no local
-    // emitLintConfigChanged() of its own.
     const suffix = randomUUID().slice(0, 8);
     const enableDoc = `uv-enable-${suffix}`;
     await api.createPage(`${enableDoc}.md`);
@@ -331,21 +257,11 @@ test.describe('unified Problems — file-tree indicators', () => {
 
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
 
-    // The same deep link the Problems panel's "Enable plugins" pointer uses,
-    // via the shared helper so the settings body's cold-chunk budget is stated
-    // once. The 10s it replaced was below the config's own CI expect budget, so
-    // it narrowed the margin rather than widening it.
     await openProjectPluginsPanel(page);
 
-    // Off: the doc's only finding was MD010, so its row must go bare. Driven to
-    // a known state rather than clicked blind, because the switch is disabled
-    // until the config binding syncs and a blind click would block on
-    // actionability and burn the whole slot as a bare click timeout.
     await setPluginEnabled(page, 'markdownlint', false);
     await expect.poll(problemAttr, { timeout: 30_000 }).toBeNull();
 
-    // Back on — the reported scenario. The row must light up again with the doc
-    // still never opened. Left ON so the file's config state matches beforeEach.
     await setPluginEnabled(page, 'markdownlint', true);
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
   });
@@ -355,14 +271,8 @@ test.describe('unified Problems — file-tree indicators', () => {
     api,
     workerServer,
   }) => {
-    // Same slot sizing as the markdownlint case above, for the same reason.
     test.setTimeout(180_000);
 
-    // The report's FIRST symptom names frontmatter specifically ("files with
-    // frontmatter issues don't turn yellow until you click into them one at a
-    // time"). markdownlint and frontmatter are separate plugins reaching the
-    // audit plane by different validators, so covering one does not cover the
-    // other.
     const suffix = randomUUID().slice(0, 8);
     const fmDoc = `uv-fm-${suffix}`;
     const schemaRel = join('.ok', 'schemas', `uv-fm-${suffix}.schema.json`);
@@ -376,8 +286,6 @@ test.describe('unified Problems — file-tree indicators', () => {
       }),
       'utf-8',
     );
-    // The schema is mapped but the PLUGIN starts off, so nothing validates yet —
-    // the state a user is in right before they flip the switch.
     writeFileSync(
       join(workerServer.contentDir, '.ok', 'config.yml'),
       [
@@ -395,8 +303,6 @@ test.describe('unified Problems — file-tree indicators', () => {
       'utf-8',
     );
 
-    // Frontmatter present but missing the required `title`, and no hard tab, so
-    // the ONLY possible finding is the frontmatter one.
     await api.createPage(`${fmDoc}.md`);
     await api.replaceDoc(fmDoc, '---\nsummary: no title here\n---\n\n# Body\n\nClean prose.\n');
 
@@ -405,20 +311,13 @@ test.describe('unified Problems — file-tree indicators', () => {
       return row.evaluate((el) => el?.getAttribute('data-ok-problem') ?? null);
     };
 
-    // Plugin off: the row is bare even though the doc violates the schema.
     await expect.poll(problemAttr, { timeout: 20_000 }).toBeNull();
 
     await openProjectPluginsPanel(page);
     await setPluginEnabled(page, 'frontmatter', true);
 
-    // Enabling the plugin must light the row up with the doc never opened.
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
 
-    // Leave the plugin off again: this test's config write lives in the project
-    // config DOC, which outlives the per-test config.yml that beforeEach lays
-    // down, so a sibling test could otherwise inherit frontmatter validation.
-    // The schema mapping itself goes inert once the plugin is off (the audit
-    // skips schema resolution and appliesTo checks entirely when disabled).
     await setPluginEnabled(page, 'frontmatter', false);
     await expect.poll(problemAttr, { timeout: 30_000 }).toBeNull();
   });
@@ -429,11 +328,6 @@ test.describe('unified Problems — file-tree indicators', () => {
     baseURL,
     workerServer,
   }) => {
-    // Freshness trigger 4, the whole reported symptom: validation state used to
-    // stand until each file was reopened, so switching a rule off left its
-    // sidebar tint and count in place. The doc here is never opened and the
-    // Problems panel is never touched — a config change is the only freshness
-    // path available.
     const suffix = randomUUID().slice(0, 8);
     const toggleDoc = `uv-toggle-${suffix}`;
     await api.createPage(`${toggleDoc}.md`);
@@ -444,14 +338,10 @@ test.describe('unified Problems — file-tree indicators', () => {
       return row.evaluate((el) => el?.getAttribute('data-ok-problem') ?? null);
     };
 
-    // Baseline via trigger 3 (disk-ack): MD010 is on, so the row tints.
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
 
     const configPath = join(workerServer.contentDir, '.markdownlint.json');
     try {
-      // The real rule-write endpoint the Settings rule browser posts to — it
-      // lands on disk AND signals the CC1 lint-config channel, which is how a
-      // window learns about a config change it did not make itself.
       const res = await fetch(`${baseURL}/api/lint/markdownlint-config`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -459,13 +349,8 @@ test.describe('unified Problems — file-tree indicators', () => {
       });
       expect(res.ok, 'rule write should succeed').toBe(true);
 
-      // The hard tab is no longer a finding, so the row must go bare on its own.
       await expect.poll(problemAttr, { timeout: 30_000 }).toBeNull();
     } finally {
-      // A governing native file applies wholesale, so leaving one behind (even
-      // rule-less) would silence MD010 for every sibling test in this worker.
-      // Discovery re-reads from disk per request, so removing the file restores
-      // OK's tuned defaults for whatever runs next.
       rmSync(configPath, { force: true });
     }
   });
@@ -474,16 +359,7 @@ test.describe('unified Problems — file-tree indicators', () => {
     page,
     api,
   }) => {
-    // Freshness trigger 5. Triggers 2-4 all need something to HAPPEN in the
-    // session, so a project configured in an earlier session used to show a bare
-    // sidebar at every launch until the user opened files or ran the audit by
-    // hand. Reloading is what makes the doc's problems predate the load: the
-    // store is module state, so it starts empty again, and no disk-ack for this
-    // doc will ever reach the new page.
     const suffix = randomUUID().slice(0, 8);
-    // One doc per validator source: the on-open audit is the whole plane, not a
-    // lint-only pass, so a dead link has to surface the same way a lint finding
-    // does. `links` is the one source the counts plane tracks separately.
     const priorLintDoc = `uv-prior-lint-${suffix}`;
     const priorLinkDoc = `uv-prior-link-${suffix}`;
     await api.createPage(`${priorLintDoc}.md`);
@@ -494,7 +370,6 @@ test.describe('unified Problems — file-tree indicators', () => {
     await page.reload();
     await waitForProvider(page);
 
-    // No file opened, no Problems panel, no config change, no write after load.
     const attrOf = async (treePath: string) => {
       const row = await treeRowHandle(page, treePath);
       return row.evaluate((el) => el?.getAttribute('data-ok-problem') ?? null);
@@ -504,11 +379,6 @@ test.describe('unified Problems — file-tree indicators', () => {
   });
 
   test('an agent write to an unopened doc tints its row via disk-ack', async ({ page, api }) => {
-    // Condition-based wait for the on-open audit (trigger 5) to land, so the tint
-    // asserted below is attributable to the disk-ack path this test is about.
-    // beforeEach seeds lintDocName BEFORE the page loads, so no disk-ack for it
-    // ever reaches this page — its row going warning can only be the on-open
-    // audit, which makes it a signal rather than a sleep.
     await expect
       .poll(
         async () => {
@@ -523,8 +393,6 @@ test.describe('unified Problems — file-tree indicators', () => {
     const sleeperDoc = `uv-sleeper-${suffix}`;
     await api.createPage(`${sleeperDoc}.md`);
 
-    // No Problems panel interaction at all — the only freshness path available
-    // is the per-doc disk-ack re-validate.
     await api.replaceDoc(sleeperDoc, `# Sleeper\n\nSee [[uv-sleeper-ghost-${suffix}]].\n`);
 
     await expect
@@ -533,8 +401,6 @@ test.describe('unified Problems — file-tree indicators', () => {
           const row = await treeRowHandle(page, `${sleeperDoc}.md`);
           return row.evaluate((el) => el?.getAttribute('data-ok-problem') ?? null);
         },
-        // Bounded by the persistence debounce + disk-ack + 500ms revalidate
-        // debounce — generous ceiling, converges much earlier in practice.
         { timeout: 30_000 },
       )
       .toBe('warning');

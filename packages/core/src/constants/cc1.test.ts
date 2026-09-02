@@ -49,7 +49,7 @@ describe('parseManagedArtifactName — skill name/rel split (per-file editabilit
 
   test('skillFileLiveDocName round-trips through parseManagedArtifactName (global)', () => {
     const doc = skillFileLiveDocName('global', 'demo', 'references/patterns.md');
-    expect(doc).toBe('__skill__/global/demo/references/patterns'); // ext-less
+    expect(doc).toBe('__skill__/global/demo/references/patterns');
     expect(parseManagedArtifactName(doc)).toEqual({
       kind: 'skill',
       scope: 'global',
@@ -63,32 +63,18 @@ describe('parseManagedArtifactName — skill name/rel split (per-file editabilit
     expect(skillFileLiveDocName('project', 'demo', 'references/patterns.md')).toBe(
       '.ok/skills/demo/references/patterns',
     );
-    // The bare SKILL doc name is unchanged.
     expect(skillLiveDocName('global', 'demo')).toBe('__skill__/global/demo');
   });
 });
 
-// The shared normalizer maps a content link target / doc name that points at a
-// TEMPLATE file on disk to its managed-artifact doc name. It is the single
-// source of truth used by both the client link resolver and the server link
-// index, so a doc→template link resolves to the same identity in both places
-// (click-through + backlinks). Project skills are NOT mapped here — they are
-// real content docs (`.ok/skills/<name>/SKILL`) and resolve through the normal
-// page index. These cases pin that contract.
 describe('parseManagedArtifactName — __template__ tombstone', () => {
   test('returns null for a synthetic template name (no live artifact resolves)', () => {
-    // The template parse arm is gone: a stale `__template__/…` name must NOT
-    // resolve to an artifact, so it can never reach the content branch and mint
-    // a literal `__template__/…` file. Templates are content docs.
     expect(parseManagedArtifactName('__template__/note')).toBeNull();
     expect(parseManagedArtifactName('__template__/docs/note')).toBeNull();
     expect(parseManagedArtifactName('__template__/docs/guides/note')).toBeNull();
   });
 
   test('but the prefix still classifies as a managed-artifact name (tombstone)', () => {
-    // The reserved-name gates (tree exclusion, create-page refusal, persistence
-    // quarantine, the navigation redirect) all key off this classifier, so the
-    // prefix survives even though the parser refuses it.
     expect(isManagedArtifactDocName('__template__/note')).toBe(true);
     expect(isManagedArtifactDocName('__template__/docs/note')).toBe(true);
   });
@@ -99,11 +85,6 @@ describe('parseManagedArtifactName — __template__ tombstone', () => {
   });
 });
 
-// A bundle-relative wiki-link inside a SKILL.md (`[[references/x]]`) is
-// classified as a bare KB-wide doc name, so its inbound graph edge would land
-// on a phantom content-root `references/x` instead of the sibling bundle ref.
-// This helper remaps such targets to the bundle ref content doc. Shared by the
-// server link index and client chip resolver so both surfaces agree.
 describe('resolveSkillBundleWikiTarget', () => {
   const skill = '.ok/skills/demo/SKILL';
 
@@ -111,7 +92,6 @@ describe('resolveSkillBundleWikiTarget', () => {
     expect(resolveSkillBundleWikiTarget('references/notes', skill)).toBe(
       '.ok/skills/demo/references/notes',
     );
-    // Nested under references/.
     expect(resolveSkillBundleWikiTarget('references/sub/deep', skill)).toBe(
       '.ok/skills/demo/references/sub/deep',
     );
@@ -131,8 +111,6 @@ describe('resolveSkillBundleWikiTarget', () => {
   });
 
   test('resolves from a REFERENCE doc, an IN-PLACE bundle, a GLOBAL artifact, and an extskill', () => {
-    // Bundle paths are authored bundle-root-relative regardless of which bundle
-    // doc mentions them — a reference doc resolves against its own bundle root.
     expect(
       resolveSkillBundleWikiTarget('references/sibling', '.ok/skills/demo/references/notes'),
     ).toBe('.ok/skills/demo/references/sibling');
@@ -154,11 +132,8 @@ describe('resolveSkillBundleWikiTarget', () => {
   });
 
   test('leaves bare names and non-bundle targets to KB-wide resolution', () => {
-    // Bare name (no slash) keeps Obsidian-style page-set resolution.
     expect(resolveSkillBundleWikiTarget('notes', skill)).toBeNull();
-    // Non-bundle first segment.
     expect(resolveSkillBundleWikiTarget('docs/intro', skill)).toBeNull();
-    // references/ with no leaf segment.
     expect(resolveSkillBundleWikiTarget('references', skill)).toBeNull();
     expect(resolveSkillBundleWikiTarget('references/', skill)).toBeNull();
   });
@@ -170,7 +145,6 @@ describe('resolveSkillBundleWikiTarget', () => {
   test('returns null when the source is not a bundle doc at all', () => {
     expect(resolveSkillBundleWikiTarget('references/notes', 'notes/index')).toBeNull();
     expect(resolveSkillBundleWikiTarget('references/notes', 'docs/guide')).toBeNull();
-    // A template artifact is managed but not a skill bundle.
     expect(resolveSkillBundleWikiTarget('references/notes', '__template__/x/y')).toBeNull();
   });
 
@@ -220,20 +194,14 @@ describe('parseProjectSkillBundleDoc', () => {
       kind: 'reference',
       rel: 'notes',
     });
-    // scripts/** still not graph nodes, in any root.
     expect(parseProjectSkillBundleDoc('.claude/skills/demo/scripts/run')).toBeNull();
   });
 
   test('rejects non-bundle docs, scripts, global skills, and the bare skill dir', () => {
-    // Regular docs — even ones that imitate the references shape outside the
-    // skills root — never parse as bundle docs (scope containment).
     expect(parseProjectSkillBundleDoc('notes/index')).toBeNull();
     expect(parseProjectSkillBundleDoc('notes/references/x')).toBeNull();
-    // scripts/** are not graph nodes.
     expect(parseProjectSkillBundleDoc('.ok/skills/demo/scripts/run')).toBeNull();
-    // Global skills are managed-artifact docs, not content bundle docs.
     expect(parseProjectSkillBundleDoc('__skill__/global/demo')).toBeNull();
-    // The skill dir itself / an empty references segment are not content docs.
     expect(parseProjectSkillBundleDoc('.ok/skills/demo')).toBeNull();
     expect(parseProjectSkillBundleDoc('.ok/skills/demo/references')).toBeNull();
     expect(parseProjectSkillBundleDoc('.ok/skills/demo/references/')).toBeNull();
@@ -266,27 +234,18 @@ describe('parseGlobalSkillBundleDoc', () => {
   });
 
   test('rejects project bundle docs, scripts, the bare dir, and other scopes', () => {
-    // Project skills are content docs, never global managed-artifact docs.
     expect(parseGlobalSkillBundleDoc('.ok/skills/demo/SKILL')).toBeNull();
     expect(parseGlobalSkillBundleDoc('.ok/skills/demo/references/notes')).toBeNull();
-    // scripts/** are not graph nodes (mirrors the project predicate).
     expect(parseGlobalSkillBundleDoc('__skill__/global/demo/scripts/run')).toBeNull();
-    // An empty references segment is not a content node.
     expect(parseGlobalSkillBundleDoc('__skill__/global/demo/references')).toBeNull();
     expect(parseGlobalSkillBundleDoc('__skill__/global/demo/references/')).toBeNull();
-    // Only the global store qualifies — a non-`global` scope segment is rejected.
     expect(parseGlobalSkillBundleDoc('__skill__/project/demo')).toBeNull();
     expect(parseGlobalSkillBundleDoc('__skill__/project/demo/references/notes')).toBeNull();
-    // Templates + ordinary docs never parse as a global skill bundle doc.
     expect(parseGlobalSkillBundleDoc('__template__/notes/daily')).toBeNull();
     expect(parseGlobalSkillBundleDoc('notes/index')).toBeNull();
   });
 });
 
-// A template's live doc name is its content-relative path. This builder + shape
-// parser + legacy parser are the single identity every surface shares; these
-// cases pin the raw (unencoded) content shape, the single-leaf-only rule, and
-// the percent-decoding the legacy synthetic-name reader must preserve.
 describe('templateContentDocName', () => {
   test('builds a root template content doc name (ext-less, raw)', () => {
     expect(templateContentDocName('', 'daily')).toBe('.ok/templates/daily');
@@ -345,10 +304,6 @@ describe('parseTemplateContentDocName', () => {
   });
 
   test('strips a `.md` suffix but no other extension — a template IS a `.md` leaf', () => {
-    // Mirrors `isTemplateContentFile`, which admits only `.md` under
-    // `.ok/templates/`: the two halves of the grammar must agree about what a
-    // template is. A `.mdx` (or any other) suffix is not the template file
-    // extension, so it stays part of the leaf like any odd character would.
     expect(parseTemplateContentDocName('.ok/templates/daily.md')).toEqual({
       folder: '',
       name: 'daily',
@@ -360,8 +315,6 @@ describe('parseTemplateContentDocName', () => {
   });
 
   test('parses by SHAPE only — a name that would fail the template-name grammar still parses', () => {
-    // Name validation lives at the HTTP write layer, not in the doc-name grammar,
-    // so the shape parser must not reject on the leaf's characters.
     expect(parseTemplateContentDocName('.ok/templates/Has Spaces')).toEqual({
       folder: '',
       name: 'Has Spaces',

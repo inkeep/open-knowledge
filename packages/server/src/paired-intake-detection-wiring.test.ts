@@ -1,16 +1,3 @@
-/**
- * `PAIRED_INTAKE_DETECTION` is load-bearing at every wired intake, not
- * decoration.
- *
- * The registry declares, per paired-write origin, whether that origin's intake
- * derive runs the content-loss post-condition. A site that decides on reporter
- * presence alone still LOOKS correct while the registry says `detect` — the
- * divergence only surfaces the day someone reclassifies an origin to `suppress`
- * and nothing changes. These tests flip each classification at runtime and
- * assert the wired site actually follows it, so the registry cannot silently
- * become advisory at any one site.
- */
-
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -36,7 +23,6 @@ import { createWiredPreDrainRig, WIRED_PENDING_LINE } from './pre-drain-wired.te
 
 const schema = getSchema(sharedExtensions);
 
-/** Run `fn` with one origin temporarily reclassified, then restore. */
 function withMode(origin: string, mode: PairedIntakeDetectionMode, fn: () => void): void;
 function withMode(
   origin: string,
@@ -66,7 +52,6 @@ function withMode(
   }
 }
 
-/** Collect only OBSERVATIONS that actually carry a loss verdict. */
 function lossCollector(): { trips: DeriveLossObservation[]; reporter: BridgeDeriveLossReporter } {
   const trips: DeriveLossObservation[] = [];
   return {
@@ -87,9 +72,6 @@ describe('paired-intake detection follows the registry at every wired site', () 
   });
 
   test('agent-undo: reclassifying to suppress actually stops the undo-derive detection', async () => {
-    // Baseline: classified `detect`, so the undo derive over an un-propagated
-    // keystroke trips. (Pre-drain off so the content reaches the floor rather
-    // than being flushed to safety first.)
     const on = lossCollector();
     const rigOn = await createWiredPreDrainRig({
       docName: 'undo-detect.md',

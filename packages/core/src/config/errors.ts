@@ -1,13 +1,5 @@
 import { z } from 'zod';
 
-/**
- * Source location of an issue in a YAML file, if the issue was traced back
- * to a parsed `Document` AST. 1-indexed line and column to match the
- * conventions IDEs/CLIs use (Biome, tsc, ESLint).
- *
- * `snippet` is a multi-line preview of the source around the issue —
- * typically 1-3 lines with a caret marker under the offending token.
- */
 export const ConfigIssueSourceSchema = z.object({
   file: z.string(),
   line: z.number().int().min(1),
@@ -17,17 +9,6 @@ export const ConfigIssueSourceSchema = z.object({
 
 export type ConfigIssueSource = z.infer<typeof ConfigIssueSourceSchema>;
 
-/**
- * Path segments are coerced to (string | number) at the wire boundary —
- * Zod's native `issue.path` is `PropertyKey[]` (`string | number | symbol`),
- * and symbols don't survive JSON serialization. Every consumer of
- * `ConfigValidationError` (Settings pane walker, CLI source-located renderer,
- * MCP tool envelopes) gets a pre-coerced path.
- *
- * `source` is set when the issue was traced back to a yaml@2 `Document` AST
- * (loader path, `ok config validate`). Headless writers without an associated
- * file leave it unset.
- */
 export const ConfigIssueSchema = z.object({
   path: z.array(z.union([z.string(), z.number()])),
   message: z.string(),
@@ -38,37 +19,16 @@ export const ConfigIssueSchema = z.object({
 
 export type ConfigIssue = z.infer<typeof ConfigIssueSchema>;
 
-/**
- * Scope tag used by `SCOPE_VIOLATION` and `MIXED_SCOPE` payloads. Mirrors
- * `fieldRegistry` metadata: `'either'` means "valid at user OR project";
- * `'user'`, `'project'`, and `'project-local'` are scope-restricted.
- *
- * `'project-local'` targets `<projectDir>/.ok/local/config.yml` — a gitignored,
- * per-machine, per-project layer (alongside `server.lock`, `state.json`).
- * Used for preferences a teammate decides independently for their machine
- * (e.g., `autoSync.enabled`).
- */
 export const FieldScopeSchema = z.enum(['user', 'project', 'project-local', 'either']);
 export type FieldScope = z.infer<typeof FieldScopeSchema>;
 
 export const WriteScopeSchema = z.enum(['user', 'project', 'project-local']);
 export type WriteScope = z.infer<typeof WriteScopeSchema>;
 
-/**
- * Read-path diagnostic variants, reused as members of both the full
- * validation-error union and the narrower `ConfigDiagnosticSchema` so each
- * shape is defined once.
- */
 const YamlParseErrorSchema = z.object({
   code: z.literal('YAML_PARSE'),
   detail: z.string(),
 });
-/**
- * The file exists but could not be read at all — permissions, a directory
- * where a file was expected, a symlink loop, a delete racing the read. Its own
- * code rather than the catch-all `UNKNOWN` so the reporting surfaces can tell
- * "this layer could not be read" apart from "this layer read cleanly".
- */
 const UnreadableErrorSchema = z.object({
   code: z.literal('UNREADABLE'),
   detail: z.string(),
@@ -112,12 +72,6 @@ export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
     code: z.literal('WRITE_ERROR'),
     detail: z.string(),
   }),
-  // OKIGNORE_INVALID — emitted when the okignore L3 validator rejects a
-  // Y.Text body. The validator currently rejects only empty/whitespace-only
-  // pattern lines; `npm:ignore` does not throw on malformed gitignore
-  // syntax, so heuristic warnings live client-side and remain non-blocking.
-  // `detail` carries a short human-readable message; `lineNumber` is the
-  // 1-indexed offending line when known (omitted for body-level rejections).
   z.object({
     code: z.literal('OKIGNORE_INVALID'),
     detail: z.string(),
@@ -131,13 +85,6 @@ export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
 
 export type KnownConfigValidationError = z.infer<typeof KnownConfigValidationErrorSchema>;
 
-/**
- * The subset of validation-error variants a config *read* can surface: a
- * stripped removed key, or a whole-file YAML-parse / schema-invalid
- * degradation. The write-path variants (SCOPE_VIOLATION, WRITE_ERROR, …) never
- * arise from a read and are excluded. This is the return-value contract shared
- * by `readConfigSafely` and the config-diagnostics endpoint.
- */
 export const ConfigDiagnosticSchema = z.discriminatedUnion('code', [
   RemovedKeyErrorSchema,
   YamlParseErrorSchema,
@@ -147,28 +94,8 @@ export const ConfigDiagnosticSchema = z.discriminatedUnion('code', [
 
 export type ConfigDiagnostic = z.infer<typeof ConfigDiagnosticSchema>;
 
-/** The removed-key diagnostic — every entry `detectRemovedKeys` produces. */
 export type RemovedKeyDiagnostic = Extract<ConfigDiagnostic, { code: 'REMOVED_KEY' }>;
 
-/**
- * A config diagnostic tagged with the scope and absolute file it was read from
- * — the per-finding shape the config-diagnostics endpoint returns across the
- * user, committed-project, and project-local layers.
- *
- * A removed-key finding carries the dead key's `path` and the registry's
- * `redirect` guidance. The corruption variants carry only their layer identity:
- * a YAML-parse or schema-invalid detail echoes the file's raw bytes, and this
- * response never exposes config values — the readable detail for a corrupt
- * layer stays in the server log and `ok config validate`.
- *
- * `file` is deliberately the absolute path, and it is the one host-derived
- * string in this response: the user-scope path runs through the home directory,
- * so it carries the OS username. That is accepted rather than incidental —
- * naming the exact file is the whole fix affordance, and a relative path cannot
- * disambiguate three layers. It is worth knowing that under `remotePublicHost`
- * the origin gate admits the tunnel origin, so this path is readable by whoever
- * that tunnel is shared with. No config value ever joins it.
- */
 export const ScopedConfigDiagnosticSchema = z.discriminatedUnion('code', [
   z.object({
     code: z.literal('REMOVED_KEY'),
@@ -196,28 +123,16 @@ export const ScopedConfigDiagnosticSchema = z.discriminatedUnion('code', [
 
 export type ScopedConfigDiagnostic = z.infer<typeof ScopedConfigDiagnosticSchema>;
 
-/**
- * Response body for `GET /api/config/diagnostics`. An object envelope (not a
- * bare array) keeps future top-level fields additive.
- */
 export const ConfigDiagnosticsReportSchema = z.object({
   diagnostics: z.array(ScopedConfigDiagnosticSchema),
 });
 
 export type ConfigDiagnosticsReport = z.infer<typeof ConfigDiagnosticsReportSchema>;
 
-// Derived from the discriminated-union options so a new variant in
-// `KnownConfigValidationErrorSchema` flows through to `isKnownConfigError`
-// + `humanFormat` automatically — no risk of code/set drift.
 const KNOWN_CONFIG_ERROR_CODES: ReadonlySet<string> = new Set(
   KnownConfigValidationErrorSchema.options.map((opt) => opt.shape.code.value),
 );
 
-/**
- * Forward-compat tail variant: a future package version may emit codes the
- * current consumer doesn't know about. The catch-all keeps old clients
- * rendering generically rather than crashing.
- */
 export const ForwardCompatConfigErrorSchema = z.looseObject({
   code: z.string(),
   message: z.string().optional(),
@@ -232,22 +147,12 @@ export const ConfigValidationErrorSchema = z.union([
 
 export type ConfigValidationError = KnownConfigValidationError | ForwardCompatConfigError;
 
-/**
- * Type predicate: narrows to the discriminated `KnownConfigValidationError`
- * union when `error.code` is one of the known literals. Switch statements
- * inside the predicate's true branch get exhaustive narrowing on `code`.
- */
 export function isKnownConfigError(
   error: ConfigValidationError,
 ): error is KnownConfigValidationError {
   return KNOWN_CONFIG_ERROR_CODES.has(error.code);
 }
 
-/**
- * Human-facing config file path for a scope. Pure (no fs) — for error copy
- * that tells the user which file to edit. Mirrors `resolveConfigPath`'s layout
- * but as display strings, since `errors.ts` is browser-safe.
- */
 function scopeConfigFile(scope: FieldScope): string {
   switch (scope) {
     case 'user':
@@ -261,7 +166,6 @@ function scopeConfigFile(scope: FieldScope): string {
   }
 }
 
-/** Short plain-language gloss of who a scope's settings apply to. */
 function scopeGloss(scope: FieldScope): string {
   switch (scope) {
     case 'user':
@@ -275,16 +179,6 @@ function scopeGloss(scope: FieldScope): string {
   }
 }
 
-/**
- * Render a `ConfigValidationError` as a human-readable string. Used by:
- * - CLI `ok config validate` (source-located output to stderr)
- * - MCP tool `content[].text` (with retry-framing suffix appended at the
- *   call site)
- * - Settings pane toast for L3 rejections
- *
- * Output is plain text, multi-line for `SCHEMA_INVALID` / `MIXED_SCOPE`,
- * single-line otherwise.
- */
 export function humanFormat(error: ConfigValidationError): string {
   if (!isKnownConfigError(error)) {
     return error.message ?? `Unknown error (${error.code}).`;
@@ -296,8 +190,6 @@ export function humanFormat(error: ConfigValidationError): string {
       return `Could not read the file: ${error.detail}`;
     case 'SCHEMA_INVALID': {
       if (error.issues.length === 0) return 'Invalid configuration.';
-      // Group issues by file so a single header line precedes each file's
-      // issues. Issues without source go under a synthetic "<no source>" key.
       const grouped = new Map<string, ConfigIssue[]>();
       for (const iss of error.issues) {
         const key = iss.source?.file ?? '<no source>';

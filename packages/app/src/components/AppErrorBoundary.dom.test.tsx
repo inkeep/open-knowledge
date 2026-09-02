@@ -1,10 +1,3 @@
-/**
- * RTL mount tests for the top-level app-shell boundary: fallback render on a
- * shell crash, reset recovery, the bridge-gated report action, and the
- * nesting contract (document errors stay with DocumentErrorBoundary).
- * Invocation via `bun run test:dom`.
- */
-
 import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,8 +10,6 @@ import {
 import { AppErrorBoundary, CrashReportingBoundary } from './AppErrorBoundary';
 import { DocumentErrorBoundary } from './DocumentErrorBoundary';
 
-// Radix Dialog (focus trap) reaches for DOM globals the jsdom preload does not
-// expose on globalThis. Same hoist as CloneDialog.dom.test.tsx.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -110,9 +101,6 @@ describe('AppErrorBoundary', () => {
     cleanup();
     clearBugReportBridge();
     resetTabSessionRestoreSuppression();
-    // The restore reset deliberately leaves the hash-navigation latch armed, so
-    // a repeat-crash test would otherwise leak it into the next test in this
-    // file (module scope is shared; isolate is per-file).
     consumeHashNavigationSuppression();
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
@@ -172,12 +160,6 @@ describe('AppErrorBoundary', () => {
   });
 
   test('a repeat crash on the same error stops Try again from replaying the persisted tab session', async () => {
-    // Stands in for the document workspace: on each mount it consults the real
-    // restore-suppression signal and, unless suppressed, "restores" the persisted
-    // tab — which reopens the crashing document and re-throws, creating the crash
-    // loop that makes Try again non-functional. Rendered state (alert vs recovered) is
-    // the signal, not render count: React re-renders a throwing child several
-    // times per trip, but onError (which records the trip) fires once.
     function RestoringWorkspace() {
       if (shouldSuppressTabSessionRestore()) {
         return <span data-testid="recovered-empty">recovered without the last document</span>;
@@ -192,18 +174,13 @@ describe('AppErrorBoundary', () => {
     );
     const user = userEvent.setup();
 
-    // First trip: restoring the persisted tab crashed the shell.
     expect(screen.getByRole('alert')).not.toBeNull();
     expect(screen.queryByTestId('recovered-empty')).toBeNull();
 
-    // Second trip: the first Try again restored again and the same crash fired
-    // again — proof the first trip did NOT suppress (a single crash still restores).
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(screen.getByRole('alert')).not.toBeNull();
     expect(screen.queryByTestId('recovered-empty')).toBeNull();
 
-    // The repeat has now armed suppression, so the next Try again recovers WITHOUT
-    // replaying the persisted tab: the crashing document is not reopened.
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(screen.getByTestId('recovered-empty')).not.toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -221,13 +198,9 @@ describe('AppErrorBoundary', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /report this error/i }));
 
-    // ReportBugDialog is lazy-loaded — await the body chunk mounting. This is
-    // typically the first site in the suite to cold-load the chunk, so give it
-    // generous headroom over findByRole's 1000ms default.
     expect(await screen.findByRole('dialog', {}, { timeout: 3000 })).not.toBeNull();
     const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
-    // Navigator window → the logs hint is labeled system-wide.
     expect(
       screen.getByText(
         "App & system info and recent app logs. No project is open, so project logs aren't included.",
@@ -242,11 +215,8 @@ describe('AppErrorBoundary', () => {
     const note = createCalls[0]?.note ?? '';
     expect(note).toContain('Crash source: app shell');
     expect(note).toContain('Error: MaybeThrow boom: shell');
-    // React's component stack rides along: in a packaged build it is the only
-    // part of a crash that still names a real component.
     expect(note).toContain('Component stack:');
     expect(note).toContain('at MaybeThrow');
-    // Frame directories are trimmed, so the note cannot carry a home path.
     expect(note).not.toContain('/Users/');
   });
 
@@ -303,8 +273,6 @@ describe('CrashReportingBoundary', () => {
   });
 
   test('a throwing crash-invite subtree renders nothing and leaves the app alive', () => {
-    // The trigger mounts as a sibling of the shell boundary, so nothing else
-    // can catch its throws — without this boundary the whole root unmounts.
     shouldThrow = true;
     render(
       <div>

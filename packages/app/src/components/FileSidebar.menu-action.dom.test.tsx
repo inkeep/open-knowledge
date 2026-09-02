@@ -70,13 +70,6 @@ const treeCalls = {
   startCreatingFromTemplate: vi.fn((_parentDir: string) => {}),
 };
 const projectLocalPatch = vi.fn((_patch: unknown) => ({ ok: true as const }));
-// Production `projectLocalBinding` keeps its identity across config-value
-// changes (the provider swaps only `config` on binding updates), so the
-// menu-action effect re-binds on a visibility flip ONLY when the flipped
-// value itself is in its dependency array. The harness must mirror that:
-// a stable binding object plus a merged config swapped between renders —
-// a fresh binding per render would re-subscribe every render and mask
-// stale-closure regressions in the effect's deps.
 const projectLocalBindingStub = { patch: projectLocalPatch };
 const DEFAULT_MERGED_CONFIG = { appearance: { sidebar: { showHiddenFiles: false } } };
 let mergedConfig: { appearance?: { sidebar?: Record<string, boolean> } } = DEFAULT_MERGED_CONFIG;
@@ -127,10 +120,6 @@ vi.doMock('@/components/ui/sidebar', () => ({
   useSidebar: () => ({ state: 'expanded', toggleSidebar: toggleSidebarMock }),
 }));
 
-// FileSidebar renders the Skills section, which pulls in the full sidebar
-// primitive set (SidebarMenuButton, SidebarGroup*) plus useSkills. This
-// menu-action test is about the file tree's context menu, not skills — stub the
-// section so its imports don't need mocking here.
 vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => null,
 }));
@@ -202,14 +191,7 @@ vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   useHandoffDispatch: () => ({ dispatch: handoffDispatchMock }),
 }));
 
-// Stable across renders like production (`states` is useState state there) —
-// a fresh object per render would churn the menu-action effect's
-// `handoffInstallStates` dep and re-subscribe on every render.
 const installedAgentStates = { codex: { installed: true } };
-// Every VISIBLE_TARGETS entry probed absent → no desktop route is enabled, and
-// with no registered in-app agent and no terminal bridge the resolver yields
-// `kind: 'none'`. Frozen per-branch so the object identity stays stable across
-// renders, like the production `states` useState value.
 const noAgentStates = {
   'claude-code': { installed: false },
   'claude-cowork': { installed: false },
@@ -258,8 +240,6 @@ vi.doMock('@/lib/config-provider', () => ({
   }),
 }));
 
-// Stable for the same reason as `installedAgentStates` — `workspace` is a
-// dep of the menu-action effect.
 const workspaceStub = {
   contentDir: '/tmp/open-knowledge',
   pathSeparator: '/',
@@ -300,15 +280,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     activeTarget = ACTIVE_TARGET;
     mergedConfig = DEFAULT_MERGED_CONFIG;
     noAgentsInstalled = false;
-    // The section's last-known visibility is cached at module scope so the
-    // sidebar can render the right surface before config loads. Without this
-    // reset a test that hides the Skills section leaks into later ones, which
-    // then render a surface with no FileTree — and the tree-derived View menu
-    // gates read false. Same reset the sibling FileSidebar suite does.
     __resetSkillsSectionVisibleCacheForTests();
-    // The launcher selection reads the registered-agent / enabled-override /
-    // sticky-pick stores, so a registration made by one test would otherwise
-    // decide the next one's send-to-ai route.
     if (typeof localStorage !== 'undefined') localStorage.clear();
     reloadRegisteredAgentsFromStorage();
     reloadEnabledAgentsFromStorage();
@@ -455,8 +427,6 @@ describe('FileSidebar menu-action runtime routing', () => {
       expect(duplicated).toEqual([]);
       expect(deleted).toEqual([]);
 
-      // Create stays live but re-targets the workspace root; read-only routes
-      // keep serving the `.ok` path.
       menuActionCallback?.('new-doc' as MenuAction);
       expect(treeCalls.startCreating).toHaveBeenCalledWith('file', '');
 
@@ -512,10 +482,6 @@ describe('FileSidebar menu-action runtime routing', () => {
     }
   });
 
-  // Native File → Open with AI used to pick the first installed external app
-  // outright, so the one native entry point could open a different agent than
-  // the sparkle menu beside it. It now resolves through `resolveLauncherSelection`:
-  // a still-usable saved pick first, else In app → Terminal → External apps.
   test('send-to-ai prefers an enabled in-app agent over an installed external app', async () => {
     registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
     renderSidebar();
@@ -527,7 +493,6 @@ describe('FileSidebar menu-action runtime routing', () => {
       expect.objectContaining({ docPath: 'notes/source.md' }),
       { agent: { source: 'registry', id: 'claude-acp' } },
     );
-    // The external app is still installed — it just no longer wins the default.
     expect(handoffDispatchMock).not.toHaveBeenCalled();
   });
 
@@ -546,10 +511,6 @@ describe('FileSidebar menu-action runtime routing', () => {
     expect(threadLaunchMock).not.toHaveBeenCalled();
   });
 
-  // The install-URL branch is the one outcome that dispatches nothing, so it
-  // needs its own explanation. `claude-code` has no entry in the harness probe
-  // map, so it resolves through `unresolvedDesktopTargets` as a remembered pick
-  // and lands here rather than deep-linking into an app that is not installed.
   test('send-to-ai sends an uninstalled saved external app to its installer and says so', async () => {
     saveStickyAgent('claude-code');
     renderSidebar();
@@ -558,16 +519,12 @@ describe('FileSidebar menu-action runtime routing', () => {
     menuActionCallback?.('send-to-ai' as MenuAction);
 
     expect(openInstallUrlMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'claude-code' }));
-    // Not a deep-link dispatch, and not a silent return.
     expect(handoffDispatchMock).not.toHaveBeenCalled();
     expect(threadLaunchMock).not.toHaveBeenCalled();
     expect(toastInfoMock).toHaveBeenCalledTimes(1);
     expect(String(toastInfoMock.mock.calls[0]?.[0])).toContain("isn't installed yet");
   });
 
-  // `kind: 'none'` — nothing enabled in any of the three families. Distinct from
-  // the install-URL branch above: there is no target to send anywhere, so the
-  // action must say so rather than no-op silently.
   test('send-to-ai reports when no route is available at all', async () => {
     noAgentsInstalled = true;
     renderSidebar();
@@ -611,9 +568,6 @@ describe('FileSidebar menu-action runtime routing', () => {
       appearance: { sidebar: { showHiddenFiles: true } },
     });
 
-    // The sibling visibility toggles invert their merged-config reads
-    // (.ok folders + only-markdown resolve false, skills resolves true in
-    // this harness).
     menuActionCallback?.('toggle-show-ok-folders' as MenuAction);
     expect(projectLocalPatch).toHaveBeenCalledWith({
       appearance: { sidebar: { showOkFolders: true } },
@@ -631,11 +585,6 @@ describe('FileSidebar menu-action runtime routing', () => {
   });
 
   test('visibility toggles read the latest merged config across a flip round-trip', async () => {
-    // A native View-menu toggle fires twice in a row: first click patches the
-    // inverted default, the CRDT converges the merged config, second click
-    // must invert the CONVERGED value — a handler closure that misses the
-    // flipped state in its effect deps writes the stale inversion (a no-op)
-    // and the menu item sticks in one state.
     const toggleRoundTrips = [
       { action: 'toggle-show-hidden-files', key: 'showHiddenFiles', defaultValue: false },
       { action: 'toggle-show-ok-folders', key: 'showOkFolders', defaultValue: false },
@@ -660,7 +609,6 @@ describe('FileSidebar menu-action runtime routing', () => {
         appearance: { sidebar: { [key]: !defaultValue } },
       });
 
-      // Converge: the merged config now reflects the patched value.
       mergedConfig = { appearance: { sidebar: { [key]: !defaultValue } } };
       rerender(<FileSidebar onOpenSearch={() => {}} />);
 

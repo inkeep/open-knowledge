@@ -18,12 +18,10 @@ type PageFile = Extract<Files[number], { type: 'page' }>;
 
 const isPage = (f: Files[number]): f is PageFile => f.type === 'page';
 
-/** All page files with a single slug segment — the per-release `[tag]` pages. */
 function releasePages(files: Files): PageFile[] {
   return files.filter(isPage).filter((f) => f.slugs?.length === 1);
 }
 
-/** The lone index page (slugs `[]`). */
 function indexPage(files: Files): PageFile | undefined {
   return files.filter(isPage).find((f) => f.slugs?.length === 0);
 }
@@ -35,9 +33,7 @@ describe('buildChangelogSourceFiles', () => {
     );
     const { files } = buildChangelogSourceFiles(releases);
 
-    // Timeline is capped...
     expect(indexPage(files)?.data.releases).toHaveLength(CHANGELOG_TIMELINE_LIMIT);
-    // ...but every release keeps its own indexable page (sitemap/[tag] stay complete).
     expect(releasePages(files)).toHaveLength(releases.length);
   });
 

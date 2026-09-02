@@ -102,12 +102,6 @@ describe('v2 codec and content projection', () => {
     expect(encodeShareUrl(corpus.bounds.maxCase.sharedUrl, 1)).toBe(corpus.bounds.maxCase.token);
   });
 
-  // Asserting the exact error, not just the class, is what pins the size gate
-  // to the front of the pipeline. An over-limit token stays invalid either way,
-  // so a bare class assertion still passes with the gate deleted: the token
-  // falls through and fails later as `Share payload is not valid base64url`.
-  // Only the message distinguishes rejected-on-sight from rejected-after-work,
-  // which is the bounded-decoding property the gate exists to hold.
   test('rejects input one character over the v2 token bound before decoding it', () => {
     expect(() => decodeShareUrl(corpus.bounds.overLimitToken)).toThrow(
       new InvalidShareUrlError('Share token exceeds the v2 size limit'),

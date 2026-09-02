@@ -1,17 +1,3 @@
-/**
- * RTL behavioral tests for `useConflicts`.
- *
- * Pins:
- *   - Initial fetch hits `/api/sync/conflicts` on mount; `loading` flips to
- *     `false` once the response (success OR failure) lands.
- *   - CC1 `sync-status` channel signal triggers a re-fetch (re-invalidation).
- *   - Non-`sync-status` channels DO NOT trigger a re-fetch — the hook is
- *     scoped to its own invalidation source.
- *   - Network / server failures populate `error` without throwing.
- *
- * Substrate: jsdom via `bun run test:dom`.
- */
-
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { useConflicts } from './use-conflicts';
@@ -122,7 +108,6 @@ describe('useConflicts', () => {
       );
     });
 
-    // Brief tick to allow any (incorrect) re-fetch to enqueue.
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(fetchCalls.length).toBe(initialFetchCount);
   });

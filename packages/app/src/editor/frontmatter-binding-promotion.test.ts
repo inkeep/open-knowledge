@@ -1,14 +1,3 @@
-/**
- * The frontmatter-binding wrapper's coverage contract.
- *
- * The panel mutates frontmatter through eight methods reached from three
- * different trees, so the promotion is wired by wrapping the binding once
- * rather than by notifying at each call site. That only stays true if the
- * wrapper keeps up with the binding — hence the exhaustiveness test below,
- * which fails when `FrontmatterBinding` grows a method the wrapper doesn't
- * know about, instead of letting a new mutator silently stop promoting.
- */
-
 import { bindFrontmatterDoc, type FrontmatterBinding } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -21,11 +10,6 @@ import {
 
 let unsubscribePromotion: (() => void) | undefined;
 
-/**
- * `bindFrontmatterDoc` reaches only `document` plus the `synced` event hooks,
- * so a Y.Doc with no-op emitters stands in — a real HocuspocusProvider would
- * open a socket.
- */
 function makeBinding(seed: string): FrontmatterBinding {
   const doc = new Y.Doc();
   const ytext = doc.getText('source');
@@ -47,9 +31,6 @@ describe('withPreviewTabPromotion — coverage', () => {
 
     const accounted = [...MUTATING_BINDING_METHODS, ...READ_ONLY_BINDING_METHODS].sort();
 
-    // If this fails, `FrontmatterBinding` gained a method. Decide whether it
-    // mutates: add it to MUTATING_BINDING_METHODS and to the wrapper, or to
-    // READ_ONLY_BINDING_METHODS.
     expect(methods).toEqual(accounted);
     binding.dispose();
   });
@@ -98,7 +79,6 @@ describe('withPreviewTabPromotion — announcement', () => {
     const binding = makeBinding('---\ntitle: Draft\n---\n');
     const wrapped = withPreviewTabPromotion(binding, 'notes/thing');
 
-    // `frontmatter` is the reserved key the binding rejects with SCHEMA_INVALID.
     const result = wrapped.patch({ frontmatter: 'nope' });
 
     expect(result.ok).toBe(false);
@@ -126,8 +106,6 @@ describe('withPreviewTabPromotion — announcement', () => {
 
     const result = wrapped.patch({ title: 'Published' });
 
-    // The panel branches on `appliedKeys` / `error`, so the wrapper must be
-    // transparent, not merely truthy.
     expect(result).toMatchObject({ ok: true, appliedKeys: ['title'] });
     expect(wrapped.current().map.title).toBe('Published');
     binding.dispose();

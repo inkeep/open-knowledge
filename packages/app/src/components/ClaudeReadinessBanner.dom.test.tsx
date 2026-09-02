@@ -1,11 +1,3 @@
-/**
- * Behavioral tests for the docked-terminal Claude readiness banner.
- *
- * The bridge is mocked at the system boundary; assertions are on user-visible
- * outcomes (rendered message, which affordance is offered, the bridge call a
- * click triggers) — never on internal call patterns.
- */
-
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -47,7 +39,6 @@ describe('ClaudeReadinessBanner', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Get Claude Code' }));
     expect(openExternal).toHaveBeenCalledTimes(1);
     expect(openExternal.mock.calls[0]?.[0]).toContain('claude-code');
-    // The not-found case never offers MCP re-wire (no claude to wire into).
     expect(rewireClaudeMcp).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: 'Connect tools' })).toBeNull();
   });
@@ -66,7 +57,6 @@ describe('ClaudeReadinessBanner', () => {
     expect(screen.getByText(/aren't connected to it yet/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
     expect(rewireClaudeMcp).toHaveBeenCalledTimes(1);
-    // Dismiss now happens in the rewire .then() success branch, not synchronously.
     await waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
     expect(openExternal).not.toHaveBeenCalled();
   });
@@ -91,7 +81,6 @@ describe('ClaudeReadinessBanner', () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(toastErrors.length).toBe(1));
-    // On failure the banner must stay (so the user can retry), not dismiss.
     expect(onDismiss).not.toHaveBeenCalled();
   });
 

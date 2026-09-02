@@ -1,29 +1,7 @@
-/**
- * RTL mount test: the Timeline row's Restore confirm gate — its two dismissal
- * paths, and the gate's determinism.
- *
- * `TimelinePanel.dom.test.tsx` drives the confirm edge (confirm → POST
- * /api/rollback for the row's sha). This file pins the other three edges of the
- * same gate: (1) Cancel dismisses and mutates nothing; (2) Escape dismisses and
- * mutates nothing; (3) the gate is a function of `laterEdits` rather than
- * chance — a row with newer versions stacked above it MUST raise the dialog
- * before any request leaves, and the newest row (nothing to roll back) MUST
- * restore without one.
- *
- * The only stubbed seam is `fetch`. Both dismissal assertions are "zero calls
- * at the network boundary", and the same stub serves the /api/history load that
- * renders the rows — so a dead stub cannot fake a green.
- *
- * Invocation: `pnpm run test:dom` from `packages/app/`.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// `vi.mock` is hoisted above every import, so `next-themes` resolves to this
-// stub before the SUT (imported dynamically below) pulls in its transitive
-// `useTheme`.
 vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
@@ -31,8 +9,6 @@ vi.mock('next-themes', () => ({
 import type { ParsedCheckpoint, TimelineEntry } from '@inkeep/open-knowledge-core';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-// Import the component AFTER the next-themes mock registers so its transitive
-// `useTheme` import binds to the stub rather than the real provider.
 const { TimelineContent } = await import('./TimelinePanel');
 
 const NEWER_SHA = 'a'.repeat(40);
@@ -77,17 +53,10 @@ interface RollbackCall {
 }
 
 interface FetchHarness {
-  /** Every POST /api/rollback the component issued, in order. */
   rollbacks: RollbackCall[];
-  /** Resolve a held rollback response (no-op when none is held). */
   release: () => void;
 }
 
-/**
- * Serve the timeline's history load and record every rollback. `holdRollback`
- * leaves the rollback response pending so a test can inspect the UI while the
- * request is genuinely in flight.
- */
 function mockTimelineFetch(
   entries: TimelineEntry[],
   { holdRollback = false }: { holdRollback?: boolean } = {},
@@ -134,7 +103,6 @@ function renderTimeline() {
   );
 }
 
-/** The recovered row sits below a newer WIP row, so `laterEdits > 0`. */
 function twoRowHistory(): TimelineEntry[] {
   return [wipEntry(NEWER_SHA, 'Alice'), recoveredCheckpointEntry(RECOVERED_SHA)];
 }
@@ -172,8 +140,6 @@ describe('TimelineContent — restore confirm dismissal leaves the document unto
 
     await waitFor(() => expect(screen.queryByTestId('timeline-entry-restore-confirm')).toBeNull());
     expect(rollbacks).toHaveLength(0);
-    // Backing out leaves the row fully interactive — no pending state stranded
-    // behind the dismissal.
     expect(restoreButtons()[1].disabled).toBe(false);
   });
 
@@ -199,7 +165,6 @@ describe('TimelineContent — restore confirm dismissal leaves the document unto
     fireEvent.click(screen.getByTestId('timeline-entry-restore-cancel'));
     await waitFor(() => expect(screen.queryByTestId('timeline-entry-restore-confirm')).toBeNull());
 
-    // Second pass through the same gate, this time confirming.
     fireEvent.click(restoreButtons()[1]);
     fireEvent.click(await screen.findByTestId('timeline-entry-restore-confirm'));
 
@@ -210,15 +175,11 @@ describe('TimelineContent — restore confirm dismissal leaves the document unto
 
 describe('TimelineContent — the confirm gate is decided by laterEdits', () => {
   test('a row with later edits raises the dialog first; the newest row restores without one', async () => {
-    // The rollback response is held so both halves are asserted while the
-    // request state is still observable, rather than after a resolution has
-    // torn the dialog down.
     const { rollbacks, release } = mockTimelineFetch(twoRowHistory(), { holdRollback: true });
 
     renderTimeline();
     await waitFor(() => expect(screen.getByText('Recovered content')).toBeTruthy());
 
-    // Row 1 (the recovered checkpoint) has one newer version above it.
     fireEvent.click(restoreButtons()[1]);
     expect(await screen.findByTestId('timeline-entry-restore-confirm')).toBeTruthy();
     expect(rollbacks).toHaveLength(0);
@@ -226,8 +187,6 @@ describe('TimelineContent — the confirm gate is decided by laterEdits', () => 
     fireEvent.click(screen.getByTestId('timeline-entry-restore-cancel'));
     await waitFor(() => expect(screen.queryByTestId('timeline-entry-restore-confirm')).toBeNull());
 
-    // Row 0 is the newest version — nothing stacked above it to roll back, so
-    // the request leaves synchronously on click with no dialog in between.
     fireEvent.click(restoreButtons()[0]);
     expect(rollbacks).toHaveLength(1);
     expect(rollbacks[0].body).toEqual({ docName: 'notes', commitSha: NEWER_SHA });

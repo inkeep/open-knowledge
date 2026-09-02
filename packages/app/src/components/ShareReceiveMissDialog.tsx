@@ -1,16 +1,3 @@
-/**
- * Primary surface for a share-receive miss: a modal shown WITHOUT navigating to
- * the dead path. When a share deep link targets a doc/folder main's pre-nav
- * probe found absent on the receiver's branch, the deep-link listener arms
- * `missDialogStore` (instead of setting the hash), and this dialog renders the
- * honest verdict — deleted / renamed / never pushed / behind — over whatever the
- * receiver was already looking at. Because navigation never happens, no phantom
- * tab is opened at the missing path and the create-mode fork trap can't fire.
- *
- * Self-gates on the store (renders null until armed), mirroring
- * `ShareBranchSwitchDialog`. Mounted in the editor shell and lazy-loaded, so its
- * verdict-fetch code stays out of the main bundle until a miss actually occurs.
- */
 import { useSyncExternalStore } from 'react';
 import {
   parentFolderPath,
@@ -32,7 +19,6 @@ import {
   pendingReceiveNavStore,
 } from '@/lib/share/pending-receive-nav-store';
 
-/** Last path segment — what the receiver tried to open, for the dialog title. */
 function targetBasename(path: string): string {
   const segments = path.split('/').filter(Boolean);
   return segments.length > 0 ? segments[segments.length - 1] : path;
@@ -45,8 +31,6 @@ export function ShareReceiveMissDialog() {
     () => null,
   );
   if (nav === null) return null;
-  // Key on the target so re-arming for a different miss (e.g. a chained rename
-  // whose destination is also absent) remounts with a fresh verdict fetch.
   return <ShareReceiveMissDialogInner key={nav.path} nav={nav} />;
 }
 
@@ -62,12 +46,6 @@ function ShareReceiveMissDialogInner({ nav }: { nav: PendingReceiveNav }) {
     dismiss();
   }
 
-  /**
-   * Arm the in-tab backstop before navigating: if the target is still missing
-   * locally (a rename destination the receiver's behind ref doesn't carry, or a
-   * pull that came back up-to-date), the miss surface renders for it again
-   * instead of the create-mode editor.
-   */
   function navigateWithBackstop(path: string): void {
     pendingReceiveNavStore.arm(pendingReceiveNavForContentPath(nav, path));
     window.location.hash = nav.kind === 'folder' ? hashFromFolderPath(path) : hashFromDocName(path);
@@ -103,14 +81,7 @@ function ShareReceiveMissDialogInner({ nav }: { nav: PendingReceiveNav }) {
             onBrowseFolder={browseFolder}
             onOpenRenamed={navigateWithBackstop}
             onEnableAutoSync={dismiss}
-            // A landed Sync now push changes the verdict (the local
-            // delete/rename is now on the branch) — re-probe instead of
-            // dismissing, so the dialog pivots to the honest cell (including
-            // the rename redirect offer).
             onSyncCompleted={refetch}
-            // A resolved pull opens what the receiver clicked the link for.
-            // Re-probing instead would risk an on-origin → pull → on-origin
-            // loop, since an up-to-date pull leaves the verdict unchanged.
             onPullApplied={() => navigateWithBackstop(nav.path)}
           />
         </DialogBody>

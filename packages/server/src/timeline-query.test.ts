@@ -40,7 +40,6 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-/** Set up a project + shadow for tests. */
 async function setup() {
   const projectRoot = resolve(tmpDir, 'project');
   const contentDir = resolve(projectRoot, 'content/docs');
@@ -51,7 +50,6 @@ async function setup() {
   await git.raw('config', 'user.name', 'Test');
   await git.raw('config', 'user.email', 'test@test.com');
 
-  // Initial project commit so HEAD exists
   writeFileSync(resolve(contentDir, 'intro.md'), '# Hello\n');
   await git.add('.');
   await git.commit('Initial commit');
@@ -72,13 +70,6 @@ const agent: WriterIdentity = {
   email: 'cursor@openknowledge.local',
 };
 
-/**
- * Per-test dated `commitWip`/`saveVersion` helpers. Every commit and checkpoint
- * gets a strictly increasing timestamp (1s apart) so the history walk orders
- * deterministically. Git committer dates are 1-second-granular, so commits in
- * the same second sort ambiguously — this replaces the >1s real-time sleeps the
- * multi-cycle rename tests previously inserted between cycles to force a tick.
- */
 function datedCommits(shadow: ShadowHandle) {
   let t = Date.parse('2026-05-05T12:00:00.000Z');
   const next = () => {
@@ -121,15 +112,12 @@ describe('getDocumentHistory', () => {
   test('classifies entry types from commit message prefix', async () => {
     const { contentDir, shadow } = await setup();
 
-    // WIP commit
     writeFileSync(resolve(contentDir, 'intro.md'), '# WIP\n');
     await commitWip(shadow, human, 'content/docs', 'WIP: human edit');
 
-    // Upstream commit
     writeFileSync(resolve(contentDir, 'intro.md'), '# Upstream\n');
     await commitUpstreamImport(shadow, 'content/docs', 'abc', 'def');
 
-    // Checkpoint (Save Version)
     writeFileSync(resolve(contentDir, 'intro.md'), '# Checkpoint\n');
     await saveVersion(shadow, 'content/docs', [human]);
 
@@ -155,7 +143,6 @@ describe('getDocumentHistory', () => {
 
     const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
 
-    // All 3 entries should appear, from both authors
     expect(result.entries.length).toBe(3);
     const authorEmails = result.entries.map((e) => e.authorEmail);
     expect(authorEmails).toContain(human.email);
@@ -278,7 +265,6 @@ describe('getDocumentHistory', () => {
   });
 
   test('returns empty result gracefully when shadow repo is corrupt/missing', async () => {
-    // Create a shadow handle pointing to a non-existent git dir
     const fakeShadow = {
       gitDir: resolve(tmpDir, 'nonexistent/.git/ok'),
       workTree: resolve(tmpDir, 'nonexistent'),
@@ -293,10 +279,6 @@ describe('getDocumentHistory', () => {
   test('hides park commits even when their tree-deletion shadows the doc path', async () => {
     const { contentDir, shadow } = await setup();
 
-    // Seed a service-writer WIP commit on refs/wip/main/openknowledge-service —
-    // its tree contains content/docs/intro.md, so the next park (whose tree
-    // omits that path) registers a "deletion" diff and would surface via
-    // git log pathspec without explicit filtering.
     writeFileSync(resolve(contentDir, 'intro.md'), '# Service edit\n');
     await commitWip(shadow, SERVICE_WRITER, 'content/docs', 'wip: service edit');
 
@@ -314,13 +296,9 @@ describe('getDocumentHistory', () => {
   test('returns empty result for docNames containing path traversal segments', async () => {
     const { contentDir, shadow } = await setup();
 
-    // Seed a real commit so the function has data to walk over.
     writeFileSync(resolve(contentDir, 'intro.md'), '# Real\n');
     await commitWip(shadow, human, 'content/docs', 'WIP: real edit');
 
-    // Each of these is a structurally invalid docName that would otherwise
-    // get interpolated into a git pathspec like `content/docs/<docName>.md`,
-    // letting `..` segments escape the configured content root.
     for (const docName of ['../intro', '../../etc/passwd', 'foo/../../bar', 'foo\0bar']) {
       const result = await getDocumentHistory(shadow, { docName }, 'content/docs');
       expect(result.entries).toHaveLength(0);
@@ -330,12 +308,6 @@ describe('getDocumentHistory', () => {
   });
 
   test("multi-writer fan-out: writer A's commit touching only doc-a does NOT surface in doc-b's timeline", async () => {
-    // Two writers committing concurrently to the same shadow repo. Each
-    // writer's WIP commit is built by `buildWipTree` from the full
-    // contentRoot, so writer A's commit captures files writer B has written
-    // to disk — appearing as ADDED relative to writer A's parent commit. The
-    // git-log pathspec pre-filter would surface writer A's commit on doc-B's
-    // timeline; the ok-actor.docs[]-aware post-filter must drop it.
     const { contentDir, shadow } = await setup();
 
     const writerA: WriterIdentity = {
@@ -368,21 +340,12 @@ describe('getDocumentHistory', () => {
       return commitWipFromTree(shadow, writer, treeSha, message);
     };
 
-    // Writer A commits its first edit to doc-a. Only doc-a exists on disk.
     writeFileSync(resolve(contentDir, 'doc-a.md'), '# A v1\n');
     const a1 = await commitWriter(writerA, ['doc-a'], 'doc-a v1');
 
-    // Writer B writes doc-b to disk, then commits its first edit declaring
-    // only doc-b in its actor entry. Writer B's tree captures doc-a from
-    // writer A's earlier write, which is correct — doc-a was already on disk.
     writeFileSync(resolve(contentDir, 'doc-b.md'), '# B v1\n');
     const b1 = await commitWriter(writerB, ['doc-b'], 'doc-b v1');
 
-    // Writer A edits doc-a again. Critically, this commit's tree ALSO
-    // captures doc-b (because buildWipTree reads the full contentRoot).
-    // Relative to writer A's previous commit (a1), doc-b appears as ADDED —
-    // even though writer A never touched it. The fan-out noise this test
-    // guards against is this commit appearing in doc-b's timeline.
     writeFileSync(resolve(contentDir, 'doc-a.md'), '# A v2\n');
     const a2 = await commitWriter(writerA, ['doc-a'], 'doc-a v2');
 
@@ -395,9 +358,6 @@ describe('getDocumentHistory', () => {
     const bHistory = await getDocumentHistory(shadow, { docName: 'doc-b' }, 'content/docs');
     const bShas = bHistory.entries.map((e) => e.sha);
     expect(bShas).toContain(b1);
-    // The regression: writer A's a2 commit touched only doc-a per its
-    // ok-actor.docs[] declaration. git-log pathspec surfaced it on
-    // doc-b's timeline as multi-writer fan-out noise.
     expect(bShas).not.toContain(a2);
     expect(bShas).not.toContain(a1);
   });
@@ -411,10 +371,6 @@ describe('getDocumentHistory', () => {
       email: 'agent-cccccccc-cccc-4ccc-cccc-cccccccccccc@openknowledge.local',
     };
 
-    // A project skill is versioned under its `.ok/skills/<name>` artifact key:
-    // SKILL.md on disk, the docKey declared in OkActor.docs — exactly what the
-    // managed-artifact write path records. The editor tab, however, addresses it
-    // by the synthetic `__skill__/project/<name>` doc name.
     const skillDir = resolve(contentDir, '.ok', 'skills', 'my-skill');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(resolve(skillDir, 'SKILL.md'), '# My Skill v1\n');
@@ -440,9 +396,6 @@ describe('getDocumentHistory', () => {
       `wip: skill-edit: my-skill/SKILL.md\n\n${formatOkActor(actor)}`,
     );
 
-    // The synthetic name must translate to the `.ok/skills/<name>` key for both
-    // the git pathspec and the OkActor post-filter, or the saved version is
-    // invisible to the timeline.
     const result = await getDocumentHistory(
       shadow,
       { docName: '__skill__/project/my-skill' },
@@ -450,7 +403,6 @@ describe('getDocumentHistory', () => {
     );
     expect(result.entries.map((e) => e.sha)).toContain(sha);
 
-    // Global skills are unversioned — no shadow history.
     const personal = await getDocumentHistory(
       shadow,
       { docName: '__skill__/global/my-skill' },
@@ -465,14 +417,10 @@ describe('getDocumentHistory', () => {
     writeFileSync(resolve(contentDir, 'intro.md'), '# Shared\n');
     await commitWip(shadow, human, 'content/docs', 'WIP: shared ancestor');
 
-    // Save version — checkpoint will parent on the WIP commit
     await saveVersion(shadow, 'content/docs', [human]);
 
-    // The WIP commit is reachable from both the checkpoint ref and the (now-deleted) WIP ref
-    // After save version, WIP ref is deleted but checkpoint ancestry still includes it
     const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
 
-    // checkpoint + wip = 2 unique entries (no duplicates)
     const shas = result.entries.map((e) => e.sha);
     const uniqueShas = new Set(shas);
     expect(uniqueShas.size).toBe(shas.length);
@@ -480,8 +428,6 @@ describe('getDocumentHistory', () => {
 });
 
 describe('getDocumentHistory — byte-identical no-op row filtering', () => {
-  // Distinct, strictly-increasing author dates so the newest-first sort is
-  // deterministic (git committer dates are 1-second-granular).
   function dates() {
     let t = Date.parse('2026-06-01T12:00:00.000Z');
     return () => {
@@ -494,7 +440,6 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
     const { contentDir, shadow } = await setup();
     const next = dates();
 
-    // Human writes V1 then V2 on their own WIP ref.
     writeFileSync(resolve(contentDir, 'intro.md'), '# V1\n');
     const h1 = await commitWip(shadow, human, 'content/docs', 'WIP: v1', 'main', {
       date: next(),
@@ -504,10 +449,6 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
       date: next(),
     });
 
-    // A second writer commits WITHOUT changing intro.md. Its WIP ref is a
-    // separate chain (parentless first commit), so `buildWipTree` re-adds
-    // intro.md at the current bytes (V2) — the multi-writer fan-out that makes
-    // a byte-identical commit reach the timeline through the multi-ref merge.
     const g1 = await commitWip(shadow, agent, 'content/docs', 'WIP: agent no-op', 'main', {
       date: next(),
     });
@@ -515,9 +456,7 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
     const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
     const shas = result.entries.map((e) => e.sha);
 
-    // The agent's commit changed nothing about intro (V2 === V2) → dropped.
     expect(shas).not.toContain(g1);
-    // The real edits survive, newest-first.
     expect(shas).toEqual([h2, h1]);
     expect(result.total).toBe(2);
   });
@@ -530,8 +469,6 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
     const h1 = await commitWip(shadow, human, 'content/docs', 'WIP: fm A', 'main', {
       date: next(),
     });
-    // Only the frontmatter changes; the body is identical. The blob still
-    // differs, so this is a real edit and must NOT be dropped.
     writeFileSync(resolve(contentDir, 'intro.md'), '---\ntitle: B\n---\n# Body\n');
     const h2 = await commitWip(shadow, human, 'content/docs', 'WIP: fm B', 'main', {
       date: next(),
@@ -546,8 +483,6 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
 
     writeFileSync(resolve(contentDir, 'intro.md'), '# V1\n');
     const h1 = await commitWip(shadow, human, 'content/docs', 'WIP: v1');
-    // Checkpoint snapshots the same bytes → byte-identical to h1, but it is a
-    // restore-point landmark and must survive the no-op filter.
     const { checkpointRef } = await saveVersion(shadow, 'content/docs', [human]);
     const cp = checkpointRef.split('/').at(-1) as string;
 
@@ -561,12 +496,6 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
   test('a byte-identical upstream import loses to the authored row (keeps the author)', async () => {
     const { contentDir, shadow } = await setup();
 
-    // An upstream import brings intro.md at content V; the reconcile commit that
-    // attributes the real author carries the SAME bytes. Both can share a
-    // one-second commit date, so "keep the oldest" would non-deterministically
-    // drop the author in favor of "Git (upstream)". Force the harder ordering:
-    // date the authored commit AFTER the import's real-now date so the import is
-    // the positionally-older row — the case the old keep-oldest rule got wrong.
     writeFileSync(resolve(contentDir, 'intro.md'), '# V\n');
     const imp = await commitUpstreamImport(shadow, 'content/docs', 'old', 'new', 'main');
     const authored = await commitWip(shadow, human, 'content/docs', 'reconcile: intro', 'main', {
@@ -576,9 +505,6 @@ describe('getDocumentHistory — byte-identical no-op row filtering', () => {
     const result = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
     const shas = result.entries.map((e) => e.sha);
 
-    // The authored row survives the byte-identical tie; the mechanical import is
-    // the dropped duplicate — regardless of which sorted older. No `upstream`
-    // row remains to shadow the author.
     expect(shas).toContain(authored);
     expect(shas).not.toContain(imp);
     expect(result.entries.map((e) => e.type)).not.toContain('upstream');
@@ -609,58 +535,42 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     const { contentDir, shadow } = await setup();
     const { cw, sv } = datedCommits(shadow);
 
-    // Cycle 1: write `a.md`, save → checkpoint K1 (so K1's tree has a.md)
     writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
     const aWipSha = await cw('WIP: a v1');
     await sv();
 
-    // Cycle 2: simulate rename a → b on disk, then commit; rename commit
-    // becomes the chain anchor. Dated commits keep K1 strictly before R.
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# B v1\n');
     const renameSha = await cw('rename: a -> b');
     await sv();
 
-    // Cycle 3: more WIP at b
     writeFileSync(resolve(contentDir, 'b.md'), '# B v2\n');
     const bWipSha = await cw('WIP: b v2');
 
-    // Wire the rename-log index
     const index = createEmptyIndex();
     appendRenameLogEntry(shadow.gitDir, entry({ from: 'a', to: 'b', commitSha: renameSha }), index);
     setRenameLogIndex(shadow.gitDir, index);
 
     const result = await getDocumentHistory(shadow, { docName: 'b' }, 'content/docs');
     const shas = result.entries.map((e) => e.sha);
-    expect(shas).toContain(aWipSha); // pre-rename
-    expect(shas).toContain(renameSha); // rename event
-    expect(shas).toContain(bWipSha); // post-rename
+    expect(shas).toContain(aWipSha);
+    expect(shas).toContain(renameSha);
+    expect(shas).toContain(bWipSha);
   });
 
   test('byte-preserving rename a → b: the rename commit survives the no-op row filter', async () => {
-    // A managed rename changes the doc's PATH, not its bytes — so the rename
-    // commit's blob for `b.md` is byte-identical to the pre-rename `a.md` blob.
-    // The byte-identical no-op filter must treat the rename commit as a
-    // name-epoch landmark (like a checkpoint) and keep it; otherwise the
-    // timeline silently loses the rename event and no longer spans the rename.
-    // The sibling 'rename a → b' test above changes the bytes at rename time
-    // (`# A v1` → `# B v1`), so it never exercises this byte-identical path —
-    // exactly the gap that let the no-op filter regress the rename invariant.
     const { contentDir, shadow } = await setup();
     const { cw, sv } = datedCommits(shadow);
 
-    // Cycle 1: write `a.md`, save → checkpoint (so its tree has a.md).
     writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
     const aWipSha = await cw('WIP: a v1');
     await sv();
 
-    // Cycle 2: byte-preserving rename a → b — SAME bytes at the new path.
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# A v1\n');
     const renameSha = await cw('rename: a -> b');
     await sv();
 
-    // Cycle 3: a real edit at b so the post-rename row differs and survives.
     writeFileSync(resolve(contentDir, 'b.md'), '# A v2\n');
     const bWipSha = await cw('WIP: b v2');
 
@@ -670,9 +580,9 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
     const result = await getDocumentHistory(shadow, { docName: 'b' }, 'content/docs');
     const shas = result.entries.map((e) => e.sha);
-    expect(shas).toContain(aWipSha); // pre-rename content
-    expect(shas).toContain(renameSha); // rename event — byte-identical, but a landmark
-    expect(shas).toContain(bWipSha); // post-rename edit
+    expect(shas).toContain(aWipSha);
+    expect(shas).toContain(renameSha);
+    expect(shas).toContain(bWipSha);
   });
 
   test('FR2: un-renamed doc → empty rename log → identical results to pre-spec behavior', async () => {
@@ -695,18 +605,15 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
     const { cw, sv } = datedCommits(shadow);
 
-    // Cycle 1: a.md
     writeFileSync(resolve(contentDir, 'a.md'), '# A\n');
     const aSha = await cw('WIP: a');
     await sv();
 
-    // Cycle 2: rename a → b
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# B\n');
     const renameAB = await cw('rename: a -> b');
     await sv();
 
-    // Cycle 3: rename b → c
     rmSync(resolve(contentDir, 'b.md'));
     writeFileSync(resolve(contentDir, 'c.md'), '# C\n');
     const renameBC = await cw('rename: b -> c');
@@ -721,9 +628,6 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     expect(shas).toContain(aSha);
     expect(shas).toContain(renameAB);
     expect(shas).toContain(renameBC);
-    // Three commitWip + two saveVersion + getDocumentHistory over real git;
-    // the explicit timeout buys headroom under full-suite git/filesystem
-    // contention. Same shape applies to the other multi-cycle tests below.
   }, 15_000);
 
   test('name-reuse contamination: timeline of `b` does NOT include new-`a` commits', async () => {
@@ -731,18 +635,15 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
     const { cw, sv } = datedCommits(shadow);
 
-    // Cycle 1: a, save → K1 reaches a-only
     writeFileSync(resolve(contentDir, 'a.md'), '# A old\n');
     await cw('WIP: a old');
     await sv();
 
-    // Cycle 2: rename a → b
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# B\n');
     const renameSha = await cw('rename: a -> b');
     await sv();
 
-    // Cycle 3: NEW a.md (b deleted to ensure new-a commit's tree is a-only)
     rmSync(resolve(contentDir, 'b.md'));
     writeFileSync(resolve(contentDir, 'a.md'), '# A new (unrelated)\n');
     const newASha = await cw('WIP: new-a');
@@ -754,9 +655,8 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
     const bResult = await getDocumentHistory(shadow, { docName: 'b' }, 'content/docs');
     const bShas = bResult.entries.map((e) => e.sha);
-    expect(bShas).not.toContain(newASha); // contamination rejected by cycle bound
+    expect(bShas).not.toContain(newASha);
 
-    // Querying the new-a doc returns only its own history (no log entry on it).
     const aResult = await getDocumentHistory(shadow, { docName: 'a' }, 'content/docs');
     const aShas = aResult.entries.map((e) => e.sha);
     expect(aShas).toContain(newASha);
@@ -764,9 +664,6 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
   test('perf: chain depth 5 query completes in bounded latency', async () => {
     const { contentDir, shadow } = await setup();
-    // Build a chain of 5 renames a → b → c → d → e → f, each with one
-    // saveVersion. Heavy enough to exercise the cycle-bound + per-predecessor
-    // rev-list path, light enough to run inside a test budget.
     const names = ['a', 'b', 'c', 'd', 'e', 'f'];
     const index = createEmptyIndex();
     let prevName: string | null = null;
@@ -794,18 +691,12 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     const result = await getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
     const elapsed = performance.now() - t0;
     expect(result.entries.length).toBeGreaterThan(0);
-    // Generous CI-safe bound. Local dev sees well under 200ms; this is the
-    // shape-correctness gate, not the perf budget.
     expect(elapsed).toBeLessThan(2_000);
   }, 30_000);
 
   test('perf: chain depth 5 + 100 checkpoints stays within NFR target', async () => {
     const { contentDir, shadow } = await setup();
-    // read-side chain depth 5 with 100 checkpoints ≤ 200ms
-    // wall-clock. This test stretches the existing depth-5 perf gate by adding
-    // ~17 saveVersion checkpoints per name epoch (≈102 total) so the per-
-    // predecessor `buildSeeds` + `batchCheckExistence` work is realistic.
-    const names = ['a', 'b', 'c', 'd', 'e', 'f']; // 5 renames between 6 epochs
+    const names = ['a', 'b', 'c', 'd', 'e', 'f'];
     const index = createEmptyIndex();
     let prevName: string | null = null;
     for (const name of names) {
@@ -823,8 +714,6 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
           index,
         );
       }
-      // ~17 saveVersions per epoch × 6 epochs ≈ 102 checkpoints across the
-      // chain. Each saveVersion needs a fresh WIP commit on top.
       for (let i = 1; i <= 17; i++) {
         writeFileSync(resolve(contentDir, `${name}.md`), `# ${name} v${i}\n`);
         await commitWip(shadow, human, 'content/docs', `WIP: ${name} v${i}`);
@@ -834,8 +723,6 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     }
     setRenameLogIndex(shadow.gitDir, index);
 
-    // Warm-up run — discard. Cold caches, page faults, and JIT skew the first
-    // measurement; spec NFR is steady-state p99 not first-hit.
     await getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
 
     const runs: number[] = [];
@@ -853,15 +740,7 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
         `(NFR ≤ 200ms; runs: ${runs.map((r) => r.toFixed(0)).join('ms, ')}ms)`,
     );
 
-    // CI-tolerant ceiling: shared-runner kernels + slow IO push CI variance
-    // ~5-10× over local-dev. The 1000ms cap fails if the read path has
-    // genuinely regressed an order of magnitude past the NFR; local dev
-    // should comfortably stay under 200ms.
     expect(median).toBeLessThan(1_000);
-    // The ~102-checkpoint git setup is wall-clock-bound; under the full
-    // `bun run check` concurrent load it can exceed a 60s budget before the
-    // measurement runs. 180s buys headroom — the real perf gate is the median
-    // assertion above, which is unaffected by this framework timeout.
   }, 180_000);
 
   test('lazy-population window: empty-commitSha entry → chain truncates → behavior matches no-rename-history', async () => {
@@ -871,7 +750,6 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     const bWipSha = await commitWip(shadow, human, 'content/docs', 'WIP: b v1');
 
     const index = createEmptyIndex();
-    // Empty commitSha → entry is skipped
     appendRenameLogEntry(shadow.gitDir, entry({ from: 'a', to: 'b', commitSha: '' }), index);
     setRenameLogIndex(shadow.gitDir, index);
 
@@ -880,20 +758,14 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
   });
 
   test('per-step error isolation: failure on one predecessor preserves others', async () => {
-    // Build a chain A→B→C where step 0 (a→b) has a bogus commitSha that will
-    // fail the predecessor `git log` invocation, while step 1 (b→c) is real.
-    // Without per-step error isolation, the failure on step 0 also drops
-    // step 1's predecessor commits. With isolation, step 1's commits survive.
     const { contentDir, shadow } = await setup();
 
     const { cw, sv } = datedCommits(shadow);
 
-    // Cycle 1: a, save → checkpoint K1 reaches the original a
     writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
     const aWipSha = await cw('WIP: a v1');
     await sv();
 
-    // Cycle 2: rename a → b at a real commit, more WIP at b
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# B v1\n');
     await cw('rename: a -> b');
@@ -901,19 +773,13 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     const bWipSha = await cw('WIP: b v2');
     await sv();
 
-    // Cycle 3: rename b → c at a real commit
     rmSync(resolve(contentDir, 'b.md'));
     writeFileSync(resolve(contentDir, 'c.md'), '# C v1\n');
     const renameBC = await cw('rename: b -> c');
 
     const index = createEmptyIndex();
-    // Step 0: a→b with a BOGUS commitSha — passes the hex40 validator but
-    // doesn't resolve to any real commit. buildSeeds catches `git show`
-    // failure and falls back to [bogusSha], then `sg.raw('log', bogusSha,
-    // ...)` throws, exercising the per-step catch.
     const bogusSha = '0123456789abcdef0123456789abcdef01234567';
     appendRenameLogEntry(shadow.gitDir, entry({ from: 'a', to: 'b', commitSha: bogusSha }), index);
-    // Step 1: b→c with the real rename commit
     appendRenameLogEntry(shadow.gitDir, entry({ from: 'b', to: 'c', commitSha: renameBC }), index);
     setRenameLogIndex(shadow.gitDir, index);
 
@@ -926,14 +792,8 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     try {
       const result = await getDocumentHistory(shadow, { docName: 'c' }, 'content/docs');
       const shas = result.entries.map((e) => e.sha);
-      // Step 1 (b→c) succeeded — bWipSha (the WIP at `b` post-rename-AB,
-      // pre-rename-BC) must be in the timeline.
       expect(shas).toContain(bWipSha);
-      // Step 0 (a→b) failed — aWipSha was visible only via the predecessor
-      // walk on path `a`, which threw. Confirms the failure path was hit.
       expect(shas).not.toContain(aWipSha);
-      // Rename commits at the current path are reachable through the
-      // unbounded current-name walk and survive regardless of step 0's fate.
       expect(shas).toContain(renameBC);
     } finally {
       warnSpy.mockRestore();
@@ -946,12 +806,10 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
     const { cw, sv } = datedCommits(shadow);
 
-    // Cycle 1: write a, save → checkpoint K1 captures a-only tree
     writeFileSync(resolve(contentDir, 'a.md'), '# A pre-rename\n');
     await cw('WIP: a');
     await sv();
 
-    // Cycle 2: rename a → b
     rmSync(resolve(contentDir, 'a.md'));
     writeFileSync(resolve(contentDir, 'b.md'), '# B post-rename\n');
     const renameSha = await cw('rename: a -> b');
@@ -961,9 +819,6 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     appendRenameLogEntry(shadow.gitDir, entry({ from: 'a', to: 'b', commitSha: renameSha }), index);
     setRenameLogIndex(shadow.gitDir, index);
 
-    // Query the checkpoint-only fast path (separate code from the full DAG
-    // walk; the rename-aware filter is shared but the surrounding ref
-    // enumeration + branch-cutoff is fast-path specific).
     const result = await getDocumentHistory(
       shadow,
       { docName: 'b', type: 'checkpoint' },
@@ -976,13 +831,11 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
 
 describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
   test('historyWalkCap: 3x(offset+limit) with a 500-commit ceiling', () => {
-    expect(historyWalkCap(0, 50)).toBe(150); // 3 * 50
+    expect(historyWalkCap(0, 50)).toBe(150);
     expect(historyWalkCap(0, 2)).toBe(6);
-    expect(historyWalkCap(100, 50)).toBe(450); // 3 * 150
-    expect(historyWalkCap(200, 50)).toBe(500); // 3 * 250 = 750 → ceiling 500
-    expect(historyWalkCap(10_000, 10)).toBe(500); // ceiling
-    // The 3x slack guarantees the requested window is always inside the cap
-    // until the ceiling — an offset can only fall "beyond the window" at 500.
+    expect(historyWalkCap(100, 50)).toBe(450);
+    expect(historyWalkCap(200, 50)).toBe(500);
+    expect(historyWalkCap(10_000, 10)).toBe(500);
     for (const [o, l] of [
       [0, 50],
       [50, 50],
@@ -992,18 +845,13 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
     }
   });
 
-  // Deep linear WIP chain via a single `git fast-import` (one subprocess for N
-  // commits instead of ~3N git spawns). Each commit changes intro.md so the
-  // pathspec walk includes every commit; commits carry no ok-actor line, so the
-  // doc post-filter's actors.length===0 passthrough includes them (the "legacy
-  // commit" path). The right tool for a >500-commit fixture.
   function buildDeepDocChain(shadow: Awaited<ReturnType<typeof setup>>['shadow'], n: number) {
     const ref = 'refs/wip/main/human-ada';
     let stream = `reset ${ref}\n`;
     for (let i = 0; i < n; i++) {
       const content = `# Edit ${i}\n`;
       const msg = `wip: edit ${i}`;
-      const ts = 1_700_000_000 + i; // monotonically increasing author/commit date
+      const ts = 1_700_000_000 + i;
       const blobMark = 2 * i + 1;
       const commitMark = 2 * i + 2;
       stream += `blob\nmark :${blobMark}\ndata ${Buffer.byteLength(content)}\n${content}\n`;
@@ -1011,7 +859,6 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
       stream += `author Ada <ada@example.com> ${ts} +0000\n`;
       stream += `committer Ada <ada@example.com> ${ts} +0000\n`;
       stream += `data ${Buffer.byteLength(msg)}\n${msg}\n`;
-      // First commit seeds the ref; later commits auto-parent on its current tip.
       stream += `M 100644 :${blobMark} content/docs/intro.md\n\n`;
     }
     stream += 'done\n';
@@ -1025,22 +872,17 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
 
   test('bounds the walk on a >500-commit doc; saturates hasMore; paginates within window', async () => {
     const { shadow } = await setup();
-    // 505-commit linear WIP chain, each commit changing the file so the
-    // pathspec walk includes every commit.
     buildDeepDocChain(shadow, 505);
 
-    // Default-ish page: cap = 3*50 = 150 < 505 → walk is bounded, window saturated.
     const page0 = await getDocumentHistory(
       shadow,
       { docName: 'intro', limit: 50, offset: 0 },
       'content/docs',
     );
     expect(page0.entries).toHaveLength(50);
-    // total is the bounded gathered set, NOT the full 505 (proves no full-depth walk).
     expect(page0.total).toBeLessThanOrEqual(150);
     expect(page0.hasMore).toBe(true);
 
-    // Pagination within the window returns the next slice.
     const page1 = await getDocumentHistory(
       shadow,
       { docName: 'intro', limit: 50, offset: 50 },
@@ -1048,16 +890,9 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
     );
     expect(page1.entries).toHaveLength(50);
     expect(page1.hasMore).toBe(true);
-    // Disjoint from page 0 (correct pagination, not repeated rows).
     const page0Shas = new Set(page0.entries.map((e) => e.sha));
     expect(page1.entries.every((e) => !page0Shas.has(e.sha))).toBe(true);
 
-    // Offset past the gathered window → empty page with hasMore=FALSE. The
-    // bounded walk is deterministic, so paging further can never surface new
-    // rows; an ungated saturation term would keep hasMore=true on every empty
-    // page and spin an auto-paginating consumer forever (reads must not
-    // self-amplify). Saturation still signals truncation on the populated pages
-    // above (page0/page1 hasMore=true).
     const beyond = await getDocumentHistory(
       shadow,
       { docName: 'intro', limit: 10, offset: 500 },
@@ -1073,7 +908,6 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
       writeFileSync(resolve(contentDir, 'intro.md'), `# Edit ${i}\n`);
       await commitWip(shadow, human, 'content/docs', `WIP: edit ${i}`);
     }
-    // 5 commits, limit 50 → cap 150, walk returns 5 (< cap) → not saturated.
     const result = await getDocumentHistory(
       shadow,
       { docName: 'intro', limit: 50, offset: 0 },
@@ -1085,9 +919,6 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
 
   test('noise-dominated multi-writer fixture still fills a full page (slack absorbs filtering)', async () => {
     const { shadow, contentDir } = await setup();
-    // Two writers alternating on the same doc. Each writer's WIP snapshot is the
-    // full content tree, so the other writer's commits surface as fan-out noise
-    // that the ok-actor post-filter drops. The 3x slack keeps the page full.
     for (let i = 0; i < 24; i++) {
       const w = i % 2 === 0 ? human : agent;
       writeFileSync(resolve(contentDir, 'intro.md'), `# Edit ${i}\n`);
@@ -1098,18 +929,11 @@ describe('depth-bound history walk (PRD-6972 FR3 / D14)', () => {
       { docName: 'intro', limit: 10, offset: 0 },
       'content/docs',
     );
-    // A full page despite multi-writer fan-out noise within the bounded window.
     expect(result.entries).toHaveLength(10);
   }, 60_000);
 });
 
 describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 / D11)', () => {
-  // A template is now an ordinary content doc at `<folder>/.ok/templates/<name>`.
-  // Every lifecycle write — HTTP typed writes AND editor CRDT edits — attributes
-  // under that one content-relative key (byte-equal to okArtifactKey('template',
-  // …) and to the client's doc name), which is why the timeline stays whole.
-  // These helpers hand-build that shared-key shadow history so the query
-  // behavior can be pinned deterministically without the full server.
   const httpWriter: WriterIdentity = {
     id: 'agent-11111111-1111-4111-1111-111111111111',
     name: 'template-http',
@@ -1124,13 +948,6 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
     };
   }
 
-  /**
-   * Commit `body` at the template's real content path with a hand-formatted
-   * ok-actor declaring the content-doc key in `docs[]` — the exact shape the
-   * attribution path records. `commitWip` writes the message (subject +
-   * ok-actor) verbatim, so the caller controls the subject a lifecycle write
-   * would stamp.
-   */
   async function commitTemplate(
     shadow: ShadowHandle,
     contentDir: string,
@@ -1165,10 +982,8 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
   test('doc history is one continuous chain across typed lifecycle writes and wip editor edits', async () => {
     const { contentDir, shadow } = await setup();
     const next = increasingDates();
-    const docName = templateContentDocName('notes', 'standup'); // notes/.ok/templates/standup
+    const docName = templateContentDocName('notes', 'standup');
 
-    // Two HTTP lifecycle writes stamped typed template-* subjects (what the
-    // create/edit routes emit), keyed on the content path.
     const createSha = await commitTemplate(
       shadow,
       contentDir,
@@ -1188,8 +1003,6 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
       next(),
     );
 
-    // The same file is an ordinary content doc, so an editor CRDT edit lands as a
-    // raw wip: commit under the SAME key — a different writer, same doc.
     const wipSha = await commitTemplate(
       shadow,
       contentDir,
@@ -1203,12 +1016,8 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
 
     const result = await getDocumentHistory(shadow, { docName }, 'content/docs');
     const shas = result.entries.map((e) => e.sha);
-    // All three rows — typed and wip — are returned for the one content-doc name.
-    // Nothing splits the timeline at the cutover and no fan-out noise leaks in.
     expect(new Set(shas)).toEqual(new Set([createSha, editSha, wipSha]));
 
-    // Each row attributes under the byte-identical content-doc key; that shared
-    // key is precisely why the typed and wip rows unify into one history.
     for (const entry of result.entries) {
       expect(entry.contributors.some((c) => c.docs.includes(docName))).toBe(true);
     }
@@ -1255,10 +1064,6 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
       '# delete\n',
       next(),
     );
-    // The import route stamps `template-import:`, but the folder subject filter
-    // omits `import` — minted-but-never-surfaced. A pre-existing gap this
-    // migration preserves unchanged (the filter also carries a `template-move`
-    // alternation that no route mints, since moves stamp `template-rename`).
     const importSha = await commitTemplate(
       shadow,
       contentDir,
@@ -1268,8 +1073,6 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
       '# import\n',
       next(),
     );
-    // An editor CRDT edit stamps a raw wip: subject — a real edit, but not a
-    // typed folder event.
     const wipSha = await commitTemplate(
       shadow,
       contentDir,
@@ -1289,11 +1092,8 @@ describe('getDocumentHistory + getFolderTimeline — templates as content (FR6 /
     expect(folderShas).toContain(deleteSha);
     expect(folderShas).not.toContain(importSha);
     expect(folderShas).not.toContain(wipSha);
-    // Exactly the four typed lifecycle subjects — nothing else is a folder event.
     expect(folder.entries).toHaveLength(4);
 
-    // The wip editor edit still belongs to the template's OWN document history:
-    // it is a real edit, just not something the folder card surfaces.
     const doc = await getDocumentHistory(shadow, { docName }, 'content/docs');
     expect(doc.entries.map((e) => e.sha)).toContain(wipSha);
   });

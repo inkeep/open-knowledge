@@ -1,17 +1,3 @@
-/**
- * Effect-capture attribution: the agent-effects row an agent write produces must
- * carry THAT WRITE's delta, under THAT agent's identity.
- *
- * `captureEffect` is armed before the write transact, and the write spine
- * legitimately makes a foreign-origin Y.Text write in between: the pre-drain
- * flush (`agentWritePreDrain`) lands the user's un-propagated keystroke under
- * `OBSERVER_SYNC_ORIGIN` so the compose rides it into the body. An origin-blind
- * one-shot consumes that flush instead — filing the USER's bytes as an agent
- * effect and leaving the agent's real write with no row at all. The observer is
- * therefore keyed on the write's own origin (object identity), and the arming is
- * disposed with the operation so a delta-free write cannot capture a later one.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { captureEffect, type EffectValue } from './activity-log.ts';
@@ -37,10 +23,7 @@ describe('captureEffect origin keying', () => {
 
     captureEffect(ytext, 'agent-1', AGENT_ORIGIN, 'seed', 'claude');
 
-    // The pre-drain flush shape: a real Y.Text delete+insert of the USER's
-    // un-propagated bytes, under the observer self-origin.
     doc.transact(() => ytext.insert(ytext.length, 'user keystroke\n'), FOREIGN_ORIGIN);
-    // The agent's own write.
     doc.transact(() => ytext.insert(ytext.length, 'agent bytes\n'), AGENT_ORIGIN);
 
     const rows = effectRows(doc);
@@ -54,11 +37,9 @@ describe('captureEffect origin keying', () => {
     const doc = new Y.Doc();
     const ytext = doc.getText('source');
 
-    // Operation 1: armed, but `composeAgentWrite` declined — no Y.Text delta.
     const dispose = captureEffect(ytext, 'agent-1', AGENT_ORIGIN, 'seed', 'claude');
     dispose();
 
-    // Operation 2 must produce exactly one row, keyed to its OWN arming.
     const dispose2 = captureEffect(ytext, 'agent-1', AGENT_ORIGIN, 'seed', 'claude');
     doc.transact(() => ytext.insert(0, 'second write\n'), AGENT_ORIGIN);
     dispose2();
@@ -75,14 +56,11 @@ describe('effect capture across a real pre-drain flush', () => {
     vi.setSystemTime(1_000_000);
     const rig = await createWiredPreDrainRig({ docName: 'effect-attribution.md' });
     try {
-      // A pending WYSIWYG keystroke sitting only in the fragment, cross-block
-      // from the append seam — the case the pre-drain exists to flush.
       rig.stageUnpropagatedKeystroke();
       expect(rig.serializeFragment()).toContain(WIRED_PENDING_LINE);
       expect(rig.ytextString()).toContain(WIRED_STALE_LINE);
       expect(rig.ytextString()).not.toContain(WIRED_PENDING_LINE);
 
-      // The handler ordering: arm, pre-drain, write, dispose.
       const document = rig.session.dc.document;
       const dispose = captureEffect(
         document.getText('source'),
@@ -97,8 +75,6 @@ describe('effect capture across a real pre-drain flush', () => {
         dispose();
       }
 
-      // The flush happened (the keystroke reached Y.Text) — so the one-shot had a
-      // foreign-origin event available to consume.
       expect(rig.ytextString()).toContain(WIRED_PENDING_LINE);
 
       const rows = effectRows(rig.doc);
@@ -106,7 +82,6 @@ describe('effect capture across a real pre-drain flush', () => {
       const row = rows[0];
       expect(row?.sessionId).toBe(rig.session.agentId);
       const delta = JSON.stringify(row?.delta);
-      // The agent's own bytes are the effect; the user's flushed keystroke is not.
       expect(delta).toContain('A fresh agent paragraph.');
       expect(delta).not.toContain(WIRED_PENDING_LINE);
     } finally {
@@ -121,7 +96,6 @@ describe('effect capture across a real pre-drain flush', () => {
     const rig = await createWiredPreDrainRig({ docName: 'effect-noop.md' });
     try {
       const document = rig.session.dc.document;
-      // An empty append: `composeAgentWrite` declines, so no Y.Text delta lands.
       const disposeNoop = captureEffect(
         document.getText('source'),
         rig.session.agentId,
@@ -141,7 +115,6 @@ describe('effect capture across a real pre-drain flush', () => {
       rig.agentWrite('Real content.', 'append');
       dispose();
 
-      // Exactly one row — the stale arming did not double-file the real write.
       expect(effectRows(rig.doc).length).toBe(1);
     } finally {
       await rig.cleanup();

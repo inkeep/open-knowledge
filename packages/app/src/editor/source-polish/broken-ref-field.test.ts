@@ -11,7 +11,6 @@ function createState(doc: string): EditorState {
   });
 }
 
-/** Helper: collect decoration ranges from a DecorationSet. */
 function collectRanges(state: EditorState): Array<{ from: number; to: number }> {
   const decos = scanBrokenRefs(state);
   const ranges: Array<{ from: number; to: number }> = [];
@@ -29,7 +28,7 @@ describe('broken-ref-field', () => {
     const ranges = collectRanges(state);
     expect(ranges).toHaveLength(1);
     expect(ranges[0].from).toBe(0);
-    expect(ranges[0].to).toBe(21); // [click here][missing] = 21 chars
+    expect(ranges[0].to).toBe(21);
   });
 
   test('valid reference does not get marked', () => {
@@ -45,11 +44,9 @@ describe('broken-ref-field', () => {
   });
 
   test('removing a definition marks all its references', () => {
-    // With definition
     const withDef = createState('[a][foo] and [b][foo]\n\n[foo]: https://example.com');
     expect(collectRanges(withDef)).toHaveLength(0);
 
-    // Without definition
     const withoutDef = createState('[a][foo] and [b][foo]');
     const ranges = collectRanges(withoutDef);
     expect(ranges).toHaveLength(2);
@@ -59,7 +56,6 @@ describe('broken-ref-field', () => {
     const broken = createState('[text][new]');
     expect(collectRanges(broken)).toHaveLength(1);
 
-    // After adding definition
     const fixed = createState('[text][new]\n\n[new]: https://example.com');
     expect(collectRanges(fixed)).toHaveLength(0);
   });
@@ -73,7 +69,6 @@ describe('broken-ref-field', () => {
     ].join('\n');
     const state = createState(doc);
     const ranges = collectRanges(state);
-    // Only [c][three] should be broken
     expect(ranges).toHaveLength(1);
     const text = doc.slice(ranges[0].from, ranges[0].to);
     expect(text).toBe('[c][three]');
@@ -98,8 +93,6 @@ describe('broken-ref-field', () => {
   });
 
   test('references inside fenced code blocks are NOT marked', () => {
-    // Specs/READMEs that quote broken ref syntax inside fences must not get
-    // a wavy underline — the content is literal source, not a live reference.
     const doc = [
       '# Fenced code example',
       '',
@@ -128,15 +121,12 @@ describe('broken-ref-field', () => {
     );
     const state = createState(doc);
     const ranges = collectRanges(state);
-    // Only the outside-the-fence ref should be marked
     expect(ranges).toHaveLength(1);
     const text = doc.slice(ranges[0].from, ranges[0].to);
     expect(text).toBe('[real-broken][also-missing]');
   });
 
   test('definition INSIDE a fence does NOT resolve a real reference outside', () => {
-    // A `[foo]: url` inside a fence is literal source — must not count as a
-    // definition for outside references.
     const doc = ['```markdown', '[foo]: https://example.com', '```', '', '[link][foo]'].join('\n');
     const state = createState(doc);
     const ranges = collectRanges(state);

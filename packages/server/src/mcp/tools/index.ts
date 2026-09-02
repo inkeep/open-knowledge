@@ -1,35 +1,3 @@
-/**
- * MCP tool registry.
- *
- * Reads:     exec, search, history, links, skills, config, palette, preview_url, share_link, lint, audit
- * Writes:    write, edit, delete, move, install, import, checkpoint, restore_version
- * Conflicts: conflicts, resolve_conflict
- *
- * `write` / `edit` / `delete` / `move` are native CRUD verbs, polymorphic
- * over document / folder / template / asset via a nested target object
- * (Pattern B). They absorb the former write_document / edit_document /
- * edit_frontmatter / delete_document / rename / folder_config tools. The one
- * soft constraint ("exactly one target") is enforced by a teaching error.
- * `links` covers six link-graph reads; `checkpoint`/`restore_version` split the former `version` tool.
- *
- * Read-tool routing:
- *   - `exec` — primary read surface: shell-style `cat`/`ls`/`grep`/`find`,
- *     enriched with frontmatter / backlinks / shadow-repo history / folder
- *     defaults / template menus on every wiki file or directory referenced.
- *   - `search` — ranked workspace retrieval (Orama; mirrors cmd-K).
- *
- * - Document tools make HTTP calls to Hocuspocus and require `serverUrl`.
- * - `search` calls `POST /api/search` and requires Hocuspocus.
- *
- * Procedural guidance (capture a source, research a topic, promote research to
- * canonical, onboard an existing repo, generate a codebase wiki) is NOT an MCP
- * tool — it ships as skill guidance (`assets/skills/`), loaded on description
- * match rather than costing tool-list tokens every turn.
- *
- * To add a new tool: create `packages/server/src/mcp/tools/<name>.ts` with a
- * `register(...)` export, then import and call it from here.
- */
-
 import { createEnsureSingleFileSession } from '../../ensure-single-file-session.ts';
 import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
@@ -58,47 +26,15 @@ import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './sh
 import { register as registerSkills } from './skills.ts';
 import { register as registerWrite } from './write.ts';
 
-/**
- * Per-call cwd resolver. Returns the absolute host directory that the
- * current tool call should operate against. Priority:
- *   1. explicit `cwd` arg from the tool call
- *   2. the client's only advertised MCP root
- *   3. otherwise error
- */
 type ResolveCwd = (explicit?: string) => Promise<string>;
 
 interface RegisterAllToolsOptions {
-  /**
-   * Hocuspocus URL. Accept a string (explicit override, e.g. `--port`), or a
-   * lazy resolver that re-discovers per-call from the effective project cwd.
-   * The resolver variant is what lets one MCP stdio process route different
-   * tool calls to different OpenKnowledge projects.
-   */
   serverUrl?: ServerUrlOrResolver;
-  /** Resolves the cwd for a given tool call (see `ResolveCwd` docs). */
   resolveCwd: ResolveCwd;
-  /**
-   * In-process `/api/*` dispatch (`ServerInstance.localApi`), present only
-   * when the MCP server runs inside the project server process
-   * (`mcp-http.ts`). Tools whose endpoints are backed by the extracted
-   * capability services then invoke the handler in-process instead of
-   * HTTP-round-tripping to their own listener; the stdio proxy omits this
-   * and stays on HTTP.
-   */
   localApi?: LocalApiDispatch;
   config: ConfigOrResolver;
   identityRef?: { current: AgentIdentity };
   logger?: McpLogger;
-  /**
-   * True when the agent driving this MCP server process is running inside an
-   * OpenKnowledge surface — the desktop app's built-in terminal
-   * (`OK_DESKTOP_TERMINAL=1` from the pty) or its in-app agent panel
-   * (`OK_HOSTED_AGENT=1` from the agent spawn). The global `ok mcp` server
-   * sets it from its env; the shared collab server (`ok start`) never has
-   * either marker, so it stays false there. `preview_url` uses it to steer
-   * the agent to `ok open` (which focuses the doc where the user is already
-   * looking) instead of returning a URL the agent shouldn't navigate.
-   */
   isHostedAgent?: boolean;
 }
 
@@ -127,53 +63,36 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
       }
     };
 
-  // exec — the primary surface.
   registerExec(registrationServer, {
     resolveCwd: named('exec'),
     serverUrl: opts.serverUrl,
     config: opts.config,
   });
 
-  // Search — exec covers cat / ls / grep / find via fs-direct shell. `search`
-  // is the ranked-retrieval read (Orama; mirrors cmd-K).
   registerSearch(registrationServer, {
     resolveCwd: named('search'),
     config: opts.config,
     serverUrl: opts.serverUrl,
     localApi: opts.localApi,
   });
-  // Unified link-graph reader — replaces the six dedicated getters
-  // (get_backlinks, get_forward_links, get_dead_links, get_orphans, get_hubs,
-  // suggest_links) behind a `kind` discriminator.
   registerLinks(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('links'),
     localApi: opts.localApi,
   });
-  // Markdown lint — surface rule violations (single doc or project-wide audit);
-  // `fix: true` applies auto-fixes through the agent-write spine, so it takes
-  // `identityRef` to attribute the write (mirrors write/edit).
   registerLint(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('lint'),
     identityRef: opts.identityRef,
   });
-  // Unified validation audit — one read-only call spanning every content
-  // validator (markdownlint + link resolution) via `GET /api/audit`. Broken
-  // links validate here; the `links` tool stays the navigation/graph reader.
   registerAudit(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('audit'),
   });
 
-  // CRUD verbs — polymorphic over document / folder / template / asset
-  // (Pattern B: per-target fields nested inside the address key). `write`,
-  // `edit`, `delete` span CRDT (document) + HTTP (folder-create, asset) +
-  // fs-direct (folder frontmatter, template) backends by target; the address
-  // key signals which.
   registerWrite(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
@@ -194,16 +113,12 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     identityRef: opts.identityRef,
     localApi: opts.localApi,
   });
-  // `move` — move/rename a document, folder, or asset; probes the content
-  // directory to set `kind` and rewrites the link graph.
   registerMove(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('move'),
     identityRef: opts.identityRef,
   });
-  // `install` — project an authored skill into the editor host dirs
-  // The one new verb beyond the `skill` CRUD target.
   registerInstall(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
@@ -211,9 +126,6 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     identityRef: opts.identityRef,
     localApi: opts.localApi,
   });
-  // `import` — acquire a skill from skills.sh / github / git URL / local path into
-  // `.ok/skills` as versioned content (the marketplace on-ramp). Pairs with
-  // `install` (the off-ramp to editor dirs).
   registerImport(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
@@ -226,15 +138,11 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     config: opts.config,
     resolveCwd: named('history'),
   });
-  // Read half of the skill vocabulary (list + read across both scopes) — the
-  // mutate verbs (write/edit/delete/move/install) already cover `skill`.
   registerSkills(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
     resolveCwd: named('skills'),
   });
-  // Version management, split by risk-shape: `checkpoint` is a project-wide
-  // snapshot; `restore_version` is a per-doc restore. `history` is the read.
   registerCheckpoint(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
@@ -248,44 +156,22 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     resolveCwd: named('restore_version'),
     identityRef: opts.identityRef,
   });
-  // `palette` — markdown-native authoring forms + themed embed starters +
-  // theme tokens; pass `components: [ids]` for full JSX-form detail (merged
-  // from the former get_components). Pure module-export data; no server needed.
   registerPalette(registrationServer, {
     resolveCwd: named('palette'),
     config: opts.config,
   });
 
-  // Config tools — fs-direct (no Hocuspocus required).
-  //
-  // All tools use `server.registerTool`. These config/search tools also pass
-  // structured-output and annotation channels (`outputSchema`, `readOnlyHint`,
-  // `idempotentHint`, `destructiveHint`) where clients need a strict schema or
-  // richer metadata. Registration is wrapped by `createLoggedServer` (see
-  // tool-logging.ts).
   registerConfig(registrationServer, {
     config: opts.config,
     resolveCwd: named('config'),
   });
-  // Resolves the browser-reachable preview URL on demand — the one place the
-  // preview base/port reaches an agent. Per-response `previewUrl` fields are
-  // route-only; hosts that open the URL themselves call this tool. Takes
-  // `serverUrl` for its backend-ensure (a preview request is demand for a
-  // backend), though it never makes HTTP calls itself — `server.lock` stays the
-  // URL source.
   registerPreviewUrl(registrationServer, {
     config: opts.config,
     resolveCwd: named('preview_url'),
     serverUrl: opts.serverUrl,
     isHostedAgent: opts.isHostedAgent,
-    // Boot-on-demand for the `file` branch is wired only when this registration
-    // has backend/spawn authority (the same gate as `serverUrl`): it spawns a
-    // detached `ok <file>` via this process's own CLI entry.
     ...(opts.serverUrl ? { ensureSingleFileSession: createEnsureSingleFileSession() } : {}),
   });
-  // Conflict tools — wrap `/api/sync/conflict*` endpoints. `conflicts` is a
-  // read (kind: list | content); `resolve_conflict` is a separate write
-  // (annotated `destructiveHint: true`).
   registerConflicts(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,
@@ -297,10 +183,6 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
     resolveCwd: named('resolve_conflict'),
   });
 
-  // Share-link construction — wraps `POST /api/share/construct-url`. Read-only
-  // against the working tree; no commits/pushes/fetches. The no-remote branch
-  // returns a clear actionable error rather than running the Publish wizard;
-  // publishing is an explicit user act, not agent-initiated.
   registerShareLink(registrationServer, {
     serverUrl: opts.serverUrl,
     config: opts.config,

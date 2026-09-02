@@ -6,8 +6,6 @@ import {
   unregisterTerminalWindow,
 } from './terminal-window-registry.ts';
 
-// Unique windowIds per test + explicit cleanup so the module-global Map does not
-// leak across cases.
 const WIN_A = 90_001;
 const WIN_B = 90_002;
 

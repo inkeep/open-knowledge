@@ -38,8 +38,6 @@ describe('CLI argv parsing', () => {
     expect(result.exitCode).toBe(0);
     expect(stderr).not.toContain('unknown option');
     expect(stdout.startsWith('[')).toBe(true);
-    // Spawns a fresh `bun` that cold-imports the whole CLI and runs `ps --json`;
-    // the default 5s test timeout is too tight for that under local machine load.
   }, 30_000);
 });
 
@@ -71,10 +69,6 @@ describe('ok ui tombstone', () => {
 
 describe('CLI --version notice', () => {
   test('--version emits the version plus the GPL copyright / free-software / no-warranty trio', () => {
-    // Exercises the wired surface — `.version(buildVersionNotice(...))` in cli.ts
-    // through Commander's `--version` handler — not just the pure builder. A
-    // regression that reverted the version action to the bare version string
-    // would pass version-notice.test.ts but fail here.
     const result = Bun.spawnSync({
       cmd: [
         'node',
@@ -107,8 +101,6 @@ describe('committed project-local key startup warning', () => {
   beforeEach(() => {
     projectDir = mkdtempSync(join(tmpdir(), 'ok-committed-bind-'));
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
-    // A committed non-loopback bind — the clone-breaking case. It resolves to
-    // the loopback default (ignored), and the preAction hook must name it.
     writeFileSync(join(projectDir, '.ok', 'config.yml'), 'server:\n  bind:\n    - 0.0.0.0\n');
   });
 
@@ -117,10 +109,6 @@ describe('committed project-local key startup warning', () => {
   });
 
   test('the preAction hook names a committed server.bind as ignored and points at the OK_BIND fix', () => {
-    // Exercises the wired emission loop in cli.ts — the loader-level and
-    // formatter-level unit tests both pass even if this glue is removed, so a
-    // command that goes through the preAction hook (`ok ps`) is the surface that
-    // proves the startup warning actually reaches stderr.
     const result = Bun.spawnSync({
       cmd: [
         'node',
@@ -148,8 +136,6 @@ describe('committed project-local key startup warning', () => {
     expect(stderr).toContain('server.bind is a per-machine (project-local) setting');
     expect(stderr).toContain('.ok/local/config.yml');
     expect(stderr).toContain('OK_BIND');
-    // The committed value is IGNORED, not applied — nothing exposes, so the
-    // exposure interlock must never fire on this read-only listing.
     expect(stderr).not.toContain('ExposureConsentError');
   }, 30_000);
 });

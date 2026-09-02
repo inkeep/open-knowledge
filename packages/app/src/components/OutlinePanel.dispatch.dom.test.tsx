@@ -1,13 +1,4 @@
 // @vitest-environment jsdom
-/**
- * The click as the panel dispatched it.
- *
- * Both consumers guard on document, mode and mount state with bare returns, so
- * a click that reaches neither of them leaves no trace anywhere. This line is
- * what makes "the outline row did nothing" a readable finding instead of an
- * absence: a dispatch with no consumer line following it says the event fired
- * and nobody answered.
- */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -18,8 +9,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 const DOC_NAME = 'notes/outline-dispatch';
-// Levels differ so the emitted `headingLevel` is answered by the clicked row
-// rather than satisfied by whatever constant the fixture happens to share.
 const HEADINGS = [
   { level: 1, text: 'Alpha', slug: 'alpha' },
   { level: 3, text: 'Beta', slug: 'beta' },
@@ -116,8 +105,6 @@ describe('outline dispatch breadcrumb', () => {
   });
 
   test('the dispatch is recorded even when no consumer answers it', async () => {
-    // Nothing here mounts an editor, which is the point: the event fires into
-    // an empty room and the click is still on the record.
     await renderPanel();
     await userEvent.click(screen.getByRole('button', { name: 'Alpha' }));
     expect(breadcrumbs(OUTLINE_NAV_DISPATCH_BREADCRUMB)).toHaveLength(1);
@@ -133,11 +120,6 @@ describe('outline dispatch breadcrumb', () => {
   });
 
   test('the heading depth reaches the line rather than being eaten as a reserved key', async () => {
-    // The emitter drops anything named after a key the logger owns, so a
-    // regression to `level` would not show up as a corrupted record here — it
-    // would show up as the depth going missing. Asserting the absence of
-    // `droppedReservedFields` is the form that can actually fail; the
-    // corruption itself is pinned in the emitter's own suite.
     await renderPanel();
     await userEvent.click(screen.getByRole('button', { name: 'Gamma' }));
     const [line] = breadcrumbs(OUTLINE_NAV_DISPATCH_BREADCRUMB);
@@ -146,8 +128,6 @@ describe('outline dispatch breadcrumb', () => {
   });
 
   test('the marker position rides along, so the panel disagreeing with itself is visible', async () => {
-    // The marker resolves by slug and the click by ordinal. Recording both
-    // makes a disagreement between the two readable off one line.
     activeSlug = 'gamma';
     await renderPanel();
     await userEvent.click(screen.getByRole('button', { name: 'Alpha' }));

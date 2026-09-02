@@ -9,7 +9,6 @@ import {
   unregisterExternalSkill,
 } from './external-skill-registry.ts';
 
-/** Simulates a detected skill living at a harness dir outside any project. */
 function freshSkillDir(): string {
   const dir = mkdtempSync(resolve(tmpdir(), 'ok-ext-skill-'));
   writeFileSync(resolve(dir, 'SKILL.md'), '# original\n');
@@ -44,13 +43,10 @@ describe('external-skill-registry — guarded external write core', () => {
     const dir = freshSkillDir();
     registerExternalSkill('foo', dir);
     try {
-      // Bytes with the kinds of content a skill carries: frontmatter, unicode, a
-      // trailing newline, backslashes — must land verbatim (precedent #57).
       const content = '---\nname: foo\n---\n\n# Foo café\n\nUse `\\d+` and 日本語.\n';
       const target = externalSkillAbsPath('foo', null);
       expect(target).not.toBeNull();
       writeFileSync(target as string, content);
-      // The write landed on the REAL skill file, not a copy elsewhere.
       expect(target).toBe(resolve(dir, 'SKILL.md'));
       expect(readFileSync(resolve(dir, 'SKILL.md'), 'utf8')).toBe(content);
     } finally {
@@ -74,8 +70,6 @@ describe('external-skill-registry — guarded external write core', () => {
   });
 
   test('containment: an invalid skill name throws (grammar gate)', () => {
-    // A name that passed registration but violates the slug grammar must still be
-    // refused at resolve time (defense-in-depth).
     registerExternalSkill('BAD', '/tmp/whatever');
     expect(() => externalSkillAbsPath('BAD', null)).toThrow(/invalid skill name/);
   });

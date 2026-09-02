@@ -1,23 +1,3 @@
-/**
- * Playwright globalSetup: build the per-run Vite optimizer seed cache.
- *
- * Boots ONE dev server against a fresh cacheDir, waits for the dependency
- * optimizer to settle (deps/_metadata.json present + deps dir quiet), then
- * promotes the dir to `VITE_E2E_SEED_DIR`. Every fixture-spawned server
- * (worker-scoped and per-test) copies the seed via `prepareViteCacheDir`,
- * so no server boots with a cold optimizer — see the seed-dir docblock in
- * `server-process.ts` for the flake classes a cold optimizer caused in CI.
- *
- * Keyed by the lockfile + the vite config inputs: a matching existing seed
- * is reused (fast local iteration); a mismatch rebuilds. The single seed
- * boot runs uncontended (before any worker exists), unlike the old
- * 4-concurrent-cold-boots shape, so the optimizer scan it depends on is
- * not racing three sibling boots for CPU.
- *
- * FAIL-OPEN: a warm failure logs and returns — workers then boot cold,
- * which is exactly the pre-seed status quo. It must never fail the run.
- */
-
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -66,7 +46,6 @@ function computeSeedKey(): string {
   return hash.digest('hex');
 }
 
-/** Cheap change-detector over the deps dir: names + sizes. */
 function depsDirSignature(depsDir: string): string {
   try {
     return readdirSync(depsDir)
@@ -87,19 +66,11 @@ function depsDirSignature(depsDir: string): string {
 async function buildSeedOnce(key: string): Promise<void> {
   const port = await getFreePort();
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-warm-cache-content-'));
-  // Bun hoists deps to the workspace root; packages/app/node_modules may not
-  // exist on cold CI runners, and globalSetup runs BEFORE any worker's
-  // prepareViteCacheDir would create it — without this guard the seed build
-  // ENOENTs on exactly the runners that need the warm cache most.
   mkdirSync(join(APP_PACKAGE_ROOT, 'node_modules'), { recursive: true });
-  // Build in a sibling dir, promote atomically on success — a concurrent
-  // local run reading a half-built seed would be worse than a cold boot.
   const buildDir = mkdtempSync(join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed-building-'));
   const log = openServerLog('warm-cache');
   const proc = spawn('pnpm', ['run', 'dev', '--host', '127.0.0.1'], {
     cwd: APP_PACKAGE_ROOT,
-    // Own process group so killGracefully's group-kill reaches vite
-    // through the pnpm shim (see signalTree in server-process.ts).
     detached: true,
     env: {
       ...process.env,
@@ -110,17 +81,12 @@ async function buildSeedOnce(key: string): Promise<void> {
     },
     stdio: ['ignore', log.fd, log.fd],
   });
-  // An OS-level spawn failure (ENOENT, EPERM) surfaces as an 'error' EVENT,
-  // not a throw — unhandled it crashes globalSetup and breaks the FAIL-OPEN
-  // contract above. Same listener shape as the worker fixture's spawn.
   proc.on('error', (err) => {
     console.warn('[e2e warm-cache] spawn error:', err);
   });
   let succeeded = false;
   try {
     await waitForHttpReady(`http://127.0.0.1:${port}`, 60_000);
-    // The optimizer runs eagerly from server start; wait for its metadata
-    // and then for the deps dir to hold still across two consecutive polls.
     const depsDir = join(buildDir, 'deps');
     const metaPath = join(depsDir, '_metadata.json');
     const deadline = Date.now() + OPTIMIZER_SETTLE_BUDGET_MS;
@@ -144,11 +110,6 @@ async function buildSeedOnce(key: string): Promise<void> {
         `optimizer metadata never appeared within ${OPTIMIZER_SETTLE_BUDGET_MS}ms — server log tail:\n${tailServerLog(log)}`,
       );
     }
-    // The deadline can expire with metadata present but the deps dir still
-    // churning (a discovery round re-optimizing). Promoting a mid-mutation
-    // seed would hand workers inconsistent chunks — the exact corruption
-    // class the warm cache exists to remove. Throw instead; the fail-open
-    // wrapper retries once and otherwise falls back to cold boots.
     if (stablePolls < 2) {
       throw new Error(
         `optimizer deps dir did not stabilize within ${OPTIMIZER_SETTLE_BUDGET_MS}ms (stablePolls=${stablePolls}) — server log tail:\n${tailServerLog(log)}`,
@@ -157,37 +118,18 @@ async function buildSeedOnce(key: string): Promise<void> {
     writeFileSync(join(buildDir, SEED_KEY_FILENAME), key, 'utf-8');
     succeeded = true;
   } finally {
-    // Kill BEFORE any buildDir cleanup: the server writes into buildDir (its
-    // Vite cacheDir) until it exits, and the optimizer recreates a deleted
-    // dir mid-write — orphaning it under node_modules/ with nothing to reap it.
-    // Cleanup still runs if the kill throws, and a directory that refuses to
-    // go does not strand the others; which errnos each half absorbs is
-    // `tolerateDuringTeardown` in server-process.ts and
-    // `removeAllDuringTeardown` in teardown-fs.ts (same guard shape as the
-    // worker-fixture teardown in fixtures.ts).
     try {
       await killGracefully(proc);
     } finally {
       closeServerLog(log);
-      // buildDir is only reclaimed on failure: a successful build is renamed
-      // into the seed dir below, so removing it here would destroy the seed.
       removeAllDuringTeardown(contentDir, ...(succeeded ? [] : [buildDir]));
     }
   }
   try {
-    // Bare `rmSync`: this one is a PRECONDITION for the rename, not teardown.
-    // Its failure must abort the promotion rather than be tolerated, or the
-    // rename lands on top of a half-cleared seed.
     rmSync(VITE_E2E_SEED_DIR, { recursive: true, force: true });
     renameSync(buildDir, VITE_E2E_SEED_DIR);
     removeAllDuringTeardown(log.path);
   } catch (promoteErr) {
-    // A failed promotion (e.g. ENOTEMPTY from a concurrent local run's
-    // globalSetup re-creating the seed) would otherwise orphan buildDir
-    // under node_modules with no reaper — the finally above only cleans it
-    // on !succeeded. The build itself succeeded, so the log holds no
-    // failure diagnostics; remove both and rethrow for the fail-open
-    // wrapper to handle.
     removeAllDuringTeardown(buildDir, log.path);
     throw promoteErr;
   }

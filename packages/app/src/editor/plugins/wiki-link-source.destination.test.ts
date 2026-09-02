@@ -1,18 +1,3 @@
-/**
- * Where a source-mode Cmd/Ctrl+click on a `[[wikilink]]` sends you.
- *
- * The destination decision is exercised directly; the surrounding mousedown
- * handler is DOM-layout-bound (`posAtCoords` needs real geometry, which jsdom
- * does not provide) and is covered by Playwright. What is under test here is the
- * part that can be wrong without any geometry: which corpus entry the target
- * names, and therefore which route it opens.
- *
- * Source mode navigates to the raw target and lets the app's hash router run
- * bare-name resolution, so the assertions below pin the route, not the final
- * document — except where the route itself is the defect (an asset route for a
- * document).
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   buildSourceWikiLinkLookup,
@@ -20,12 +5,6 @@ import {
   resolveSourceWikiLinkDestination,
 } from './wiki-link-source';
 
-/**
- * The corpus every case resolves against, in the shape `/api/pages` +
- * `/api/documents` actually produce: documents carry `kind:'page'` and no
- * extension, while both referenced assets and tracked files arrive as
- * `kind:'asset'` with a leading slash.
- */
 const CORPUS: PageItem[] = [
   { kind: 'page', docName: 'index', title: 'Home' },
   { kind: 'page', docName: 'notes/acp.daemon', title: 'ACP daemon' },

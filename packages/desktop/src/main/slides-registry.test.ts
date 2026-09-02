@@ -6,13 +6,10 @@ import {
   type SlidesDeckWindow,
 } from './slides-registry.ts';
 
-/** A stand-in for the deck's window — the registry only stores it, so an id
- *  plus a structural cast is enough. */
 function fakeWindow(id: number): SlidesDeckWindow {
   return { id } as unknown as SlidesDeckWindow;
 }
 
-/** A deck whose process records the signals it was sent. */
 function fakeDeck(docPath: string, port: number) {
   const signals: Array<'SIGTERM' | 'SIGKILL'> = [];
   const deck: RunningSlidesDeck = {
@@ -50,8 +47,6 @@ describe('createSlidesDeckRegistry', () => {
 
     registry.reapAll();
 
-    // App-quit teardown asks each server to stop cleanly (SIGTERM), never a
-    // straight SIGKILL that would deny its Vite server a port release + flush.
     expect(a.signals()).toEqual(['SIGTERM']);
     expect(b.signals()).toEqual(['SIGTERM']);
     expect(registry.size()).toBe(0);
@@ -65,8 +60,6 @@ describe('createSlidesDeckRegistry', () => {
     registry.register(a.deck);
     registry.register(b.deck);
 
-    // The window's own close handler already reaped the process; unregister only
-    // removes the bookkeeping so a reopen starts fresh — it must not signal again.
     registry.unregister('/decks/a.md');
 
     expect(a.signals()).toEqual([]);
@@ -92,11 +85,7 @@ describe('createSlidesDeckRegistry', () => {
 
     const attempt: Promise<OkSlidesOpenResult> = Promise.resolve({ kind: 'open', ok: true });
     registry.setOpenInFlight('/decks/a.md', attempt);
-    // The marker is the exact promise a joiner awaits, so a second activation
-    // shares the first attempt's real verdict instead of spawning a rival.
     expect(registry.getOpenInFlight('/decks/a.md')).toBe(attempt);
-    // In-flight tracking is separate from the registered decks (a deck registers
-    // only once its server is confirmed serving, seconds after the start begins).
     expect(registry.get('/decks/a.md')).toBeUndefined();
 
     registry.clearOpenInFlight('/decks/a.md');
@@ -112,18 +101,12 @@ describe('createSlidesDeckRegistry', () => {
 
     registry.reapAll();
 
-    // App-quit teardown empties both maps, so nothing survives to be re-entered.
     expect(registry.size()).toBe(0);
     expect(registry.getOpenInFlight('/decks/b.md')).toBeUndefined();
   });
 });
 
 describe('reapAll reaches children that are spawned but not yet registered', () => {
-  // The leak this guards: `register` only runs once a server is CONFIRMED
-  // serving, and a cold Vite start takes seconds. A quit inside that window used
-  // to find nothing to signal — `decks` was empty and `opening` held only a
-  // promise, which carries no killable handle — so the `detached` child outlived
-  // the app holding its port.
   function fakeProc() {
     const signals: string[] = [];
     return {
@@ -141,7 +124,6 @@ describe('reapAll reaches children that are spawned but not yet registered', () 
     const registry = createSlidesDeckRegistry();
     const { signals, proc } = fakeProc();
     registry.trackSpawned('/proj/deck.md', proc);
-    // Never registered — this is the mid-boot state.
     expect(registry.size()).toBe(0);
 
     registry.reapAll();
@@ -153,7 +135,6 @@ describe('reapAll reaches children that are spawned but not yet registered', () 
     const registry = createSlidesDeckRegistry();
     const { signals, proc } = fakeProc();
     registry.trackSpawned('/proj/deck.md', proc);
-    // Ownership transfers to `decks` when the window opens.
     registry.register({
       docPath: '/proj/deck.md',
       port: 4300,

@@ -1,31 +1,9 @@
-/**
- * Folder-picker model for the frontmatter plugin's `appliesTo` globs. The
- * picker is a checkbox folder tree that authors the one glob shape a checkbox
- * can honestly mean — `folder/**`, everything under the folder — while leaving
- * every other authored pattern untouched, so the raw pill input stays a
- * power-user escape hatch rather than a competing source of truth.
- *
- * Checked-state derivation reuses core's `summarizeAppliesTo` classifier: a
- * pattern reads as "folder F is checked" exactly when the plain-language
- * summary would call it "everything under F/". The two surfaces can't drift —
- * whatever the summary line names as a recursive folder, the tree shows as
- * checked, and vice versa.
- */
-
 import { compileAppliesTo, summarizeAppliesTo } from '@inkeep/open-knowledge-core';
 
-/** The glob the picker authors for a folder: every doc under it, recursively. */
 export function folderRecursiveGlob(folder: string): string {
   return `${folder}/**`;
 }
 
-/**
- * The folder a single non-negated pattern selects, or null when the pattern
- * isn't a plain recursive-folder glob (`F/**`, with or without a trailing
- * `/*`). Null for negations
- * and for anything the picker shouldn't claim to own (brace sets, `*`s in the
- * folder segment, exact docs...).
- */
 export function folderOfGlob(pattern: string): string | null {
   const trimmed = pattern.trim();
   if (trimmed === '' || trimmed.startsWith('!')) return null;
@@ -35,7 +13,6 @@ export function folderOfGlob(pattern: string): string | null {
   return only !== undefined && only.kind === 'folder-recursive' ? only.folder : null;
 }
 
-/** Folders the authored glob list currently selects (recursive globs only). */
 export function selectedFolders(globs: readonly string[]): ReadonlySet<string> {
   const selected = new Set<string>();
   for (const glob of globs) {
@@ -45,12 +22,6 @@ export function selectedFolders(globs: readonly string[]): ReadonlySet<string> {
   return selected;
 }
 
-/**
- * Toggle a folder's recursive glob in the authored list. Checking appends
- * `folder/**` (a no-op when an equivalent spelling is already authored);
- * unchecking removes every pattern that selects exactly that folder and
- * nothing else — hand-authored patterns, negations included, pass through.
- */
 export function toggleFolderGlob(globs: readonly string[], folder: string, on: boolean): string[] {
   if (on) {
     if (selectedFolders(globs).has(folder)) return [...globs];
@@ -59,7 +30,6 @@ export function toggleFolderGlob(globs: readonly string[], folder: string, on: b
   return globs.filter((glob) => folderOfGlob(glob) !== folder);
 }
 
-/** True when some strict ancestor of `folder` is in the selected set. */
 export function coveredByAncestor(folder: string, selected: ReadonlySet<string>): boolean {
   let slash = folder.lastIndexOf('/');
   while (slash > 0) {
@@ -70,15 +40,9 @@ export function coveredByAncestor(folder: string, selected: ReadonlySet<string>)
 }
 
 export interface FolderTreeRow {
-  /** Content-relative folder path (`guides/api`). */
   path: string;
 }
 
-/**
- * Flatten folder paths into depth-first display rows, siblings sorted by
- * locale. Ancestors absent from the input (a server list can name `a/b`
- * without `a`) are materialized so every row hangs off a visible parent.
- */
 export function buildFolderRows(folderPaths: Iterable<string>): FolderTreeRow[] {
   const paths = new Set<string>();
   for (const raw of folderPaths) {
@@ -115,10 +79,6 @@ export function buildFolderRows(folderPaths: Iterable<string>): FolderTreeRow[] 
   return rows;
 }
 
-/**
- * Doc counts per folder, each doc counting toward every ancestor. Keys are
- * folder paths; folders holding no docs (directly or below) are absent.
- */
 export function docCountsByFolder(docNames: Iterable<string>): Map<string, number> {
   const counts = new Map<string, number>();
   for (const docName of docNames) {
@@ -132,11 +92,6 @@ export function docCountsByFolder(docNames: Iterable<string>): Map<string, numbe
   return counts;
 }
 
-/**
- * How many of the project's docs the authored pattern set matches right now.
- * The live counterpart to the server's after-the-fact zero-match warning:
- * `blog` (instead of `blog/**`) reads "0 of N" the moment it's typed.
- */
 export function countMatchingDocs(
   appliesTo: string | string[] | undefined,
   docNames: Iterable<string>,

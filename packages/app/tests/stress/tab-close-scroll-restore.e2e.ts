@@ -1,75 +1,11 @@
-/**
- * Pins the editor scroller's geometry contract: scrollable space must correspond
- * to real document content, so any offset the app restores or preserves lands the
- * viewport on content that exists in the *current* layout.
- *
- * Two production mechanisms make that contract easy to break, and both are
- * exercised here:
- *
- *   1. Every top-level block renders inside a `content-visibility: auto` wrapper
- *      whose skipped-state height is a flat estimate. A document whose blocks are
- *      much taller than that estimate collapses to a fraction of its materialized
- *      height whenever its content DOM is rebuilt — which is what returning to a
- *      document after closing a sibling tab does. An offset captured against the
- *      materialized geometry then points far past the real content.
- *
- *   2. The block drag handle (`.ok-block-controls`) is an absolutely positioned
- *      overlay inside the scroller. floating-ui parks it at the last hovered
- *      block, and it is "hidden" with `visibility: hidden` — which keeps it in
- *      layout. A handle parked against a deep block keeps stretching the
- *      scroller's `scrollHeight` after the content beneath it shrinks, so the
- *      browser never clamps `scrollTop` back onto content.
- *
- * Every assertion therefore derives "real content extent" from the `.ProseMirror`
- * element's box, never from `scrollHeight` — `scrollHeight` is exactly the
- * quantity overlay chrome pollutes, so an assertion built on it cannot see the
- * failure. Exact restored offsets are deliberately NOT asserted: estimate-driven
- * displacement is a separate, milder defect, and pinning pixel values here would
- * make this file fail for the wrong reason.
- *
- * Not covered here: the same contract is reachable by shrinking a live document
- * from the agent-write API, but a full-body `position: 'replace'` measurably
- * resets the scroller to 0 and repositions the drag handle onto the new content,
- * so that path does not strand the viewport and a test built on it would pass
- * against the broken build.
- *
- * Content presence is measured by hit-testing (`document.elementFromPoint`)
- * rather than by sweeping block rects: a `content-visibility: auto` subtree
- * reports an empty rect while skipped, and a rect sweep forces style/layout work
- * that can perturb the very geometry under test. Hits must land on a strict
- * descendant of `.ProseMirror` — a hit on `.ProseMirror` itself is inter-block
- * whitespace whose `textContent` is the whole document, which would report
- * painted content for an entirely blank band.
- *
- * Invocation (bug-specific gate):
- *   cd public/open-knowledge/packages/app && \
- *     pnpm exec playwright test tests/stress/tab-close-scroll-restore.e2e.ts \
- *       --workers=1 --retries=0
- */
-
 import type { Page } from '@playwright/test';
 import { type ApiHelpers, expect, test, waitForActiveProviderSynced } from './_helpers';
 
-/**
- * Height of the absolute EditorToolbar overlapping the top of the scrollport
- * (`pt-14` on the scroll container). Content behind it is on screen but not
- * readable, so both the paint probes and the "viewport top" scroll coordinate
- * step in past it.
- */
 const TOOLBAR_INSET_PX = 56;
 
-/** Evenly spaced vertical hit tests across the readable band. */
 const PAINT_PROBE_COUNT = 10;
 
-/**
- * Slack allowed above the document's own bottom padding before extra scrollable
- * space counts as phantom. Legitimate late layout drift is tens of pixels; the
- * overlay-manufactured runway this file guards against is thousands, so the gap
- * is wide enough that no realistic padding change turns the assertion brittle.
- */
 const PHANTOM_RUNWAY_TOLERANCE_PX = 64;
-
-// --- fixture ---------------------------------------------------------------
 
 const FILLER_WORDS = [
   'lorem',
@@ -89,12 +25,6 @@ const FILLER_WORDS = [
   'nostrud',
 ] as const;
 
-/**
- * Words per block. ~220 renders each paragraph several hundred pixels tall at the
- * 1280x720 test viewport — several times the flat skipped-state estimate, which is
- * the precondition for the geometry collapse this file exercises. A fixture of
- * near-estimate-height blocks (tables, one-liners) does NOT reproduce it.
- */
 const WORDS_PER_BLOCK = 220;
 const SECTION_COUNT = 12;
 const BLOCKS_PER_SECTION = 8;
@@ -111,14 +41,6 @@ function fillerFor(index: number): string {
   return words.join(' ');
 }
 
-/**
- * Tall-block document. Every body paragraph carries a wiki link to `linkTo`, so a
- * deep scroll always leaves at least one chip inside the readable band — the
- * scenario asserts that as a precondition rather than falling back to a synthetic
- * navigation, which would skip the user's actual journey. `bottomMarker` is
- * per-document so a readiness gate can never match a different document that
- * happens to share this fixture's shape.
- */
 function buildTallBlockDoc({
   linkTo,
   bottomMarker,
@@ -139,31 +61,18 @@ function buildTallBlockDoc({
   return lines.join('\n');
 }
 
-// --- measurement -----------------------------------------------------------
-
 interface ScrollportGeometry {
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
-  /** Top of the real document content, in the scroller's scroll coordinates. */
   contentTop: number;
-  /** Bottom of the real document content, in the scroller's scroll coordinates. */
   contentBottom: number;
-  /** Top edge of the readable band, in scroll coordinates. */
   viewportTop: number;
-  /** Hit tests across the readable band that landed on painted document text. */
   paintedProbes: number;
   probeCount: number;
-  /** The block drag-handle overlay, when one is mounted in this scroller. */
   blockControls: { top: number; bottom: number; visibility: string } | null;
 }
 
-/**
- * Read the painted editor scrollport's geometry. The painted container is chosen
- * by layout box rather than first match: a hidden `<Activity>` entry keeps its
- * scroll container in the DOM, so several can coexist and only the painted one is
- * the active scrollport.
- */
 async function readScrollportGeometry(page: Page): Promise<ScrollportGeometry> {
   const geometry = await page.evaluate(
     ({ toolbarPx, probeCount }) => {
@@ -237,12 +146,6 @@ function describeGeometry(label: string, geometry: ScrollportGeometry): string {
   return `${label}: scrollTop=${geometry.scrollTop} scrollHeight=${geometry.scrollHeight} clientHeight=${geometry.clientHeight} content=[${geometry.contentTop}, ${geometry.contentBottom}] viewportTop=${geometry.viewportTop} painted=${geometry.paintedProbes}/${geometry.probeCount} blockControls=${JSON.stringify(geometry.blockControls)}`;
 }
 
-/**
- * Wait until the painted editor's text contains `needle`. Reads `textContent`
- * rather than asserting visibility because a `content-visibility: auto` subtree
- * scrolled out of view reports an empty box — a visibility gate would time out on
- * exactly the stranded state under test and mask the real assertion.
- */
 async function waitForPaintedDocText(page: Page, needle: string, timeout = 30_000): Promise<void> {
   await expect
     .poll(
@@ -262,14 +165,6 @@ async function waitForPaintedDocText(page: Page, needle: string, timeout = 30_00
     .toBe(true);
 }
 
-/**
- * Let the renderer advance `frames` animation frames. The restore loop under
- * test schedules its writes on requestAnimationFrame, so frames — not
- * wall-clock sleeps, which the E2E STOP rules ban — are the honest unit for
- * "give the app time to process what just happened": counting frames
- * guarantees the loop actually had turns, where a sleep only guarantees time
- * passed.
- */
 async function awaitAnimationFrames(page: Page, frames: number): Promise<void> {
   await page.evaluate(
     (n) =>
@@ -289,16 +184,6 @@ async function awaitAnimationFrames(page: Page, frames: number): Promise<void> {
   );
 }
 
-/**
- * Resolve once `scrollTop` holds still for `quietMs`, or `timeoutMs` elapses.
- * Assertions run against a settled scroller so a transient pre-restore frame
- * (which briefly shows content before the restore writes its target) can never
- * be mistaken for a healthy landing. `timeoutMs` stays well below the restore
- * loop's wall-clock backstop: the contract is that the restore lands on content,
- * not that abandoning it eventually does. The quiet-period detection runs
- * in-page on requestAnimationFrame — the same scheduler the restore loop writes
- * from — so "no movement for quietMs" is measured frame-accurately.
- */
 async function waitForScrollSettled(
   page: Page,
   { quietMs = 700, timeoutMs = 4_000 }: { quietMs?: number; timeoutMs?: number } = {},
@@ -337,16 +222,11 @@ async function waitForScrollSettled(
   );
 }
 
-/** Wheel-scroll deep into the document, then back off the very bottom. */
 async function scrollDeep(page: Page, { down = 30, up = 4 } = {}): Promise<void> {
   for (let i = 0; i < down; i++) {
     await page.mouse.wheel(0, 900);
-    // A few frames per tick lets layout + the scroll listener process each
-    // wheel event before the next lands (the save path records per event).
     await awaitAnimationFrames(page, 4);
   }
-  // Backing off the last screens keeps "it merely stayed pinned at the maximum"
-  // from being an alternative explanation for any end-of-document result.
   for (let i = 0; i < up; i++) {
     await page.mouse.wheel(0, -900);
     await awaitAnimationFrames(page, 4);
@@ -354,20 +234,11 @@ async function scrollDeep(page: Page, { down = 30, up = 4 } = {}): Promise<void>
   await waitForScrollSettled(page);
 }
 
-/**
- * Move the pointer over the block under the middle of the readable band so the
- * drag handle is positioned against deep content, and assert the affordance
- * actually mounted. Without that check a fixture or hover-path change would
- * silently disarm the overlay half of the scenario and leave the test passing on
- * a still-broken build.
- */
 async function hoverDeepBlock(page: Page): Promise<void> {
   const box = await page.getByTestId('editor-scroll-container').first().boundingBox();
   if (!box) throw new Error('editor scroll container has no layout box');
   const x = box.x + box.width / 2;
   const y = box.y + TOOLBAR_INSET_PX + (box.height - TOOLBAR_INSET_PX) / 2;
-  // Two moves: the drag-handle plugin positions off pointer movement, so a single
-  // move landing on the same coordinate the wheel left the pointer at is a no-op.
   await page.mouse.move(x, y - 40);
   await page.mouse.move(x, y);
 
@@ -400,14 +271,6 @@ async function openFromSidebar(page: Page, filename: string): Promise<void> {
   await row.click();
 }
 
-/**
- * Index of the first wiki-link chip sitting wholly inside the readable band, or
- * -1. Chips inside a skipped `content-visibility: auto` chunk report an empty
- * rect, so a zero-area rect is treated as "not in the band" rather than as a
- * position. Measured against the scroller's own rect, not the window viewport:
- * the scrollport sits below the tab strip, so window coordinates would clip the
- * wrong band.
- */
 async function findWikiLinkInBand(page: Page): Promise<{ total: number; index: number }> {
   return page.evaluate((toolbarPx) => {
     const scroller = Array.from(
@@ -431,13 +294,6 @@ async function findWikiLinkInBand(page: Page): Promise<{ total: number; index: n
   }, TOOLBAR_INSET_PX);
 }
 
-/**
- * Nudge the scroller until a wiki link the user could actually see is in the
- * readable band, and return its index. Nudging is bounded and small (well under
- * one block height) so the document stays deep-scrolled; navigating some other
- * way would move the source document's scroll position and stop reproducing the
- * journey under test.
- */
 async function scrollUntilWikiLinkInBand(page: Page): Promise<number> {
   let found = await findWikiLinkInBand(page);
   for (let nudge = 0; nudge < 10 && found.index < 0; nudge++) {
@@ -452,12 +308,6 @@ async function scrollUntilWikiLinkInBand(page: Page): Promise<number> {
   return found.index;
 }
 
-/**
- * Assert the readable viewport intersects real document content: text is painted
- * in the band, and the band's top edge sits at or above the content's bottom in
- * scroll coordinates. Both are read from the `.ProseMirror` box, never from
- * `scrollHeight`.
- */
 function expectViewportOnContent(geometry: ScrollportGeometry, label: string): void {
   expect(
     geometry.viewportTop,
@@ -469,11 +319,6 @@ function expectViewportOnContent(geometry: ScrollportGeometry, label: string): v
   ).toBeGreaterThan(0);
 }
 
-/**
- * Drive the reported journey once and hand back the three geometries the
- * contracts are read from: the freshly opened document, the deep-scrolled
- * position the user navigates away from, and the position they return to.
- */
 async function runTabCloseReturnScenario(
   page: Page,
   api: ApiHelpers,
@@ -496,18 +341,11 @@ async function runTabCloseReturnScenario(
   await waitForPaintedDocText(page, bottomMarker);
   await waitForScrollSettled(page);
 
-  // Read the freshly opened geometry before anything parks the drag handle:
-  // whatever scrollable space sits past the content bottom here is the
-  // document's own bottom padding, which makes the phantom-runway bound
-  // self-calibrating against padding changes.
   const cold = await readScrollportGeometry(page);
   console.log(describeGeometry('cold-open', cold));
 
   await page.getByTestId('editor-scroll-container').first().hover();
   await scrollDeep(page);
-  // Settle on a position where a link is reachable BEFORE parking the drag
-  // handle, so the recorded pre-navigation geometry is the position the user
-  // actually navigates away from.
   const chipIndex = await scrollUntilWikiLinkInBand(page);
   await hoverDeepBlock(page);
 
@@ -546,11 +384,6 @@ test.describe('editor scroll geometry tracks real document content', () => {
 
     expectViewportOnContent(afterReturn, 'after-return');
 
-    // The restore loop re-applies its target for several seconds; a landing that
-    // is only briefly correct is still the bug, so re-check once the loop has had
-    // time to move the viewport again. 90 animation frames (~1.5s at 60fps) is
-    // the frame-accurate form: the loop's re-apply writes are rAF-scheduled, so
-    // counting frames guarantees it had that many turns.
     await awaitAnimationFrames(page, 90);
     const settled = await readScrollportGeometry(page);
     console.log(describeGeometry('after-return+1.5s', settled));
@@ -568,9 +401,6 @@ test.describe('editor scroll geometry tracks real document content', () => {
     });
 
     const baselineOverhang = Math.max(0, cold.scrollHeight - cold.contentBottom);
-    // Scrollable space may legitimately reach the scrollport's own height even
-    // for a document shorter than one screen; past that, only the document's own
-    // bottom padding is allowed.
     const allowedScrollHeight =
       Math.max(afterReturn.clientHeight, afterReturn.contentBottom + baselineOverhang) +
       PHANTOM_RUNWAY_TOLERANCE_PX;

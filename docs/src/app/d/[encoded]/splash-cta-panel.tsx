@@ -13,18 +13,6 @@ interface SplashCtaPanelProps {
   cloneCommand: string;
 }
 
-/**
- * Progressive-enhancement wrapper around the CTA cluster. The desktop app
- * ships on macOS, Windows, and Linux, so every OS renders the same cluster
- * (deep link + segmented Download button whose panel carries the explicit
- * builds, the CLI commands, and GitHub). The SSR floor is the bare download
- * route (the mac DMG — the historical default); after hydration we classify
- * the OS and keep Windows/Linux on the share-carrying route without guessing
- * until the recipient explicitly chooses a build from the adjacent caret.
- *
- * No-JS / pre-hydration: stays on the SSR floor; the server-rendered Download
- * <a> and GitHub links work without JS (only the panel is JS-gated).
- */
 export function SplashCtaPanel({
   downloadUrl,
   customSchemeUrl,
@@ -51,11 +39,6 @@ export function SplashCtaPanel({
   );
 }
 
-/**
- * Windows/Linux request the picker through the share-carrying route, preserving
- * its pending-share cookie without choosing an architecture. Unknown keeps the
- * working no-JS macOS floor.
- */
 export function splashPrimaryDownloadUrl(downloadUrl: string, os: DetectedOs): string {
   return os === 'windows' || os === 'linux'
     ? `${downloadUrl}?picker=1`

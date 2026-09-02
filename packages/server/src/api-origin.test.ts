@@ -13,19 +13,11 @@ describe('API origin guards', () => {
   });
 
   test('allows the file: origin serialization Chromium WebSockets send from loadFile pages', () => {
-    // fetch/XHR from a file: page send `Origin: null`; the WS handshake from
-    // the same page sends `Origin: file://`. Both must pass or the packaged
-    // desktop renderer's `/collab/thread` upgrade is destroyed while all its
-    // HTTP calls succeed.
     expect(isAllowedApiOrigin('file://')).toBe(true);
-    // Only the bare serialization — a file URL with a host is not a page origin.
     expect(isAllowedApiOrigin('file://evil.example')).toBe(false);
   });
 });
 
-// Tunnel/public origins are an ingress-policy concern now — `isOriginAdmitted`
-// admits the declared `server.externalUrl` origin (see ingress-policy.test.ts);
-// this helper stays loopback-only.
 describe('isAllowedApiOrigin stays loopback-only', () => {
   test('refuses a tunnel origin — externalUrl admission lives in the ingress policy', () => {
     expect(isAllowedApiOrigin('https://myproject.ngrok.app')).toBe(false);

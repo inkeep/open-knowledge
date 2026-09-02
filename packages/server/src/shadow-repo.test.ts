@@ -52,7 +52,6 @@ describe('initShadowRepo', () => {
     const projectRoot = resolve(tmpDir, 'project');
     mkdirSync(projectRoot, { recursive: true });
 
-    // Init a real git repo
     const git = simpleGit(projectRoot);
     await git.init();
     await git.raw('config', 'user.name', 'Test');
@@ -64,7 +63,6 @@ describe('initShadowRepo', () => {
     expect(shadow.workTree).toBe(projectRoot);
     expect(existsSync(resolve(shadow.gitDir, 'HEAD'))).toBe(true);
 
-    // Verify config
     const sg = simpleGit().env({ GIT_DIR: shadow.gitDir });
     const worktree = (await sg.raw('config', 'core.worktree')).trim();
     expect(worktree).toBe(projectRoot);
@@ -83,10 +81,6 @@ describe('initShadowRepo', () => {
     await git.raw('config', 'user.email', 'test@test.com');
 
     await initShadowRepo(projectRoot);
-
-    // We do NOT add entries to .gitignore in single-mode — the shadow bare repo
-    // lives inside .git/ which is already gitignored by git itself.
-    // (Just verify initShadowRepo doesn't throw — no assertion on gitignore contents.)
   });
 
   test('is idempotent — second call does not error', async () => {
@@ -109,7 +103,6 @@ describe('initShadowRepo', () => {
     const projectRoot = resolve(tmpDir, 'legacy');
     mkdirSync(projectRoot, { recursive: true });
 
-    // Seed a legacy integrated-mode shadow at .git/openknowledge/
     const git = simpleGit(projectRoot);
     await git.init();
     await git.raw('config', 'user.name', 'Test');
@@ -121,7 +114,6 @@ describe('initShadowRepo', () => {
     const sg = simpleGit({ timeout: { block: 30_000 } }).env({ GIT_DIR: legacyDir });
     await sg.raw('config', '--unset', 'core.bare');
     await sg.raw('config', 'core.worktree', projectRoot);
-    // Leave a sentinel so we can assert the rename carried all content intact
     writeFileSync(resolve(legacyDir, 'SENTINEL'), 'migrated');
 
     const shadow = await initShadowRepo(projectRoot);
@@ -141,7 +133,6 @@ describe('initShadowRepo', () => {
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
-    // Seed BOTH locations so the shim hits the defensive branch
     const legacyDir = resolve(projectRoot, '.git/openknowledge');
     const newDir = resolve(projectRoot, '.git/ok');
     mkdirSync(legacyDir, { recursive: true });
@@ -153,11 +144,9 @@ describe('initShadowRepo', () => {
     try {
       await initShadowRepo(projectRoot);
 
-      // Neither dir was removed
       expect(existsSync(resolve(legacyDir, 'LEGACY_SENTINEL'))).toBe(true);
       expect(existsSync(resolve(newDir, 'NEW_SENTINEL'))).toBe(true);
 
-      // Warning was emitted
       const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
       expect(warnings.some((w) => w.includes('[shadow-repo] unexpected legacy + new shadow'))).toBe(
         true,
@@ -207,7 +196,6 @@ describe('buildWipTree persistent fan-out index', () => {
     writeFileSync(resolve(contentDir, 'a.md'), '# A v1\n');
     writeFileSync(resolve(contentDir, 'b.md'), '# B v1\n');
     const tree1 = await buildWipTree(shadow, 'content');
-    // Index survives the call — this is the reuse the stat cache depends on.
     expect(existsSync(resolve(shadow.gitDir, 'index-wip-fanout'))).toBe(true);
 
     writeFileSync(resolve(contentDir, 'a.md'), '# A v2\n');
@@ -229,7 +217,6 @@ describe('buildWipTree persistent fan-out index', () => {
     writeFileSync(resolve(contentDir, 'a.md'), '# A v2\n');
     const warmTree = await buildWipTree(shadow, 'content');
 
-    // Fresh-index reference build of the same working tree state.
     rmSync(resolve(shadow.gitDir, 'index-wip-fanout'));
     const freshTree = await buildWipTree(shadow, 'content');
     expect(warmTree).toBe(freshTree);
@@ -249,7 +236,6 @@ describe('buildWipTree persistent fan-out index', () => {
     } finally {
       warnSpy.mockRestore();
     }
-    // Corrupt cache was dropped so the next cycle starts clean.
     expect(existsSync(resolve(shadow.gitDir, 'index-wip-fanout'))).toBe(false);
   });
 
@@ -278,7 +264,6 @@ describe('buildWipTree persistent fan-out index', () => {
     mkdirSync(orphanParkDir, { recursive: true });
     writeFileSync(resolve(orphanParkDir, '0-state'), '# orphaned park blob\n');
 
-    // Re-init on the same project runs the sweep again.
     const reinit = await initShadowRepo(projectRoot);
     expect(existsSync(resolve(reinit.gitDir, 'index-wip-fanout-deadbeef'))).toBe(false);
     expect(existsSync(resolve(reinit.gitDir, 'index-wip-fanout.lock'))).toBe(false);
@@ -319,12 +304,10 @@ describe('commitWip', () => {
 
     expect(sha).toHaveLength(40);
 
-    // Verify ref exists (default branch = 'main')
     const sg = shadowGit(shadow);
     const refSha = (await sg.raw('rev-parse', `refs/wip/main/${writer.id}`)).trim();
     expect(refSha).toBe(sha);
 
-    // Verify commit message
     const msg = (await sg.raw('log', '-1', '--format=%s', sha)).trim();
     expect(msg).toBe('WIP: intro');
   });
@@ -340,7 +323,6 @@ describe('commitWip', () => {
     expect(authorName).toBe(writer.name);
     expect(authorEmail).toBe(writer.email);
 
-    // Committer is always openknowledge
     const committerName = (await sg.raw('log', '-1', '--format=%cn', sha)).trim();
     expect(committerName).toBe('openknowledge');
   });
@@ -360,11 +342,6 @@ describe('commitWip', () => {
   });
 
   test('CONCURRENT same-writer commits serialize: linear chain, no stale tree (P0 pin)', async () => {
-    // Without per-writer serialization the two flushes share the fixed-path
-    // index file `index-wip-<writer.id>`: the second's read-tree reseeds it
-    // from the old ref between the first's add and write-tree, committing a
-    // STALE tree (fresh files missing, old entries resurrected) and both
-    // commits claim the same parent (lost update).
     writeFileSync(resolve(contentDir, 'a.md'), '# A\n');
     const base = await commitWip(shadow, writer, 'content/docs', 'WIP: base');
 
@@ -376,11 +353,9 @@ describe('commitWip', () => {
     ]);
 
     const sg = shadowGit(shadow);
-    // Linear chain off base — the two flushes must not share a parent.
     const p1 = (await sg.raw('log', '-1', '--format=%P', s1)).trim();
     const p2 = (await sg.raw('log', '-1', '--format=%P', s2)).trim();
     expect([p1, p2].sort()).toEqual([base, s1].sort());
-    // The ref's final tree holds EVERY file — nothing dropped by a reseed.
     const files = (await sg.raw('ls-tree', '-r', '--name-only', `refs/wip/main/${writer.id}`))
       .trim()
       .split('\n')
@@ -458,7 +433,6 @@ describe('commitUpstreamImport', () => {
 
     expect(sha).toHaveLength(40);
 
-    // Default branch = 'main' — writer ID is now 'git-upstream'
     const sg = shadowGit(shadow);
     const refSha = (await sg.raw('rev-parse', 'refs/wip/main/git-upstream')).trim();
     expect(refSha).toBe(sha);
@@ -585,20 +559,16 @@ describe('parkBranch', () => {
     expect(sha).toHaveLength(40);
     if (!sha) throw new Error('parkBranch returned null');
 
-    // Verify commit subject uses formatParkSubject
     const sg = shadowGit(shadow);
     const msg = (await sg.raw('log', '-1', '--format=%s', sha)).trim();
     expect(msg).toBe('park: main -> feature');
 
-    // Verify ref uses writer ID directly (no human- prefix)
     const refSha = (await sg.raw('rev-parse', `refs/wip/main/${SERVICE_WRITER.id}`)).trim();
     expect(refSha).toBe(sha);
 
-    // Verify Y.Doc state blob
     const content = (await sg.raw('show', `${sha}:intro`)).trim();
     expect(content).toBe('# Hello World\n\nEdited content');
 
-    // Verify disk snapshot blob
     const base = (await sg.raw('show', `${sha}:.park-base/intro`)).trim();
     expect(base).toBe('# Hello');
   });
@@ -658,8 +628,6 @@ describe('parkBranch', () => {
   });
 
   test('parks enough documents to span multiple hash/stage batches', async () => {
-    // 120 docs → 240 blobs/index entries, crossing the 200-entry chunk
-    // boundary so both the multi-chunk hash-object and update-index legs run.
     const docs: ParkableDoc[] = Array.from({ length: 120 }, (_, i) => ({
       docName: `notes/doc-${i}`,
       markdown: `# Doc ${i} memory\n`,
@@ -670,7 +638,6 @@ describe('parkBranch', () => {
     expect(sha).toHaveLength(40);
 
     const sg = shadowGit(shadow);
-    // Spot-check first, chunk-straddling, and last entries on both tree sides.
     for (const i of [0, 99, 100, 119]) {
       const content = (await sg.raw('show', `${sha}:notes/doc-${i}`)).trim();
       expect(content).toBe(`# Doc ${i} memory`);
@@ -680,7 +647,6 @@ describe('parkBranch', () => {
   });
 
   test('isPairedWriteOrigin(PARK_SNAPSHOT_ORIGIN) returns true (US-017)', () => {
-    // Import from standalone — verify paired: true is recognized
     const origin = {
       source: 'local' as const,
       skipStoreHooks: false,
@@ -719,7 +685,6 @@ describe('saveVersion', () => {
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
-    // Initial commit so HEAD exists
     writeFileSync(resolve(contentDir, 'intro.md'), '# Hello\n');
     await git.add('.');
     await git.commit('Initial commit');
@@ -736,7 +701,6 @@ describe('saveVersion', () => {
     expect(checkpointSha).toHaveLength(40);
     expect(result.checkpointRef).toBe(`refs/checkpoints/main/${checkpointSha}`);
 
-    // Checkpoint tree contains the content
     const tree = (await sg.raw('ls-tree', '-r', '--name-only', result.checkpointRef)).trim();
     expect(tree).toContain('content/docs/intro.md');
   });
@@ -745,14 +709,12 @@ describe('saveVersion', () => {
     writeFileSync(resolve(contentDir, 'intro.md'), '# WIP content\n');
     await commitWip(shadow, human, 'content/docs', 'WIP: edit');
 
-    // Verify WIP ref exists
     const sg = shadowGit(shadow);
     const wipBefore = (await sg.raw('rev-parse', 'refs/wip/main/human-ada')).trim();
     expect(wipBefore).toHaveLength(40);
 
     await saveVersion(shadow, 'content/docs', [human]);
 
-    // WIP ref should be deleted (branch-scoped)
     let wipExists = true;
     try {
       await sg.raw('rev-parse', 'refs/wip/main/human-ada');
@@ -763,7 +725,6 @@ describe('saveVersion', () => {
   });
 
   test('multi-parent checkpoint preserves all writer chains', async () => {
-    // Both writers make WIP commits
     writeFileSync(resolve(contentDir, 'intro.md'), '# Human edit\n');
     const humanWipSha = await commitWip(shadow, human, 'content/docs', 'WIP: human edit');
 
@@ -774,14 +735,12 @@ describe('saveVersion', () => {
 
     const sg = shadowGit(shadow);
 
-    // Checkpoint commit should list both WIP SHAs as parents
     const parentLine = (await sg.raw('log', '-1', '--format=%P', result.checkpointRef)).trim();
     const parents = parentLine.split(' ').filter(Boolean);
     expect(parents).toContain(humanWipSha);
     expect(parents).toContain(agentWipSha);
     expect(parents.length).toBe(2);
 
-    // --full-history from the checkpoint reaches both writer commits
     const authorEmails = (
       await sg.raw(
         'log',
@@ -806,11 +765,9 @@ describe('saveVersion', () => {
     const sg = shadowGit(shadow);
     const body = (await sg.raw('log', '-1', '--format=%B', result.checkpointRef)).trim();
 
-    // Subject uses checkpoint: prefix
     const subject = (await sg.raw('log', '-1', '--format=%s', result.checkpointRef)).trim();
     expect(subject).toBe('checkpoint: Checkpoint version');
 
-    // Body carries ok-actor: line
     const actor = parseOkActor(body);
     expect(actor).not.toBeNull();
     expect(actor?.v).toBe(1);
@@ -818,7 +775,6 @@ describe('saveVersion', () => {
   });
 
   test('checkpoint falls back to latest checkpoint when no WIP activity', async () => {
-    // First save version (creates first checkpoint)
     writeFileSync(resolve(contentDir, 'intro.md'), '# v1\n');
     await commitWip(shadow, human, 'content/docs', 'WIP: v1');
     const result1 = await saveVersion(shadow, 'content/docs', [human]);
@@ -826,18 +782,13 @@ describe('saveVersion', () => {
     const sg = shadowGit(shadow);
     const checkpoint1Sha = (await sg.raw('rev-parse', result1.checkpointRef)).trim();
 
-    // Second save version with NO WIP activity since last checkpoint
     writeFileSync(resolve(contentDir, 'intro.md'), '# v2 (direct write, no WIP commit)\n');
     const result2 = await saveVersion(shadow, 'content/docs', [human]);
 
-    // The second checkpoint should parent on the first checkpoint commit
     const parentLine = (await sg.raw('log', '-1', '--format=%P', result2.checkpointRef)).trim();
     const parents = parentLine.split(' ').filter(Boolean);
     expect(parents).toContain(checkpoint1Sha);
   });
-
-  // ─── spine: chaining, per-invocation index, feature branch
-  //     typed auto-consolidation kind ───────────────────────────────
 
   test('D21: every checkpoint adopts the latest prior checkpoint as a parent (even with WIP activity)', async () => {
     writeFileSync(resolve(contentDir, 'intro.md'), '# v1\n');
@@ -846,8 +797,6 @@ describe('saveVersion', () => {
     const sg = shadowGit(shadow);
     const checkpoint1Sha = (await sg.raw('rev-parse', result1.checkpointRef)).trim();
 
-    // Second checkpoint WITH WIP activity — the prior fallback only chained when
-    // there was none. chains unconditionally.
     writeFileSync(resolve(contentDir, 'intro.md'), '# v2\n');
     const wip2 = await commitWip(shadow, human, 'content/docs', 'WIP: v2');
     const result2 = await saveVersion(shadow, 'content/docs', [human]);
@@ -856,9 +805,8 @@ describe('saveVersion', () => {
       .trim()
       .split(' ')
       .filter(Boolean);
-    expect(parents).toContain(wip2); // WIP tip is still a parent
-    expect(parents).toContain(checkpoint1Sha); // AND the prior checkpoint is chained
-    // The full walk from the newest checkpoint reaches the first checkpoint.
+    expect(parents).toContain(wip2);
+    expect(parents).toContain(checkpoint1Sha);
     const reachable = (await sg.raw('rev-list', result2.checkpointRef)).trim().split('\n');
     expect(reachable).toContain(checkpoint1Sha);
   });
@@ -872,7 +820,6 @@ describe('saveVersion', () => {
     const result = await saveVersion(shadow, 'content/docs', [human], 'feature-x');
     expect(result.checkpointRef).toContain('refs/checkpoints/feature-x/');
 
-    // The feature-branch WIP ref is reset; main is untouched.
     let featureWipGone = false;
     try {
       await sg.raw('rev-parse', 'refs/wip/feature-x/human-ada');
@@ -888,8 +835,6 @@ describe('saveVersion', () => {
     writeFileSync(resolve(contentDir, 'intro.md'), '# agent\n');
     await commitWip(shadow, agent, 'content/docs', 'WIP: agent');
 
-    // Two saveVersion calls in flight at once. With the old fixed index-checkpoint
-    // file they corrupt each other; with per-invocation indexes both succeed.
     const [r1, r2] = await Promise.all([
       saveVersion(shadow, 'content/docs', [human]),
       saveVersion(shadow, 'content/docs', [agent]),
@@ -905,32 +850,23 @@ describe('saveVersion', () => {
   });
 
   test('resetFoldedWipRefs skips a ref advanced past the snapshot, deletes a matching one', async () => {
-    // Deterministic proof of the compare-and-delete guard saveVersion's reset
-    // relies on. A writer whose ref advanced AFTER the checkpoint snapshot keeps
-    // its new commit (not orphaned); an unchanged ref is deleted. Without the
-    // per-ref `expected`-SHA compare, BOTH would be deleted and the advanced
-    // writer's v2 commit would be orphaned — so this discriminates the guard.
     writeFileSync(resolve(contentDir, 'intro.md'), '# agent v1\n');
     const agentV1 = await commitWip(shadow, agent, 'content/docs', 'WIP: agent v1');
     writeFileSync(resolve(contentDir, 'intro.md'), '# human stable\n');
     const humanSha = await commitWip(shadow, human, 'content/docs', 'WIP: human stable');
 
-    // The checkpoint snapshot captured both writers at these SHAs.
     const snapshot = new Map([
       [agent.id, agentV1],
       [human.id, humanSha],
     ]);
 
-    // The agent ref advances AFTER the snapshot (a concurrent writer).
     writeFileSync(resolve(contentDir, 'intro.md'), '# agent v2\n');
     const agentV2 = await commitWip(shadow, agent, 'content/docs', 'WIP: agent v2');
 
     const sg = shadowGit(shadow);
     await resetFoldedWipRefs(sg, 'main', [agent, human], snapshot);
 
-    // Agent ref moved past the snapshot → skipped; survives at v2 (not orphaned).
     expect((await sg.raw('rev-parse', `refs/wip/main/${agent.id}`)).trim()).toBe(agentV2);
-    // Human ref unchanged since the snapshot → deleted.
     let humanGone = false;
     try {
       await sg.raw('rev-parse', `refs/wip/main/${human.id}`);
@@ -941,10 +877,6 @@ describe('saveVersion', () => {
   });
 
   test('includeUpstream:false does not fold or reset the git-upstream chain', async () => {
-    // The empty-body Save Version path enumerates upstream itself, so it passes
-    // includeUpstream:false to avoid a double-fold. Assert the differential:
-    // with the flag, the git-upstream WIP ref is neither a checkpoint parent nor
-    // reset (default behavior folds it — covered by other saveVersion tests).
     writeFileSync(resolve(contentDir, 'intro.md'), '# agent\n');
     const agentSha = await commitWip(shadow, agent, 'content/docs', 'WIP: agent');
     writeFileSync(resolve(contentDir, 'intro.md'), '# upstream import\n');
@@ -966,7 +898,6 @@ describe('saveVersion', () => {
       .filter(Boolean);
     expect(parents).toContain(agentSha);
     expect(parents).not.toContain(upstreamSha);
-    // The upstream WIP ref is left intact (not reset by this fold).
     expect((await sg.raw('rev-parse', `refs/wip/main/${GIT_UPSTREAM_WRITER.id}`)).trim()).toBe(
       upstreamSha,
     );
@@ -995,7 +926,7 @@ describe('saveVersion', () => {
     const result = await saveVersion(shadow, 'content/docs', [human]);
     const sg = shadowGit(shadow);
     const body = (await sg.raw('log', '-1', '--format=%B', result.checkpointRef)).trim();
-    expect(parseCheckpoint(body)).toBe(null); // untyped = permanent
+    expect(parseCheckpoint(body)).toBe(null);
   });
 });
 
@@ -1015,10 +946,6 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
   });
 
   test('round-trips a bridge-merge-loss checkpoint — ref exists, parseCheckpoint recovers metadata', async () => {
-    // Production callers pass the extension-LESS Hocuspocus docName (what flows
-    // through the CRDT layer), so the blob lands at the extension-less tree path
-    // `content/docs/intro` — not `content/docs/intro.md`. The restore floor
-    // resolves that shape.
     const params: InMemoryCheckpointParams = {
       kind: 'bridge-merge-loss',
       docName: 'intro',
@@ -1030,12 +957,10 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
 
     const sha = await saveInMemoryCheckpoint(shadow, 'content/docs', params);
 
-    // Ref was created and points at the returned sha
     const sg = shadowGit(shadow);
     const refSha = (await sg.raw('rev-parse', `refs/checkpoints/main/${sha}`)).trim();
     expect(refSha).toBe(sha);
 
-    // Commit body contains the label + ok-checkpoint-v1 line
     const body = (await sg.raw('log', '-1', '--format=%B', sha)).trim();
     expect(body).toContain('checkpoint: Before concurrent merge @ 2026-04-17T08:00:00Z');
     const parsed = parseCheckpoint(body);
@@ -1043,13 +968,10 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
     if (parsed?.kind !== 'bridge-merge-loss') throw new Error('expected bridge-merge-loss kind');
     expect(parsed.metadata.lostSubstrings).toEqual(['user keystroke', 'another lost phrase']);
 
-    // Contents blob is stored at the extension-less path content/docs/intro
     const tree = (await sg.raw('ls-tree', '-r', sha)).trim();
     expect(tree).toContain('content/docs/intro');
     expect(tree).not.toContain('content/docs/intro.md');
 
-    // docName + size are inlined in
-    // the metadata so the rescue read path doesn't need ls-tree per commit.
     if (parsed.kind !== 'bridge-merge-loss') throw new Error('narrow');
     expect(parsed.docName).toBe('intro');
     expect(parsed.size).toBe(Buffer.byteLength('# Pre-merge baseline\n', 'utf-8'));
@@ -1154,7 +1076,6 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
   });
 
   test('does NOT touch refs/wip/* — distinct from saveVersion', async () => {
-    // Create a WIP ref first via commitWip
     const writer: WriterIdentity = {
       id: 'human-ada',
       name: 'Ada',
@@ -1176,7 +1097,7 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
     });
 
     const wipShaAfter = (await sg.raw('rev-parse', 'refs/wip/main/human-ada')).trim();
-    expect(wipShaAfter).toBe(wipShaBefore); // unchanged
+    expect(wipShaAfter).toBe(wipShaBefore);
   });
 
   test('concurrent invocations on the same shadow produce distinct refs (Q8)', async () => {
@@ -1202,7 +1123,6 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
   });
 
   test('parseContributors tolerates sibling ok-checkpoint-v1 body lines (Q7)', async () => {
-    // Synthesize a body with BOTH ok-contributors: and ok-checkpoint-v1: lines
     const body = [
       'checkpoint: Before concurrent merge @ t',
       '',
@@ -1210,13 +1130,11 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
       'ok-checkpoint-v1: {"kind":"bridge-merge-loss","docName":"intro.md","size":16,"metadata":{"lostSubstrings":["x"]}}',
     ].join('\n');
 
-    // parseContributors must still pick up Alice
     const { parseContributors } = await import('@inkeep/open-knowledge-core/shadow-repo-layout');
     const contributors = parseContributors(body);
     expect(contributors).toHaveLength(1);
     expect(contributors[0]?.id).toBe('human-a');
 
-    // parseCheckpoint picks up the sibling line
     const checkpoint = parseCheckpoint(body);
     expect(checkpoint?.kind).toBe('bridge-merge-loss');
   });
@@ -1239,9 +1157,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
   test('keeps only the most-recent N bridge-merge-loss refs per branch', async () => {
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
-    // Distinct seconds per write: retention keeps a whole same-second group
-    // rather than choosing a victim it cannot order, so a count assertion needs
-    // an unambiguous recency order.
     for (let i = 0; i < 7; i++) {
       await saveInMemoryCheckpoint(shadow, 'content/docs', {
         kind: 'bridge-merge-loss',
@@ -1259,11 +1174,11 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
-      ttlMs: 0, // disable TTL; only count-based cap applies
+      ttlMs: 0,
     });
 
     expect(result.scanned).toBe(7);
-    expect(result.deletedBridgeMergeLoss).toBe(4); // 7 - 3 kept
+    expect(result.deletedBridgeMergeLoss).toBe(4);
     expect(result.deletedExternalChangeRescue).toBe(0);
 
     const sg = shadowGit(shadow);
@@ -1277,12 +1192,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
   });
 
   test('keeps only the most-recent N producer-guard-loss refs per branch', async () => {
-    // The producer-guard kind has its own retention budget
-    // (maxProducerGuardLoss), independent of maxBridgeMergeLoss — a stuck
-    // serializer must not evict merge-drop recovery anchors (or vice versa).
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
-    // Distinct seconds per write, as above: a same-second group is retained
-    // whole, which would leave nothing for the budget to evict.
     for (let i = 0; i < 7; i++) {
       await saveInMemoryCheckpoint(shadow, 'content/docs', {
         kind: 'producer-guard-loss',
@@ -1293,8 +1203,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
         date: `@${1_700_000_000 + i * 100} +0000`,
       });
     }
-    // One bridge-merge-loss alongside: its budget (50) must shield it from the
-    // producer-guard cap.
     await saveInMemoryCheckpoint(shadow, 'content/docs', {
       kind: 'bridge-merge-loss',
       docName: 'merge.md',
@@ -1309,11 +1217,11 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       maxProducerGuardLoss: 3,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
-      ttlMs: 0, // disable TTL; only count-based cap applies
+      ttlMs: 0,
     });
 
     expect(result.scanned).toBe(8);
-    expect(result.deletedProducerGuardLoss).toBe(4); // 7 - 3 kept
+    expect(result.deletedProducerGuardLoss).toBe(4);
     expect(result.deletedBridgeMergeLoss).toBe(0);
 
     const sg = shadowGit(shadow);
@@ -1323,11 +1231,10 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       .trim()
       .split('\n')
       .filter(Boolean);
-    expect(remaining).toHaveLength(4); // 3 producer-guard + 1 bridge-merge
+    expect(remaining).toHaveLength(4);
   });
 
   test('applies TTL independently of the count cap', async () => {
-    // Write 2 checkpoints with a TTL of 0 ms to force both past the deadline.
     for (let i = 0; i < 2; i++) {
       await saveInMemoryCheckpoint(shadow, 'content/docs', {
         kind: 'external-change-rescue',
@@ -1337,7 +1244,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
         metadata: { incomingDiskSha: `sha-${i}` },
       });
     }
-    // Sleep 5ms so the TTL check actually triggers.
     await wait(5);
 
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
@@ -1347,7 +1253,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       maxProducerGuardLoss: 50,
       maxExternalChangeRescue: 50,
       maxAutoConsolidation: 2,
-      ttlMs: 1, // everything older than 1 ms is eligible
+      ttlMs: 1,
     });
 
     expect(result.deletedExternalChangeRescue).toBe(2);
@@ -1357,13 +1263,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
     const sg = shadowGit(shadow);
 
-    // Create an untyped Save-Version-style checkpoint: a commit under
-    // `refs/checkpoints/main/<sha>` whose body has NO `ok-checkpoint-v1:`
-    // line. `parseCheckpoint` returns null for it, and `gcCheckpointRefs`
-    // treats null-kind as permanently retained.
-    //
-    // Shortest path: pipe an empty tree into the well-known empty-tree SHA
-    // via `git hash-object -t tree /dev/null`, then commit-tree.
     const emptyTreeSha = (await sg.raw('hash-object', '-t', 'tree', '-w', '/dev/null')).trim();
     const untypedSha = (
       await sg
@@ -1378,7 +1277,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     ).trim();
     await sg.raw('update-ref', `refs/checkpoints/main/${untypedSha}`, untypedSha);
 
-    // Plus one typed bridge-merge-loss that IS eligible.
     await saveInMemoryCheckpoint(shadow, 'content/docs', {
       kind: 'bridge-merge-loss',
       docName: 'intro.md',
@@ -1389,7 +1287,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     const result = await gcCheckpointRefs(shadow, 'main', {
       ...DEFAULT_CHECKPOINT_RETENTION,
-      maxBridgeMergeLoss: 0, // forces deletion of the typed checkpoint
+      maxBridgeMergeLoss: 0,
       maxProducerGuardLoss: 0,
       maxExternalChangeRescue: 0,
       maxAutoConsolidation: 2,
@@ -1398,7 +1296,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     expect(result.deletedBridgeMergeLoss).toBe(1);
 
-    // Save-Version checkpoint still exists.
     const refs = (await sg.raw('for-each-ref', '--format=%(refname)', 'refs/checkpoints/main/'))
       .trim()
       .split('\n')
@@ -1406,15 +1303,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     expect(refs).toContain(`refs/checkpoints/main/${untypedSha}`);
   });
 
-  // ─── auto-consolidation retention ──────────────────────
-
-  // Create an auto-consolidation checkpoint directly (saveInMemoryCheckpoint
-  // does not author this kind — it is written by the saveVersion spine). One
-  // commit-tree per call, tagged with the ok-checkpoint-v1 auto-consolidation
-  // body line.
-  // `ageRank` makes the commit date deterministic and monotonic — git timestamps
-  // are second-resolution, so a real-time delay between creates is not reliable.
-  // Higher ageRank = newer.
   async function writeAutoConsolidationCheckpoint(
     s: ShadowHandle,
     foldedRefs: number,
@@ -1451,17 +1339,15 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
   test('A3: adding the auto-consolidation kind does not throw the byKind partition', async () => {
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
     await writeAutoConsolidationCheckpoint(shadow, 3);
-    // Before the fix, a recognized-but-unmapped kind threw at byKind[kind].push.
     const result = await gcCheckpointRefs(shadow, 'main', DEFAULT_CHECKPOINT_RETENTION);
     expect(result.scanned).toBe(1);
-    expect(result.deletedAutoConsolidation).toBe(0); // under the keep-newest-2 cap
+    expect(result.deletedAutoConsolidation).toBe(0);
   });
 
   test('keeps only the newest 2 auto-consolidation refs (count-only, D21)', async () => {
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
     const shas: string[] = [];
     for (let i = 0; i < 5; i++) {
-      // ageRank = i+1 → monotonically newer; deterministic newest-N ordering.
       shas.push(await writeAutoConsolidationCheckpoint(shadow, i + 1, i + 1));
     }
 
@@ -1475,7 +1361,7 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     });
 
     expect(result.scanned).toBe(5);
-    expect(result.deletedAutoConsolidation).toBe(3); // 5 - 2 kept
+    expect(result.deletedAutoConsolidation).toBe(3);
 
     const sg = shadowGit(shadow);
     const remaining = (
@@ -1485,7 +1371,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
       .split('\n')
       .filter(Boolean);
     expect(remaining).toHaveLength(2);
-    // The two newest survive.
     expect(remaining).toContain(`refs/checkpoints/main/${shas[4]}`);
     expect(remaining).toContain(`refs/checkpoints/main/${shas[3]}`);
   });
@@ -1495,9 +1380,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     await writeAutoConsolidationCheckpoint(shadow, 1);
     await writeAutoConsolidationCheckpoint(shadow, 2);
 
-    // Aggressive TTL that WOULD reap a bridge-merge-loss/external kind. Auto
-    // refs must survive purely on the count cap (2), never the TTL — otherwise
-    // a dormant repo could lose the anchor the chained history hangs from.
     const result = await gcCheckpointRefs(shadow, 'main', {
       ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 50,
@@ -1510,13 +1392,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
     expect(result.deletedAutoConsolidation).toBe(0);
   });
 
-  /**
-   * Distinct, increasing commit dates for seeded checkpoints. Git stores dates
-   * at one-second granularity, so a burst written without them ties, and
-   * retention keeps a whole tied group rather than choosing a victim it cannot
-   * order. A budget assertion needs an unambiguous order to count against.
-   * Matches the scheme `writeAutoConsolidationCheckpoint` already uses.
-   */
   const seedDate = (rank: number): string => `@${1_700_000_000 + rank * 100} +0000`;
 
   const seedKind = async (kind: CheckpointKind, tag = '', date?: string): Promise<void> => {
@@ -1656,8 +1531,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     for (const kind of CHECKPOINT_KINDS) await seedKind(kind);
 
-    // Generous limits: the assertion is that every kind is scanned and bucketed
-    // without throwing, not that anything is deleted.
     const result = await gcCheckpointRefs(shadow, 'main', {
       ...DEFAULT_CHECKPOINT_RETENTION,
       maxBridgeMergeLoss: 50,
@@ -1683,17 +1556,11 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
   test('every registered kind is actually REAPED at its own limit, not merely bucketed', async () => {
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
 
-    // Two checkpoints of every kind, then GC at limit 1. A kind that is scanned
-    // and bucketed but never handed to `planDeletions` retains BOTH and is
-    // invisible to the seed-one-per-kind sweep — this is what catches a missing
-    // fan-out entry: refs that accumulate forever with no cap and no TTL.
     for (const kind of CHECKPOINT_KINDS) {
       await seedKind(kind, '1', seedDate(1));
       await seedKind(kind, '2', seedDate(2));
     }
 
-    // Every `max*` limit set to 1, derived from the policy shape so a new
-    // retention field cannot be silently left at its default here.
     const limits = Object.fromEntries(
       Object.entries(DEFAULT_CHECKPOINT_RETENTION).map(([k, v]) =>
         k.startsWith('max') ? [k, 1] : [k, v],
@@ -1702,7 +1569,6 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
 
     const result = await gcCheckpointRefs(shadow, 'main', { ...limits, ttlMs: 0 });
 
-    // One reaped per kind — every bucket drained to its limit of 1.
     const deleted = Object.entries(result).filter(([k]) => k.startsWith('deleted'));
     expect(deleted.length).toBe(CHECKPOINT_KINDS.length);
     for (const [counter, count] of deleted) {
@@ -1732,16 +1598,13 @@ describe('checkpoint chain anchoring', () => {
     shadow = await initShadowRepo(projectRoot);
   });
 
-  /** Distinct, increasing commit dates: git stores them at one-second granularity. */
   const at = (rank: number): string => `@${1_700_000_000 + rank * 100} +0000`;
 
-  /** One writer edit, so the next consolidation has a WIP chain to fold. */
   async function edit(tag: string, rank: number): Promise<void> {
     writeFileSync(resolve(projectRoot, 'content/docs/intro.md'), `# ${tag}\n`, 'utf-8');
     await commitWip(shadow, WRITER, 'content/docs', `wip ${tag}`, 'main', { date: at(rank) });
   }
 
-  /** A real service-authored consolidation through the production spine. */
   async function consolidate(tag: string, rank: number): Promise<string> {
     const { checkpointRef } = await saveVersion(shadow, 'content/docs', [WRITER], 'main', tag, {
       checkpointKind: { foldedRefs: 1, trigger: 'dead-chain' },
@@ -1771,11 +1634,6 @@ describe('checkpoint chain anchoring', () => {
       .slice(1);
 
   test('a kind anchors the chain exactly when its retention bucket is count-only', async () => {
-    // `chainAnchor` (the registry, consumed by the writer and the CLI reader)
-    // and `applyTtl` (the GC table) are the same fact stated in two modules:
-    // a bucket GC can empty cannot carry the chain. TypeScript cannot express
-    // the link across them, so pin it here — if a new kind declares one without
-    // the other, reaping its ref starts destroying history silently.
     const { GC_BUCKET_POLICY } = await import('./shadow-repo.ts');
     for (const kind of CHECKPOINT_KINDS) {
       const { chainAnchor, gcBucket } = CHECKPOINT_KIND_REGISTRY[kind];
@@ -1790,17 +1648,12 @@ describe('checkpoint chain anchoring', () => {
 
     await edit('one', 1);
     const c1 = await consolidate('auto 1', 2);
-    // A routine rescue artifact, newer than c1. It is a parentless root commit,
-    // so a chain routed through it reaches nothing.
     await lossCheckpoint(3);
     await edit('two', 4);
     const c2 = await consolidate('auto 2', 5);
     await edit('three', 6);
     await consolidate('auto 3', 7);
 
-    // c1 is now over the keep-2 budget and its ref is reaped. That is only
-    // non-destructive if a surviving checkpoint's ancestry still reaches it —
-    // the guarantee `maxAutoConsolidation` is documented to rest on.
     const gc = await gcCheckpointRefs(shadow, 'main', {
       ...DEFAULT_CHECKPOINT_RETENTION,
       maxAutoConsolidation: 2,
@@ -1813,9 +1666,6 @@ describe('checkpoint chain anchoring', () => {
   });
 
   test('a consolidation adopts every dangling durable tip, not just one', async () => {
-    // One severing event leaves TWO durable tips, so a single-slot chain parent
-    // can never re-attach them both. Checkpoint dates are one-second granular,
-    // so the surviving tip cannot be picked by recency either.
     await edit('one', 1);
     const c1 = await consolidate('auto 1', 2);
     await lossCheckpoint(3);
@@ -1839,10 +1689,6 @@ describe('checkpoint chain anchoring', () => {
     await edit('one', 1);
     const c1 = await consolidate('auto 1', 2);
 
-    // A repo the old writer already forked carries two durable tips at once,
-    // and no single-slot parent can re-join them. Seed that state directly
-    // rather than racing the old writer to produce it: a durable checkpoint
-    // that neither reaches c1 nor is reachable from it.
     const tree = (await sg.raw('rev-parse', `${c1}^{tree}`)).trim();
     const severed = (
       await sg
@@ -1872,8 +1718,6 @@ describe('checkpoint chain anchoring', () => {
     await edit('two', 4);
     const c2 = await consolidate('auto 2', 5);
 
-    // Adopting only the newest durable anchor would strand c1 here, which is
-    // exactly what the count-only budget then destroys.
     const parents = await parentsOf(c2);
     expect(parents).toContain(severed);
     expect(parents).toContain(c1);
@@ -1888,9 +1732,6 @@ describe('checkpoint chain anchoring', () => {
   });
 
   test('a loss checkpoint is never adopted, so reaping its ref still bounds its content', async () => {
-    // Loss metadata embeds verbatim document content, so its retention budget is
-    // a data-lifecycle guarantee. Adopting one as a chain parent would keep it
-    // reachable forever and silently defeat that expiry.
     const { gcCheckpointRefs } = await import('./shadow-repo.ts');
 
     await edit('one', 1);
@@ -1928,7 +1769,6 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
     shadow = await initShadowRepo(projectRoot);
   });
 
-  /** Helper to create a bare ref pointing at an empty tree commit */
   async function createRef(refname: string): Promise<void> {
     const sg = shadowGit(shadow);
     const emptyTreeSha = (await sg.raw('hash-object', '-t', 'tree', '-w', '/dev/null')).trim();
@@ -1949,7 +1789,6 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
   }
 
   test('deletes only legacy refs (server, human-*, upstream); preserves new taxonomy (US-018)', async () => {
-    // Create mixed refs
     await createRef('refs/wip/main/server');
     await createRef('refs/wip/main/human-abc');
     await createRef('refs/wip/main/human-def123');
@@ -1961,7 +1800,7 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
     await createRef('refs/wip/main/openknowledge-service');
 
     const deleted = await sweepLegacyShadowRefs(shadow);
-    expect(deleted).toBe(4); // server + human-abc + human-def123 + upstream
+    expect(deleted).toBe(4);
 
     const sg = shadowGit(shadow);
     const remaining = (await sg.raw('for-each-ref', '--format=%(refname)', 'refs/wip'))
@@ -1969,13 +1808,11 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
       .split('\n')
       .filter(Boolean);
 
-    // Legacy refs should be gone
     expect(remaining).not.toContain('refs/wip/main/server');
     expect(remaining).not.toContain('refs/wip/main/human-abc');
     expect(remaining).not.toContain('refs/wip/main/human-def123');
     expect(remaining).not.toContain('refs/wip/main/upstream');
 
-    // New taxonomy preserved
     expect(remaining).toContain('refs/wip/main/agent-xyz');
     expect(remaining).toContain('refs/wip/main/principal-def');
     expect(remaining).toContain('refs/wip/main/file-system');
@@ -1991,7 +1828,7 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
     expect(first).toBe(1);
 
     const second = await sweepLegacyShadowRefs(shadow);
-    expect(second).toBe(0); // no-op
+    expect(second).toBe(0);
   });
 
   test('fresh repo with no refs returns 0 (US-018)', async () => {

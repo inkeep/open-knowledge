@@ -14,10 +14,6 @@ function stripTrailingLineWhitespace(body: string): string {
   return body.replace(/[ \t]+$/gm, '');
 }
 
-/** Leading ordered-list marker digits (after optional indent), canonicalized
- *  before skeletonizing so remark-stringify's lazy-list renumbering
- *  (`1.`/`1.` → `1.`/`2.`) doesn't read as a content substitution in the
- *  preservation probe. Only the digits collapse; delimiter + content stay. */
 const ORDERED_MARKER_DIGITS_RE = /^([ \t]*)\d+([.)])(?=[ \t])/;
 
 function contentSkeleton(body: string): string {
@@ -30,10 +26,6 @@ function contentSkeleton(body: string): string {
     .replace(/\s+/g, '');
 }
 
-/** Breadcrumb gate for canonicalizeBody throws: warn once per DISTINCT
- *  error message (bounded set) so a systematic parser regression arriving
- *  after an unrelated exotic-doc throw still surfaces its own signature,
- *  without any per-drain flood. */
 const warnedCanonicalizeErrors = new Set<string>();
 const MAX_WARNED_CANONICALIZE_ERRORS = 8;
 

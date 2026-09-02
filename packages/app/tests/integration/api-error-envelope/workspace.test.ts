@@ -1,11 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleWorkspace`.
- *
- * The `WorkspaceSuccessSchema` round-trip is exercised by `workspace-endpoint.test.ts`;
- * this file specifically asserts the RFC 9457 wire shape on the auth-failure
- * + method-not-allowed paths and the loose-shape success body.
- */
-
 import { ProblemDetailsSchema, WorkspaceSuccessSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

@@ -1,37 +1,3 @@
-/**
- * Settings → Search — opt-in semantic (embeddings) ranking for the MCP search
- * tool. Per-machine (project-local scope) because enabling it sends content to
- * a third-party embeddings provider; each teammate opts in deliberately on
- * their own machine rather than inheriting one collaborator's egress choice
- * through git.
- *
- * The toggle reads the synchronous project-local CRDT preference (the same
- * pattern as the Sync section's Switch — never the server's resolved state,
- * which round-trips through the persistence debounce + config file-watcher and
- * would make the control appear to lag). Every off → on transition is gated by
- * a confirmation dialog that discloses the egress; on → off commits immediately
- * (the safe direction).
- *
- * The status panel below the toggle derives from the server's
- * `GET /api/semantic-status` probe (`keyPresent` / `ready` / `capable`).
- *
- * The API key lives on THIS screen now (per-project, next to its endpoint — no
- * more machine-global Account key): a write-only field that stores the key,
- * bound to the project's configured endpoint, in the 0600 `~/.ok/secrets.yml`
- * (never in the project tree). It's optional — a localhost endpoint needs none.
- *
- * The endpoint and model live behind a "Custom endpoint" disclosure: they are
- * power-user knobs, but they auto-expand when either is already overridden so a
- * value set from the CLI is never hidden from the person who set it. Both are
- * destructive to change — the cached vectors are keyed by provider + model, so
- * a change re-embeds and re-sends the whole corpus — hence the confirmation.
- *
- * "Embedding request settings" (batch size / char budget / indexing timeout) is
- * a SIBLING disclosure of "Custom endpoint", not a child: those knobs apply to
- * whatever endpoint is in use — default OpenAI included — so burying them under
- * a custom-endpoint disclosure would hide them from everyone who never set one.
- * It auto-expands on its own overrides, independently of the endpoint one.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import {
@@ -71,10 +37,6 @@ import {
 } from '@/lib/transports/embeddings-key-transport';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
-// Refetch `/api/semantic-status` at these delays (ms) after a toggle so the
-// coverage panel repaints once the persistence debounce + config file-watcher
-// have carried the new `search.semantic.enabled` into the server. The `files`
-// CC1 channel doesn't fire for config-doc edits, so this is the catch-up path.
 const SETTLE_REFRESH_DELAYS_MS = [2500, 5000] as const;
 
 export function SearchSection({ transport }: { transport?: EmbeddingsKeyTransport }) {
@@ -84,8 +46,6 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const resolvedTransport = transport ?? httpEmbeddingsKeyTransport();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
-  // Don't nag mid-typing: surface the endpoint error only after the field has
-  // been committed once (blur/Enter), then keep it live so a fix clears it.
   const [baseUrlTouched, setBaseUrlTouched] = useState(false);
   const settleTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
 
@@ -108,26 +68,19 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
 
   const [baseUrlDraft, setBaseUrlDraft] = useState(configuredBaseUrl);
   const [modelDraft, setModelDraft] = useState(configuredModel);
-  // The committed-but-unconfirmed provider change awaiting the re-index warning.
   const [pendingProvider, setPendingProvider] = useState<{
     baseUrl: string;
     model: string;
   } | null>(null);
-  // null = follow the auto-expand rule; a boolean = the user has decided.
   const [disclosureOverride, setDisclosureOverride] = useState<boolean | null>(null);
   const [performanceDisclosureOverride, setPerformanceDisclosureOverride] = useState<
     boolean | null
   >(null);
   const [testing, setTesting] = useState(false);
-  // `null` inside the result means the request itself never got a verdict.
   const [testResult, setTestResult] = useState<{
     response: LocalOpEmbeddingsTestResponse | null;
   } | null>(null);
 
-  // When the persisted values change externally (e.g. `ok embeddings set-url` in
-  // a terminal while Settings is open), re-seed the drafts and clear the
-  // validation gate + any stale test verdict. This is the React "adjust state
-  // during render on a changed value" pattern (no effect).
   const [prevConfigured, setPrevConfigured] = useState({
     baseUrl: configuredBaseUrl,
     model: configuredModel,
@@ -150,9 +103,6 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     configuredMaxBatchSize !== DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE ||
     configuredMaxBatchChars !== DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS ||
     configuredDocTimeoutMs !== DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
-  // Auto-expand each disclosure when its own knobs are already overridden: a
-  // value set from the CLI must not be invisible to the person looking for it
-  // in Settings. The two disclosures are siblings, so each tracks only its own.
   const disclosureOpen = disclosureOverride ?? hasProviderOverride;
   const performanceDisclosureOpen = performanceDisclosureOverride ?? hasTransportOverride;
 
@@ -202,18 +152,12 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
       toast.error(t`Failed to update the embeddings provider — ${detail}`);
       return false;
     }
-    // The previous provider's verdict says nothing about the new one.
     setTestResult(null);
     refresh();
     scheduleSettleRefresh();
     return true;
   }
 
-  /**
-   * Commit a field edit. A change to either knob invalidates every cached
-   * vector, so it goes through the re-index + egress warning first; a no-op
-   * edit (retyping the same value, or blurring an untouched field) doesn't.
-   */
   function requestProviderChange(next: { baseUrl: string; model: string }): void {
     if (next.baseUrl === configuredBaseUrl && next.model === configuredModel) return;
     setPendingProvider(next);
@@ -234,10 +178,6 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     if (testing) return;
     setTesting(true);
     setTestResult(null);
-    // The transport contracts to resolve `null` rather than throw, but a
-    // rejection here would otherwise leave the button reading "Testing"
-    // forever with no way back. Catch-and-continue rather than `finally` —
-    // React Compiler cannot lower a `try` with a finalizer.
     let response: LocalOpEmbeddingsTestResponse | null = null;
     try {
       response = await resolvedTransport.testConnection();
@@ -250,8 +190,6 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
 
   function onToggleRequest(next: boolean) {
     if (next) {
-      // Off → on: gate behind the egress confirmation. On → off is the safe
-      // direction and commits immediately.
       setConfirmOpen(true);
       return;
     }
@@ -259,13 +197,9 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   }
 
   function onConfirm() {
-    // Close only on success so a failed write leaves the dialog open to retry.
     if (write(true)) setConfirmOpen(false);
   }
 
-  // Mirror the server's pre-flight guard (`checkEmbeddingsBaseUrl`) so a
-  // guaranteed-to-fail endpoint is flagged at entry instead of surfacing later
-  // as a provider-rejected status. Empty resets to the default (always valid).
   function baseUrlProblemMessage(value: string): string | null {
     const trimmed = value.trim();
     if (!trimmed) return null;
@@ -276,16 +210,11 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
       : t`Use an https:// URL — http:// is only allowed for localhost.`;
   }
 
-  // Live-validate only after the field has been committed once (touched), so the
-  // error doesn't flash while the user is still typing a URL.
   function onBaseUrlChange(value: string): void {
     setBaseUrlDraft(value);
     if (baseUrlTouched) setBaseUrlError(baseUrlProblemMessage(value));
   }
 
-  // Both fields commit together: one confirmation covers the single re-index
-  // they'd otherwise trigger twice, and a bad URL blocks the model edit too
-  // rather than persisting half of the change.
   function commitProviderEdits(): void {
     setBaseUrlTouched(true);
     const message = baseUrlProblemMessage(baseUrlDraft);
@@ -297,12 +226,6 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     });
   }
 
-  // Status derives from the server's resolved view, not the client preference:
-  // `serverEnabled` lags the toggle until the file-watcher settles. `keyPresent`
-  // is a free, prompt-free read (secrets file / env) so "no key" shows the
-  // instant the toggle flips — no waiting for a warm. `ready` = the service has
-  // warmed (used for the coverage line); `capable` = warmed AND the key actually
-  // worked, so `keyPresent && ready && !capable` is "provider rejected the key".
   const serverEnabled = status?.enabled ?? false;
   const keyPresent = status?.keyPresent ?? false;
   const keyNotRequired = status?.keyNotRequired ?? false;
@@ -437,9 +360,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
               data-testid="settings-search-base-url"
               className="h-8 font-mono text-sm"
             />
-            {/* One persistent live region (not a conditionally-mounted node) so a
-                screen reader reliably announces the error when it appears — swapping
-                in a fresh aria-live element WITH content is often missed. */}
+            {}
             <p
               id="settings-search-base-url-message"
               aria-live="polite"
@@ -630,8 +551,6 @@ function PerformanceTuningField({
   const [error, setError] = useState<string | null>(null);
   const [previousConfiguredValue, setPreviousConfiguredValue] = useState(displayedConfiguredValue);
 
-  // Keep an in-progress edit stable, but re-seed after an external CLI/config
-  // write changes the effective value underneath this mounted control.
   if (displayedConfiguredValue !== previousConfiguredValue) {
     setPreviousConfiguredValue(displayedConfiguredValue);
     setDraft(String(displayedConfiguredValue));
@@ -726,13 +645,6 @@ interface EmbeddingsKeyFieldProps {
   loaded: boolean;
 }
 
-/**
- * The embeddings API key — now on THIS screen, next to the endpoint it belongs
- * to (no more hunting in Account). Write-only: the key is never displayed or
- * returned, only presence + a redacted hint; the input sets / replaces / clears
- * it through the loopback transport, which binds it to the project's currently
- * configured endpoint. Optional — a localhost endpoint needs none.
- */
 function EmbeddingsKeyField({
   transport,
   refresh,
@@ -756,7 +668,7 @@ function EmbeddingsKeyField({
     const result = await transport.setKey(key);
     setBusy(false);
     if (result.ok) {
-      setKeyInput(''); // Don't keep the secret in component state after it lands.
+      setKeyInput('');
       refresh();
     } else {
       setError(result.error ?? t`Couldn't save the key — please try again.`);
@@ -853,8 +765,6 @@ function EmbeddingsKeyField({
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
                 onKeyDown={(e) => {
-                  // Enter-to-save, matching the endpoint/model inputs and the
-                  // strong submit expectation on a password field.
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     void onSave();
@@ -903,13 +813,6 @@ interface SemanticStatusPanelProps {
   total: number;
 }
 
-/**
- * Read-only readout under the toggle. States, in order: still settling (server
- * hasn't picked up the toggle), no-key (instant — driven off the free
- * `keyPresent` read, not a warm), provider-rejected-the-key, not-yet-warmed
- * (indexes on first search), and live coverage (with a lazy-embedding note while
- * nothing is embedded yet).
- */
 function SemanticStatusPanel({
   loaded,
   serverEnabled,
@@ -934,8 +837,6 @@ function SemanticStatusPanel({
   }
 
   if (!keyPresent && !keyNotRequired) {
-    // No key resolvable — instant (a free file read, no warm needed). Point at
-    // the key field right below, on this same screen.
     return (
       <div
         role="alert"
@@ -951,8 +852,6 @@ function SemanticStatusPanel({
   }
 
   if (ready && !capable) {
-    // A key is present and the service warmed, but the embedder failed to load —
-    // a bad key or an unreachable provider. Distinct from "no key" above.
     return (
       <div
         role="alert"
@@ -1003,15 +902,6 @@ interface TestConnectionResultProps {
   configuredModel: string;
 }
 
-/**
- * The verdict from one live probe. This is the whole answer to "is my endpoint
- * actually working" — every embeddings failure otherwise degrades quietly to
- * keyword search, so a wrong URL / key / model looks exactly like a working
- * setup that hasn't indexed yet.
- *
- * The detected vector size doubles as the readout for a value the user can no
- * longer enter by hand.
- */
 function TestConnectionResult({
   result,
   testing,
@@ -1029,9 +919,6 @@ function TestConnectionResult({
     );
   }
 
-  // The probe reads the SAVED config, which trails an edit by the time it takes
-  // the change to reach disk. Say so rather than report a verdict for the
-  // endpoint the user just replaced.
   if (response.endpoint !== configuredBaseUrl || response.model !== configuredModel) {
     return (
       <TestConnectionMessage tone="warn" testId="settings-search-test-stale">
@@ -1055,7 +942,6 @@ function TestConnectionResult({
   );
 }
 
-/** Reason-specific copy — each one names the next thing to try. */
 function TestConnectionFailure({
   response,
 }: {
@@ -1095,7 +981,6 @@ function TestConnectionFailure({
         </Trans>
       );
     default:
-      // http_error — the status is the actionable part (401 key, 404 model).
       return response.status !== undefined ? (
         <Trans>
           The provider rejected the request (HTTP {response.status}). Check the API key and the
@@ -1116,9 +1001,6 @@ function TestConnectionMessage({
   testId: string;
   children: ReactNode;
 }) {
-  // A failed probe must not look like the transient "still saving" notice —
-  // colour is the first thing read here, so a real failure gets the
-  // destructive palette rather than sharing amber with a warning.
   const toneClass = {
     ok: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200',
     warn: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200',
@@ -1127,8 +1009,6 @@ function TestConnectionMessage({
   return (
     <p
       role={tone === 'error' ? 'alert' : 'status'}
-      // `role="alert"` implies assertive; leaving an explicit "polite" here
-      // makes the two disagree, and screen readers split on which wins.
       aria-live={tone === 'error' ? 'assertive' : 'polite'}
       className={`rounded-md border px-3 py-2 text-1sm ${toneClass}`}
       data-testid={testId}
@@ -1145,12 +1025,6 @@ interface ProviderChangeConfirmDialogProps {
   onConfirm: () => void;
 }
 
-/**
- * Guards a change to the endpoint or model. Both are part of the vector cache's
- * identity, so changing either throws away every cached vector and re-sends the
- * full text of the corpus to the new destination — the same egress the enable
- * toggle warns about, aimed somewhere new.
- */
 function ProviderChangeConfirmDialog({
   pending,
   pageCount,
@@ -1228,7 +1102,6 @@ function ProviderChangeConfirmDialog({
   );
 }
 
-/** Host of a base URL, or null when it isn't parseable (shown verbatim then). */
 function hostOf(baseUrl: string): string | null {
   try {
     return new URL(baseUrl).host;
@@ -1243,12 +1116,6 @@ interface EnableSemanticSearchConfirmDialogProps {
   onConfirm: () => void;
 }
 
-/**
- * Guards every off → on transition. The egress disclosure is the load-bearing
- * content — turning semantic search on is the moment content first leaves the
- * machine, so the dialog spells out what is sent, where, and that it's
- * per-machine.
- */
 function EnableSemanticSearchConfirmDialog({
   open,
   onOpenChange,

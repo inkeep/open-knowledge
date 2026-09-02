@@ -1,34 +1,3 @@
-/**
- * Share-receive miss smoke — the cross-process proof that a share link whose
- * target vanished upstream lands the receiver on the honest verdict DIALOG and
- * NEVER the create-mode editor (where a receiver could silently fork the doc at
- * the shared path). Because main flags the target missing, the dialog shows
- * without navigating to the dead path — no phantom tab is opened.
- *
- * The journey: seed a receiver clone whose branch no longer carries the shared
- * doc (deleted on origin), fire the share URL, and assert the dispatched window
- * resolves the miss dialog with the `deleted` verdict — proving the whole chain
- * end-to-end (main share-resolution -> `ok:deep-link` IPC -> renderer miss
- * dispatch -> the real target-status fetch against the receiver's server).
- *
- * **Delivery: argv cold-start, not `open -g`.** The sibling smokes shell out to
- * `open -g "openknowledge://..."` for true Apple-Event delivery, and that is the
- * right channel on a CI runner where no app owns the scheme. But on any host with
- * OpenKnowledge.app installed (every dev machine, this one included), macOS Launch
- * Services binds `openknowledge://` to that signed bundle, so `open -g` routes the
- * event there and the Playwright-launched dev Electron never receives it — the
- * poll then times out. Passing the URL as an argv entry drives the app's
- * documented cold-start CLI-launch scan (`registerProtocolHandler`'s initial-argv
- * loop), which reaches `enqueueOrRoute` and runs the identical routing the Apple
- * Event would, deterministically on every host. The pure Apple-Event channel stays
- * covered by `deep-link.e2e.ts` on a clean runner.
- *
- * Candidate selection matches on the seeded Recents `gitRemoteUrl`, which is
- * intentionally decoupled from the receiver's real `origin` (a local bare repo):
- * the GitHub URL satisfies the share's owner/repo match while the local origin lets
- * the target-status fetch run for real and return a genuine `deleted` verdict.
- */
-
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -121,13 +90,6 @@ interface MissFixtureOptions {
   readonly extraFiles?: Readonly<Record<string, string>>;
 }
 
-/**
- * Build origin (bare) + receiver (clone) where the shared doc was committed then
- * deleted on the branch, so the receiver's working tree lacks it and origin's
- * history proves the deletion. Returns realpath-collapsed paths so the receiver
- * matches the dispatched window's `projectPath` after the macOS `/var` ->
- * `/private/var` normalization the main process applies.
- */
 function setupDeletedTargetFixture(options: MissFixtureOptions = {}): MissFixture {
   const uniq = randomUUID().slice(0, 8);
   const docPath = options.docPath ?? `docs/moved-${uniq}.md`;
@@ -171,10 +133,6 @@ type MissState = {
   bodyText: string;
 };
 
-/**
- * Filename without its `.md` extension — the part of the share target that would
- * appear in the receiver's hash had it navigated there.
- */
 function docStem(docPath: string): string {
   return basename(docPath, '.md');
 }
@@ -214,18 +172,6 @@ async function expectDeletedTargetMiss(
   const firstWindow = await app.firstWindow({ timeout: 15_000 });
   expect(firstWindow).toBeDefined();
 
-  // Poll every window until one resolves the miss DIALOG. A known-missing
-  // target shows the honest verdict as a modal WITHOUT navigating to the dead
-  // path, so the "never create-mode fork" proof is two-part: the hash never
-  // reaches the shared target, and no DOCUMENT editor is mounted.
-  //
-  // A bare `.ProseMirror` query is NOT that second half. The Ask-AI composer
-  // (`ComposerMentionInput`) is its own ProseMirror instance and mounts as part
-  // of the ordinary shell — including the empty state a receiver whose branch
-  // carries no docs lands on — so it matches whether or not a document was ever
-  // opened, and whether it has mounted yet is a race against the verdict fetch.
-  // `:not(.composer-prosemirror)` is what the sibling smokes use to mean "the
-  // document editor, not a composer".
   let resolved: MissState | null = null;
   await expect(async () => {
     for (const page of app.windows()) {
@@ -253,9 +199,6 @@ async function expectDeletedTargetMiss(
   const outcome: MissState = resolved;
   expect(outcome.verdict).toBe('deleted');
   expect(outcome.hasEditor).toBe(false);
-  // Decode first: the hash percent-encodes the whole path, so a stem holding a
-  // space or non-ASCII would not appear in it verbatim. Decoding makes the check
-  // independent of the encoding rather than of today's alphanumeric fixtures.
   expect(decodeURIComponent(outcome.hash)).not.toContain(docStem(fixture.docPath));
   expect(outcome.bodyText).toContain('removed from branch');
 }

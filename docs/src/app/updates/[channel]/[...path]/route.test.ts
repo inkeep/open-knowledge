@@ -17,7 +17,6 @@ vi.doMock('../../../../lib/track.ts', () => ({
 
 const BETA_DMG_URL =
   'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-arm64.dmg';
-// Mutable so a test can flip the beta resolver from a fresh tag to a fallback.
 type BetaRedirect = { kind: string; url: string; cause?: string; refreshError?: string };
 let _betaRedirect: BetaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
 vi.doMock('../../../../lib/download-links.ts', () => ({
@@ -152,10 +151,6 @@ describe('GET /updates/[channel]/[...path]', () => {
   });
 
   test('stale-lkg resolver still 302s (graceful degradation during a GitHub outage)', async () => {
-    // The LKG design exists precisely for the API-outage window: a stale
-    // last-known-good tag must serve the redirect, never harden into the
-    // fallback's 503 — that would take every beta updater down exactly when
-    // degradation matters most.
     _betaRedirect = { kind: 'stale-lkg', url: BETA_DMG_URL, refreshError: 'API timeout' };
     _lastCapture = null;
     const res = await call('beta', ['beta-mac.yml']);
@@ -207,9 +202,6 @@ describe('GET /updates/[channel]/[...path]', () => {
   });
 
   test('a versionless stable installer takes to_version from the updater header', async () => {
-    // The whole reason the header exists: exe/deb/rpm names carry no version
-    // and stable's `latest` alias resolves no tag, so without it every Windows
-    // and Linux stable update is attributed to no version at all.
     _lastCapture = null;
     const res = await call('stable', ['OpenKnowledge-Setup-arm64.exe'], {
       'x-ok-from-version': '0.19.1',
@@ -230,9 +222,6 @@ describe('GET /updates/[channel]/[...path]', () => {
   });
 
   test('server-derived versions outrank the header, which is only a client claim', async () => {
-    // A filename version and a resolved beta tag both describe what this
-    // redirect actually serves; a lying header must not be able to overwrite
-    // either, or a client could rewrite another release's adoption numbers.
     _lastCapture = null;
     await call('stable', ['OpenKnowledge-0.20.0-arm64-mac.zip'], {
       'x-ok-to-version': '9.9.9',
@@ -264,16 +253,12 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe(`${REL}/latest/download/${file}`);
     expect(_lastCapture?.properties?.artifact_type).toBe('rpm');
-    // Symmetric with the beta deb's resolved-tag assertion: the stable alias
-    // resolves no tag, so a regression that propagates one must fail here.
     expect(_lastCapture?.properties?.to_version).toBeUndefined();
     expect(_lastCapture?.properties?.os).toBe('linux');
     expect(_lastCapture?.properties?.arch).toBe('x64');
   });
 
   test('every packager arch spelling normalizes onto one analytics vocabulary', async () => {
-    // dpkg says amd64, rpm says x86_64/aarch64, electron-builder says x64 —
-    // ungrouped, one platform would read as several in a breakdown.
     const cases: ReadonlyArray<readonly [string, string, string]> = [
       ['OpenKnowledge-Setup-arm64.exe', 'windows', 'arm64'],
       ['OpenKnowledge-amd64.deb', 'linux', 'x64'],
@@ -290,8 +275,6 @@ describe('GET /updates/[channel]/[...path]', () => {
   });
 
   test('an unrecognized arch token is dropped, not forwarded to analytics', async () => {
-    // Bounded cardinality: a future packager spelling must arrive as an absent
-    // property a dashboard shows as a gap, never as a new free-form value.
     _lastCapture = null;
     const res = await call('stable', ['OpenKnowledge-riscv64.deb']);
     expect(res.status).toBe(302);

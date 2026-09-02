@@ -1,9 +1,3 @@
-/**
- * ActivityPanelFileRow unit tests — render via `renderToString` and inspect the
- * static HTML shape. Interactive behavior (row click → diff, per-edit Restore
- * confirm, onNavigate firing) is exercised in Playwright E2E.
- */
-
 import { renderToString } from 'react-dom/server';
 import { describe, expect, test } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -74,10 +68,8 @@ describe('ActivityPanelFileRow (static render)', () => {
         onSetVersion={() => {}}
       />,
     );
-    // Both edits render up-front (no expand toggle gating them).
     const openMatches = html.match(/data-testid="activity-panel-burst-open"/g) ?? [];
     expect(openMatches).toHaveLength(2);
-    // The old slider + header quick-undo affordances are gone.
     expect(html).not.toContain('data-testid="agent-undo-timeline"');
     expect(html).not.toContain('data-testid="activity-panel-file-row-carrot"');
     expect(html).not.toContain('data-testid="activity-panel-undo-last"');
@@ -112,7 +104,6 @@ describe('ActivityPanelFileRow (static render)', () => {
     );
     const idx = html.indexOf('data-testid="activity-panel-burst-restore"');
     expect(idx).toBeGreaterThan(-1);
-    // React serializes a bare `disabled` on the button tag, near the testid.
     expect(html.slice(idx, idx + 300)).toContain('disabled');
   });
 

@@ -1,10 +1,5 @@
 import type { SVGProps } from 'react';
 
-// Pi brand mark (the blocky "P" + square "i" dot from pi.dev/logo-auto.svg),
-// rendered monochrome via `currentColor` so the dropdown row's color cascade
-// (and the optional `--ok-brand-color` override in `TargetIcon`) tints it per
-// theme — the upstream SVG ships its own light/dark media query, which can't
-// participate in the app's theme toggle.
 export function PiIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

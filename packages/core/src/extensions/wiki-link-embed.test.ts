@@ -83,9 +83,6 @@ describe('WikiLinkEmbed.renderHTML — image extension', () => {
   test('honors resolvedSrc over bare target', () => {
     const out = render(createEmbed('photo.png', { resolvedSrc: 'attachments/photo.png' }));
     expect(out.attrs.src).toBe('attachments/photo.png');
-    // data-target stays the bare basename — round-trip through markdown
-    // must preserve the author's `![[photo.png]]` shape, not the
-    // resolver's output.
     expect(out.attrs['data-target']).toBe('photo.png');
   });
 
@@ -117,7 +114,6 @@ describe('WikiLinkEmbed.renderHTML — non-image extension', () => {
   test('anchor composes into href as #anchor suffix', () => {
     const out = render(createEmbed('draft.pdf', { anchor: 'page=3' }));
     expect(out.attrs.href).toBe('draft.pdf#page=3');
-    // Label uses target#anchor when no alias.
     expect(out.label).toBe('draft.pdf#page=3');
   });
 
@@ -130,7 +126,6 @@ describe('WikiLinkEmbed.renderHTML — non-image extension', () => {
     const out = render(
       createEmbed('draft.pdf', { resolvedSrc: 'attachments/draft.pdf', anchor: 'page=3' }),
     );
-    // resolvedSrc wins as the href base; anchor still composes on top.
     expect(out.attrs.href).toBe('attachments/draft.pdf#page=3');
   });
 
@@ -150,9 +145,6 @@ describe('WikiLinkEmbed.parseHTML — clipboard round-trip', () => {
     const tags = rules.map((rule) => rule.tag);
     expect(tags).toContain('img[data-wiki-embed]');
     expect(tags).toContain('a[data-wiki-embed]');
-    // Priority 100 is load-bearing: standard Image / Link extensions
-    // default to 50 and would otherwise claim the node first, losing
-    // the sourceForm=wikiembed marker on paste.
     for (const rule of rules) expect(rule.priority).toBe(100);
   });
 
@@ -201,8 +193,6 @@ describe('WikiLinkEmbed schema invariants (precedent #9)', () => {
     expect(attrs.alias).toBeDefined();
     expect(attrs.anchor).toBeDefined();
     expect(attrs.resolvedSrc).toBeDefined();
-    // All must have defaults so y-prosemirror can reconstruct the node
-    // when the schema adds new attrs post-document-creation.
     for (const [, attrSpec] of Object.entries(attrs)) {
       expect('default' in (attrSpec as Record<string, unknown>)).toBe(true);
     }

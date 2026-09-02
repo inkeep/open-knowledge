@@ -68,54 +68,21 @@ function UnregisteredBadgeRender(props: { children?: React.ReactNode }) {
 // biome-ignore lint/suspicious/noExplicitAny: Component props are heterogeneous across the canonical pack + transitional shim imports; no single prop type covers all
 export const componentMap: Record<string, React.ComponentType<any>> = {
   Callout,
-  // Lowercase media canonicals — descriptor names mirror their HTML
-  // primitives (`img` / `video` / `audio`); React component file names
-  // stay PascalCase per React convention. The split lives only at this
-  // registration boundary.
   img: Image,
   video: Video,
   audio: Audio,
-  // `Pdf` is capitalized because there is NO `<pdf>` HTML element — it
-  // follows the same React JSX convention as `Callout` and `Accordion`
-  // (capital for non-native components). Same dispatch shape as the
-  // media canonicals. Renders via pdfjs-dist (lazy-loaded).
   Pdf,
-  // `File` is capitalized for the same reason — no `<file>` HTML element.
-  // Renders as a styled `<a>` inline row; covers every dropped attachment
-  // including PDF (the wikilink form `![[doc.pdf]]` routes here too —
-  // explicit `<Pdf>` JSX is the opt-in path for the pdfjs canvas viewer).
   File,
-  // `Embed` is capitalized — no `<embed>` semantic match (HTML's
-  // `<embed>` is for legacy plugin objects, not the iframe pattern).
-  // Renders via a cross-origin iframe with `referrerPolicy="no-referrer"`.
   Embed,
-  // `Excalidraw` — static SVG snapshot of a referenced `.excalidraw`
-  // board (the board's own doc stays the sole edit surface). Capitalized:
-  // no native HTML counterpart, same convention as `Pdf`.
   Excalidraw: ExcalidrawEmbed,
   Accordion,
-  // `Toggle` is Accordion's Notion-vocabulary alias — same render, different
-  // stored JSX name. Both descriptors dispatch through the Accordion
-  // component; the wrapper injects a `Toggle` title default so an untitled
-  // `<Toggle />` renders as "Toggle" in the summary instead of falling
-  // through to Accordion.tsx's hardcoded "Accordion" fallback.
   // biome-ignore lint/suspicious/noExplicitAny: mirrors componentMap's heterogeneous prop shape
   Toggle: (props: any) => <Accordion {...props} title={props.title ?? 'Toggle'} />,
-  // `HtmlAlignBlock` — canonical renderer for promoted `<div align>` wrappers
-  // (GitHub-README centered headers). Children stay ordinary editable
-  // blocks; the wrapper only applies text alignment.
   HtmlAlignBlock: AlignBlock,
   Tabs,
   Tab,
   Math: MathView,
-  // Descriptor name is `MermaidFence` (not `Mermaid`) so legacy
-  // `<Mermaid chart="…" />` JSX content falls through to the wildcard
-  // `'*'` (raw-mdx editable source block) — fence-only authoring.
   MermaidFence: MermaidView,
-  // Master/copy block transclusion. `MirrorSource` is the editable
-  // source-of-truth wrapper; `Mirror` is the read-only consumer that
-  // resolves a `<MirrorSource id="…">` from another doc via the shared
-  // refcounted provider pool in `useMirrorSource`.
   Mirror,
   MirrorSource,
   '*': UnregisteredBadgeRender,

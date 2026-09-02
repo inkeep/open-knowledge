@@ -1,11 +1,3 @@
-/**
- * Unit tests for the selection-context store + the source-mode extractor. The
- * store mirrors selection-stats (per-(docName, surface) publish/subscribe with
- * change-detection); the source extractor is the load-bearing line-number logic.
- * The source extractor reads only `view.state`, so a bare `EditorState` (no DOM)
- * exercises it.
- */
-
 import { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -26,13 +18,11 @@ function snap(over: Partial<SelectionSnapshot> = {}): SelectionSnapshot {
   return { surface: 'wysiwyg', docName: 'd', markdown: 'x', charLen: 1, lineCount: 1, ...over };
 }
 
-// A source view stub — the extractor only touches `view.state`.
 function sourceView(doc: string, anchor: number, head: number): EditorView {
   return { state: EditorState.create({ doc, selection: { anchor, head } }) } as EditorView;
 }
 
 afterEach(() => {
-  // Clear any entries this test left behind (the store is module-global).
   for (const surface of ['wysiwyg', 'source', 'frontmatter'] as const) {
     publishSelectionContext('d', surface, null);
     publishSelectionContext('notes', surface, null);
@@ -65,12 +55,10 @@ describe('selection-context store', () => {
     try {
       publishSelectionContext('d', 'wysiwyg', snap({ markdown: 'a' }));
       expect(calls).toBe(1);
-      // Same passage + line range → no notify, and the stored ref is kept.
       const first = getSelectionContext('d', 'wysiwyg');
       publishSelectionContext('d', 'wysiwyg', snap({ markdown: 'a' }));
       expect(calls).toBe(1);
       expect(getSelectionContext('d', 'wysiwyg')).toBe(first);
-      // Changed passage → notify.
       publishSelectionContext('d', 'wysiwyg', snap({ markdown: 'b' }));
       expect(calls).toBe(2);
     } finally {
@@ -96,7 +84,6 @@ describe('selectionSnapshotFromSource', () => {
   const doc = 'line one\nline two\nline three';
 
   test('single-line selection → lineCount 1 and the line number on both ends', () => {
-    // "line two" spans offsets 9..17 (line 2).
     const out = selectionSnapshotFromSource(sourceView(doc, 9, 17), 'notes');
     expect(out).toEqual({
       surface: 'source',
@@ -110,7 +97,6 @@ describe('selectionSnapshotFromSource', () => {
   });
 
   test('multi-line selection → line range spanning the selected lines', () => {
-    // From mid-line-2 to mid-line-3.
     const out = selectionSnapshotFromSource(sourceView(doc, 14, 22), 'notes');
     expect(out?.sourceLineStart).toBe(2);
     expect(out?.sourceLineEnd).toBe(3);

@@ -112,10 +112,6 @@ describe('resolveTargetNavigationIntent', () => {
   });
 
   test('a GLOBAL skill bundle reference node routes to its editable doc', () => {
-    // Global skill references are editable managed-artifact docs, so the graph
-    // click path routes to the editable doc (`kind: 'doc'`, no viewer hash)
-    // rather than the read-only skill-file viewer. It still resolves to a real
-    // openable target, not a phantom `#/<doc>` tab.
     expect(
       resolveTargetNavigationIntent('__skill__/global/demo/references/notes', {
         pages: new Set(),
@@ -128,8 +124,6 @@ describe('resolveTargetNavigationIntent', () => {
       },
       hashDocName: '__skill__/global/demo/references/notes',
       hash: null,
-      // Resolves to a real openable doc, so it renders as a resolved node
-      // (not the dashed-red "missing" treatment).
       displayState: 'doc',
     });
   });

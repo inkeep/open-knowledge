@@ -1,13 +1,3 @@
-/**
- * The property (frontmatter) delta shown above the prose diff in the version
- * and agent diff panes.
- *
- * Renders as property rows rather than as YAML text: the delta compares parsed
- * values, so the rows can reuse the same widgets the property panel uses and a
- * nested object or array-of-objects displays the way it does everywhere else.
- * Change kind is carried by a glyph plus an assistive-text label, never by
- * color alone.
- */
 import {
   type FrontmatterDelta,
   type FrontmatterValue,
@@ -21,15 +11,8 @@ import { PropertyDisclosure } from '@/components/PropertyDisclosure';
 import { PropertyDisplayRow } from '@/components/PropertyDisplayRow';
 import { ComplexValueWidget, isComplexValue, TYPE_ICON } from '@/components/PropertyWidgets';
 
-/**
- * Rows past this are summarized instead of rendered. A pasted YAML blob would
- * otherwise produce an unbounded pane above the diff the reader came for.
- * Exported because the panes' change-stepper total counts rendered anchors, so
- * it has to bound its property contribution by the same number.
- */
 export const MAX_RENDERED_CHANGES = 50;
 
-/** Scalar values longer than this truncate; the full text stays in `title`. */
 const MAX_VALUE_CHARS = 200;
 
 export function PropertyDiffBlock({
@@ -38,12 +21,6 @@ export function PropertyDiffBlock({
   onOpenChange,
 }: {
   delta: FrontmatterDelta;
-  /**
-   * Controlled disclosure state. A pane with a change stepper passes it so the
-   * stepper's denominator can drop when the rows unmount; omit both for a
-   * self-managed disclosure. Ignored on the unparseable block, which renders
-   * outside the disclosure and is always visible.
-   */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -82,8 +59,6 @@ export function PropertyDiffBlock({
 
 function PropertyChangeRow({ change }: { change: PropertyChange }) {
   const { t } = useLingui();
-  // The row's type icon describes the value that exists after the change; a
-  // removal only has a before-value.
   const subject = change.kind === 'removed' ? change.before : change.after;
   const TypeIcon = TYPE_ICON[inferType(subject)];
   const { KindIcon, kindLabel } =
@@ -95,7 +70,6 @@ function PropertyChangeRow({ change }: { change: PropertyChange }) {
 
   return (
     <div
-      // Queried by both panes' change stepper as PROPERTY_CHANGE_ANCHOR_SELECTOR.
       data-property-change=""
       data-key={change.key}
       data-testid="property-diff-row"
@@ -123,8 +97,6 @@ function ChangeValue({ change }: { change: PropertyChange }) {
   if (change.kind === 'removed') {
     return <ValueView value={change.before} keyName={change.key} removed />;
   }
-  // A complex before/after pair stacks rather than sitting inline: two nested
-  // object previews on one line are unreadable at panel width.
   const complex = isComplexValue(change.before) || isComplexValue(change.after);
   return (
     <div
@@ -175,11 +147,6 @@ function ValueView({
   );
 }
 
-/**
- * Shown when either side's YAML did not parse. A structural comparison is not
- * derivable, and silence would be indistinguishable from "nothing changed" on
- * exactly the version worth inspecting — so both raw regions are surfaced.
- */
 function UnparseableProperties({ regions }: { regions: { before: string; after: string } }) {
   return (
     <div

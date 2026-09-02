@@ -1,14 +1,3 @@
-// The seam between `provider-pool.test.ts` (which verifies the key-scoping
-// MECHANISM, but hands `storageNamespace` in by hand) and production. This
-// file pins the one line that supplies it for real: a regression there —
-// `.contentDir` swapped for a sibling field, the `storageNamespace` option
-// dropped from the call, a fresh-per-launch fallback reintroduced — is
-// type-clean and silent, so it ships with a fully green suite and
-// reproduces the wedge the scoping exists to prevent.
-//
-// Lives in its own file on purpose. `pool` is a module-level singleton, so
-// whichever test constructs it first freezes it for the rest of the file;
-// `vi.resetModules()` plus a dynamic import gives each case a fresh one.
 import { fnv1aDigest } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 

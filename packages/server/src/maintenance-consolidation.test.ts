@@ -84,7 +84,7 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
   test('8 live agents writing → zero consolidations (below dead-chain threshold)', async () => {
     for (let i = 1; i <= 8; i++) {
       await commitAs(`agent-${i}`, `# edit ${i}\n`);
-      liveWriters.add(`agent-${i}`); // all live
+      liveWriters.add(`agent-${i}`);
     }
     const result = await makeCoordinator().consolidateDeadChains('flush-counter');
     expect(result.consolidated).toBe(false);
@@ -94,22 +94,17 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
 
   test('sessions end → exactly one consolidation folds the dead chains', async () => {
     for (let i = 1; i <= 8; i++) await commitAs(`agent-${i}`, `# edit ${i}\n`);
-    // No live writers → all 8 are dead.
     const result = await makeCoordinator().consolidateDeadChains('session-close');
     expect(result.consolidated).toBe(true);
     expect(result.deadChains).toBe(8);
     expect(result.widthAfter ?? 99).toBeLessThan(result.widthBefore ?? 0);
 
-    // Dead agent WIP refs are gone; an auto-consolidation checkpoint anchors them.
     const refs = await wipRefNames();
     expect(refs.filter((r) => r.includes('/agent-'))).toHaveLength(0);
     expect(await latestCheckpointKind()).toBe('auto-consolidation');
   });
 
   test('losslessness is provable at the git-DAG layer: pre-fold tips are reachable from the checkpoint', async () => {
-    // Symmetry with the shadow-branch-gc ancestry walk: prove the fold orphans
-    // nothing by walking the real DAG from the resulting checkpoint, not just by
-    // re-reading history through it. Capture each dead agent's pre-fold WIP tip.
     const sg = shadowGit(shadow);
     const preFoldTips: string[] = [];
     for (let i = 1; i <= 8; i++) {
@@ -121,8 +116,6 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
     expect(result.consolidated).toBe(true);
     expect(result.deadChains).toBe(8);
 
-    // The new checkpoint's full ancestry must contain every pre-fold tip — the
-    // commits survive as reachable history even though their WIP refs are gone.
     const checkpointSha = (
       await sg.raw(
         'for-each-ref',
@@ -139,7 +132,6 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
       expect(reachable.has(tip)).toBe(true);
     }
 
-    // And the object DB is structurally intact — no missing/broken links.
     const fsck = await sg.raw('fsck', '--full', '--connectivity-only');
     expect(fsck).not.toContain('missing');
     expect(fsck).not.toContain('broken');
@@ -149,10 +141,9 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
     for (let i = 1; i <= 5; i++) await commitAs(`agent-${i}`, `# a${i}\n`);
     await commitAs('principal-11111111-1111-1111-1111-111111111111', '# p\n');
     await commitAs('file-system', '# fs\n');
-    // Nothing live.
     const result = await makeCoordinator().consolidateDeadChains('flush-counter');
     expect(result.consolidated).toBe(true);
-    expect(result.deadChains).toBe(5); // only the 5 agents
+    expect(result.deadChains).toBe(5);
 
     const refs = await wipRefNames();
     expect(refs.some((r) => r.endsWith('/principal-11111111-1111-1111-1111-111111111111'))).toBe(
@@ -164,7 +155,6 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
 
   test('park-tipped agent refs are never folded', async () => {
     for (let i = 1; i <= 5; i++) await commitAs(`agent-${i}`, `# a${i}\n`);
-    // A 6th agent ref tipped with a park commit (branch-switch state).
     const sg = shadowGit(shadow);
     const tree = (await sg.raw('log', '-1', '--format=%T', 'refs/wip/main/agent-1')).trim();
     const parkSha = (
@@ -182,22 +172,21 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
 
     const result = await makeCoordinator().consolidateDeadChains('flush-counter');
     expect(result.consolidated).toBe(true);
-    expect(result.deadChains).toBe(5); // parked one excluded
+    expect(result.deadChains).toBe(5);
 
     const refs = await wipRefNames();
-    expect(refs.some((r) => r.endsWith('/agent-parked'))).toBe(true); // park ref survives
+    expect(refs.some((r) => r.endsWith('/agent-parked'))).toBe(true);
   });
 
   test('live chains are never touched while dead chains are folded (no orphan)', async () => {
     for (let i = 1; i <= 5; i++) await commitAs(`agent-${i}`, `# a${i}\n`);
     await commitAs('agent-live', '# live edit\n');
-    liveWriters.add('agent-live'); // this one is live
+    liveWriters.add('agent-live');
 
     const result = await makeCoordinator().consolidateDeadChains('flush-counter');
     expect(result.consolidated).toBe(true);
     expect(result.deadChains).toBe(5);
 
-    // The live agent's chain and its commit survive.
     const refs = await wipRefNames();
     expect(refs.some((r) => r.endsWith('/agent-live'))).toBe(true);
   });
@@ -207,7 +196,6 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
     const coord = makeCoordinator();
     const first = await coord.consolidateDeadChains('flush-counter');
     expect(first.consolidated).toBe(true);
-    // Re-create dead chains and try again immediately.
     for (let i = 7; i <= 12; i++) await commitAs(`agent-${i}`, `# a${i}\n`);
     const second = await coord.consolidateDeadChains('flush-counter');
     expect(second.consolidated).toBe(false);
@@ -223,22 +211,16 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
   });
 
   test('a failed fold does NOT consume the spacing window (retries on the next trigger)', async () => {
-    // Five dead agent chains qualify. Point the coordinator at a non-existent
-    // contentRoot so saveVersion's `git add` fails and the fold throws. The fix
-    // consumes spacing only AFTER a successful fold, so the failed run must NOT
-    // block the next trigger with 'spacing'.
     for (let i = 1; i <= 5; i++) await commitAs(`agent-${i}`, `# a${i}\n`);
     const coord = createMaintenanceCoordinator({
       getShadow: () => shadow,
       getCurrentBranch: () => 'main',
-      contentRoot: 'no-such-content-dir-xyz', // breaks saveVersion's `git add`
+      contentRoot: 'no-such-content-dir-xyz',
       isWriterLive: (w) => liveWriters.has(w),
     });
     const first = await coord.consolidateDeadChains('flush-counter');
     expect(first.consolidated).toBe(false);
     expect(first.skipped).toBe('error');
-    // Spacing was NOT consumed → the immediate retry re-attempts (and errors
-    // again) instead of short-circuiting with 'spacing'.
     const second = await coord.consolidateDeadChains('flush-counter');
     expect(second.skipped).toBe('error');
     expect(second.skipped).not.toBe('spacing');
@@ -247,7 +229,6 @@ describe('auto-consolidation (PRD-6972 FR5 / D9 / D10 / D20)', () => {
 
 describe('D16 timeline exclusion of auto-consolidation checkpoints', () => {
   test('WIP rows survive a consolidation with no new visible checkpoint row', async () => {
-    // Five dead agents each edit `intro`.
     for (let i = 1; i <= 5; i++) await commitAs(`agent-${i}`, `# edit ${i}\n`);
 
     const before = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
@@ -258,14 +239,10 @@ describe('D16 timeline exclusion of auto-consolidation checkpoints', () => {
     expect(result.consolidated).toBe(true);
 
     const after = await getDocumentHistory(shadow, { docName: 'intro' }, 'content/docs');
-    // No auto-consolidation checkpoint row is rendered by default.
     expect(after.entries.some((e) => e.checkpoint?.kind === 'auto-consolidation')).toBe(false);
-    // The same WIP rows remain visible (their ancestry is reachable through the
-    // hidden checkpoint).
     const afterWipShas = new Set(after.entries.filter((e) => e.type === 'wip').map((e) => e.sha));
     for (const sha of beforeWipShas) expect(afterWipShas.has(sha)).toBe(true);
 
-    // The opt-in param surfaces the hidden checkpoint for debugging.
     const withAuto = await getDocumentHistory(
       shadow,
       { docName: 'intro', includeAutoCheckpoints: true },

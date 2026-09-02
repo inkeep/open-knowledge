@@ -1,30 +1,3 @@
-/**
- * Splash-local mirrors of the pure functions that live in the OK workspace:
- *
- *   - `decodeShareUrl` mirrors `packages/core/src/sharing/share-url.ts`
- *     (permanent v1 payload = `[0x01] || utf-8(<github-url>)`; canonical v2 =
- *     `[0x02] || uint16be(contentRootDepth) || utf-8(<github-url>)`)
- *   - `parseGitHubShareUrl` / `parseGitHubBlobUrl` / `parseGitHubTreeUrl`
- *     mirror `packages/cli/src/github/url.ts` — the dispatcher returns a
- *     kind-discriminated `{kind:'doc'|'folder', owner, repo, branch, path}`
- *     (blob → doc; tree → folder, whose path MAY be empty for the repo/branch
- *     root). Branch slashes must be percent-encoded.
- *
- * These stay copy-local instead of importing from
- * `@inkeep/open-knowledge-core` / `@inkeep/open-knowledge` so the static docs
- * build does NOT pull in the CRDT/markdown/Tiptap/CLI dependency tree. The
- * duplication is bounded and pinned by `share-splash.test.ts`. Any wire change
- * to the source modules (codec field names, URL-parser shapes) must be
- * mirrored here in lock-step, including strict v2 canonical parsing and its
- * token/payload/URL bounds.
- *
- * `buildSplashViewModel(encoded)` is the splash's single entry point — it
- * folds the decoder + dispatcher into a discriminated `SplashView` the route
- * uses to render the three states (ok / unsupported-version / invalid). The
- * `ok` view carries a `target` discriminator so the route can render a
- * file-vs-folder affordance.
- */
-
 import {
   classifyDownloadOs,
   type DetectedOs,
@@ -283,12 +256,6 @@ function base64UrlToUint8Array(input: string): Uint8Array {
   return bytes;
 }
 
-/**
- * Known non-GitHub forges — copy-local mirror of `KNOWN_NON_GITHUB_GIT_HOSTS`
- * in `@inkeep/open-knowledge-core` (kept inline so the static docs build has
- * no runtime dep on the package graph, per the file-header note). Any host not
- * listed is presumed github.com or a GitHub Enterprise Server instance.
- */
 const KNOWN_NON_GITHUB_GIT_HOSTS = new Set([
   'gitlab.com',
   'bitbucket.org',
@@ -320,33 +287,10 @@ export interface ParsedGitHubTreeUrl {
   path: string;
 }
 
-/**
- * Kind-discriminated share target. A GitHub blob URL is a `doc`; a GitHub tree
- * URL is a `folder` (whose `path` MAY be empty for the repo/branch root).
- */
 export type ParsedGitHubShareTarget =
   | { kind: 'doc'; host: string; owner: string; repo: string; branch: string; path: string }
   | { kind: 'folder'; host: string; owner: string; repo: string; branch: string; path: string };
 
-/**
- * Decode-boundary validation for the owner/repo/branch pulled out of a
- * github.com share URL — split across two layers:
- *
- *   - Structural validity (here): owner/repo must match GitHub's name charset;
- *     branch must satisfy the same ref contract the share/clone boundary
- *     enforces (`isValidBranchName` in `packages/core/src/schemas/api/share.ts`)
- *     — no leading `-`, no control chars, no whitespace, no `:`, no `..`
- *     segment. A ref the boundary accepts (e.g. `release+candidate`) must still
- *     render a usable receive page, so this mirrors that contract rather than a
- *     narrower allowlist that would reject valid shares.
- *   - Shell safety (at render): `buildCloneCommand` POSIX-single-quotes any
- *     segment outside a bare shell-safe token, so a ref carrying a shell
- *     metacharacter is inert in the copyable command. Validity is checked here;
- *     injection-safety is enforced where the command is built.
- *
- * Mirrors the core branch contract in lock-step — see the file header note on
- * why these helpers stay copy-local to the static docs build.
- */
 const SHARE_OWNER_REPO_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 function isValidShareBranch(branch: string): boolean {
@@ -361,9 +305,6 @@ function isValidShareBranch(branch: string): boolean {
 }
 
 function isShareSegmentSafe(owner: string, repo: string, branch: string): boolean {
-  // Real GitHub owner/repo names are never `.` or `..`; rejecting them closes
-  // the asymmetry with the branch `..` guard (a `github.com/../../blob/…` share
-  // would otherwise render `ok clone ../.. …`).
   const nameSafe = (s: string) =>
     SHARE_OWNER_REPO_PATTERN.test(s) && !s.startsWith('-') && s !== '.' && s !== '..';
   return nameSafe(owner) && nameSafe(repo) && isValidShareBranch(branch);
@@ -377,10 +318,6 @@ function parseGitHubBlobUrl(input: string): ParsedGitHubBlobUrl | null {
     return null;
   }
 
-  // Share links are always https. Reject any other scheme: a crafted deep
-  // link could carry a non-https scheme (vscode:, ms-msdt:, …) with a valid
-  // host and otherwise parse — that URL renders into an <a href> on this
-  // public splash page.
   if (url.protocol !== 'https:') return null;
 
   const host = classifyGitHubShareHost(url.hostname);
@@ -411,12 +348,6 @@ function parseGitHubBlobUrl(input: string): ParsedGitHubBlobUrl | null {
   return { host, owner, repo, branch, path: pathParts.join('/') };
 }
 
-/**
- * Parse a github.com `/tree/` (folder) URL. Unlike the blob parser, the folder
- * path MAY be empty — `tree/<branch>` and `tree/<branch>/` both denote the
- * repo/branch root and yield `path: ''`. Branch slashes must be
- * percent-encoded for the same disambiguation reason as the blob parser.
- */
 function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
   let url: URL;
   try {
@@ -425,28 +356,17 @@ function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
     return null;
   }
 
-  // Share links are always https. Reject any other scheme: a crafted deep
-  // link could carry a non-https scheme (vscode:, ms-msdt:, …) with a valid
-  // host and otherwise parse — that URL renders into an <a href> on this
-  // public splash page.
   if (url.protocol !== 'https:') return null;
 
   const host = classifyGitHubShareHost(url.hostname);
   if (host === null) return null;
 
-  // Split WITHOUT filtering empties so empty intermediate path segments
-  // (`a//b`) remain detectable. The pathname always starts with `/`, so
-  // index 0 is the empty pre-owner segment.
   const rawSegments = url.pathname.split('/');
 
-  // Expected shape: ['', owner, repo, 'tree', branch, ...pathSegments?]
   if (rawSegments.length < 5) return null;
-  if (rawSegments[0] !== '') return null; // leading-slash hygiene
+  if (rawSegments[0] !== '') return null;
   if (rawSegments[3] !== 'tree') return null;
 
-  // A single trailing-slash empty segment after the branch denotes the root
-  // folder (`tree/<branch>/`); drop it so it isn't mistaken for a malformed
-  // empty path segment.
   const pathSegmentsRaw = rawSegments.slice(5);
   if (pathSegmentsRaw.length === 1 && pathSegmentsRaw[0] === '') pathSegmentsRaw.pop();
 
@@ -470,12 +390,6 @@ function parseGitHubTreeUrl(input: string): ParsedGitHubTreeUrl | null {
   return { host, owner, repo, branch, path: pathParts.join('/') };
 }
 
-/**
- * Dispatch a shared github.com URL to its target kind. A blob URL resolves to
- * a `doc`; a tree URL resolves to a `folder`. Blob is tried first because the
- * `/blob/` and `/tree/` prefixes are mutually exclusive. Returns null when the
- * input is neither a well-formed blob nor tree URL.
- */
 function parseGitHubShareUrl(input: string): ParsedGitHubShareTarget | null {
   const blob = parseGitHubBlobUrl(input);
   if (blob) return { kind: 'doc', ...blob };
@@ -486,61 +400,26 @@ function parseGitHubShareUrl(input: string): ParsedGitHubShareTarget | null {
   return null;
 }
 
-/**
- * OK macOS DMG download URL. Re-exported here as the canonical `DOWNLOAD_URL`
- * so splash share-link pages and marketing CTAs stay in sync.
- */
 export { DOWNLOAD_URL as SPLASH_DOWNLOAD_URL } from './site';
 
-/**
- * Build the custom-scheme handoff URL the splash's "Open in OpenKnowledge"
- * button fires. V1 keeps its historical direct `url` parameter; v2 carries
- * the canonical token unchanged so content-root depth survives the handoff.
- */
 export function buildCustomSchemeUrl(sharedUrl: string, token?: string): string {
   return token === undefined
     ? `openknowledge://share?url=${encodeURIComponent(sharedUrl)}`
     : `openknowledge://share?token=${token}`;
 }
 
-/**
- * Install command for the cross-platform CLI receive path. The published
- * package is `@inkeep/open-knowledge`; the two binaries it installs are
- * `open-knowledge` and `ok`.
- */
 export const SPLASH_INSTALL_COMMAND = 'npm install -g @inkeep/open-knowledge';
 
-/**
- * POSIX-single-quote a string so it is safe as one shell argument (mirrors
- * `shellSingleQuote` in `@inkeep/open-knowledge-core`; kept copy-local so the
- * static docs build doesn't pull in the workspace dep tree — see file header).
- */
 function shellSingleQuoteShareArg(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-// Bare tokens that render unquoted in the copyable command. Covers GitHub
-// owner/repo names and the common safe ref charset (including `+`, so a ref
-// like `release+candidate` renders unquoted); anything outside it is quoted.
 const SHARE_SHELL_SAFE_TOKEN = /^[A-Za-z0-9._/@+-]+$/;
 
 function quoteShareArg(s: string): string {
   return SHARE_SHELL_SAFE_TOKEN.test(s) ? s : shellSingleQuoteShareArg(s);
 }
 
-/**
- * The CLI silently falls back to the default branch when the ref is missing,
- * so emitting `-b <branch>` unconditionally never clones the wrong ref even on
- * a deleted feature branch — and the splash never has to guess the default
- * branch name. `owner/repo` shorthand is parsed by the CLI's GitHub-URL
- * dispatcher (no need to reconstruct the github.com URL on the splash).
- *
- * Each segment is POSIX-single-quoted when it carries anything outside the bare
- * shell-safe charset, so the rendered command is injection-safe regardless of
- * the ref — `isShareSegmentSafe` validates ref *validity* at the decode
- * boundary; shell *safety* is enforced here, where the command is built. The
- * function does not assume its inputs are pre-sanitized.
- */
 export function buildCloneCommand({
   owner,
   repo,
@@ -553,42 +432,19 @@ export function buildCloneCommand({
   return `ok clone ${quoteShareArg(owner)}/${quoteShareArg(repo)} -b ${quoteShareArg(branch)}`;
 }
 
-/**
- * The splash shares the site-wide OS classifier rather than carrying its own —
- * a second copy would let the splash and the rest of the site disagree about
- * what a given browser is.
- */
 export type SplashOs = DetectedOs;
 export const classifySplashOs = classifyDownloadOs;
 
-/**
- * Query suffix the client appends to the splash Download CTA once it has
- * classified the recipient. Always concrete: an unknown OS falls back to the
- * macOS floor, which is what the route would have served anyway, and naming it
- * explicitly keeps the analytics slice honest instead of recording every
- * undetected visitor as a bare default.
- */
 export function splashDownloadQuery(os: SplashOs): string {
   return `?${targetQuery(defaultTargetForOs(os))}`;
 }
 
 export type ClipboardCopyOutcome = { kind: 'copied' } | { kind: 'fallback-select' };
 
-/**
- * The 'fallback-select' branch must NEVER be a silent no-op — the caller
- * selects the command text so manual copy is one keystroke and announces the
- * failure to assistive tech. Extracted as a pure function so the success /
- * failure branching is unit-testable without mocking navigator.clipboard.
- */
 export function clipboardCopyOutcome(succeeded: boolean): ClipboardCopyOutcome {
   return succeeded ? { kind: 'copied' } : { kind: 'fallback-select' };
 }
 
-/**
- * Treat `main` and `master` as the default branches that suppress the
- * branch indicator. Any other branch surfaces a small "on <branch>" hint
- * row beneath the repo path.
- */
 function isCommonDefaultBranch(branch: string): boolean {
   return branch === 'main' || branch === 'master';
 }
@@ -596,22 +452,9 @@ function isCommonDefaultBranch(branch: string): boolean {
 export type SplashView =
   | {
       kind: 'ok';
-      /**
-       * Whether the share targets a single document (blob URL) or a folder
-       * (tree URL). The route uses this to render a file-vs-folder affordance.
-       */
       target: 'doc' | 'folder';
-      /**
-       * The headline label. For a doc this is the path basename
-       * (`page.md`). For a folder it's the folder name (last path segment),
-       * or the repo name when the folder is the repo/branch root (empty path).
-       */
       filename: string;
-      /** GitHub host: `github.com` or a GHES hostname. */
       host: string;
-      /** True when the share targets a GitHub Enterprise host (not github.com).
-       * The splash renders the host prominently in this case so a share can
-       * never borrow openknowledge.ai's credibility for an unfamiliar server. */
       isEnterpriseHost: boolean;
       owner: string;
       repo: string;
@@ -628,19 +471,6 @@ export type SplashView =
     }
   | { kind: 'invalid' };
 
-/**
- * The splash route's single decode + parse step. Folds `decodeShareUrl` +
- * `parseGitHubShareUrl` into a discriminated view-model so the route can
- * render the three states (ok / unsupported-version / invalid) without
- * leaking exception flow into JSX. A doc (blob) share and a folder (tree)
- * share both produce an `ok` view, discriminated by `target`.
- *
- * Filename is the URL path basename, decoded verbatim —
- * NO title-case transformation, NO extension stripping. `Q4 OKRs.md`
- * stays `Q4 OKRs.md`; `marketing-playbook.md` stays
- * `marketing-playbook.md`; honesty over polish. A root-folder share
- * (empty tree path) falls back to the repo name as the label.
- */
 export function buildSplashViewModel(encoded: string): SplashView {
   let decoded: DecodedShare;
   try {
@@ -650,12 +480,6 @@ export function buildSplashViewModel(encoded: string): SplashView {
       return { kind: 'unsupported-version', version: err.version };
     }
     if (!(err instanceof InvalidShareUrlError)) {
-      // An unexpected throw (not the expected malformed-token rejection) means
-      // this copy-local decoder diverged from the core codec it mirrors, or hit
-      // an injected-dep bug. Surface it (server-side → Vercel logs) so a
-      // regression is diagnosable instead of collapsing into the generic
-      // "invalid link" every recipient sees. Expected InvalidShareUrlError stays
-      // quiet so bots hitting /d/<garbage> don't flood the logs.
       console.warn(
         `[share-splash] unexpected share-decode error (errorKind: ${
           err instanceof Error ? err.name : typeof err
@@ -683,8 +507,6 @@ export function buildSplashViewModel(encoded: string): SplashView {
   const { kind, host, owner, repo, branch, path } = parsed;
   const segments = path.split('/').filter((s) => s.length > 0);
   const basename = segments[segments.length - 1];
-  // Doc shares always have a path basename. Folder shares fall back to the
-  // repo name for the repo/branch root (empty path).
   const filename = basename ?? repo;
 
   return {
@@ -707,13 +529,6 @@ export function buildSplashViewModel(encoded: string): SplashView {
   };
 }
 
-/**
- * Meta description for a share-link page. Names the shared doc/folder and its
- * repo, and always carries "Open … with <product>" so social/SEO previews state
- * the action. Length lands in the ~50-160 char analyser sweet spot for realistic
- * filenames; callers still pass it through `metaDescription` to clamp pathological
- * lengths.
- */
 export function buildShareDescription(view: Extract<SplashView, { kind: 'ok' }>): string {
   const noun = view.target === 'folder' ? 'folder' : 'document';
   const branchSuffix = view.isDefaultBranch ? '' : ` (on ${view.branch})`;

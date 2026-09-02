@@ -6,12 +6,10 @@ import { Button } from '@/components/ui/button';
 interface TerminalNoticeBannerProps {
   readonly testId: string;
   readonly children: ReactNode;
-  /** Optional affordance rendered between the message and the dismiss control. */
   readonly action?: ReactNode;
   readonly onDismiss: () => void;
 }
 
-/** Dismissible, non-blocking status strip shared by recoverable terminal notices. */
 export function TerminalNoticeBanner({
   testId,
   children,

@@ -1,11 +1,3 @@
-/**
- * DOM tests for the Slidev action's cheap gate in the editor toolbar: it mounts
- * the lazy cluster only when the plugin is enabled AND the host exposes the
- * slides bridge AND a live provider + doc are present. The two remaining
- * conditions the cluster itself owns (the `slides: true` frontmatter flag and
- * the slidev-status probe) are covered in SlidesToolbarControls.dom.test.tsx.
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -15,12 +7,7 @@ import * as Y from 'yjs';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-// Mutable so each test flips `slides.enabled`; the mock reads it per render.
 let mockMergedConfig: { slides?: { enabled?: boolean } } | null = null;
-// The toolbar reads config through the OPTIONAL accessor on purpose (it renders
-// in provider-less mount orderings), so the mock has to stand in for that one —
-// mocking the throwing `useConfigContext` here is what previously let a
-// provider-less render regression pass unnoticed.
 let mockConfigAbsent = false;
 vi.doMock('@/lib/config-context', () => ({
   useConfigContextOptional: () =>
@@ -33,8 +20,6 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-// The breadcrumb + not-in-sidebar chrome read config through their own hooks;
-// stub them to isolate this file on the Slidev action.
 vi.doMock('./EditorBreadcrumb', () => ({ EditorBreadcrumb: () => null }));
 vi.doMock('./NotInSidebarIndicator', () => ({ NotInSidebarIndicator: () => null }));
 
@@ -115,7 +100,6 @@ describe('EditorToolbar — Slidev action gate', () => {
   test('on a web host with no desktop bridge renders no action and logs no error', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockMergedConfig = { slides: { enabled: true } };
-    // No okDesktop assigned → plain browser host.
     await renderToolbar(makeDeckProvider());
     await Promise.resolve();
     expect(screen.queryByTestId('slides-toolbar-action')).toBeNull();
@@ -124,12 +108,6 @@ describe('EditorToolbar — Slidev action gate', () => {
 });
 
 describe('EditorToolbar — renders without a config provider', () => {
-  // The regression this pins: the slides gate first read config through the
-  // THROWING `useConfigContext`. This toolbar renders for every document, and it
-  // owns the frontmatter-problems badge — so in any mount ordering without a
-  // `<ConfigProvider />` above it, the throw took the whole toolbar subtree down
-  // and an unrelated badge silently resolved to zero elements. An off-by-default
-  // plugin gate must not be able to unmount the toolbar.
   test('an absent config renders the toolbar and simply withholds the action', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockConfigAbsent = true;
@@ -138,7 +116,6 @@ describe('EditorToolbar — renders without a config provider', () => {
     await renderToolbar(makeDeckProvider());
     await Promise.resolve();
 
-    // The toolbar itself is alive — the mode toggle is unconditional chrome.
     expect(screen.queryByTestId('slides-toolbar-action')).toBeNull();
     expect(document.body.textContent).not.toBe('');
     expect(consoleError).not.toHaveBeenCalled();

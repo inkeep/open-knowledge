@@ -64,8 +64,6 @@ function makeEditor({
   return {
     state: {
       selection: { empty: selectionEmpty, from: selectionFrom, to: selectionTo },
-      // `shouldShowBubbleMenu` walks the doc via `commentQuoteText` so an
-      // inline atom counts as text-bearing; the double yields one text node.
       doc: {
         nodesBetween: (from: number, _to: number, fn: (node: unknown, pos: number) => void) => {
           if (selectionEmpty) return;
@@ -74,8 +72,6 @@ function makeEditor({
       },
     },
     view: { hasFocus: () => viewFocused },
-    // The claim reads the non-throwing `editorView` field (never the `view`
-    // throwing proxy); mirror the real Editor by exposing both.
     editorView: { hasFocus: () => viewFocused },
     getAttributes: vi.fn((name: string) => (name === 'link' ? { href } : {})),
     isActive: vi.fn((name: string) => name === 'link' && active),
@@ -218,9 +214,6 @@ describe('LinkEditPopover ⌘K dual-role claim', () => {
   });
 
   test('claims in the capture phase, starving window-bubble consumers like the palette', () => {
-    // The command palette's opener is a window-bubble keydown listener. A
-    // claimed ⌘K must never reach one — even one registered before this
-    // component mounted. Dispatch below window so the phases separate.
     let bubbleFired = false;
     const bubbleListener = () => {
       bubbleFired = true;
@@ -277,8 +270,6 @@ describe('LinkEditPopover ⌘K dual-role claim', () => {
   });
 
   test('routes a caret inside a tracked link to the chip edit spine, not the popover', () => {
-    // Real mark-identity state needs a live PM view; stub the plugin state so
-    // the caret resolves to a stable id (same idiom as component-items tests).
     const getStateSpy = vi.spyOn(markIdentityKey, 'getState').mockReturnValue({
       byId: new Map([
         [
@@ -289,8 +280,6 @@ describe('LinkEditPopover ⌘K dual-role claim', () => {
       counter: 7,
     } as never);
 
-    // Capture rAF without invoking it: the deferred getInteractionLayer →
-    // setActiveNode needs a live editor view, out of scope for this unit.
     let rafScheduled = false;
     const originalRaf = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = (() => {
@@ -442,9 +431,6 @@ describe('LinkEditPopover clipboard pre-fill', () => {
         await Promise.resolve();
       });
 
-      // The read itself is user-visible on the web (a clipboard permission
-      // prompt), so not-reading on an edit-open is the observable contract —
-      // alongside the existing href surviving untouched.
       expect(clip.readText).not.toHaveBeenCalled();
       expect(input.value).toBe('https://example.com/docs');
     } finally {

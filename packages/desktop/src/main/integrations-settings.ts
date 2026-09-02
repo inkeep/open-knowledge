@@ -1,24 +1,3 @@
-/**
- * Settings → AI tools — persistent IPC surface for per-component
- * install/uninstall of OpenKnowledge's GLOBAL footprint: per-editor user-scope
- * MCP entries, the shell-PATH shim, and the user-global skill bundles.
- *
- * Sibling of the one-shot first-launch consent flow (`mcp-wiring.ts`): the
- * dialog solicits a batched decision once; this surface reflects live state
- * (checked = actually installed) and applies one component per invoke, for the
- * lifetime of the app. Same install actors underneath — `writeUserMcpConfigs`,
- * `ensureCliOnPath`, the decision-gated skill reclaim — so the two surfaces
- * can never disagree about what an install means.
- *
- * Mutations serialize through a promise-chain mutex: two windows toggling
- * concurrently (or a rage-click) queue rather than interleave partial writes
- * on the same config file.
- *
- * Electron-free, dependency-injected (mirrors `mcp-wiring.ts`) so bun-test
- * loads it without an Electron runtime; `main/index.ts` wires the real
- * surfaces in.
- */
-
 import { TERMINAL_CLI_IDS } from '@inkeep/open-knowledge-core';
 import type { IpcMain } from 'electron';
 import type {
@@ -41,30 +20,19 @@ import {
   writeMcpStatusMarker,
 } from './mcp-wiring.ts';
 
-/** Per-editor removal outcome — mirrors the CLI's `McpRemoveOutcome` kinds so
- *  the injected surface can pass the CLI result straight through. */
 interface IntegrationsRemoveOutcome {
   kind: 'removed' | 'not-present' | 'left-foreign' | 'declined';
 }
 
-/** CLI-side surface (backed by `@inkeep/open-knowledge`). */
 export interface IntegrationsCliSurface {
   allEditorIds: readonly McpWiringEditorId[];
   editorLabel(editorId: McpWiringEditorId): string;
-  /** Discriminated read of the editor's user config — never throws for the
-   *  expected absent/no-entry/decline cases. */
   classifyExistingMcpEntry(
     editorId: McpWiringEditorId,
     home: string,
   ): { kind: 'absent' | 'no-entry' | 'decline' } | { kind: 'present'; entry: unknown };
-  /** True when `entry` is recognizably OK's OWN managed entry (the only
-   *  shape uninstall will delete). */
   isOwnEntry(entry: unknown): boolean;
-  /** Tildified user-config path for the row's disclosure tooltip; null when
-   *  the resolver can't produce one on this platform. */
   editorConfigPath(editorId: McpWiringEditorId): string | null;
-  /** Technical locator of OK's entry inside the config (json dotted path or
-   *  toml table header) — disclosure only. */
   editorEntryLocator(editorId: McpWiringEditorId): string;
   writeUserMcpConfigs(opts: { editors: McpWiringEditorId[]; home?: string }): Promise<
     Array<{
@@ -82,14 +50,12 @@ export interface IntegrationsCliSurface {
   removeUserMcpEntry(editorId: McpWiringEditorId): IntegrationsRemoveOutcome;
 }
 
-/** PATH-shim surface (backed by `path-install.ts`). */
 export interface IntegrationsPathSurface {
   computeStatus(): IntegrationsPathStatus;
   install(): Promise<{ ok: true } | { ok: false; error: string }>;
   uninstall(): Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
-/** User-global skills surface (backed by skill-state + skill-reclaim). */
 export interface IntegrationsSkillsSurface {
   computeStatuses(): IntegrationsSkillStatus[];
   setEnabled(
@@ -114,19 +80,9 @@ interface IpcMainLike extends Pick<IpcMain, 'handle' | 'removeHandler'> {}
 
 export interface RegisterIntegrationsSettingsOpts {
   home: string;
-  /** Same gate set as the consent dialog / startup reclaim (a supported
-   *  packaged install layout per install-shape.ts, packaged or
-   *  OK_M6B_FORCE). False renders the section read-only: status still
-   *  computes, mutations refuse. */
   available: boolean;
   ipcMain: IpcMainLike;
   cli: IntegrationsCliSurface;
-  /**
-   * Unfakeable presence signals for the MCP editor list, injected so main can
-   * hand over the probes its launcher surfaces already run and cache rather than
-   * spawning a second set. See `detectedEditorsFromProbes` for why a
-   * config-directory check cannot stand in for these.
-   */
   probeEditorPresence: () => Promise<EditorPresenceProbes>;
   path: IntegrationsPathSurface;
   skills: IntegrationsSkillsSurface;
@@ -139,7 +95,6 @@ export interface IntegrationsSettingsHandle {
   destroy(): void;
 }
 
-/** Map one editor's config classification to the Settings row state. */
 export function classifyEditorState(
   classification: ReturnType<IntegrationsCliSurface['classifyExistingMcpEntry']>,
   isOwnEntry: (entry: unknown) => boolean,
@@ -155,61 +110,20 @@ export function classifyEditorState(
   }
 }
 
-/**
- * Raw, unfakeable presence signals, keyed by the id each probe already uses.
- * Every one of these is a fact about the machine that OpenKnowledge cannot
- * write — which is the whole point of taking them instead of reading a config
- * directory back.
- */
 export interface EditorPresenceProbes {
-  /** Login-shell `command -v <bin>` per terminal CLI. */
   readonly cliOnPath: Readonly<Partial<Record<string, boolean>>>;
-  /** OS URL-scheme handler resolution per desktop target (who owns `claude://`). */
   readonly schemeHandler: Readonly<Partial<Record<string, boolean>>>;
 }
 
-/**
- * Which editors are actually on this machine.
- *
- * Both signals come from outside OpenKnowledge: a binary resolvable on the
- * user's login-shell PATH, and the application the OS says owns a URL scheme.
- * Neither can be manufactured by writing a directory.
- *
- * That last property is the requirement, not a bonus. Presence must never be
- * inferred from an editor's MCP config directory: OpenKnowledge writes those
- * directories itself (the consent dialog does it for five editors with the
- * availability check bypassed), so reading one back is circular — it reports
- * an editor the user has never installed, and keeps reporting it after the
- * user removes the entry.
- *
- * `lm-studio` is deliberately absent: it ships no CLI on PATH (0.4.21 drops an
- * `lms` binary at `~/.lmstudio/bin/lms` and only best-effort links it), and its
- * `lmstudio:` scheme routes nothing OK can ask about, so there is nothing honest
- * to probe. It reports undetected rather than falling back to the directory
- * check — under-claiming is the safe direction, and no surface prints a presence
- * claim anyway.
- */
 export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<McpWiringEditorId> {
   const scheme = (id: string): boolean => probes.schemeHandler[id] === true;
   const detected = new Set<McpWiringEditorId>();
-  // Gated on the terminal-CLI registry that PRODUCES `cliOnPath`, so adding a
-  // CLI there detects it here with no second list to keep in step. The
-  // terminal-CLI ids and the editor ids coincide for every host that ships a
-  // CLI, which is what lets the key BE the lookup.
-  //
-  // The gate is load-bearing, not a type formality: `cliOnPath` is keyed by
-  // `string`, and an id outside this registry is one OK has no honest CLI
-  // signal for — `lm-studio` ships no CLI OK resolves on PATH, so a caller
-  // handing us a `true` for it must not turn into a presence claim.
   const cliIds = new Set<string>(TERMINAL_CLI_IDS);
   for (const [id, onPath] of Object.entries(probes.cliOnPath)) {
     if (onPath === true && cliIds.has(id)) detected.add(id as McpWiringEditorId);
   }
-  // Desktop apps: the scheme handler is the only signal, and `claude-code` is
-  // the handoff-target id for the Claude desktop app.
   if (scheme('claude-code')) {
     detected.add('claude-desktop' as McpWiringEditorId);
-    // The CLI and the desktop app are separate installs; either proves Claude.
     detected.add('claude' as McpWiringEditorId);
   }
   if (scheme('codex')) detected.add('codex' as McpWiringEditorId);
@@ -217,14 +131,6 @@ export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<Mcp
   return detected;
 }
 
-/**
- * `detectedEditorsFromProbes` with the shared failure policy: a failed probe is
- * unknown, not empty-and-not-installed — but unknown must not claim, and an
- * empty set under-claims, which is the safe direction on every surface that
- * reads this (detection is ranking-only). One function so the user-global and
- * project Settings scopes can never rank the same machine differently on
- * failure.
- */
 export async function safeDetectedEditors(
   probeEditorPresence: () => Promise<EditorPresenceProbes>,
 ): Promise<Set<McpWiringEditorId>> {
@@ -252,24 +158,9 @@ export function registerIntegrationsSettings(
   } = opts;
   const nowDate = (): Date => (now ? now() : new Date());
 
-  /**
-   * Every editor with a host root on this machine. The injected probes answer
-   * for the machine, not for a directory — there is no project to scope them
-   * to, and the Create-new-project dialog reads this off the status snapshot
-   * before its project exists. NOT narrowed by `cli.allEditorIds`: that list is
-   * filtered to user-global targets, while this set must stay honest about
-   * project-scope-only ones (Pi) too.
-   */
   const computeDetectedEditors = (): Promise<Set<McpWiringEditorId>> =>
     safeDetectedEditors(probeEditorPresence);
 
-  /**
-   * `detected` is optional so a caller that has already probed can pass its set
-   * in rather than paying a second pass. Whether `probeEditorPresence` caches
-   * is the injector's business (main's does, ~60s), so two passes here could
-   * still straddle an install or removal — exactly the drift the status
-   * snapshot must not show.
-   */
   async function computeEditorStatuses(
     detected?: Set<McpWiringEditorId>,
   ): Promise<IntegrationsEditorStatus[]> {
@@ -279,8 +170,6 @@ export function registerIntegrationsSettings(
       try {
         state = classifyEditorState(cli.classifyExistingMcpEntry(id, home), cli.isOwnEntry);
       } catch (err) {
-        // A throwing read (platform-mismatched config resolver, EACCES) must
-        // not take the whole section down — surface the row as unmanageable.
         logger.warn('editor classify failed', {
           id,
           err,
@@ -317,9 +206,6 @@ export function registerIntegrationsSettings(
       });
       skillStatuses = [];
     }
-    // One probe pass feeds both fields — same question, and letting them drift
-    // would put the settings list and the create-project dialog on different
-    // answers about the same machine.
     const detected = await computeDetectedEditors();
     return {
       available,
@@ -330,13 +216,6 @@ export function registerIntegrationsSettings(
     };
   }
 
-  /**
-   * Keep the first-launch marker's editor list truthful after a
-   * settings-driven toggle. Only when a marker already EXISTS — its absence
-   * means "no prior decision", which must keep firing the first-launch
-   * dialog; a settings toggle on a marker-less install (possible only when
-   * the consent dialog never delivered) doesn't claim that decision.
-   */
   async function refreshMarkerEditors(): Promise<void> {
     const marker = readMcpStatusMarker(home, fs);
     if (marker === null) return;
@@ -351,8 +230,6 @@ export function registerIntegrationsSettings(
     try {
       writeMcpStatusMarker(home, next, fs);
     } catch (err) {
-      // Bookkeeping only — the entry write itself already succeeded, and the
-      // startup repair scans configs directly rather than trusting the list.
       logger.warn('marker refresh failed', {
         err,
       });
@@ -385,12 +262,6 @@ export function registerIntegrationsSettings(
             error: `Couldn't safely edit ${label}'s config — it was left unchanged.`,
           };
         case 'skipped-missing':
-          // The editor's config dir doubles as its detection probe, so writing
-          // would create the very directory OK later reads back as "installed"
-          // — the write is refused rather than fabricating that evidence. Every
-          // row here keeps a live checkbox regardless of detection, so this is
-          // reachable by design; say the tool is missing rather than blaming OK
-          // for a failure. The row's own `How to set up` link covers what next.
           return {
             ok: false,
             error: `${label} wasn't found on this machine. Install it first, then connect it here.`,
@@ -452,8 +323,6 @@ export function registerIntegrationsSettings(
     return { ok: false, error: 'Unknown component.' };
   }
 
-  // Promise-chain mutex: mutations run strictly one at a time, in arrival
-  // order. Failures don't break the chain (each link swallows into a result).
   let mutationChain: Promise<unknown> = Promise.resolve();
 
   function dispatchSet(request: IntegrationsSetRequest): Promise<IntegrationsSetResult> {

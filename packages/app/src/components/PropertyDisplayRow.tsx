@@ -3,11 +3,6 @@ import type { ReactNode } from 'react';
 const LABEL_CLASS =
   'flex h-7 w-32 shrink-0 items-center truncate px-2 text-sm text-muted-foreground';
 
-/**
- * Shared property display grid for editable identity rows and static previews.
- * `htmlFor` turns the key into a real label; static values use the same column
- * without claiming a label relationship.
- */
 export function PropertyDisplayRow({
   icon,
   label,

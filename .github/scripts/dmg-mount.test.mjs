@@ -5,11 +5,6 @@ import { isAbsolute, join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { DmgMountError, MOUNT_ERROR_CODES, withMountedDmg } from './dmg-mount.mjs';
 
-/**
- * Build an injectable dep bundle with a recording command runner. `attachFails`
- * makes the `hdiutil attach` invocation reject with a stderr-bearing message;
- * `apps` controls what the mounted volume appears to contain.
- */
 function makeDeps({ attachFails = false, apps = ['OpenKnowledge.app'], proc } = {}) {
   const calls = [];
   const removed = [];
@@ -35,7 +30,6 @@ function makeDeps({ attachFails = false, apps = ['OpenKnowledge.app'], proc } = 
   };
 }
 
-/** A stand-in for `process` that records `exit` instead of terminating. */
 function fakeProcess() {
   const emitter = new EventEmitter();
   emitter.exitCodes = [];
@@ -54,8 +48,6 @@ describe('withMountedDmg', () => {
       '/tmp/OpenKnowledge.dmg',
       async (appPath) => {
         seen = appPath;
-        // The mount is already released by the time the callback runs — that
-        // is the invariant that keeps a long app launch from holding /Volumes.
         expect(calls.some((c) => c[0] === 'hdiutil' && c[1] === 'detach')).toBe(true);
         return 'callback-result';
       },
@@ -64,7 +56,6 @@ describe('withMountedDmg', () => {
 
     expect(result).toBe('callback-result');
     expect(seen).toMatch(/OpenKnowledge\.app$/);
-    // The copy lives under a distinct tmp root, never inside the mountpoint.
     expect(seen).not.toMatch(/ok-dmg-mount-/);
 
     const attach = calls.find((c) => c[1] === 'attach');
@@ -75,10 +66,6 @@ describe('withMountedDmg', () => {
   });
 
   test('copies an Electron-shaped bundle without absolutizing its relative symlinks', async () => {
-    // Exercises the REAL `fs.cp` against a real symlink tree — only hdiutil is
-    // faked. A stub that records the options bag would ratify the current
-    // implementation; this pins the property that matters, so a later swap to
-    // `ditto` or `cp -R` still has to keep the links relative.
     const scratch = await mkdtemp(join(tmpdir(), 'ok-dmg-mount-test-'));
     const framework = join(
       scratch,
@@ -99,8 +86,6 @@ describe('withMountedDmg', () => {
       },
       {
         runCommand: async () => {},
-        // The mount root has to be the tree we prepared; the copy root stays a
-        // fresh directory so the copy is a genuine cross-directory one.
         mkdtemp: async (prefix) =>
           prefix.includes('ok-dmg-mount-') ? scratch : await mkdtemp(prefix),
         cp,
@@ -110,8 +95,6 @@ describe('withMountedDmg', () => {
       },
     );
 
-    // An absolute target here points into the mount that the driver detaches one
-    // line after the copy, so the framework is gone before the app ever launches.
     expect(linkTarget).toBe('Versions/Current/Electron Framework');
     expect(isAbsolute(linkTarget)).toBe(false);
 
@@ -190,9 +173,6 @@ describe('withMountedDmg', () => {
     await withMountedDmg(
       '/tmp/OpenKnowledge.dmg',
       async () => {
-        // Simulate the runner killing us mid-smoke. `withMountedDmg` detaches
-        // eagerly before the callback, so assert the handler is wired and the
-        // process is asked to exit with the signal's conventional code.
         proc.emit('SIGTERM');
         await Promise.resolve();
       },
@@ -213,8 +193,6 @@ describe('withMountedDmg', () => {
       runCommand: async (cmd, args) => {
         calls.push([cmd, ...args]);
         if (args[0] === 'attach') {
-          // Signal arrives while the volume is attaching — the window where
-          // Node's default synchronous exit would strand the mount.
           proc.emit('SIGINT');
           await Promise.resolve();
         }
@@ -257,10 +235,6 @@ describe('withMountedDmg', () => {
 });
 
 describe('cleanup failures are logged, not silently swallowed', () => {
-  // hdiutil is spawned with stdio: 'pipe', so its stderr lands in the Error
-  // message rather than the terminal. Swallowing it leaves a stranded mount or
-  // an orphaned ~200MB .app copy with no breadcrumb — the symptom surfaces
-  // much later as "already mounted" or disk-full, with no trail back here.
   test('a failing detach warns and still does not throw', async () => {
     const warnings = [];
     const { deps } = makeDeps();

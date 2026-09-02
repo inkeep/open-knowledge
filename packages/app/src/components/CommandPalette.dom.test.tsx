@@ -28,8 +28,6 @@ type CommandItemProps = {
 };
 
 let activeDocName: string | null = 'docs/active';
-// Loosely typed so parity tests can set folder / asset / missing targets to
-// exercise the contextual-command projection.
 let activeTarget: { kind: string; [key: string]: unknown } | null = {
   kind: 'doc',
   docName: 'docs/active',
@@ -52,8 +50,6 @@ const installedAgentStates = {
 };
 const workspaceValue = { rootPath: '/workspace' };
 let pageListLoading = false;
-// Comfortably longer than two warming-poll cadences (600ms each), so a test can
-// assert that a stopped poll fires no further requests.
 const COMMAND_PALETTE_POLL_GRACE_MS = 1400;
 
 import * as actualLinguiMacro from '@lingui/react/macro';
@@ -162,7 +158,6 @@ vi.doMock('@/components/ReportBugDialog', () => ({
   },
 }));
 
-// `lazy()`-loaded in CommandPalette, so the mock must expose a `default`.
 vi.doMock('@/components/BugReportHistoryDialog', () => ({
   default: (props: { open: boolean; onReportABug: () => void }) =>
     props.open ? (
@@ -197,8 +192,6 @@ vi.doMock('@/components/PageListContext', () => ({
 }));
 
 vi.doMock('@/editor/DocumentContext', () => ({
-  // Whole-module replacement: CommandPalette imports useOpenBlobRunner for the
-  // Blob Run row, so the export must exist here or the link detonates.
   useOpenBlobRunner: () => null,
   useDocumentContext: () => ({
     activeDocName,
@@ -233,9 +226,6 @@ vi.doMock('@/components/command-palette-tag-search', () => ({
   fetchDocsForTag: vi.fn(() => Promise.resolve([])),
 }));
 
-// The cached worktree model is read via useWorktrees (backed by window.okDesktop,
-// not the bridge prop). Default null so the existing suite sees no Worktrees
-// group; the dedicated test sets a model.
 let worktreeModelMock: import('@inkeep/open-knowledge-core').WorktreeSelectorModel | null = null;
 vi.doMock('@/hooks/use-worktrees', () => ({
   useWorktrees: () => worktreeModelMock,
@@ -288,7 +278,6 @@ function createBridge({
         }),
       ),
     },
-    // Surfaces the backfilled bridge-invoke commands reach.
     update: {
       checkNow: vi.fn(() => Promise.resolve()),
     },
@@ -397,8 +386,6 @@ describe('CommandPalette DOM behavior', () => {
       });
     });
 
-    // Open file delegates entirely to main (picker + ephemeral open); the
-    // renderer just fires the single bridge hop.
     fireEvent.click(screen.getByTestId('command-palette-open-file'));
     await waitFor(() => expect(bridge.project.openFile).toHaveBeenCalledTimes(1));
 
@@ -424,17 +411,12 @@ describe('CommandPalette DOM behavior', () => {
     const { onOpenChange } = await renderPalette({ bridge });
     await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
 
-    // The × is a sibling of the recent's option row. Clicking it must prune via
-    // removeRecent and NOT fall through to the row's open onSelect (the
-    // stopPropagation contract) — unlike clicking the row, which opens + closes.
     fireEvent.click(screen.getByTestId('command-palette-recent-remove-/projects/alpha'));
     await waitFor(() =>
       expect(bridge.project.removeRecent).toHaveBeenCalledWith('/projects/alpha'),
     );
     expect(bridge.project.open).not.toHaveBeenCalled();
 
-    // Optimistic drop of that row, and the palette stays open (runWithToast, not
-    // runAction) so the user can prune several in a row.
     await waitFor(() =>
       expect(screen.queryByTestId('command-palette-recent-/projects/alpha')).toBeNull(),
     );
@@ -554,17 +536,10 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
     });
     expect(reportBugDialogProps.at(-1)?.open).toBe(true);
-    // The palette closes on select and is still animating out as the dialog
-    // opens, so its screenshot must wait for the cmdk root to unmount rather
-    // than photograph the surface the user only passed through.
     expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(true);
   });
 
   test('the bug-report-history CTA opens the compose dialog launcher-free', async () => {
-    // The negative image of the assertion above, and the branch this route
-    // exists for. By the time the user clicks this button they have read a list
-    // of past reports, so the palette is long gone and there is nothing to wait
-    // on — waiting anyway is what cost this route its pointer marker.
     const bridge = createBridge();
     await renderPalette({ bridge });
 
@@ -582,8 +557,6 @@ describe('CommandPalette DOM behavior', () => {
   });
 
   test('send-feedback command renders on both hosts and opens FeedbackFormDialog', async () => {
-    // Host-agnostic, unlike report-a-bug: the form POSTs to the hosted intake
-    // route, so the row is present with no bridge.
     const web = await renderPalette({ bridge: null });
 
     await setQuery('feedback');
@@ -596,8 +569,6 @@ describe('CommandPalette DOM behavior', () => {
     await waitFor(() => {
       expect(screen.getByTestId('feedback-form-dialog').getAttribute('data-open')).toBe('true');
     });
-    // Attribution: the palette identifies itself so intake can tell which
-    // surface the feedback came from.
     expect(feedbackDialogProps.at(-1)?.source).toBe('command_palette');
 
     cleanup();
@@ -632,11 +603,6 @@ describe('CommandPalette DOM behavior', () => {
   });
 
   test('CommandPalette opts out of cmdk vim bindings', async () => {
-    // Pins the wiring, not the behavior: command.dom.test.tsx proves against
-    // the real cmdk what vimBindings:false DOES, but nothing there observes
-    // whether this component passes it. Without this assertion, deleting the
-    // opt-out from CommandPalette's commandProps leaves the whole suite green
-    // while Ctrl+P silently regains cmdk's select-previous on Windows/Linux.
     await renderPalette();
 
     expect(commandDialogProps.at(-1)?.commandProps?.vimBindings).toBe(false);
@@ -651,7 +617,6 @@ describe('CommandPalette DOM behavior', () => {
     await waitFor(() =>
       expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
     );
-    // The misleading failure / empty copy must be suppressed while warming.
     expect(screen.queryByText('Search failed.')).toBeNull();
     expect(screen.queryByText('No matching commands.')).toBeNull();
 
@@ -687,9 +652,6 @@ describe('CommandPalette DOM behavior', () => {
     const fetchMock = globalThis.fetch as unknown as { mock: { calls: unknown[][] } };
     expect(fetchMock.mock.calls.some((call) => call[0] === '/api/search')).toBe(false);
 
-    // The page list finishes its initial load: the effect's `pagesLoading`
-    // dependency flips, the effect re-runs, and the body search fires. This is
-    // the "search runs automatically once the workspace is ready" contract.
     pageListLoading = false;
     rerender(<CommandPalette bridge={null} open={true} onOpenChange={onOpenChange} />);
 
@@ -700,8 +662,6 @@ describe('CommandPalette DOM behavior', () => {
   });
 
   test('server warming (ready:false) shows the preparing state and polls until the index is ready', async () => {
-    // First /api/search answers warming; later answers ready with a hit. Any
-    // non-search fetch (e.g. the semantic-capability probe) stays the default.
     let searchCalls = 0;
     globalThis.fetch = vi.fn((input: unknown) => {
       if (input === '/api/search') {
@@ -718,14 +678,11 @@ describe('CommandPalette DOM behavior', () => {
     await renderPalette({ bridge: null });
     await setQuery('arch');
 
-    // Warming response -> preparing status, not a failure, no premature empty.
     await waitFor(() =>
       expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
     );
     expect(screen.queryByText('Search failed.')).toBeNull();
 
-    // The poll re-fires the search; once it reports ready, the preparing state
-    // clears without the user re-typing.
     await waitFor(() => expect(searchCalls).toBeGreaterThanOrEqual(2), { timeout: 3000 });
     await waitFor(() =>
       expect(screen.queryByTestId('command-palette-search-preparing')).toBeNull(),
@@ -758,10 +715,8 @@ describe('CommandPalette DOM behavior', () => {
       fetchMock.mock.calls.filter((call) => call[0] === '/api/search').length;
     const callsAtClose = searchCalls();
 
-    // Close the palette: the effect cleanup must cancel the in-flight poll.
     rerender(<CommandPalette bridge={null} open={false} onOpenChange={onOpenChange} />);
 
-    // Past two poll cadences, the count must not grow.
     await new Promise((resolve) => setTimeout(resolve, COMMAND_PALETTE_POLL_GRACE_MS));
     expect(searchCalls()).toBe(callsAtClose);
   });
@@ -796,8 +751,6 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('command-palette-search-preparing')).not.toBeNull(),
     );
 
-    // The error on call #2 must not abandon to "Search failed." — warming keeps
-    // polling, and call #3 (ready) clears the preparing state.
     await waitFor(() => expect(call).toBeGreaterThanOrEqual(3), { timeout: 3000 });
     expect(screen.queryByText('Search failed.')).toBeNull();
     await waitFor(() =>
@@ -810,7 +763,6 @@ describe('CommandPalette DOM behavior', () => {
       mainRoot: '/projects/current',
       currentBranch: 'main',
       entries: [
-        // The current window's own worktree — excluded (no self-switch).
         {
           branch: 'main',
           worktreePath: '/projects/current',
@@ -818,7 +770,6 @@ describe('CommandPalette DOM behavior', () => {
           isMain: true,
           locked: false,
         },
-        // An existing sibling worktree — opens its window directly.
         {
           branch: 'dev',
           worktreePath: '/projects/current/.ok/worktrees/dev',
@@ -826,7 +777,6 @@ describe('CommandPalette DOM behavior', () => {
           isMain: false,
           locked: false,
         },
-        // A branch with no worktree yet — created on demand, then opened.
         {
           branch: 'feature-x',
           worktreePath: null,
@@ -838,10 +788,8 @@ describe('CommandPalette DOM behavior', () => {
     };
     const { bridge } = await renderPalette();
 
-    // The current worktree is not offered as a switch target.
     expect(screen.queryByTestId('command-palette-worktree-main')).toBeNull();
 
-    // Existing worktree → open its window with the worktree entry point.
     fireEvent.click(screen.getByTestId('command-palette-worktree-dev'));
     await waitFor(() => {
       expect(bridge?.project.open).toHaveBeenCalledWith({
@@ -851,7 +799,6 @@ describe('CommandPalette DOM behavior', () => {
       });
     });
 
-    // Un-opened branch → create the worktree, refresh the cache, then open it.
     fireEvent.click(screen.getByTestId('command-palette-worktree-feature-x'));
     await waitFor(() => {
       expect(bridge?.worktree.create).toHaveBeenCalledWith({
@@ -869,30 +816,19 @@ describe('CommandPalette DOM behavior', () => {
     expect(refreshWorktreesMock).toHaveBeenCalled();
   });
 
-  // Multi-word admission, one test per population. Each population hands the
-  // shared command matcher its own label + keyword pair, so a boundary-level
-  // assertion alone would not prove any of them actually routes through it.
   test('fixed command rows match multi-word queries whose terms are not adjacent', async () => {
     await renderPalette({ bridge: createBridge() });
 
-    // "Report a bug" puts "a" between the two words the user typed, and its
-    // keyword string carries them in the opposite order.
     await setQuery('report bug');
     expect(screen.getByTestId('command-palette-report-bug').textContent).toContain('Report a bug');
 
-    // The weaker of the two orderings: this one is contiguous inside the
-    // keyword string, so it holds under a contiguity rule too.
     await setQuery('bug report');
     expect(screen.queryByTestId('command-palette-report-bug')).not.toBeNull();
 
-    // A term may land inside a longer word: "work" and "tree" are both in
-    // "worktree".
     await setQuery('work tree');
     expect(screen.queryByTestId('command-palette-new-worktree')).not.toBeNull();
     expect(screen.queryByTestId('command-palette-switch-worktree')).not.toBeNull();
 
-    // One unmatched term rejects the row, so the palette cannot degrade into
-    // surfacing everything that shares any single word with the query.
     await setQuery('report zzzznomatch');
     expect(screen.queryByTestId('command-palette-report-bug')).toBeNull();
   });
@@ -901,9 +837,6 @@ describe('CommandPalette DOM behavior', () => {
     const { bridge } = await renderPalette();
     await waitFor(() => expect(bridge?.project.listRecent).toHaveBeenCalledTimes(1));
 
-    // The row's searchable text spans two fields: "omega" appears only in the
-    // name and "archive" only in the path, so neither field satisfies the query
-    // alone.
     await setQuery('omega archive');
     expect(screen.queryByTestId('command-palette-recent-/archive/proj-7')).not.toBeNull();
     expect(screen.queryByTestId('command-palette-recent-/projects/alpha')).toBeNull();
@@ -932,21 +865,16 @@ describe('CommandPalette DOM behavior', () => {
     };
     await renderPalette();
 
-    // "branch" comes from the row's keywords, "feature" from the branch name.
     await setQuery('branch feature');
     expect(screen.queryByTestId('command-palette-worktree-feature-x')).not.toBeNull();
-    // The dev row shares "branch" but not "feature", so it stays out.
     expect(screen.queryByTestId('command-palette-worktree-dev')).toBeNull();
   });
 
   test('open-with-AI rows match multi-word queries spanning the label and its keywords', async () => {
     await renderPalette({ bridge: createBridge() });
 
-    // "open" heads the label and recurs in the "open in" keyword; "cursor" sits
-    // in the middle of the label, so the pair is never contiguous in order.
     await setQuery('open cursor');
     expect(screen.queryByTestId('command-palette-open-in-cursor')).not.toBeNull();
-    // Every other target lacks "cursor" and so stays out on "open" alone.
     expect(screen.queryByTestId('command-palette-open-in-claude-code')).toBeNull();
   });
 });
@@ -956,9 +884,6 @@ describe('NavigationItem path subtitle', () => {
     cleanup();
   });
 
-  // Every result row shows its full path so same-named files are
-  // distinguishable. Two files share the basename `data.csv`; the row content
-  // must carry each one's distinct path.
   test('a file result row renders its path so same-named siblings are distinguishable', async () => {
     const { NavigationItem } = await import('./CommandPalette');
     const fileA = {
@@ -1091,10 +1016,6 @@ describe('NavigationItem path subtitle', () => {
   });
 });
 
-// Ratchet C + acceptance criteria for the menu-parity backfill. Honest limit: cmdk and
-// the hooks are mocked, so these assert the registry-driven branch emits the row
-// and wires the dispatch under its declared enabling context — not cmdk's own
-// filtering (covered by the palette DOM tests above + a Playwright smoke).
 describe('Cmd+K menu-parity backfill', () => {
   let busActions: string[];
   let unsubscribeBus: (() => void) | null = null;
@@ -1110,8 +1031,6 @@ describe('Cmd+K menu-parity backfill', () => {
     globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
     ) as never;
-    // Panels visible + a live terminal so the state-aware View toggles render
-    // their "Hide …" variant and Kill Terminal is enabled.
     setViewMenuState({
       sidebarVisible: true,
       docPanelVisible: true,
@@ -1130,8 +1049,6 @@ describe('Cmd+K menu-parity backfill', () => {
     __resetViewMenuStateForTests();
   });
 
-  // Each id-backed backfill row renders under a matching query and emits its
-  // OkMenuAction id on the bus when selected.
   const ID_BACKED: Array<{ testid: string; query: string; id: string }> = [
     { testid: 'command-palette-navigate-back', query: 'back', id: 'navigate-back' },
     { testid: 'command-palette-navigate-forward', query: 'forward', id: 'navigate-forward' },
@@ -1215,17 +1132,7 @@ describe('Cmd+K menu-parity backfill', () => {
     );
   });
 
-  // Ratchet C completeness: every id classified as a palette command (shared with
-  // the id-classification ratchet via command-menu-parity.test-helper) must be
-  // covered by a rendered id-backed row above OR a pre-existing palette surface.
-  // A future id classified into PALETTE_COMMAND_IDS with no rendered row — which
-  // satisfies only Ratchets A/B — turns this red, closing the "classified but
-  // unreachable" gap that the id ratchets alone cannot see.
   test('Ratchet C: every classified palette-command id renders a row or is a pre-existing surface', async () => {
-    // Imported dynamically: the helper pulls in the command registry, and a
-    // static import would evaluate the registry before the `vi.doMock`
-    // calls above register — freezing real module bindings (e.g.
-    // doc-panel-events) into it for every test in this file.
     const { PALETTE_COMMAND_IDS, PRE_EXISTING_PALETTE_IDS } = await import(
       '@/lib/command-menu-parity.test-helper'
     );
@@ -1233,10 +1140,8 @@ describe('Cmd+K menu-parity backfill', () => {
     const covered = new Set([...rendered, ...PRE_EXISTING_PALETTE_IDS]);
     const missing = [...PALETTE_COMMAND_IDS].filter((id) => !covered.has(id));
     expect(missing).toEqual([]);
-    // No ID_BACKED row tests an id that isn't classified (stale row test).
     const staleRows = [...rendered].filter((id) => !PALETTE_COMMAND_IDS.has(id));
     expect(staleRows).toEqual([]);
-    // The pre-existing escape hatch stays honest: every entry is still classified.
     const stalePreExisting = [...PRE_EXISTING_PALETTE_IDS].filter(
       (id) => !PALETTE_COMMAND_IDS.has(id),
     );
@@ -1285,10 +1190,6 @@ describe('Cmd+K menu-parity backfill', () => {
   });
 
   test('AC1: with no prop bridge, GitHub takes the web fallback and never the ambient window.okDesktop', async () => {
-    // The palette's external-URL open is a pure function of the `bridge` prop:
-    // a null prop bridge must take the web `window.open` path and must not
-    // reach through to an ambient `window.okDesktop` global. Guards the
-    // injected-bridge seam the shared opener relies on.
     const openSpy = vi.fn(() => null);
     const ambientOpenExternal = vi.fn(() => Promise.resolve());
     const originalOpen = window.open;
@@ -1449,13 +1350,6 @@ describe('Cmd+K menu-parity backfill', () => {
   });
 
   test('"close terminal" puts the reversible row ahead of the destructive one', async () => {
-    // Kill Terminal ends a live shell with no confirmation and no undo, and it
-    // answers to "close" as much as Hide Terminal does. Nothing stops both from
-    // matching; what keeps the safe one preselected is that it sits in the view
-    // group, which renders before the terminal group. With no filtering of its
-    // own, the palette highlights whichever row comes first in the document, so
-    // that group ordering is the whole safety property and it is invisible from
-    // the keyword data alone.
     setViewMenuState({ terminalLive: true });
     await renderPalette({ bridge: createBridge() });
     await setQuery('close terminal');
@@ -1476,14 +1370,12 @@ describe('Cmd+K menu-parity backfill', () => {
   });
 
   test('AC7: contextual commands gate on the active editor target', async () => {
-    // Missing target → no contextual rows.
     await renderPalette({ bridge: createBridge(), docName: null });
     await setQuery('rename');
     expect(screen.queryByTestId('command-palette-rename')).toBeNull();
     await setQuery('duplicate');
     expect(screen.queryByTestId('command-palette-duplicate')).toBeNull();
 
-    // Doc target → rename + duplicate present.
     cleanup();
     await renderPalette({ bridge: createBridge(), docName: 'docs/thing' });
     await setQuery('rename');
@@ -1491,9 +1383,6 @@ describe('Cmd+K menu-parity backfill', () => {
     await setQuery('duplicate');
     expect(screen.queryByTestId('command-palette-duplicate')).not.toBeNull();
 
-    // Asset-like target → duplicate hidden, rename still present (target-kind projection).
-    // Clear the query first so re-typing 'duplicate' is a real value change that forces
-    // a re-render after the activeTarget mutation (a same-value setState would bail).
     activeTarget = { kind: 'asset', assetPath: 'img.png' };
     await setQuery('');
     await setQuery('duplicate');
@@ -1501,8 +1390,6 @@ describe('Cmd+K menu-parity backfill', () => {
     await setQuery('rename');
     expect(screen.queryByTestId('command-palette-rename')).not.toBeNull();
 
-    // Folder target → duplicate re-enabled (the doc-OR-folder availability
-    // clause), so narrowing the gate to doc-only turns this red.
     activeTarget = { kind: 'folder', folderPath: 'docs/notes' };
     await setQuery('');
     await setQuery('duplicate');
@@ -1511,7 +1398,6 @@ describe('Cmd+K menu-parity backfill', () => {
 
   test('AC8: backfilled rows do not render on empty open', async () => {
     await renderPalette({ bridge: createBridge() });
-    // No query typed — the backfill long-tail is search-only.
     expect(screen.queryByTestId('command-palette-rename')).toBeNull();
     expect(screen.queryByTestId('command-palette-toggle-sidebar')).toBeNull();
     expect(screen.queryByTestId('command-palette-check-for-updates')).toBeNull();
@@ -1519,11 +1405,6 @@ describe('Cmd+K menu-parity backfill', () => {
   });
 });
 
-/**
- * ⌘K is a toggle, so its gate is asymmetric: any other open layer owns the
- * keyboard and must keep the palette from stacking on top of it, but once the
- * palette is up it IS the top layer and ⌘K has to keep dismissing it.
- */
 describe('CommandPalette ⌘K — overlay gate', () => {
   beforeEach(() => {
     cleanup();
@@ -1542,8 +1423,6 @@ describe('CommandPalette ⌘K — overlay gate', () => {
     fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
   }
 
-  // Both platform variants; the registry matcher is platform-aware, so exactly
-  // one of the two is the live chord on any given run.
   function pressCommandP() {
     fireEvent.keyDown(document.body, { key: 'p', metaKey: true });
     fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true });
@@ -1593,10 +1472,6 @@ describe('CommandPalette ⌘K — overlay gate', () => {
     expect(onOpenChange).toHaveBeenCalledWith(true);
   });
 
-  // The ⌘P happy paths, symmetric with the ⌘K pair above. The registry unit
-  // tests cover the matcher in isolation; these cover the chord actually
-  // reaching this component's window listener and driving onOpenChange —
-  // which is the behavior the feature is named for.
   test('opens on ⌘P with nothing else open', async () => {
     const { CommandPalette } = await import('./CommandPalette');
     const onOpenChange = vi.fn(() => {});
@@ -1618,11 +1493,6 @@ describe('CommandPalette ⌘K — overlay gate', () => {
   });
 
   test('suppresses the browser default on the palette chord even when another dialog owns the keyboard', async () => {
-    // ⌘P / Ctrl+P matches the palette opener AND is the browser's Print
-    // accelerator on the web host. When another layer owns the keyboard the
-    // palette declines to open — but it must still preventDefault, or the
-    // browser Print dialog leaks in exactly that state (e.g. Settings open).
-    // Regression guard for the preventDefault-before-decline ordering.
     const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
       '@/components/ui/dialog'
     );
@@ -1641,8 +1511,6 @@ describe('CommandPalette ⌘K — overlay gate', () => {
     );
     await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
 
-    // Fire both platform variants; exactly one matches the detected platform
-    // (⌘P on mac, Ctrl+P on Windows/Linux) and that one must be suppressed.
     const cmdP = new KeyboardEvent('keydown', {
       key: 'p',
       metaKey: true,

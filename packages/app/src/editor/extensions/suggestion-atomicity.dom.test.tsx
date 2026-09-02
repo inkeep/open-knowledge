@@ -26,10 +26,6 @@
  * tolerates by design (ranking context and asset lists degrade to empty).
  */
 
-// `cleanup` satisfies the Tier-3 filename contract (every `*.dom.test.tsx`
-// must value-import from `@testing-library/react`). The suite constructs the
-// Editor directly rather than rendering through RTL; `cleanup` runs in
-// `afterEach` so any future RTL render is torn down between tests.
 import { cleanup } from '@testing-library/react';
 import type { Extensions } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
@@ -43,18 +39,10 @@ import { sharedExtensions } from './shared';
 import { tagSuggestionKey } from './tag-suggestion';
 import { wikiLinkSuggestionKey } from './wiki-link-suggestion';
 
-/** Minimal `fetch` response shim — the corpus fetchers only touch `ok`,
- *  `status`, and `json()`. */
 function fetchResponse(status: number, body: unknown): unknown {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
 
-/**
- * Stub the corpus endpoints. One page ("alpha") and one tag ("alpha") are
- * enough for every surface to produce a selectable first item for the query
- * `alp`. Unknown endpoints 404 — the fetchers degrade to empty asset lists /
- * empty ranking context without rejecting the picker.
- */
 function stubCorpusFetch(): void {
   vi.stubGlobal(
     'fetch',
@@ -96,22 +84,11 @@ function mountEditor(extensions: Extensions): { editor: Editor; container: HTMLD
 function teardown(editor: Editor, container: HTMLDivElement): void {
   editor.destroy();
   container.remove();
-  // Suggestion popups are appended to `document.body`, not to the editor
-  // container; clear any that outlived destroy() so the next test starts clean.
   for (const node of Array.from(document.body.children)) {
     if (node !== container) node.remove();
   }
 }
 
-/**
- * Deliver Enter to the surface's own Suggestion plugin `handleKeyDown` prop —
- * the same entry point ProseMirror's keydown dispatch uses — so the real
- * `render().onKeyDown` handler selects the highlighted item and invokes the
- * production `command` callback. Scoping to the one plugin (instead of
- * `view.someProp`) keeps a not-yet-populated menu from falling through to the
- * editor's base Enter binding, which would split the paragraph and end the
- * poll below with a false positive.
- */
 function pressEnterOnSuggestion(editor: Editor, pluginKey: PluginKey): boolean {
   const plugin = pluginKey.get(editor.state);
   const handleKeyDown = plugin?.props.handleKeyDown;
@@ -120,12 +97,6 @@ function pressEnterOnSuggestion(editor: Editor, pluginKey: PluginKey): boolean {
   return handleKeyDown.call(plugin, editor.view, event) === true;
 }
 
-/**
- * The corpus loads through async `items()` (stubbed fetch + schema parse), so
- * the menu is not selectable on the first microtask: the suggestion handler
- * returns false while its item list is still empty, dispatching nothing. Poll
- * a real macrotask tick until Enter is handled.
- */
 async function pressEnterOnceItemsLoad(editor: Editor, pluginKey: PluginKey): Promise<boolean> {
   for (let i = 0; i < 50; i++) {
     if (pressEnterOnSuggestion(editor, pluginKey)) return true;
@@ -138,9 +109,7 @@ interface SurfaceCase {
   name: string;
   extensions: () => Extensions;
   pluginKey: PluginKey;
-  /** Typed at the head of the empty paragraph to open the menu. */
   trigger: string;
-  /** Node type the selected item must have inserted. */
   insertedNodeType: string;
 }
 
@@ -195,15 +164,9 @@ describe('Suggestion-surface insertion is a single transaction', () => {
           if (transaction.docChanged) docChangingCount += 1;
         });
 
-        // Precondition, not the assertion under test: if the menu never
-        // became selectable the invariant below would pass vacuously.
         expect(await pressEnterOnceItemsLoad(editor, surface.pluginKey)).toBe(true);
-        // Drain any deferred post-commit work (selection moves are
-        // selection-only and must not add a doc-changing transaction).
         await new Promise((resolve) => setTimeout(resolve, 0));
 
-        // The insert landed in place of the trigger (guards against a
-        // vacuous pass where Enter was handled but no item command ran).
         expect(countNodesOfType(editor, surface.insertedNodeType)).toBe(1);
         expect(editor.state.doc.textContent).not.toContain(surface.trigger);
 

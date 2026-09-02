@@ -41,10 +41,6 @@ import {
   createTomlConfigEngine,
   setTomlConfigEngineForTesting,
 } from '../native/toml-config-engine.ts';
-// `parseEditorFlag` removed along with the `--editors`
-// CLI flag — `ok init` now installs for a canonical default set instead of
-// user-specified subsets. `writeUserMcpConfigs` exports are
-// additions that survive.
 import {
   applySharingMode,
   buildInitJsonSummary,
@@ -67,13 +63,6 @@ import {
   writeUserMcpConfigs,
 } from './init.ts';
 
-// The native TOML addon is absent when its napi `.node` wasn't built (a turbo cache
-// miss, or local dev without a build) — the engine then falls back to smol-toml. A
-// few tests below assert NATIVE-specific outcomes (a valid i64 config classified
-// `no-entry`, a format-preserving write) that only hold with the native backend;
-// skip them when it is unavailable (the CI test cell force-builds it) so a fallback
-// host doesn't red them. The fallback dispositions are covered separately by the
-// forced `() => null` engine tests.
 const NATIVE_TOML_AVAILABLE = createTomlConfigEngine().backend === 'native';
 
 describe('runInit', () => {
@@ -81,9 +70,6 @@ describe('runInit', () => {
   let fakeHome: string;
   const originalPlatform = process.platform;
   const originalHome = process.env.HOME;
-  // OpenCode resolves its user-global config under $XDG_CONFIG_HOME (default
-  // ~/.config). Neutralize the ambient var so user-scope path resolution is
-  // deterministic against the stubbed HOME on every host (incl. Linux CI).
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const originalArgv1 = process.argv[1];
 
@@ -93,9 +79,6 @@ describe('runInit', () => {
   const opencodeConfigPath = () => resolveOpenCodeConfigPath({ home: fakeHome, env: {} });
   const lmStudioConfigPath = () => resolveLmStudioConfigPath({ home: fakeHome });
   const devRepoRoot = () => join(testDir, 'local-open-knowledge');
-  // `--dev-mcp` resolves the worktree's `dist/cli.mjs` from `process.argv[1]`.
-  // Tests stub argv[1] via `enableDevMcp()` so resolution lands at a
-  // deterministic path inside `testDir` regardless of the host's bun-test argv.
   const devCliEntryPath = () => join(devRepoRoot(), 'packages', 'cli', 'src', 'cli.ts');
   const enableDevMcp = () => {
     process.argv[1] = devCliEntryPath();
@@ -108,23 +91,13 @@ describe('runInit', () => {
       OK_LOG_FILE: '/tmp/ok-mcp.log',
     },
   });
-  /**
-   * Stubbed installUserSkill used by every test unless overridden. Keeps the
-   * real installer from copying bundles into the runner's `$HOME`, so runs
-   * stay hermetic + fast.
-   */
   const defaultInstallUserSkill = async () => 'installed' as const;
   const runInitForTest = async (options: Parameters<typeof runInit>[0] = {}) =>
     runInit({
       cwd: testDir,
       home: fakeHome,
       installUserSkill: defaultInstallUserSkill,
-      // Most tests in this suite predate the opt-in flag and exercise unrelated
-      // init behavior. Keep their install path explicit; consent-default tests
-      // override this with `skills: undefined`.
       skills: true,
-      // Default to user scope so existing tests remain focused on user-scope
-      // behavior. New scope tests set scope explicitly.
       scope: 'user',
       ...options,
     });
@@ -162,19 +135,10 @@ describe('runInit', () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  // -----------------------------------------------------------------------
-  // Original tests — backward compat (default editors: ['claude'])
-  // -----------------------------------------------------------------------
-
   it('scaffolds .ok/ and writes a fresh global Claude config', async () => {
     const result = await runInitForTest();
 
     expect(result.contentCreated.length).toBeGreaterThan(0);
-    // scaffold: config-only, no content subdirs.
-    // the internal .ok/AGENTS.md
-    // README is no longer scaffolded.
-    // Runtime subdirs (.ok/local/, .ok/local/cache/, .ok/local/tmp/) are
-    // created lazily by writers — not part of the scaffold.
     expect(existsSync(join(testDir, OK_DIR, 'cache'))).toBe(false);
     expect(existsSync(join(testDir, OK_DIR, 'local'))).toBe(false);
     expect(existsSync(join(testDir, OK_DIR, 'AGENTS.md'))).toBe(false);
@@ -184,7 +148,6 @@ describe('runInit', () => {
     expect(existsSync(join(testDir, OK_DIR, 'research'))).toBe(false);
     expect(existsSync(join(fakeHome, '.codeium'))).toBe(false);
 
-    // Backward-compat fields
     expect(result.mcpAction).toBe('written');
     const mcpPath = claudeConfigPath();
     expect(existsSync(mcpPath)).toBe(true);
@@ -193,7 +156,6 @@ describe('runInit', () => {
     expect(config.mcpServers).toBeDefined();
     expect(config.mcpServers[result.editors[0].serverName]).toEqual(PUBLISHED_CHAIN_ENTRY);
 
-    // New editors array
     expect(result.editors).toHaveLength(1);
     expect(result.editors[0].editorId).toBe('claude');
     expect(result.editors[0].action).toBe('written');
@@ -328,7 +290,6 @@ describe('runInit', () => {
     expect(result.mcpAction).toBe('skipped-flag');
     expect(existsSync(claudeConfigPath())).toBe(false);
 
-    // But the .ok/ config scaffold IS created
     expect(existsSync(join(testDir, OK_DIR, 'config.yml'))).toBe(true);
   });
 
@@ -353,25 +314,16 @@ describe('runInit', () => {
     writeFileSync(claudeConfigPath(), original);
 
     const result = await runInitForTest();
-    // Guest-ownership: a present config OK cannot parse is left untouched, not
-    // reset or reported as a failure (which would exit non-zero on `ok init`).
     expect(result.mcpAction).toBe('declined');
     expect(result.editors[0].action).toBe('declined');
     expect(result.editors[0].declineReason).toBe('unparseable');
     expect(readFileSync(claudeConfigPath(), 'utf-8')).toBe(original);
 
-    // The decline renders as a bounded "left unchanged" line in the summary —
-    // never a failure or a silent success.
     const output = formatInitResult(result, testDir);
     expect(output).toContain('left unchanged (config not readable)');
 
-    // Config scaffold should still have been created
     expect(existsSync(join(testDir, OK_DIR, 'config.yml'))).toBe(true);
   });
-
-  // -----------------------------------------------------------------------
-  // Multi-editor tests
-  // -----------------------------------------------------------------------
 
   describe('Cursor', () => {
     it('writes ~/.cursor/mcp.json with mcpServers key', async () => {
@@ -454,9 +406,6 @@ describe('runInit', () => {
   });
 
   describe('OpenCode', () => {
-    // OpenCode keys MCP servers under `mcp` (not `mcpServers`) and wraps each
-    // server in a `{ type: 'local', enabled, command }` object whose `command`
-    // is a single argv array — the same CHAIN_V2 bootstrap, different envelope.
     const PUBLISHED_OPENCODE_ENTRY = {
       type: 'local',
       enabled: true,
@@ -524,9 +473,6 @@ describe('runInit', () => {
       const result = await runInitForTest({ editors: ['codex', 'opencode'], scope: 'project' });
       const codexSkill = join(testDir, '.codex', 'skills', 'open-knowledge', 'SKILL.md');
       const opencodeSkill = join(testDir, '.opencode', 'skills', 'open-knowledge', 'SKILL.md');
-      // Codex and OpenCode resolve to their OWN per-editor dirs (`.codex/skills`,
-      // `.opencode/skills`) — not a shared `.agents/skills/` — so each writes a
-      // distinct project-skill bundle (the resolved-path de-dupe is a no-op here).
       expect(result.projectSkills.some((s) => s.path === codexSkill)).toBe(true);
       expect(result.projectSkills.some((s) => s.path === opencodeSkill)).toBe(true);
       expect(existsSync(codexSkill)).toBe(true);
@@ -580,10 +526,6 @@ describe('runInit', () => {
     });
 
     it('every format:file target has a registered managed-file builder', () => {
-      // Lockstep pin for MANAGED_FILE_BUILDERS (see its doc comment for why it
-      // is a lookup table rather than a function field on EditorMcpTarget): a
-      // future format:'file' editor must register its builder or the write
-      // path fails loud on every init.
       for (const target of Object.values(EDITOR_TARGETS)) {
         if (target.format === 'file') {
           expect(MANAGED_FILE_BUILDERS[target.id]).toBeDefined();
@@ -678,11 +620,6 @@ describe('runInit', () => {
       );
     });
 
-    // Cowork bundle build (`ok cowork`) is a deliberately unadvertised power-user
-    // escape hatch: `ok init` must NEVER push a hint toward it, even when the
-    // Claude Desktop App is present. (The old `claudeDesktopDetected` result
-    // field + its probe were removed with the hint — discovery is pull-only via
-    // the Open Knowledge skill.)
     it('does NOT advertise the Cowork bundle, even when Claude Desktop is present', async () => {
       mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
 
@@ -752,19 +689,12 @@ describe('runInit', () => {
       mkdirSync(dirname(opencodeConfigPath()), { recursive: true });
       mkdirSync(join(fakeHome, '.openclaw'), { recursive: true });
       mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
-      // Antigravity is `offerOnlyWhenDetected`, so its user-global write is
-      // gated on the `~/.gemini` home existing even under the consent flow.
       mkdirSync(join(fakeHome, '.gemini'), { recursive: true });
-      // LM Studio is likewise `offerOnlyWhenDetected` — create its config dir.
       mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
-      // Hermes is likewise `offerOnlyWhenDetected` — gated on `~/.hermes`.
       mkdirSync(join(fakeHome, '.hermes'), { recursive: true });
 
       const result = await runInitForTest({ editors: [...ALL_EDITOR_IDS] });
 
-      // Every editor with a user-global config surface gets a user-scope
-      // write; Pi is project-scope only (its bridge file is written by the
-      // project-scope flow), so it is skipped here rather than failed.
       expect(result.editors).toHaveLength(ALL_EDITOR_IDS.length - 1);
       expect(result.editors.map((e) => e.editorId)).not.toContain('pi');
       for (const editor of result.editors) {
@@ -778,18 +708,14 @@ describe('runInit', () => {
       expect(existsSync(join(fakeHome, '.copilot', 'mcp-config.json'))).toBe(true);
       expect(existsSync(opencodeConfigPath())).toBe(true);
       expect(existsSync(lmStudioConfigPath())).toBe(true);
-      // OpenClaw nests under `mcp.servers` — verify the entry landed there.
       const openclawConfig = JSON.parse(
         readFileSync(join(fakeHome, '.openclaw', 'openclaw.json'), 'utf-8'),
       );
       expect(openclawConfig.mcp.servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
-      // Antigravity writes the standard `mcpServers` map at
-      // `~/.gemini/config/mcp_config.json`.
       const antigravityConfig = JSON.parse(
         readFileSync(join(fakeHome, '.gemini', 'config', 'mcp_config.json'), 'utf-8'),
       );
       expect(antigravityConfig.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
-      // Hermes is YAML under `mcp_servers` — verify the entry landed there.
       const hermesConfig = parseYaml(
         readFileSync(join(fakeHome, '.hermes', 'config.yaml'), 'utf-8'),
       );
@@ -797,7 +723,6 @@ describe('runInit', () => {
     });
 
     it('overwrites across all targeted editors', async () => {
-      // Pre-populate Claude and Cursor with old entries
       writeFileSync(
         claudeConfigPath(),
         JSON.stringify({
@@ -827,8 +752,6 @@ describe('runInit', () => {
     });
 
     it('mixed outcome — one editor declines (unparseable), others succeed', async () => {
-      // An unparseable Cursor config is left untouched and declined, not reset;
-      // Claude still registers. One bad config never blocks the others.
       mkdirSync(dirname(cursorConfigPath()), { recursive: true });
       writeFileSync(cursorConfigPath(), '{broken');
 
@@ -891,14 +814,6 @@ describe('runInit', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // Claude launch.json scaffolding
-  // -----------------------------------------------------------------------
-
-  // -----------------------------------------------------------------------
-  // Zero project-root file writes
-  // -----------------------------------------------------------------------
-
   describe('zero project-root file writes', () => {
     it('does not create root AGENTS.md when claude editor is selected', async () => {
       await runInitForTest({ editors: ['claude'] });
@@ -927,10 +842,6 @@ describe('runInit', () => {
       expect(existsSync(join(testDir, '.cursorrules'))).toBe(false);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Legacy-injection non-interference
-  // -----------------------------------------------------------------------
 
   describe('legacy-injection non-interference', () => {
     it('leaves pre-existing open-knowledge marker blocks byte-identical in CLAUDE.md and AGENTS.md', async () => {
@@ -964,18 +875,12 @@ describe('runInit', () => {
       const beforeClaude = readFileSync(claudePath, 'utf-8');
       const beforeAgents = readFileSync(agentsPath, 'utf-8');
 
-      // Run init with a no-op skill install so nothing touches the real $HOME.
       await runInitForTest({ installUserSkill: async () => 'skip-current' });
 
-      // Byte-identical pre/post — the new init code does NOT touch legacy injections.
       expect(readFileSync(claudePath, 'utf-8')).toBe(beforeClaude);
       expect(readFileSync(agentsPath, 'utf-8')).toBe(beforeAgents);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // installUserSkill wiring
-  // -----------------------------------------------------------------------
 
   describe('installUserSkill wiring', () => {
     it('returns skillInstall = "installed" when the install succeeds', async () => {
@@ -985,17 +890,11 @@ describe('runInit', () => {
       expect(result.skillInstall).toBe('installed');
       const output = formatInitResult(result, testDir);
       expect(output).toContain('User-global skill:');
-      // The summary must name real targets. It previously claimed "detected
-      // agent hosts" while the install had bypassed detection entirely and
-      // written into ~75 tool dirs (issue #820) — an install summary must never
-      // assert more scope discipline than the install actually applied.
       expect(output).toContain('installed for');
       expect(output).not.toContain('detected agent hosts');
     });
 
     it('reports the hosts actually written, never an unverified claim (issue #820)', async () => {
-      // `.claude` is the only host dotdir staged under the fake home, so the
-      // summary must name Claude and nothing else.
       mkdirSync(join(fakeHome, '.claude'), { recursive: true });
       const result = await runInitForTest({
         installUserSkill: async () => 'installed',
@@ -1029,13 +928,9 @@ describe('runInit', () => {
         installUserSkill: async () => 'failed',
       });
       expect(result.skillInstall).toBe('failed');
-      // MCP config still written successfully
       expect(result.mcpAction).toBe('written');
-      // Manual-install hint surfaces in the summary
       const output = formatInitResult(result, testDir);
       expect(output).toContain('install failed');
-      // Recovery is OK's own command — the hint no longer points at a
-      // third-party CLI OK doesn't invoke (issue #820).
       expect(output).toContain('ok repair-skills');
       expect(output).not.toContain('npx skills');
     });
@@ -1052,11 +947,6 @@ describe('runInit', () => {
     });
 
     it('an omitted skill choice installs the onboarding set, not every bundle', async () => {
-      // A bare `ok init` now matches the desktop first launch, which offers
-      // `discovery` alone. `write-skill` is not installed and NO decision
-      // is recorded for it, which `resolveBundleEnabled` reads as "uninstalled
-      // on a fresh machine, untouched where it already exists" — so this never
-      // removes a copy someone already has.
       const installed: (string | undefined)[] = [];
       await runInitForTest({
         skills: undefined,
@@ -1070,9 +960,6 @@ describe('runInit', () => {
     });
 
     it('--no-skills installs nothing and records NOTHING', async () => {
-      // The flag is a per-invocation skip. Recording a decline here would speak
-      // for every project on the machine, since these bundles exist once at
-      // `~/.agents/skills/<name>` with no per-project copy.
       const installed: (string | undefined)[] = [];
       await runInitForTest({
         skills: false,
@@ -1087,9 +974,6 @@ describe('runInit', () => {
     });
 
     it('--no-skills leaves bundles another project already installed on disk', async () => {
-      // The regression: one `--no-skills` in a throwaway directory used to
-      // delete the built-ins for every project, then re-delete them on every
-      // launch via the recorded decline.
       const central = join(fakeHome, '.agents', 'skills');
       for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
         mkdirSync(join(central, name), { recursive: true });
@@ -1100,15 +984,11 @@ describe('runInit', () => {
 
       for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
         expect(existsSync(join(central, name, 'SKILL.md'))).toBe(true);
-        // And no decline recorded, so no sweep re-deletes them later.
         expect(await readBundleDecision(fakeHome, name)).toBeNull();
       }
     });
 
     it('an unrecorded bundle grandfathers to disk, which is why recording nothing is correct', () => {
-      // The policy the fix rests on: absent a decision, both reclaim sweeps
-      // follow whatever is on disk. Recording nothing therefore yields the
-      // right answer on BOTH sides, without a durable machine-wide write.
       expect(resolveBundleEnabled(null, { installedOnDisk: false })).toBe(false);
       expect(resolveBundleEnabled(null, { installedOnDisk: true })).toBe(true);
     });
@@ -1124,15 +1004,11 @@ describe('runInit', () => {
       });
       expect(installed).toEqual(['discovery']);
       expect(await readBundleDecision(fakeHome, 'open-knowledge-discovery')).toBe(true);
-      // Not chosen is not the same as declined — the un-selected bundle stays
-      // unrecorded so it grandfathers to disk rather than being turned off.
       expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBeNull();
     });
 
     it('installs every enabled bundle with force so the shared cli-hosts version key cannot skip the second', async () => {
       const forced: (boolean | undefined)[] = [];
-      // Explicit two-bundle selection: the default is the onboarding set alone,
-      // and a single bundle cannot exercise the shared version key.
       await runInitForTest({
         skills: 'discovery,write-skill',
         installUserSkill: async (opts) => {
@@ -1140,8 +1016,6 @@ describe('runInit', () => {
           return 'installed';
         },
       });
-      // Both bundles must force-install; without force, bundle 1's version write
-      // would satisfy bundle 2's skip-current gate and freeze its content.
       expect(forced).toEqual([true, true]);
     });
 
@@ -1153,12 +1027,7 @@ describe('runInit', () => {
       expect(result.skillInstall).toBe('declined');
       const output = formatInitResult(result, testDir);
       expect(output).toContain('skipped for this run');
-      // Not 'for this project' — the bundles are machine-wide, so when they are
-      // already installed nothing is skipped for this project at all.
       expect(output).not.toContain('for this project');
-      // The copy must not claim a machine-wide removal the flag no longer does.
-      // Matched on the old wording specifically — a bare 'removed' also appears
-      // elsewhere in the init summary for unrelated reasons.
       expect(output).not.toContain('machine-wide choice');
       expect(output).not.toContain('stay off for every project');
       expect(output).not.toContain('already installed at current version');
@@ -1175,10 +1044,6 @@ describe('runInit', () => {
       expect(output).toContain('install failed');
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Content preview integration
-  // -----------------------------------------------------------------------
 
   describe('content preview in init output', () => {
     it('renders Content block with file count and sample when preview succeeds', async () => {
@@ -1272,17 +1137,8 @@ describe('runInit', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // auto-git-init inside runInit
-  // -------------------------------------------------------------------------
-
   describe('ensureProjectGit wiring (US-005)', () => {
     it('fresh tmpdir (no .git/) → runInit creates .git/ and reports didGitInit=true', async () => {
-      // Use runInitForTest (defaultInstallUserSkill stub) — the real
-      // installUserSkill copies the bundle into every detected agent host
-      // under `$HOME`, which this test has no reason to touch. The git-init
-      // wiring under test is independent of skill install, so the hermetic
-      // stub is the right scope.
       const result = await runInitForTest({ editors: ['claude'] });
 
       expect(result.didGitInit).toBe(true);
@@ -1290,7 +1146,6 @@ describe('runInit', () => {
       const head = readFileSync(join(testDir, '.git/HEAD'), 'utf-8');
       expect(head).toBe('ref: refs/heads/main\n');
 
-      // formatInitResult includes the disclosure line
       const output = formatInitResult(result, testDir);
       expect(output).toContain(`Initialized git repo at ${testDir}/.git/ (default branch: main)`);
     });
@@ -1302,7 +1157,6 @@ describe('runInit', () => {
       const result = await runInitForTest({ editors: ['claude'] });
 
       expect(result.didGitInit).toBe(false);
-      // formatInitResult omits the disclosure line
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Initialized git repo at');
     });
@@ -1315,7 +1169,6 @@ describe('runInit', () => {
       const gitignore = readFileSync(join(testDir, '.gitignore'), 'utf-8');
       expect(gitignore).toContain('.DS_Store');
 
-      // formatInitResult discloses the seed
       const output = formatInitResult(result, testDir);
       expect(output).toContain(`Seeded .gitignore at ${testDir}/.gitignore (.DS_Store)`);
     });
@@ -1329,14 +1182,9 @@ describe('runInit', () => {
       const result = await runInitForTest({ editors: ['claude'] });
 
       expect(result.didGitInit).toBe(false);
-      // The `.DS_Store` seed (`writeRootGitignoreForNewRepo`) still never
-      // touches an existing file — `rootGitignoreCreated` stays false and its
-      // disclosure is omitted.
       expect(result.rootGitignoreCreated).toBe(false);
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
-      // But the built-in project-skill projection block IS appended
-      // (append-only) so it can never be committed. User lines are preserved.
       const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
       expect(after.startsWith(original)).toBe(true);
       expect(after).toContain('.claude/skills/open-knowledge/');
@@ -1344,10 +1192,6 @@ describe('runInit', () => {
     });
 
     it('fresh tmpdir WITH a pre-existing .gitignore → .DS_Store seed skipped, project-skill block appended', async () => {
-      // Edge case: user pre-staged a folder with their own .gitignore but no
-      // .git/. ensureProjectGit runs `git init`; the `.DS_Store` seed helper
-      // sees the existing file and skips. The always-excluded project-skill
-      // block is still appended (append-only).
       const original = 'secrets.env\n';
       writeFileSync(join(testDir, '.gitignore'), original, 'utf-8');
 
@@ -1358,42 +1202,24 @@ describe('runInit', () => {
       const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
       expect(after.startsWith(original)).toBe(true);
       expect(after).toContain('.claude/skills/open-knowledge/');
-      // Formatter suppresses the `.DS_Store` seed disclosure when
-      // rootGitignoreCreated is false even though didGitInit fired.
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
     });
 
     it('symlink at .gitignore → seed helper throws but runInit completes (non-fatal contract)', async () => {
-      // Pins the non-fatal contract of the CLI catch wrapping the seed helper.
-      // assertNotSymlink throws when it sees a symlink at .gitignore; the catch
-      // must swallow it so project creation still succeeds. Without this test,
-      // a future refactor that re-throws would silently break the "seed is
-      // convenience, never block project creation" contract.
       const sentinel = join(testDir, 'sentinel.txt');
       writeFileSync(sentinel, 'do-not-clobber', 'utf-8');
       symlinkSync(sentinel, join(testDir, '.gitignore'));
 
       const result = await runInitForTest({ editors: ['claude'] });
 
-      // Fresh git init still ran.
       expect(result.didGitInit).toBe(true);
-      // Seed was skipped (helper threw, catch swallowed → rootGitignoreCreated stays false).
       expect(result.rootGitignoreCreated).toBe(false);
-      // .ok/ scaffold still landed (project creation succeeded).
       expect(existsSync(join(testDir, OK_DIR, 'config.yml'))).toBe(true);
-      // Sentinel content is untouched — assertNotSymlink fired before any write.
       expect(readFileSync(sentinel, 'utf-8')).toBe('do-not-clobber');
     });
 
     it('git unusable everywhere → runInit surfaces the recoverable GitNotAvailableError (no content scaffolded)', async () => {
-      // Bare git off PATH falls back to a usable git at an absolute path and
-      // succeeds (covered at the server spine, project-git.test.ts) — so to
-      // exercise the genuine "no git anywhere" case we also neutralize the
-      // fallback paths (override the platform so its absolute fallback list is
-      // absent on this host). The op then surfaces the recoverable typed error,
-      // which runInit propagates unwrapped (the CLI action handler prints it and
-      // exits EX_CONFIG/78).
       const originalPath = process.env.PATH;
       const originalPlatform = process.platform;
       process.env.PATH = '/nonexistent';
@@ -1402,8 +1228,6 @@ describe('runInit', () => {
         configurable: true,
       });
       try {
-        // Import the server error type lazily to keep the import surface minimal
-        // for other tests in this file.
         const { GitNotAvailableError } = await import('@inkeep/open-knowledge-server');
         await expect(runInitForTest({ editors: ['claude'] })).rejects.toBeInstanceOf(
           GitNotAvailableError,
@@ -1416,15 +1240,10 @@ describe('runInit', () => {
         process.env.PATH = originalPath;
       }
 
-      // Content scaffolding must NOT have fired when the preflight threw.
       expect(existsSync(join(testDir, OK_DIR))).toBe(false);
       expect(existsSync(join(testDir, '.git'))).toBe(false);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // MCP scope selection
-  // -----------------------------------------------------------------------
 
   describe('mcp scope selection', () => {
     it('scope=user writes only user-level config (default runInitForTest behavior)', async () => {
@@ -1438,8 +1257,6 @@ describe('runInit', () => {
     });
 
     it('scope=user still writes the project-local skill (project-skill decoupled from MCP scope)', async () => {
-      // The rich project skill rides with the repo regardless of MCP-config
-      // scope — `scope=user` writes no project MCP config but still installs it.
       const result = await runInitForTest({ editors: ['claude'], scope: 'user' });
       expect(existsSync(join(testDir, '.mcp.json'))).toBe(false);
       const claudeSkill = result.projectSkills.find((s) => s.editorId === 'claude');
@@ -1546,15 +1363,12 @@ describe('runInit', () => {
 
     it('scope=project writes only project-level config for Claude', async () => {
       const result = await runInitForTest({ editors: ['claude'], scope: 'project' });
-      // Only the project-scope result
       expect(result.editors).toHaveLength(1);
       expect(result.editors[0].editorId).toBe('claude');
       expect(result.editors[0].action).toBe('written');
       expect(result.editors[0].configScope).toBe('project');
       expect(result.editors[0].configPath).toBe(join(testDir, '.mcp.json'));
-      // User-level config should NOT be written
       expect(existsSync(claudeConfigPath())).toBe(false);
-      // Project-level config IS written
       expect(existsSync(join(testDir, '.mcp.json'))).toBe(true);
       expect(result.projectSkills).toHaveLength(1);
       expect(result.projectSkills[0]).toMatchObject({
@@ -1612,7 +1426,6 @@ describe('runInit', () => {
         editors: ['claude-desktop'],
         scope: 'project',
       });
-      // No entries since claude-desktop has no projectConfigPath
       expect(result.editors).toHaveLength(0);
     });
 
@@ -1653,7 +1466,6 @@ describe('runInit', () => {
 
     it('scope=both suppresses project-config notice for paths just written', async () => {
       const result = await runInitForTest({ editors: ['claude'], scope: 'both' });
-      // Even though .mcp.json now exists, it was written by us so should NOT appear in legacyProjectConfigs
       expect(result.legacyProjectConfigs).toHaveLength(0);
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Project MCP configs found:');
@@ -1676,8 +1488,6 @@ describe('runInit', () => {
     });
 
     it('--no-mcp still writes the project-local skill (SPEC 2026-05-19-ok-skill-split FR7 / AC7)', async () => {
-      // Skills are decoupled from MCP-config writes: `--no-mcp` controls MCP
-      // wiring only — the rich project skill still installs.
       const result = await runInitForTest({ editors: ['claude'], mcp: false });
       expect(result.editors[0].action).toBe('skipped-flag');
       expect(existsSync(join(testDir, '.mcp.json'))).toBe(false);
@@ -1691,21 +1501,11 @@ describe('runInit', () => {
     it('scope=both "Next steps" deduplicates editor labels (no double-count)', async () => {
       const result = await runInitForTest({ editors: ['claude'], scope: 'both' });
       const output = formatInitResult(result, testDir);
-      // "Claude" should appear exactly once in the "Open your editor" line,
-      // even though result.editors has two entries (user-scope + project-scope).
       const nextStepsLine = output.split('\n').find((l) => l.includes('Open your editor'));
       expect(nextStepsLine).toBeDefined();
       const matches = nextStepsLine?.match(/Claude/g);
       expect(matches).toHaveLength(1);
     });
-
-    // ---------------------------------------------------------------------
-    // Symlink-overwrite guard (project-scope) — a malicious repo can
-    // plant `.mcp.json -> /etc/passwd` (or similar) and have `ok init`
-    // follow the symlink and overwrite the target. Escape targets are
-    // placed outside `testDir` (sibling tmp dirs) so the realpath
-    // containment check sees them as outside cwd.
-    // ---------------------------------------------------------------------
 
     const allocOutsideTestDir = (suffix: string): string =>
       resolve(
@@ -1752,9 +1552,6 @@ describe('runInit', () => {
       const escapeTarget = allocOutsideTestDir('skill-escape');
       mkdirSync(escapeTarget, { recursive: true });
       try {
-        // `.claude/skills` symlinked to a directory outside cwd. Without the
-        // guard, `rmSync(targetDir, recursive:true)` followed by `cpSync`
-        // would route through the symlink and clobber escape-target contents.
         mkdirSync(join(testDir, '.claude'), { recursive: true });
         symlinkSync(escapeTarget, join(testDir, '.claude', 'skills'));
         writeFileSync(join(escapeTarget, 'sentinel.txt'), 'untouched\n', 'utf-8');
@@ -1771,8 +1568,6 @@ describe('runInit', () => {
     });
 
     it('allows project-scope write through a symlink that stays within cwd', async () => {
-      // Legitimate use case: `.cursor` is a symlink to a sibling directory
-      // INSIDE the project. Realpath resolves inside cwd → allow.
       const inProject = join(testDir, '.cursor-shared');
       mkdirSync(inProject, { recursive: true });
       symlinkSync(inProject, join(testDir, '.cursor'));
@@ -1785,12 +1580,6 @@ describe('runInit', () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// runInit — git-root promotion threading: returned `projectRoot` differs from
-// the caller's `cwd` when cwd sits inside a git working tree. Post-init
-// preview/format read from `projectRoot`, not `cwd`.
-// ---------------------------------------------------------------------------
 
 describe('runInit — projectRoot threading', () => {
   let testDir: string;
@@ -1805,10 +1594,6 @@ describe('runInit — projectRoot threading', () => {
       `init-projectroot-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(rawDir, { recursive: true });
-    // macOS tmpdir is `/var/folders/...` which `realpathSync` canonicalizes to
-    // `/private/var/...`. `resolveProjectRoot` realpath-s cwd before the git
-    // descendant-of-home check, so the home arg must already be canonical or
-    // descendant-checking fails (`/var/...` !startsWith `/private/var/...`).
     testDir = realpathSync(rawDir);
     fakeHome = join(testDir, 'fakehome');
     mkdirSync(fakeHome, { recursive: true });
@@ -1831,13 +1616,9 @@ describe('runInit — projectRoot threading', () => {
   });
 
   it('returns projectRoot equal to git root when cwd sits in a sub-folder', async () => {
-    // Set up: fakeHome/repo (git root) + fakeHome/repo/sub (cwd).
     const repo = join(fakeHome, 'repo');
     const sub = join(repo, 'sub');
     mkdirSync(sub, { recursive: true });
-    // Mock-git the repo: a `.git/HEAD` file is enough for `git rev-parse
-    // --show-toplevel` substitutes; but the real call shells out, so write a
-    // genuine repo via `git init` to keep the test true to production.
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
     expect(existsSync(join(repo, '.git'))).toBe(true);
 
@@ -1849,15 +1630,10 @@ describe('runInit — projectRoot threading', () => {
     });
 
     expect(result.projectRoot).toBe(repo);
-    // .ok/ landed at the git root, not the sub-folder.
     expect(existsSync(join(repo, OK_DIR))).toBe(true);
     expect(existsSync(join(sub, OK_DIR))).toBe(false);
-    // Promotion is flagged with the sub-folder it was promoted from so the
-    // whole-repo-scope warning can name the folder to narrow back to.
     expect(result.gitRootPromoted).toBe(true);
     expect(result.promotedFromDir).toBe('sub');
-    // The summary repeats the promotion as a prominent warning next to the
-    // file count — not just the easy-to-miss top-of-run stderr line.
     const output = formatInitResult(result, result.projectRoot);
     expect(output).toContain('Content scope promoted to the git repo root');
     expect(output).toContain('content.dir: sub');
@@ -1877,7 +1653,6 @@ describe('runInit — projectRoot threading', () => {
 
     expect(result.projectRoot).toBe(repo);
     expect(existsSync(join(repo, OK_DIR))).toBe(true);
-    // No promotion when init runs at the git root — no warning surfaces.
     expect(result.gitRootPromoted).toBe(false);
     expect(result.promotedFromDir).toBeUndefined();
     const output = formatInitResult(result, result.projectRoot);
@@ -1885,12 +1660,6 @@ describe('runInit — projectRoot threading', () => {
   });
 
   it('loadConfig succeeds when called against the resolved projectRoot', async () => {
-    // The pre-fix wrapper called `loadConfig(cwd)` where cwd was the
-    // sub-folder. Post git-root promotion, `.ok/config.yml` lives at the
-    // git root — `loadConfig(cwd)` would resolve to defaults silently
-    // (config-absent fall-through) instead of the project's actual config.
-    // Asserting `loadConfig(projectRoot)` finds the just-scaffolded config
-    // pins the contract.
     const repo = join(fakeHome, 'repo-loadconfig');
     const sub = join(repo, 'subdir');
     mkdirSync(sub, { recursive: true });
@@ -1904,15 +1673,9 @@ describe('runInit — projectRoot threading', () => {
     });
 
     expect(result.projectRoot).toBe(repo);
-    // .ok/config.yml lands at the git root.
     expect(existsSync(join(repo, OK_DIR, 'config.yml'))).toBe(true);
-    // loadConfig from projectRoot finds it; loadConfig from cwd would not.
     const { config: rootConfig } = loadConfig(result.projectRoot);
     expect(rootConfig).toBeDefined();
-    // content.dir defaults to the git root (`.`). Opened folder and content
-    // scope intentionally align after git-root promotion — narrowing back to
-    // the picked sub-folder is a deliberate post-init choice, not the silent
-    // default.
     expect(rootConfig.content.dir).toBe('.');
   });
 
@@ -1930,15 +1693,12 @@ describe('runInit — projectRoot threading', () => {
       contentDir: '.',
     });
 
-    // .ok/ still lands at the git root (one .ok/ per repo), but content.dir is
-    // narrowed to the sub-folder the user ran in.
     expect(result.projectRoot).toBe(repo);
     expect(result.gitRootPromoted).toBe(true);
     expect(result.contentDir).toBe('notes');
     const { config } = loadConfig(result.projectRoot);
     expect(config.content.dir).toBe('notes');
 
-    // The whole-repo surprise warning is suppressed; a scope confirmation shows.
     const output = formatInitResult(result, result.projectRoot);
     expect(output).not.toContain('Content scope promoted to the git repo root');
     expect(output).toContain('Content scope set to notes/');
@@ -1978,7 +1738,6 @@ describe('runInit — projectRoot threading', () => {
         contentDir: '..',
       }),
     ).rejects.toBeInstanceOf(ContentDirError);
-    // Fail-fast: no .ok/ scaffolded when the flag is rejected.
     expect(existsSync(join(repo, OK_DIR))).toBe(false);
   });
 
@@ -1988,7 +1747,6 @@ describe('runInit — projectRoot threading', () => {
     mkdirSync(sub, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
 
-    // First init: whole-repo scope.
     await runInit({
       cwd: repo,
       home: fakeHome,
@@ -1997,8 +1755,6 @@ describe('runInit — projectRoot threading', () => {
     });
     expect(loadConfig(repo).config.content.dir).toBe('.');
 
-    // Re-init with --content-dir: writeIfMissing leaves the existing config
-    // untouched, so scope is NOT changed and the summary flags the ignored flag.
     const result = await runInit({
       cwd: sub,
       home: fakeHome,
@@ -2012,14 +1768,12 @@ describe('runInit — projectRoot threading', () => {
     expect(loadConfig(repo).config.content.dir).toBe('.');
     const output = formatInitResult(result, result.projectRoot);
     expect(output).toContain('ignored');
-    // JSON projection reflects the un-applied scope on re-init.
     expect(
       buildInitJsonSummary(result, { contentDir: '.', contentFileCount: null }).contentDirApplied,
     ).toBe(false);
   });
 
   it('does not claim "config.yml already exists" when content scaffolding failed', async () => {
-    // A real result to derive the two contentDir===undefined shapes from.
     const repo = join(fakeHome, 'repo-scaffold-fail');
     mkdirSync(repo, { recursive: true });
     Bun.spawnSync({ cmd: ['git', 'init', '-q', repo], stdout: 'ignore', stderr: 'ignore' });
@@ -2030,8 +1784,6 @@ describe('runInit — projectRoot threading', () => {
       scope: 'user',
     });
 
-    // Scaffolding-failure shape: flag requested, no config written, scaffold failed.
-    // The misleading "ignored — config.yml already exists" line must NOT appear.
     const scaffoldFailed = {
       ...base,
       contentDirRequested: 'notes',
@@ -2040,8 +1792,6 @@ describe('runInit — projectRoot threading', () => {
     };
     expect(formatInitResult(scaffoldFailed, base.projectRoot)).not.toContain('ignored');
 
-    // Pre-existing-config shape (same undefined contentDir, but scaffold succeeded):
-    // the "ignored" line is correct and MUST appear.
     const configExisted = {
       ...base,
       contentDirRequested: 'notes',
@@ -2073,9 +1823,7 @@ describe('runInit — projectRoot threading', () => {
     expect(summary.contentDirRequested).toBe('.');
     expect(summary.contentDirApplied).toBe(true);
     expect(summary.contentFileCount).toBe(3);
-    // A successful preview leaves previewError null so a null count means 0.
     expect(summary.previewError).toBeNull();
-    // Round-trips through JSON without loss (the scriptable contract).
     expect(JSON.parse(JSON.stringify(summary))).toEqual(summary);
   });
 
@@ -2089,7 +1837,6 @@ describe('runInit — projectRoot threading', () => {
       installUserSkill: defaultInstallUserSkill,
       scope: 'user',
     });
-    // Preview failed: null count MUST be paired with a non-null previewError.
     const withPreviewError = { ...base, previewWarning: 'cannot access content directory' };
     const summary = buildInitJsonSummary(withPreviewError, {
       contentDir: '.',
@@ -2120,20 +1867,6 @@ describe('runInit — projectRoot threading', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// runInit — the home directory is never a project root
-// ---------------------------------------------------------------------------
-
-/**
- * `cd ~ && ok init` set up a project in the user's home directory: `git init`
- * in `$HOME`, `config.yml` written into `~/.ok/` (OpenKnowledge's own
- * user-global directory), and — because every project-scope editor path at
- * home resolves onto that editor's user-global config — the project MCP write
- * and project skill install landing in `~/.cursor/`, `~/.codex/`, `~/.claude/`.
- *
- * The refusal is checked at the resolved projectRoot rather than at `cwd`
- * because promotion runs first; both spellings must be refused.
- */
 describe('runInit — refuses the home directory as a project root', () => {
   let testDir: string;
   let fakeHome: string;
@@ -2173,8 +1906,6 @@ describe('runInit — refuses the home directory as a project root', () => {
   });
 
   it('writes nothing at all — no git repo, no .ok/, no project skills', async () => {
-    // The whole point is that the refusal happens BEFORE any side effect, so
-    // this asserts every write site named in the bug report at once.
     await expect(runAtHome(fakeHome)).rejects.toThrow();
 
     expect(existsSync(join(fakeHome, '.git'))).toBe(false);
@@ -2183,14 +1914,11 @@ describe('runInit — refuses the home directory as a project root', () => {
     for (const hostDir of ['.claude', '.cursor', '.codex']) {
       expect(existsSync(join(fakeHome, hostDir, 'skills', 'open-knowledge'))).toBe(false);
     }
-    // The user-global MCP configs the project-scope write would have landed on.
     expect(existsSync(join(fakeHome, '.cursor', 'mcp.json'))).toBe(false);
     expect(existsSync(join(fakeHome, '.codex', 'config.toml'))).toBe(false);
   });
 
   it('refuses a symlinked spelling of home too', async () => {
-    // Asymmetric on purpose: `cwd` arrives via a symlink while `home` is the
-    // real path, so a plain string compare would let this through.
     const linkedHome = join(testDir, 'home-link');
     symlinkSync(fakeHome, linkedHome);
 
@@ -2199,11 +1927,6 @@ describe('runInit — refuses the home directory as a project root', () => {
   });
 
   it('the command action prints the refusal and exits 64 rather than throwing', async () => {
-    // `runInit` throwing is only half the contract. The user-facing half lives
-    // in the command action's catch: a clean message on stderr (no stack) and
-    // EX_USAGE 64, which a script can branch on. Driven in-process against
-    // `initCommand()` — the same idiom `config.test.ts` uses for its exit-code
-    // assertions — so this pins the handler without depending on a built dist.
     const savedCwd = process.cwd();
     const savedExitCode = process.exitCode;
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
@@ -2217,18 +1940,15 @@ describe('runInit — refuses the home directory as a project root', () => {
       expect(printed).toContain(
         'Refusing to set up an OpenKnowledge project in your home directory',
       );
-      // A rethrow would surface as an unhandled rejection with a stack instead.
       expect(printed).not.toContain('at runInit');
     } finally {
       process.chdir(savedCwd);
-      // Restore before the assertion can leak exit code 64 to the test runner.
       process.exitCode = savedExitCode;
       stderrSpy.mockRestore();
     }
   });
 
   it('still initializes a folder inside home', async () => {
-    // Control: the refusal is scoped to home itself, not to living under it.
     const project = join(fakeHome, 'notes');
     mkdirSync(project, { recursive: true });
 
@@ -2245,17 +1965,11 @@ describe('runInit — refuses the home directory as a project root', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// resolveRequestedContentDir — pure path validation
-// ---------------------------------------------------------------------------
-
 describe('resolveRequestedContentDir', () => {
   let root: string;
   beforeEach(() => {
     const raw = join(tmpdir(), `rrcd-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(raw, { recursive: true });
-    // realpath so macOS `/var` → `/private/var` canonicalization matches what
-    // `resolveRequestedContentDir` computes internally.
     root = realpathSync(raw);
     mkdirSync(join(root, 'sub'), { recursive: true });
   });
@@ -2268,9 +1982,7 @@ describe('resolveRequestedContentDir', () => {
   });
 
   it('returns the git-root-relative path for a descendant (cwd-relative input)', () => {
-    // cwd = root, input "sub" → "sub".
     expect(resolveRequestedContentDir('sub', root, root)).toBe('sub');
-    // cwd = root/sub, input "." → "sub".
     expect(resolveRequestedContentDir('.', root, join(root, 'sub'))).toBe('sub');
   });
 
@@ -2288,8 +2000,6 @@ describe('resolveRequestedContentDir', () => {
   });
 
   it('reports a non-ENOENT stat error as "not accessible", not "does not exist"', () => {
-    // A path whose parent segment is a file yields ENOTDIR from statSync — the
-    // bare catch used to mislabel this as "does not exist".
     writeFileSync(join(root, 'file.md'), '# x');
     let msg = '';
     try {
@@ -2302,16 +2012,12 @@ describe('resolveRequestedContentDir', () => {
   });
 
   it('resolves . when cwd reaches the project via a symlinked prefix', () => {
-    // Simulate a symlinked working tree (macOS /var -> /private/var): the
-    // canonical projectRoot and a symlink-prefixed cwd point at the same dir.
-    // Pre-fix this threw ContentDirError because the two prefixes disagreed.
     const linkParent = join(
       tmpdir(),
       `rrcd-link-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     symlinkSync(root, linkParent);
     try {
-      // `root` is realpath-canonical; `linkParent` is the un-canonical prefix.
       expect(resolveRequestedContentDir('.', root, linkParent)).toBe('.');
       expect(resolveRequestedContentDir('sub', root, linkParent)).toBe('sub');
     } finally {
@@ -2319,10 +2025,6 @@ describe('resolveRequestedContentDir', () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// resolveMcpScope — TTY / non-TTY branch coverage
-// ---------------------------------------------------------------------------
 
 describe('resolveMcpScope', () => {
   it('returns "user" when --scope user is passed, without calling promptFn', async () => {
@@ -2383,10 +2085,6 @@ describe('resolveMcpScope', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// initCommand -- Commander option validation
-// ---------------------------------------------------------------------------
-
 describe('initCommand', () => {
   it('rejects --scope with an invalid value (non-zero exit)', () => {
     const cmd = initCommand();
@@ -2394,10 +2092,6 @@ describe('initCommand', () => {
     expect(() => cmd.parse(['--scope', 'bogus'], { from: 'user' })).toThrow();
   });
 });
-
-// ---------------------------------------------------------------------------
-// detectInstalledEditors
-// ---------------------------------------------------------------------------
 
 describe('detectInstalledEditors', () => {
   let testDir: string;
@@ -2478,8 +2172,6 @@ describe('detectInstalledEditors', () => {
   });
 
   it('does NOT detect Antigravity when ~/.gemini is absent', async () => {
-    // `offerOnlyWhenDetected` makes this gate load-bearing: an over-broad
-    // detectPath (e.g. ~/.config) would silently write the config for anyone.
     const detected = detectInstalledEditors(testDir, fakeHome);
     expect(detected).not.toContain('antigravity');
   });
@@ -2528,8 +2220,6 @@ describe('detectInstalledEditors', () => {
   });
 
   it('detects Pi via ~/.pi/agent (not the bare ~/.pi dotdir)', async () => {
-    // `~/.pi` alone could belong to another tool; the coding agent's home is
-    // the nested `agent/` dir.
     mkdirSync(join(fakeHome, '.pi'), { recursive: true });
     expect(detectInstalledEditors(testDir, fakeHome)).not.toContain('pi');
     mkdirSync(join(fakeHome, '.pi', 'agent'), { recursive: true });
@@ -2542,14 +2232,10 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    // These are the only configured roots in this fixture, so their order follows
-    // the corresponding prefix of ALL_EDITOR_IDS.
     expect(detected).toEqual(['claude', 'claude-desktop', 'cursor', 'codex']);
   });
 
   it('returns empty list when the cwd itself does not exist (zero-detected edge case)', () => {
-    // Synthesizes the "zero detected" path where init should skip MCP wiring
-    // rather than inventing new editor config roots.
     const missingCwd = join(testDir, 'does-not-exist');
     const missingHome = join(testDir, 'also-not-here');
     const detected = detectInstalledEditors(missingCwd, missingHome);
@@ -2584,9 +2270,6 @@ describe('writeUserMcpConfigs', () => {
   });
 
   it('writes the canonical chain shape for every selected editor', async () => {
-    // Cursor's config dir doubles as its detection probe, so the consent write
-    // is gated on the tool really being present. Model a machine
-    // that HAS Cursor — otherwise this asserts the phantom-dir bug.
     mkdirSync(dirname(resolveCursorConfigPath({ home: fakeHome })), { recursive: true });
 
     const results: EditorMcpResult[] = await writeUserMcpConfigs({
@@ -2611,8 +2294,6 @@ describe('writeUserMcpConfigs', () => {
   it('creates OK entry into a blank config with no .broken sidecar', async () => {
     const claudePath = resolveClaudeCodeConfigPath({ home: fakeHome });
     mkdirSync(dirname(claudePath), { recursive: true });
-    // A whitespace-only config classifies as creatable, so the write populates
-    // it rather than declining — and never renames it aside.
     writeFileSync(claudePath, '   \n');
 
     const results: EditorMcpResult[] = await writeUserMcpConfigs({
@@ -2624,7 +2305,6 @@ describe('writeUserMcpConfigs', () => {
     const config = JSON.parse(readFileSync(claudePath, 'utf-8'));
     expect(config.mcpServers['open-knowledge']).toEqual(CANONICAL);
 
-    // No `.broken-*` sidecar was produced next to the config.
     expect(readdirSync(dirname(claudePath)).some((name) => name.includes('.broken-'))).toBe(false);
   });
 
@@ -2710,19 +2390,6 @@ describe('writeUserMcpConfigs', () => {
   });
 });
 
-/**
- * Direct unit coverage for `readExistingMcpEntry`.
- *
- * The function is the consent-flow tolerance boundary: every reachable
- * fail mode (config absent, config unparseable, top-level not an object,
- * server entry not an object, configPath throws on platform mismatch) MUST
- * return `null`, never throw. A regression that makes any branch throw
- * crashes `confirmHandler`, leaves the marker absent, and creates an infinite
- * dialog re-fire loop on user machines with corrupted editor configs.
- *
- * The orchestration tests in `mcp-wiring.test.ts` stub this function, so
- * direct coverage here is the only guard against tolerance regressions.
- */
 describe('writeEditorMcpConfig — TOML fallback declines a present config', () => {
   let fakeHome: string;
   let testDir: string;
@@ -2735,13 +2402,10 @@ describe('writeEditorMcpConfig — TOML fallback declines a present config', () 
     mkdirSync(testDir, { recursive: true });
     fakeHome = join(testDir, 'fakehome');
     mkdirSync(fakeHome, { recursive: true });
-    // Force the JS fallback: no native format-preserving engine available.
     setTomlConfigEngineForTesting(createTomlConfigEngine(() => null));
   });
 
   afterEach(() => {
-    // Restore the lazily-resolved (native) engine so sibling suites that rely
-    // on capable parsing are not poisoned by this one's forced fallback.
     setTomlConfigEngineForTesting(null);
     rmSync(testDir, { recursive: true, force: true });
   });
@@ -2762,7 +2426,6 @@ describe('writeEditorMcpConfig — TOML fallback declines a present config', () 
 
     expect(result.action).toBe('declined');
     expect(result.declineReason).toBe('no-native-writer');
-    // The user's config is left exactly as they wrote it — no lossy rewrite.
     expect(readFileSync(path, 'utf-8')).toBe(original);
     expect(readdirSync(dirname(path)).some((n) => n.includes('.broken-'))).toBe(false);
   });
@@ -2822,9 +2485,6 @@ describe('readExistingMcpEntry (Pass 0 Major #13)', () => {
   });
 
   it('returns null when configPath throws (platform-mismatched target)', () => {
-    // Claude Desktop's configPath only resolves on macOS / Windows. Switch to
-    // linux so the configPath helper throws — readExistingMcpEntry MUST
-    // catch + return null rather than propagate the throw.
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     expect(readExistingMcpEntry(EDITOR_TARGETS['claude-desktop'], '', fakeHome)).toBeNull();
   });
@@ -2872,9 +2532,6 @@ describe('readExistingMcpEntry (Pass 0 Major #13)', () => {
   it('returns the parsed entry when TOML config (Codex) is well-formed', () => {
     const path = resolveCodexConfigPath({ home: fakeHome, env: {} });
     mkdirSync(dirname(path), { recursive: true });
-    // Codex's `mcp_servers."open-knowledge"` table — quoted key form so the
-    // TOML parser keeps the dash-bearing name as one identifier (per
-    // smol-toml grammar). Same shape Codex itself writes via `ok init`.
     writeFileSync(
       path,
       '[mcp_servers."open-knowledge"]\ncommand = "npx"\nargs = ["-y", "@inkeep/open-knowledge@latest", "mcp"]\n',
@@ -2951,9 +2608,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('absent (creatable) when the file is blank (zero bytes)', () => {
-    // A 0-byte config holds nothing to preserve, so it is safe to create into
-    // rather than decline — this is what lets the write path populate it
-    // without renaming it aside.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '', 'utf-8');
@@ -2972,8 +2626,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('decline with a bounded reason on invalid JSON — never a creatable kind, no raw contents', () => {
-    // toEqual is exact: it pins the reason to the bounded enum value and
-    // proves no raw parser message / file path rides along in the result.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '{ not valid JSON', 'utf-8');
@@ -2996,11 +2648,6 @@ describe('classifyExistingMcpEntry', () => {
   it.skipIf(!NATIVE_TOML_AVAILABLE)(
     'no-entry (not decline) on a valid Codex config with a 2^53+ integer',
     () => {
-      // The capable engine parses an i64 the JS parser threw on, so a valid
-      // config without OK's entry is seen as no-entry — the destructive branch
-      // that reset such a file can no longer fire. Requires the native addon
-      // (built by the gate); on the JS fallback this same input would decline,
-      // which is non-destructive but does not register.
       const path = resolveCodexConfigPath({ home: fakeHome, env: {} });
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(
@@ -3058,9 +2705,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('decline (not creatable-blank) on a half-written / truncated JSON config', () => {
-    // A harness writing the file concurrently can be read mid-write: the bytes
-    // are a valid JSON prefix cut off, not blank. It must classify as decline
-    // so the config is left alone, never as absent-and-creatable.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(
@@ -3079,8 +2723,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('leaves a declined config byte-unchanged — classify never modifies or renames it', () => {
-    // Guest-ownership: OK reads to classify but never writes on the read path,
-    // so a present file it can't parse stays exactly as the user left it.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     const original = '{ "mcpServers": [ deliberately malformed\n';
@@ -3091,13 +2733,10 @@ describe('classifyExistingMcpEntry', () => {
     expect(result.kind).toBe('decline');
     expect(existsSync(path)).toBe(true);
     expect(readFileSync(path, 'utf-8')).toBe(original);
-    // readExistingMcpEntry collapses a decline to null with the same read-only contract.
     expect(readExistingMcpEntry(EDITOR_TARGETS.cursor, '', fakeHome)).toBeNull();
   });
 
   it('no-entry on a JSONC config with // and block comments (not unparseable)', () => {
-    // Harness configs are frequently hand-edited JSONC; comments must not flip a
-    // valid config to a decline that silently skips registration.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '{\n  // my servers\n  "other": { "command": "x" } /* keep */\n}', 'utf-8');
@@ -3137,8 +2776,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('decline (duplicate-container) when the mcpServers container appears twice', () => {
-    // The value parse keeps only the last block, so an edit would target one
-    // arbitrarily; the ambiguity is a decline, never a silent pick.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(
@@ -3153,8 +2790,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('duplicate-container is keyed to each harness container, not a hardcoded mcpServers', () => {
-    // OpenCode nests servers under `mcp`; the duplicate check reads the target's
-    // real container key.
     const path = resolveOpenCodeConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, '{ "mcp": { "a": {} }, "mcp": { "b": {} } }', 'utf-8');
@@ -3165,8 +2800,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('no-entry (not duplicate-container) when only an unrelated sibling key repeats', () => {
-    // Only a duplicated CONTAINER key is ambiguous for our edit; a repeated
-    // sibling key the value parse resolves on its own is none of our business.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(
@@ -3180,11 +2813,6 @@ describe('classifyExistingMcpEntry', () => {
   });
 
   it('decline (oversize) on a config past the size bound — gated before the parse, left byte-unchanged', () => {
-    // A history-bloated `~/.claude.json` can reach tens of MB; classify must
-    // stat-gate BEFORE reading+parsing. This payload is valid JSON whose only
-    // disqualifier is its size — without the gate it would classify `no-entry`
-    // (empty `mcpServers`), so an `oversize` decline proves the gate fired
-    // ahead of the parse and matches the write path's oversize decline.
     const path = resolveCursorConfigPath({ home: fakeHome });
     mkdirSync(dirname(path), { recursive: true });
     const oversized = `{ "mcpServers": {}, "_history": "${'x'.repeat(11 * 1024 * 1024)}" }`;
@@ -3193,14 +2821,9 @@ describe('classifyExistingMcpEntry', () => {
       kind: 'decline',
       reason: 'oversize',
     });
-    // Guest-ownership: the giant file is left exactly as the user left it.
     expect(readFileSync(path, 'utf-8')).toBe(oversized);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Sharing mode
-// ---------------------------------------------------------------------------
 
 describe('runInit — sharing mode', () => {
   let testDir: string;
@@ -3215,9 +2838,6 @@ describe('runInit — sharing mode', () => {
       home: fakeHome,
       installUserSkill: defaultInstallUserSkill,
       scope: 'user',
-      // Pin isTTY to false so the prompt never fires implicitly — tests
-      // inject explicit `sharing` or `sharingPromptFn` when they need a
-      // specific posture.
       isTTY: false,
       ...options,
     });
@@ -3251,11 +2871,6 @@ describe('runInit — sharing mode', () => {
   });
 
   it('AC3: --local-only in a non-git dir surfaces a no-exclude/no-git outcome (applySharingMode unit)', async () => {
-    // runInit always invokes ensureProjectGit, so the genuinely-non-git
-    // path is unreachable from runInit itself. Test the underlying
-    // applySharingMode helper directly — that's where the no-git +
-    // localOnlyRequested branch lives. The CLI integration sits in
-    // formatSharingOutcome (covered by the sibling test below).
     const nonGit = resolve(
       tmpdir(),
       `init-sharing-nongit-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -3279,11 +2894,6 @@ describe('runInit — sharing mode', () => {
   });
 
   it('formatSharingOutcome reports a drain that rode along with appends', () => {
-    // The mixed shape — append AND drain in one pass — is the ordinary upgrade
-    // path, and `action` is a three-way discriminant that cannot express it.
-    // The negative assertion is the load-bearing half: a `cleaned` outcome also
-    // carries a non-empty `alreadyPresent`, so a branch-order regression would
-    // silently fall into the "nothing to do" arm.
     const out = formatSharingOutcome(
       {
         kind: 'applied',
@@ -3337,23 +2947,16 @@ describe('runInit — sharing mode', () => {
   });
 
   it('`ok init` (no flag, non-TTY) on a fresh repo defaults to local-only, matching the desktop dialogs', async () => {
-    // Was `shared`. Both entry points now put a brand-new project in Only me
-    // so that sharing config with the team is an explicit choice rather than
-    // something that happens by omission.
     const result = await runInitForTest();
     expect(result.sharing.kind).toBe('applied');
     if (result.sharing.kind !== 'applied') throw new Error('expected applied');
     expect(result.sharing.mode).toBe('local-only');
-    // The exclude file (created by git init) carries the OK paths.
     const exclude = readFileSync(join(testDir, '.git', 'info', 'exclude'), 'utf-8');
     expect(exclude).toContain('.ok/');
     expect(exclude).toContain('.mcp.json');
   });
 
   it('re-running `ok init` (no flag) on an initialized shared repo stays shared', async () => {
-    // The fresh-project seed must not fire on a re-run: `readSharingMode`
-    // cannot tell "chose shared" from "never chose", so re-seeding would
-    // silently un-share a team's repo on a scripted re-run.
     await runInitForTest({ sharing: 'shared' });
     const result = await runInitForTest();
     expect(result.sharing.kind).toBe('applied');
@@ -3365,7 +2968,6 @@ describe('runInit — sharing mode', () => {
 
   it('FR5 / D12: re-running `ok init` (no flag) on a local-only repo preserves the prior posture', async () => {
     await runInitForTest({ sharing: 'local-only' });
-    // Same testDir, second run with no flag. Should stay local-only.
     const result = await runInitForTest();
     expect(result.sharing.kind).toBe('applied');
     if (result.sharing.kind !== 'applied') throw new Error('expected applied');
@@ -3385,10 +2987,7 @@ describe('runInit — sharing mode', () => {
   });
 
   it('an explicit `--shared` after a prior `--local-only` removes OK paths and leaves the rest byte-identical', async () => {
-    // Seed: write user-authored lines into the exclude file, then unshare,
-    // then re-share via explicit flag.
     await runInitForTest({ sharing: 'local-only' });
-    // Inject a user line that must survive.
     const excludePath = join(testDir, '.git', 'info', 'exclude');
     const before = readFileSync(excludePath, 'utf-8');
     const augmented = `# user header\n${before}*.tmp\n`;
@@ -3403,8 +3002,7 @@ describe('runInit — sharing mode', () => {
   });
 
   it('`--local-only` refuses when a teammate has committed `.mcp.json`, init still exits 0', async () => {
-    // Seed: commit a .mcp.json so it's tracked upstream.
-    await runInitForTest({ sharing: 'shared' }); // sets up .git
+    await runInitForTest({ sharing: 'shared' });
     writeFileSync(join(testDir, '.mcp.json'), '{}\n', 'utf-8');
     execFileSync('git', ['add', '.mcp.json'], { cwd: testDir });
     execFileSync('git', ['-c', 'user.email=t@e', '-c', 'user.name=t', 'commit', '-m', 'add mcp'], {
@@ -3417,7 +3015,6 @@ describe('runInit — sharing mode', () => {
     if (result.sharing.kind !== 'refused-tracked') throw new Error('expected refused-tracked');
     expect(result.sharing.tracked).toContain('.mcp.json');
     expect(result.sharing.remediation).toContain('git rm --cached .mcp.json');
-    // No tracked content was modified; the .mcp.json file is still on disk.
     expect(existsSync(join(testDir, '.mcp.json'))).toBe(true);
   });
 
@@ -3431,7 +3028,7 @@ describe('runInit — sharing mode', () => {
         return def;
       },
     });
-    expect(promptedDefault).toBeNull(); // explicit flag wins; no prompt
+    expect(promptedDefault).toBeNull();
   });
 
   it('TTY prompt receives `local-only` as the pre-selected default on a previously-local-only repo', async () => {
@@ -3441,17 +3038,13 @@ describe('runInit — sharing mode', () => {
       isTTY: true,
       sharingPromptFn: async (def) => {
         promptedDefault = def;
-        return def; // confirm the default
+        return def;
       },
     });
     expect(promptedDefault).toBe('local-only');
     expect(result.sharing.kind).toBe('applied');
   });
 });
-
-// ---------------------------------------------------------------------------
-// resolveSharingMode precedence
-// ---------------------------------------------------------------------------
 
 describe('resolveSharingMode', () => {
   let testDir: string;
@@ -3477,9 +3070,6 @@ describe('resolveSharingMode', () => {
   });
 
   it('non-TTY without flag on an already-initialized project → preserves shared', async () => {
-    // A re-run is not a new decision. `readSharingMode` cannot tell "chose
-    // shared" from "never chose", so seeding local-only here would silently
-    // un-share a team's repo on a scripted re-run.
     const mode = await resolveSharingMode({ projectRoot: testDir, isTTY: false });
     expect(mode).toBe('shared');
   });
@@ -3512,15 +3102,6 @@ describe('resolveInitSkillEnablement — --skills / --no-skills flag parsing', (
   const sorted = (skills: string | boolean | undefined): string[] =>
     [...resolveInitSkillEnablement(skills)].sort();
 
-  // Enabling is not writing: `installUserSkill` still refuses every destination
-  // whose host root is absent, so a machine with no agent tooling gets nothing
-  // regardless of what this returns.
-  //
-  // The default is the ONBOARDING set, not every user-global bundle: a bare
-  // `ok init` sets up exactly what the desktop's first launch does.
-  // `write-skill` is an authoring convenience with no bearing on whether the
-  // tools work, so installing it unasked — and recording consent for it — is
-  // the thing the ticket is about.
   it('undefined (no flag) enables the onboarding set only', () => {
     expect(sorted(undefined)).toEqual(['discovery']);
   });
@@ -3550,10 +3131,6 @@ describe('resolveInitSkillEnablement — --skills / --no-skills flag parsing', (
   });
 });
 
-/**
- * The consent bypass must not create the directory that detection later reads
- * back as proof the editor is installed.
- */
 describe('consent bypass never fabricates its own detection evidence (PRD-8007)', () => {
   let fakeHome: string;
   let testDir: string;
@@ -3579,8 +3156,6 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  // The five editors whose `detectPath` IS `dirname(configPath)`. Writing their
-  // config creates the probe dir, which is what made detection self-fulfilling.
   const SELF_PROBING = [
     ['cursor', resolveCursorConfigPath],
     ['codex', resolveCodexConfigPath],
@@ -3602,7 +3177,6 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
       );
 
       expect(result.action).toBe('skipped-missing');
-      // The actual regression: no directory, so no phantom detection.
       expect(existsSync(dirname(configPath))).toBe(false);
       expect(detectInstalledEditors('', fakeHome)).not.toContain(editorId);
     });
@@ -3624,12 +3198,6 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
   }
 
   it('refuses when the probe is an ANCESTOR of the config dir, not just equal to it', () => {
-    // Antigravity is this shape today: probe `~/.gemini`, config
-    // `~/.gemini/config/mcp_config.json`. `recursive: true` would create the
-    // probe on the way down, so the ancestor branch is live logic — it is only
-    // masked in production because antigravity also sets `offerOnlyWhenDetected`,
-    // which short-circuits first. A synthetic target isolates the branch so it
-    // keeps working if that flag is ever dropped.
     const probeRoot = join(fakeHome, '.synthetic-probe');
     const syntheticTarget = {
       ...EDITOR_TARGETS.cursor,
@@ -3647,11 +3215,8 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
     );
 
     expect(refused.action).toBe('skipped-missing');
-    // Nothing created anywhere along the path the mkdir would have walked.
     expect(existsSync(probeRoot)).toBe(false);
 
-    // Present probe: the write is honoured, so the guard is the only thing that
-    // refused above rather than some unrelated failure.
     mkdirSync(probeRoot, { recursive: true });
     const written = writeEditorMcpConfig(
       syntheticTarget,
@@ -3665,8 +3230,6 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
 
   it('Claude Code keeps the bypass — its config sits beside the probe, not inside it', () => {
     const configPath = resolveClaudeCodeConfigPath({ home: fakeHome });
-    // `~/.claude` absent, yet the config is `~/.claude.json`: writing it cannot
-    // manufacture the probe, so an explicit tick must still be honoured.
     expect(existsSync(join(fakeHome, '.claude'))).toBe(false);
 
     const result = writeEditorMcpConfig(
@@ -3696,7 +3259,6 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
         .map((r) => r.editorId)
         .sort(),
     ).toEqual(['claude-desktop', 'codex', 'copilot', 'cursor', 'opencode']);
-    // Detection afterwards reports only what was genuinely present.
     expect(detectInstalledEditors('', fakeHome)).not.toContain('cursor');
     expect(detectInstalledEditors('', fakeHome)).not.toContain('codex');
   });

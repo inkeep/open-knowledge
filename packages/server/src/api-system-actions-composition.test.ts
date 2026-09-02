@@ -6,21 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed system-actions group (`spawn-cursor`,
- * `handoff`, `client-logs`) over a REAL socket through the composed
- * `bootServer` stack: verb gating, real handler refusals, and the shared
- * admission posture. `spawn-cursor` and `handoff` stay OFF the table's
- * mutating declaration (their loopback confinement is the in-handler
- * `checkLocalOpSecurity` first line — pinned at the table tier in
- * `http/system-actions-routes.test.ts`); the rebound-Host pins here hold
- * that the admission outcome is unchanged across the lift.
- *
- * Every request below refuses (or, for `client-logs`, ingests an empty
- * batch) BEFORE any editor-host side effect — the suite never spawns a
- * binary or dispatches a handoff URL.
- */
-
 let tmpRoot: string;
 let server: BootedServer;
 
@@ -83,7 +68,6 @@ describe('system-actions group over the composed listener — served natively', 
   });
 
   test('client-logs refuses a rebound Host before the verb check (403, no Allow leak)', async () => {
-    // GET is the wrong verb — the mutating gate must answer first.
     const res = await rawRequest(server.port, '/api/client-logs', {
       headers: { Host: 'evil.example' },
     });

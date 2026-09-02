@@ -42,8 +42,6 @@ describe('activeToolKind', () => {
   });
 
   test('counts an accepted-but-not-started call as in flight', () => {
-    // It draws a spinner for the same reason: from the reader's side it is
-    // indistinguishable from work already underway.
     expect(activeToolKind([toolCall('search', 'pending')])).toBe('search');
   });
 
@@ -68,8 +66,6 @@ describe('activeToolKind', () => {
 
 describe('thinking rotation', () => {
   test('always lands on a different line', () => {
-    // A rotation that repeats the current phrase reads as a freeze. Sweeping
-    // the whole 0..1 sample range proves no draw can produce one.
     const count = thinkingStatusLines().length;
     for (let current = 0; current < count; current++) {
       for (let step = 0; step < 40; step++) {
@@ -82,7 +78,6 @@ describe('thinking rotation', () => {
   });
 
   test('can reach every other line from any starting point', () => {
-    // Offsetting rather than re-rolling must not make some lines unreachable.
     const count = thinkingStatusLines().length;
     for (let current = 0; current < count; current++) {
       const reached = new Set<number>();
@@ -114,27 +109,18 @@ describe('thinkingStatusLines', () => {
   });
 });
 
-/**
- * These pin the routing, not the wording — the copy is edited often and
- * freezing the exact strings here would make every wording change a test
- * change. What must hold is which source wins, that every branch says
- * something, and that the lines stay distinct enough for a change to register.
- */
 describe('workingStatusText', () => {
   const KINDS = ['read', 'search', 'fetch', 'edit', 'delete', 'execute', 'think'];
   const LINE_COUNT = thinkingStatusLines().length;
   const EVERY_LINE = Array.from({ length: LINE_COUNT }, (_, i) => i);
 
   test('gives every known tool kind its own line', () => {
-    // A repeated line would make a tool change look like nothing happened.
     const lines = KINDS.map((kind) => workingStatusText(kind, 0));
     for (const line of lines) expect(line.trim()).not.toBe('');
     expect(new Set(lines).size).toBe(KINDS.length);
   });
 
   test('a live tool call outranks the idle rotation', () => {
-    // The line changing as the agent moves between tools is itself the
-    // reassurance — the idle vocabulary is for when nothing is moving.
     for (const line of EVERY_LINE) {
       expect(workingStatusText('read', line)).toBe(workingStatusText('read', 0));
     }
@@ -146,22 +132,16 @@ describe('workingStatusText', () => {
   });
 
   test('renders a line for any index the rotation could hand it', () => {
-    // The index comes from a hook that could outlive a shortened array, and a
-    // blank status line is worse than a stale one.
     for (const index of [-1, 0, LINE_COUNT, LINE_COUNT * 3 + 1, 9_999]) {
       expect(workingStatusText(null, index).trim()).not.toBe('');
     }
   });
 
   test('falls back to the idle vocabulary for a tool kind it has no line for', () => {
-    // Adapters are free to report kinds we have never seen; inventing a
-    // description for one would be a lie.
     expect(workingStatusText('teleport', 2)).toBe(workingStatusText(null, 2));
   });
 
   test('never promises a time', () => {
-    // The one wording rule worth enforcing: we do not know how long the turn
-    // will take, and guessing is the fastest way to lose the reader's trust.
     for (const line of EVERY_LINE) {
       for (const kind of [null, ...KINDS]) {
         expect(workingStatusText(kind, line)).not.toMatch(/almost|nearly|second|soon|%/i);

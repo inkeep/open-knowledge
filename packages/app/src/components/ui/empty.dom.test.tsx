@@ -1,11 +1,3 @@
-/**
- * DOM-substrate tests for the Empty layout primitive. Call sites style
- * themselves through `className` and identify their parts through `data-slot`,
- * so those two are the primitive's whole contract; the `asChild` title is the
- * one place we diverge from upstream and therefore the one place a silent
- * regression would go unnoticed.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
@@ -72,10 +64,6 @@ describe('Empty', () => {
     expect(className).not.toContain('p-6');
   });
 
-  // The merge only resolves within a class group, and px/py do not supersede p.
-  // A call site that spells its padding override in longhand alone leaves the
-  // base p-6 in the class list and hands the outcome to Tailwind's stylesheet
-  // order instead. Lead with a shorthand and the base is actually displaced.
   test('replacing the root padding needs a shorthand, not longhand alone', () => {
     const { container: longhandOnly } = render(<Empty className="px-0 py-8">empty</Empty>);
     expect(slot(longhandOnly, 'empty').getAttribute('class')).toContain('p-6');
@@ -162,9 +150,6 @@ describe('EmptyTitle', () => {
     );
 
     const className = slot(container, 'empty-title').getAttribute('class') ?? '';
-    // The merge has to resolve conflicts, not concatenate: Tailwind's own
-    // stylesheet order would otherwise let the primitive's font-medium beat the
-    // caller's font-light regardless of which class is written last.
     expect(className).not.toContain('text-sm');
     expect(className).not.toContain('font-medium');
     expectVisualClassTokens(className, ['text-2xl', 'font-light', 'tracking-tight']);

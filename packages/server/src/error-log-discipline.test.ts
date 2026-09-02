@@ -32,28 +32,20 @@ import { describe, expect, test } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Scan roots, relative paths reported against the OK workspace root. */
 const WORKSPACE_ROOT = resolve(__dirname, '../../..');
 const SCAN_ROOTS = [
-  resolve(__dirname), // packages/server/src
+  resolve(__dirname),
   resolve(__dirname, '../../cli/src'),
   resolve(__dirname, '../../desktop/src/main'),
 ];
 
-/** This file embeds the banned patterns as predicate fixtures. */
 const SELF_BASENAME = basename(fileURLToPath(import.meta.url));
 
-/**
- * Whole-file exemptions, keyed by path relative to the OK workspace root.
- * Every entry needs a reason explaining why the raw-`err` shape cannot
- * serve the site.
- */
 const FILE_ALLOWLIST: ReadonlyMap<string, string> = new Map([]);
 
 const MARKER = 'error-log-shape-ok:';
 
 interface FileLines {
-  /** Path relative to the OK workspace root for failure messages. */
   path: string;
   lines: string[];
 }
@@ -85,23 +77,8 @@ function isCommentOnlyLine(line: string): boolean {
   return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*');
 }
 
-/**
- * An `.error(` / `.warn(` call on anything that is not `console`. The
- * receiver is intentionally loose (named loggers, injected logger deps,
- * `getLogger(...)` chains) — the banned-shape check below is what keeps
- * false positives out.
- */
 const LOG_CALL = /(?<!console)\.(error|warn)\(/;
 
-/**
- * Banned value shapes inside the data object of a log call window:
- *  1. `err:` / `error:` / `cause:` whose value string-coerces — starts with
- *     `String(`, or reads `.message` off a cast/plain identifier.
- *  2. `message:` whose value reads `.message` off an error-ish identifier
- *     (`err`, `error`, `e`, `*Err`, `*Error`) or runs the
- *     `instanceof Error ?` coercion. Plain `message: <string var>` and
- *     non-error-ish reads (`message: i.message` over Zod issues) stay legal.
- */
 const BANNED_FIELD = [
   /\b(?:err|error|cause)\s*:\s*String\(/,
   /\b(?:err|error|cause)\s*:\s*\(?\s*\w+(?:\s+as\s+\w+)?\s*\)?\s*\.message\b/,
@@ -109,7 +86,6 @@ const BANNED_FIELD = [
   /\bmessage\s*:\s*\(?\s*(?:e|err|error|\w*[eE]rr(?:or)?)(?:\s+as\s+\w+)?\s*\)?\s*\.message\b/,
 ];
 
-/** Lines the window may span — data objects in this codebase stay short. */
 const WINDOW_LINES = 8;
 
 export interface ErrorLogViolation {
@@ -117,15 +93,6 @@ export interface ErrorLogViolation {
   text: string;
 }
 
-/**
- * Find error/warn logger calls whose argument window contains a
- * string-coerced error field. The window spans from the call opener until
- * its paren balance closes (so trailing statements after the call are never
- * misattributed), capped at WINDOW_LINES — a banned shape further down a
- * very long argument list is missed, so keep log data objects compact.
- * Parens inside string literals count toward the balance; that can only
- * END a window early (fail-open), never extend it.
- */
 export function findStringifiedErrorFields(lines: string[]): ErrorLogViolation[] {
   const violations: ErrorLogViolation[] = [];
   const flagged = new Set<number>();
@@ -138,8 +105,6 @@ export function findStringifiedErrorFields(lines: string[]): ErrorLogViolation[]
     let depth = 0;
     for (let w = 0; w < WINDOW_LINES && i + w < lines.length; w++) {
       const wLine = lines[i + w] ?? '';
-      // Only inspect the segment from the call opener onward on the match
-      // line so content BEFORE the call is never misattributed.
       const segment = w === 0 ? wLine.slice(wLine.indexOf(m[0]) + m[0].length - 1) : wLine;
       if (!isCommentOnlyLine(wLine) && !wLine.includes(MARKER)) {
         const testable = w === 0 ? segment.slice(1) : segment;
@@ -208,7 +173,6 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
   });
 
   test('predicate fires on planted violations and not on adjacent negatives', () => {
-    // Planted positives: the raw shapes this rule bans.
     expect(findStringifiedErrorFields(["  log.warn({ err: String(err) }, 'x');"]).length).toBe(1);
     expect(
       findStringifiedErrorFields(['  logger.warn(', "    { event: 'x', error: String(err) },"])
@@ -238,7 +202,6 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
       findStringifiedErrorFields(["  logger.error('failed', { message: err.message });"]).length,
     ).toBe(1);
 
-    // Adjacent negatives: the sanctioned raw-err shapes.
     expect(findStringifiedErrorFields(["  log.warn({ err }, 'x');"]).length).toBe(0);
     expect(findStringifiedErrorFields(["  log.error({ err: e, docName }, 'x');"]).length).toBe(0);
     expect(
@@ -246,12 +209,10 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
         "  log.warn({ err: err instanceof Error ? err : new Error(String(err)) }, 'x');",
       ]).length,
     ).toBe(0);
-    // console receivers are the sanctioned console-style carve-out.
     expect(
       findStringifiedErrorFields(["  console.warn('[main] x', { err: (err as Error).message });"])
         .length,
     ).toBe(0);
-    // Non-error-ish `.message` reads (Zod issues, typed results) stay legal.
     expect(
       findStringifiedErrorFields([
         '  logger.warn({ issues: x.map((i) => ({ path: i.path, message: i.message })) });',
@@ -260,19 +221,15 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
     expect(
       findStringifiedErrorFields(["  log.warn({ message: result.message }, 'x');"]).length,
     ).toBe(0);
-    // Comment-only lines are exempt.
     expect(
       findStringifiedErrorFields(['  // like log.warn({ err: String(err) }) used to']).length,
     ).toBe(0);
-    // The inline escape hatch suppresses the flagged line.
     expect(
       findStringifiedErrorFields([
         "  log.warn({ err: String(err) }, 'x'); // error-log-shape-ok: message snapshot on purpose",
       ]).length,
     ).toBe(0);
 
-    // A banned shape AFTER the call's parens close belongs to the next
-    // statement, not the log call — never misattributed.
     expect(
       findStringifiedErrorFields([
         "  log.warn({ err }, 'x');",
@@ -280,8 +237,6 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
       ]).length,
     ).toBe(0);
 
-    // Known limitation, pinned: a banned shape further than WINDOW_LINES - 1
-    // lines below the call opener is not seen — keep log data objects compact.
     expect(
       findStringifiedErrorFields([
         '  log.warn(',

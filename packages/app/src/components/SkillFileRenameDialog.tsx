@@ -22,13 +22,6 @@ export interface SkillFileRenameTarget {
   filePath: string;
 }
 
-/**
- * Rename/move ONE bundle file (§8.9). The field holds the full bundle-relative
- * path, so a rename and a move-between-subdirs are the same edit
- * (`references/a.md` → `references/deep/a.md`). The server enforces the
- * allowlist + containment + never-overwrite; a project `.md` reference's open
- * tab retargets to the moved doc.
- */
 export function SkillFileRenameDialog({
   target,
   onOpenChange,

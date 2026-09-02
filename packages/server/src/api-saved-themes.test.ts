@@ -9,13 +9,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { savedThemesDir } from './saved-themes-store.ts';
 
-/**
- * Handler-boundary coverage for the saved-theme routes: the renderer's HTTP
- * request flows through the real `onRequest` → route table → handler → store →
- * wire response. The store is isolated to a tempdir via the `homedirOverride`
- * seam `createApiExtension` already exposes, so no `os.homedir()` mutation.
- */
-
 interface CapturedResponse {
   status: number;
   headers: Record<string, string>;
@@ -45,7 +38,6 @@ function makeRes(): { res: ServerResponse; captured: CapturedResponse } {
   return { res, captured };
 }
 
-/** A complete, valid scheme payload: sixteen distinct `#rrggbb` slots. */
 function schemePayload(name: string, variant: 'dark' | 'light' = 'dark') {
   const palette = Object.fromEntries(
     BASE16_SLOTS.map((slot, i) => {
@@ -133,7 +125,6 @@ describe('/api/saved-themes + /api/saved-theme', () => {
     };
     const byKey = new Map(body.themes.map((t) => [t.ok ? t.id : t.filename, t]));
     expect(byKey.get('saved-good')).toMatchObject({ ok: true, filename: 'good.yaml' });
-    // The malformed file is listed, not hidden — carrying its machine-readable reason.
     expect(byKey.get('broken.yaml')).toMatchObject({ ok: false, code: 'missing-slots' });
   });
 

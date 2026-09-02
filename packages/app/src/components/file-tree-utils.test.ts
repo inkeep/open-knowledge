@@ -77,15 +77,6 @@ describe('defaultInitialDir', () => {
   });
 });
 
-/**
- * filterVisibleEntries — sidebar render-set parallel to EmptyEditorState.countEntries()'s
- * hidden rule. Both surfaces delegate to core's `isHiddenDocName`: a per-segment
- * dot-prefix check at any depth (so a top-level-only check would miss
- * `brain/.archived/note.md`) plus the non-dotted `HIDDEN_CONFIG_BASENAMES`
- * allowlist (e.g. `opencode.json`). Without this filter, `.claude/`, `.codex/`,
- * `.cursor/`, and the seeded `opencode.json` agent config leak into the
- * sidebar's @pierre/trees model (FileTree.tsx ingestion at setDocuments).
- */
 describe('filterVisibleEntries', () => {
   test('keeps top-level visible document and folder entries', () => {
     const entries = [
@@ -146,9 +137,6 @@ describe('filterVisibleEntries', () => {
   });
 
   test('skill bundle files stay out of the tree even with showHiddenFiles on', () => {
-    // Skills are addressed through the Skills panel. They leave the tree on
-    // their own axis now that the hidden-files axis no longer claims them, so
-    // flipping Hidden files must not drag a bundle into the render set.
     const entries = [
       { kind: 'document' as const, docName: 'README' },
       { kind: 'document' as const, docName: '.agents/skills/consolidate-notes/SKILL' },
@@ -258,13 +246,6 @@ describe('filterVisibleEntries', () => {
   });
 });
 
-/**
- * Axis composition for the sidebar visibility model: one orthogonal axis per
- * toggle, composed by AND, all-off defaults reproduce the long-standing
- * hidden-only filter. Each test walks one object class through the
- * hidden-files × only-markdown grid so a regression in a single cell names
- * the exact class that broke.
- */
 describe('filterVisibleEntries — axis composition', () => {
   type Axes = NonNullable<Parameters<typeof filterVisibleEntries>[1]>;
   const shows = (
@@ -395,14 +376,6 @@ describe('filterVisibleEntries — axis composition', () => {
   });
 });
 
-/**
- * attributeTreeHiddenAxes — per-axis attribution for the editor's
- * not-in-sidebar indicator. The contract mirrors filterVisibleEntries clause
- * by clause: an axis is attributed exactly when its filter clause is what
- * drops the entry, and refs outside the tree's domain (managed-artifact
- * names, `.ok` paths) attribute nothing — blaming a toggle that cannot
- * reveal them would be a lie.
- */
 describe('attributeTreeHiddenAxes', () => {
   const none = { hiddenFiles: false, onlyMarkdownFiles: false };
 
@@ -423,11 +396,6 @@ describe('attributeTreeHiddenAxes', () => {
   });
 
   test('an open project skill attributes nothing in every axis cell', () => {
-    // The regression: a skill opened from the Skills panel showed
-    // "Not in sidebar → Hidden files" above its properties. Flipping that
-    // toggle only silenced the chip and revealed every dotfile in the repo —
-    // it could never give the skill a tree row, because skills do not have
-    // one. Applies to every bundle file, `scripts/**` included.
     for (const entry of [
       { kind: 'document' as const, docName: '.agents/skills/consolidate-notes/SKILL' },
       { kind: 'document' as const, docName: '.claude/skills/ai-sdk/references/gateway' },
@@ -489,9 +457,6 @@ describe('attributeTreeHiddenAxes', () => {
   });
 
   test('managed-artifact doc names attribute nothing, even with dot segments inside', () => {
-    // The template form embeds its owning folder, which can itself be a dot
-    // path — without the managed-name guard that would misattribute
-    // hidden-files to a doc that never has a tree row.
     for (const ref of ['__skill__/global/writer', '__template__/.private/meeting-notes']) {
       expect(attributeTreeHiddenAxes({ kind: 'document', docName: ref })).toEqual(none);
       expect(
@@ -531,12 +496,6 @@ describe('attributeTreeHiddenAxes', () => {
   });
 });
 
-/**
- * toFileEntries — the wire→sidebar boundary. Fixtures go through the real
- * schema parse so the test exercises exactly the handoff the FileTree fetch
- * paths perform; every optional FileEntry field is asserted explicitly because
- * omitting one in the mapper (e.g. dropping `isSymlink`) still compiles.
- */
 describe('toFileEntries', () => {
   const modified = '2026-06-12T00:00:00.000Z';
 
@@ -647,9 +606,6 @@ describe('toFileEntries', () => {
   });
 
   test('skips entries the static type admits but the wire refine forbids', () => {
-    // Constructible because the inferred type leaves variant fields optional
-    // (refine guarantees are runtime-only) — the mapper must drop these
-    // rather than fabricate entries with missing identity refs.
     const malformed: DocumentListEntry[] = [
       {
         kind: 'document',
@@ -684,13 +640,6 @@ describe('toFileEntries', () => {
   });
 });
 
-/**
- * classifyEmptyTree — the filtered-vs-truly-empty split behind the tree's
- * empty slot. Callers invoke it only once the rendered (filtered) tree is
- * empty; the classifier decides which empty state that is from the two
- * unfiltered-nonempty signals (pre-filter root listing count, indexed page
- * set) plus the active axes.
- */
 describe('classifyEmptyTree', () => {
   test('only-markdown hiding a non-empty root listing classifies filtered-to-zero', () => {
     expect(
@@ -723,10 +672,6 @@ describe('classifyEmptyTree', () => {
   });
 
   test('defaults keep the pre-feature empty state: a dot-only project is true-empty', () => {
-    // With every axis at its default, an empty render means every listing
-    // entry is default-hidden (dot paths) — the long-standing "No files yet"
-    // state. Resetting toggles to defaults could not change it, so the reset
-    // affordance must not be offered.
     expect(classifyEmptyTree({ unfilteredRootEntryCount: 4, knownPageCount: 4 })).toBe(
       'true-empty',
     );

@@ -14,10 +14,6 @@ describe('OkBlobRunnerPage', () => {
   });
 
   test('takes focus on mount', async () => {
-    // Load-bearing: opening from the Resources menu leaves focus on that menu's
-    // trigger (Radix restores it), and the runner's key handler stands down
-    // while a control holds focus. Without this, Space reopens the menu instead
-    // of starting the game.
     const focus = vi.spyOn(HTMLElement.prototype, 'focus');
     const { OkBlobRunnerPage } = await import('./OkBlobRunnerPage');
     render(<OkBlobRunnerPage />);

@@ -6,26 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed sync group over a REAL socket through
- * the composed `bootServer` stack — native registration and the shared
- * admission posture. Gate BEHAVIOR is owned by
- * `api-admission-composition.test.ts` (path-agnostic by construction); the
- * rebound-Host pin below re-pins gate REACHABILITY for this family — a
- * native-registration bug could mount the group outside
- * `createApiRequestPipeline` without changing any happy-path response, and a
- * hostile-header probe is the only wire signal that tells those apart. The
- * wire cannot distinguish the mutating gate from the read gate (both apply
- * the same loopback + workspace-Host checks), so the mutating DECLARATION
- * itself is pinned at the table tier in `http/sync-routes.test.ts`.
- *
- * The rig boots with `gitEnabled: false`: the engine is wired but never syncs
- * (no remote, git preflight skipped), so the dormant status, empty conflicts,
- * and fire-and-return 202 below are exactly the real handlers' responses,
- * proving dispatch reaches them without any git subprocess reaching a remote.
- */
-
-/** The mutating trio — legacy `MUTATING_ROUTES` members (declaration pinned in the table suite). */
 const MUTATING_ROUTES = [
   '/api/sync/trigger',
   '/api/sync/resolve-conflict',

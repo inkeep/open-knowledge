@@ -90,10 +90,6 @@ import {
   teardownToleranceTelemetryWriter,
 } from './tolerance-telemetry-writer.ts';
 
-/**
- * Names of per-machine runtime files that pre-date the `.ok/local/` move.
- * Used by the legacy-files warning at boot start; not a runtime contract.
- */
 const LEGACY_RUNTIME_FILENAMES = [
   'server.lock',
   'ui.lock',
@@ -106,15 +102,6 @@ const LEGACY_RUNTIME_FILENAMES = [
 
 const LEGACY_RUNTIME_DIRNAMES = ['cache', 'tmp'] as const;
 
-/**
- * Best-effort scan for runtime files left behind at `<okDir>/<name>` by a
- * pre-rename binary. Returns the relative names that are present; appends
- * `/` to dir names for display. Returns empty when `<okDir>/local/` already
- * has any content (the new layout is in use; no warning needed).
- *
- * Exported for unit testing — call sites use it inline at the start of
- * `bootServer()`.
- */
 export function findLegacyRuntimeFiles(okDir: string): string[] {
   const localDir = resolve(okDir, LOCAL_DIR);
   const localDirEmpty = (() => {
@@ -122,8 +109,6 @@ export function findLegacyRuntimeFiles(okDir: string): string[] {
     try {
       return readdirSync(localDir).length === 0;
     } catch {
-      // Inaccessible (perms, race) — treat as empty so the warning still
-      // fires if legacy files remain. Boot continues regardless.
       return true;
     }
   })();
@@ -139,33 +124,11 @@ export function findLegacyRuntimeFiles(okDir: string): string[] {
       if (existsSync(candidate) && statSync(candidate).isDirectory()) {
         found.push(`${name}/`);
       }
-    } catch {
-      // Inaccessible entries don't drive the warning — a stat failure on
-      // one candidate must not throw out of a best-effort diagnostic.
-    }
+    } catch {}
   }
   return found;
 }
 
-/**
- * Classify the boot project's worktree shape and resolved gitdir for OTel
- * span attributes. `ok.worktree.kind` is bounded enum (`'main' | 'linked'`).
- * `ok.worktree.gitdir` is normalized to last-two-segments via `normalizeFsPath`
- * so the collector's index does not blow up on per-user paths.
- *
- * Cases:
- *   - `.git` is a directory               → `'main'`, gitdir resolved
- *   - `.git` is a parseable pointer file  → `'linked'`, gitdir resolved
- *   - `.git` is a malformed pointer       → `'linked'` (user IS in a worktree;
- *                                            the actionable failure surfaces
- *                                            from the downstream
- *                                            `MalformedGitPointerError`)
- *   - `.git` is inaccessible (`EACCES`)   → `'main'` defensively (we don't
- *                                            know the shape; downstream
- *                                            `GitDirAccessError` surfaces the
- *                                            actionable failure)
- *   - `.git` is absent                    → `'main'` defensively
- */
 function computeWorktreeAttributes(projectDir: string): {
   kind: 'main' | 'linked';
   gitdir: string | null;
@@ -184,12 +147,7 @@ function computeWorktreeAttributes(projectDir: string): {
   }
 }
 
-/** 30 minutes — default idle threshold. */
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
-// Per-teardown-step cap. 5s is ample on real hardware; the env override exists
-// only to give slower/noisier CI runners (macOS GitHub runners under load)
-// headroom so a scheduling stall in a destroy step isn't misread as a hang. The
-// default is unchanged, so production shutdown latency is untouched.
 const DESTROY_STEP_TIMEOUT_MS = Number(process.env.OK_DESTROY_STEP_TIMEOUT_MS) || 5000;
 
 export interface BootServerOptions
@@ -222,252 +180,51 @@ export interface BootServerOptions
     | 'ephemeral'
     | 'configHomedirOverride'
   > {
-  /**
-   * The project's loaded `Config` (parsed from `.ok/config.yml`,
-   * with schema defaults applied). Threaded into `createMcpHttpHandler` so
-   * MCP tool handlers see the user-configured values (e.g.
-   * `config.content.dir`) instead of fabricated defaults.
-   */
   config: Config;
-  /**
-   * If false, `bootServer` does NOT run the pre-createServer `autoInitFn` or
-   * invoke UI-sibling spawn logic. Default false.
-   */
   skipAutoInit?: boolean;
-  /**
-   * The resolved `server.*` runtime (bind list, externalUrl, consent, derived
-   * defaults). The CLI passes the fully-layered resolution (flags > env >
-   * project-local > project > user); callers that omit it get a files-only
-   * resolution from `opts.config`. One resolution feeds every consumer —
-   * Host/Origin admission, and the exposure interlock — so the CLI and a direct
-   * embedder can never disagree about what the server thinks its shape is.
-   */
   serverRuntime?: ServerRuntimeConfig;
-  /**
-   * Full bind-address LIST. The first entry is the primary listener (it
-   * decides the port); every further entry gets its own listener on the same
-   * port sharing the primary's handlers. Omitted ⇒ single listener on
-   * `host`. The caller passes the already-precedence-resolved list; the
-   * exposure interlock has vetted it via `serverRuntime`.
-   */
   bind?: readonly string[];
-  /**
-   * Forwarded to the ACP thread manager — see
-   * `AcpThreadManagerOptions.probeHarnessManagedMcpEntry`. `ok start` and the
-   * Electron utility wire the CLI's `probeOwnManagedEditorMcpEntry`; unset
-   * keeps unconditional OK-MCP injection for ACP threads.
-   */
   probeHarnessManagedMcpEntry?: AcpThreadManagerOptions['probeHarnessManagedMcpEntry'];
-  /**
-   * Forwarded to the ACP thread manager — see
-   * `AcpThreadManagerOptions.probePiAcpBridge` / `ensurePiAcpBridge`. `ok
-   * start` and the Electron utility wire the CLI's Pi bridge primitives;
-   * unset means a Pi thread is never offered the bridge and has OK tools only
-   * where `ok init` already wired the project.
-   */
   probePiAcpBridge?: AcpThreadManagerOptions['probePiAcpBridge'];
   ensurePiAcpBridge?: AcpThreadManagerOptions['ensurePiAcpBridge'];
-  /**
-   * Idle-shutdown threshold in milliseconds. `null` disables idle-shutdown
-   * entirely (Electron utility sets this to `null` — window lifecycle
-   * owns utility lifetime). Default 30 * 60 * 1000.
-   */
   idleShutdownMs?: number | null;
-  /**
-   * Serve content-directory assets (images / video / audio / PDF / file
-   * attachments) over this HTTP server, mirroring the `bun run dev` Vite
-   * plugin and `ok ui`. Default `true`; pass `false` to opt out (tests
-   * that pin the no-middleware surface).
-   *
-   * Default-on because the desktop renderer resolves server-absolute
-   * `/<contentDir-relative>` image srcs against
-   * `window.okDesktop.config.apiOrigin`, and attach-mode treats lock kind as
-   * provenance-only — the desktop attaches to servers it did not spawn
-   * (MCP-autostarted, user-run `ok start`). Every attachable server must
-   * therefore expose the content-asset surface, or inline images 404 in
-   * attach-mode windows. Serving is additive: the same bytes are already
-   * reachable via `/api/asset`, and `createAssetServeMiddleware` — the
-   * canonical primitive — brings the inline/attachment policy + fail-closed
-   * 404 guard. `ok ui` continues to serve content assets on its own port for
-   * browser mode; the React shell (`reactShellDistDir`) stays opt-in.
-   */
   serveContentAssets?: boolean;
-  /**
-   * Absolute path to the built React shell directory (the bundled SPA — Vite's
-   * `build.outDir`, typically `<workspace>/packages/app/dist/`). When set, the
-   * boot path mounts a sirv middleware over this directory and threads it
-   * through `mountMcpAndApi` as a final fallback (after `/mcp`, `/api/*`, the
-   * WS upgrade, and `contentAssetMiddleware`).
-   *
-   * Used by OK Electron's utility process to serve the bundled React app from
-   * its existing HTTP port so external agent in-app browsers (Claude Desktop,
-   * Cursor, Codex) can render the live preview at the same URL the lock-based
-   * preview resolution returns. The CLI leaves this unset — `ok ui` already
-   * serves the shell on its own port. Preserving that two-process split is
-   * load-bearing for headless deployments (an `ok start` backend with no UI
-   * runs on a server) and for the attach-isolation lock-discovery model
-   * (server lifecycle independent of any UI host) — that's the rationale
-   * behind the default-off discipline.
-   *
-   * Sirv is configured with `single: true` (SPA fallback to `index.html`),
-   * `gzip: true`, `dev: true`, and `etag: true` (see the call site for why
-   * live-disk lookup over a boot-time map). Unlike `ok ui`'s static handler,
-   * `extensions: []` is NOT set here: that flag suppresses sirv's
-   * directory-index resolution that `single: true` rides on for `/` and
-   * bare deep-links. `ok ui` keeps it because its handler shares URL
-   * space with `createAssetServeMiddleware` over mixed dist + user
-   * content; the React-shell dist served here is isolated (no
-   * user-content overlap), so the security guard isn't load-bearing.
-   */
   reactShellDistDir?: string;
-  /**
-   * Pre-createServer scaffolding hook. CLI injects `initContent`; desktop
-   * leaves this undefined (no-op). Called only when `skipAutoInit === false`.
-   * Returns `true` if any scaffolding occurred during this invocation.
-   */
   autoInitFn?: () => boolean | Promise<boolean>;
-  /**
-   * Idle-shutdown handler — run when the server has been idle past the
-   * threshold. The desktop utility never wires this handler because
-   * `idleShutdownMs: null`.
-   */
   idleShutdownHandler?: (destroyServer: () => Promise<void>) => () => Promise<void>;
-  /** Injectable logger. Defaults to `getLogger('boot')`. */
   log?: PinoLogger;
-  /**
-   * Grace period (ms) before keepalive-close triggers session cleanup. Default 30 000.
-   * Integration tests pass a small value (e.g. 100) for fast teardown.
-   */
   keepaliveGraceMs?: number;
-  /**
-   * Injectable git-preflight check. Defaults to `assertGitAvailable` from
-   * `./git-preflight.ts`. Production callers leave this unset; the integration
-   * test for the missing-git path injects a forced-failure preflight (the
-   * real CI runners have git installed, so an organic "git absent" failure
-   * isn't reproducible without process-level surgery).
-   *
-   * Mirrors the testability-driven `log` injection above — no production
-   * caller passes it, and the field doesn't appear in any public API the
-   * subtree publishes externally.
-   */
   gitPreflight?: () => GitDetected;
-  /**
-   * Skip the durable state-manifest pre-flight gate
-   * (`assertCompatibleStateManifest`). Default `false`.
-   *
-   * Production code paths (CLI `ok start`, Electron utility, Vite dev plugin)
-   * leave this `false` so an incompatible cold start fails loud before the
-   * server touches any shadow-repo state.
-   *
-   * The integration test harness passes `true` because each test allocates a
-   * fresh tmpdir per test (no pre-existing state) and parallel `createServer`
-   * invocations against thousands of throwaway content dirs would otherwise
-   * spam manifest writes for no benefit. Tests that explicitly exercise the
-   * adoption path or version-mismatch behavior leave it `false`.
-   */
   skipStateManifestCheck?: boolean;
 }
 
-/**
- * Why this server is shutting down. Recorded at the top of teardown so a bundle
- * distinguishes a stop/kill from a self-reap from the host going away — three
- * outcomes that otherwise leave byte-identical shutdown logs.
- */
 export type ServerExitReason = 'external-signal' | 'idle-shutdown' | 'parent-exit' | 'unspecified';
 
 export interface BootedServer {
-  /** The bound HTTP server listening on `port`. */
   httpServer: HttpServer;
-  /** Composite shutdown — closes httpServer, detaches idle-shutdown, destroys the Hocuspocus server (which releases server.lock). */
   destroy: (reason?: ServerExitReason) => Promise<void>;
-  /** Absolute path to `<contentDir>/.ok`. */
   lockDir: string;
-  /** Resolved content directory. */
   contentDir: string;
-  /** The kernel-assigned port `httpServer` is bound to. */
   port: number;
-  /** Resolves when async server init (shadow repo, file watcher subscription) completes. */
   ready: Promise<void>;
-  /** Settles after the post-readiness generated-index boot sweep. */
   generatedIndexSweepReady: ServerInstance['generatedIndexSweepReady'];
-  /** Subsystems that failed to initialize — read AFTER `ready` for a stable list. */
   degraded: readonly string[];
-  /** `true` if `autoInitFn` scaffolded anything during this boot. */
   didAutoInit: boolean;
-  /** Full ServerInstance from createServer — exposed for advanced consumers (e.g., desktop utility's drain sequencing). */
   serverInstance: ServerInstance;
-  /**
-   * The project's stateful resources grouped behind the runtime boundary.
-   * Capability services compose against this, not against `serverInstance`
-   * internals; see `project-runtime.ts` for what belongs in versus out.
-   */
   runtime: ProjectRuntime;
-  /** ACP thread host, or null in ephemeral single-file mode. */
   acpThreadManager: AcpThreadManager | null;
 }
 
-/**
- * How many nesting levels of `*.` wildcard segments to enumerate when
- * expanding the credential denylist into Pino redact paths. Pino's redact
- * engine matches one wildcard per segment, so `*.authorization` catches
- * `req.authorization` but NOT `req.headers.authorization`. Five depths
- * cover the dominant HTTP-logging shapes (`req.headers.authorization`,
- * `outer.req.headers.authorization`) and the long tail of framework
- * wrappers without exploding the path array — each denylist entry expands
- * to `1 + DEPTH` redact paths.
- */
 const PINO_REDACT_MAX_DEPTH = 5;
 
-/**
- * Boot the collab server end-to-end and return a handle. Pure of process-level
- * concerns (signal handlers, banner, browser-open, exit codes) so the CLI
- * wrapper and Electron utility can each layer their own concerns on top.
- *
- * Git-preflight failure path: on `GitNotAvailableError` / `GitTooOldError`
- * this function emits the failure telemetry span, structured-logs the event,
- * writes the typed error's install guidance to stderr, flushes telemetry, and
- * then re-throws the typed error. Callers decide the exit code (the CLI maps
- * it to EX_CONFIG / 78; the Electron utility surfaces it via IPC). Every
- * other error type propagates unchanged.
- */
 export async function bootServer(opts: BootServerOptions): Promise<BootedServer> {
-  // Stamp the boot-timing accumulator before anything else so each downstream
-  // phase (HTTP listen, the background seed walk + indexes in initAsync) has a
-  // monotonic origin to delta against. The module captures both the monotonic
-  // origin (for `bootElapsedMs`) and an ISO wall-clock `startedAt` — the latter
-  // is what crosses the process boundary on `/api/server-info` for the desktop
-  // waterfall's clock-skew math.
   startBootTimings();
 
-  // Resolve telemetry.localSink from project + project-local config BEFORE
-  // any getLogger() or withSpan() call so both the logger fileSink and the
-  // file SpanExporter compose on the same configured values. The file sink
-  // is default-on; only an explicit `telemetry.localSink.enabled: false`
-  // disables it. The OTLP push pipeline stays gated by OTEL_SDK_DISABLED.
-  //
-  // The sink anchors at `projectDir`, NOT `contentDir`: telemetry spans + log
-  // files are per-machine runtime state and belong at `<projectDir>/.ok/local/`
-  // alongside the server lock / principal / state-manifest. When `content.dir` points at a
-  // subdir — or, in single-file mode, contentDir is the user's real directory —
-  // anchoring at contentDir would scatter a second `.ok/` into the content tree
-  // (and, for single-file mode, violate the zero-artifacts-in-the-user's-dir invariant).
   const sinkProjectDir = opts.projectDir ?? opts.contentDir;
   const localSinkConfig = resolveLocalSinkConfig({
     projectDir: sinkProjectDir,
   });
   if (localSinkConfig) {
-    // loggerFactory.configure clears the cached logger map; safe here because
-    // bootServer is the entry point and no getLogger() call has fired yet.
-    // Mirror the span pipeline's credential scrubbing on the log pipeline by
-    // computing Pino redact paths from the same denylist. Pino's redact
-    // engine (`@pinojs/redact`) only supports single-segment `*` wildcards
-    // — `**` is treated as a literal property name, not a deep wildcard —
-    // so each denylist entry expands to the bare key plus one wildcard
-    // segment per nesting depth up to PINO_REDACT_MAX_DEPTH. That covers
-    // the dominant HTTP-logging shapes (`req.authorization`, depth 1;
-    // `req.headers.authorization`, depth 2) and any extra wrapping a
-    // framework might add. Censor matches the span sentinel so consumers
-    // see one redaction marker everywhere.
     const denylist = localSinkConfig.telemetry.attributeDenylist;
     const redactPaths: string[] = [];
     for (const key of denylist) {
@@ -481,15 +238,10 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
     });
   }
   initTelemetry({ localSink: localSinkConfig?.telemetry });
-  // Self-gates on OK_BRIDGE_TOLERANCE_TELEMETRY=1; anchored at the same
-  // `.ok/local/` runtime-state root as the span/log sinks.
   initToleranceTelemetryWriter(sinkProjectDir);
   installServerMemoryGauge();
   installServerRuntimeGauges();
 
-  // Wrap the orchestration in an `ok.boot` span so telemetry can slice
-  // boot-failure rates by worktree kind. Computed here (not inside
-  // `bootServerInner`) because the values are needed for the SpanOptions.
   const { kind: worktreeKind, gitdir: worktreeGitdir } = computeWorktreeAttributes(
     opts.projectDir ?? opts.contentDir,
   );
@@ -498,19 +250,6 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
     spanAttributes['ok.worktree.gitdir'] = normalizeFsPath(worktreeGitdir);
   }
 
-  // Cross-process trace join (desktop startup instrumentation): when the
-  // Electron main process owns the `ok.app-startup` root and spawns this
-  // server, it passes its active context as a W3C traceparent in
-  // `OK_STARTUP_TRACEPARENT`. Extracting it and running `ok.boot` inside that
-  // context parents the server's boot span to the desktop root, so Tempo shows
-  // one launch trace spanning main → server → renderer. Absent the env var
-  // (CLI `ok start`, tests, push-disabled), `ok.boot` stays a root span exactly
-  // as before. The propagator is registered by `initTelemetry` above; when OTel
-  // is disabled the extract is a cheap no-op over a no-op tracer.
-  // Arm fatal-crash capture before the boot sequence proper: an uncaught
-  // exception anywhere from here on (boot phase or steady state) leaves a
-  // synchronous `last-server-crash.json` + log-sink line behind. Observe-only —
-  // Node's default crash handling (stderr stack, non-zero exit) is untouched.
   const crashCapture = installCrashCapture(sinkProjectDir);
 
   const startupTraceparent = process.env.OK_STARTUP_TRACEPARENT;
@@ -524,13 +263,6 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
         });
         return context.with(parentCtx, bootSpan);
       } catch (err) {
-        // A malformed `OK_STARTUP_TRACEPARENT` must never break boot. The
-        // registered W3C propagator degrades to an unparented context rather than
-        // throwing, so this catch is belt-and-suspenders for a future non-standard
-        // propagator — fall through to the unparented boot exactly as the
-        // no-env-var path does. Warn so that disconnect is diagnosable: the
-        // server's `ok.boot` would otherwise become a detached root in Tempo with
-        // nothing in the logs to correlate against the missing join.
         getLogger('boot').warn({ err }, 'ok.boot trace-join failed — starting unparented boot');
       }
     }
@@ -540,9 +272,6 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
   try {
     booted = await runBoot();
   } catch (err) {
-    // Boot refused (config missing, lock collision, git preflight): the
-    // caller decides the exit path, so detach rather than leave a dead
-    // registry entry behind (tests boot-fail repeatedly in one process).
     crashCapture.uninstall();
     throw err;
   }
@@ -561,51 +290,16 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const skipAutoInit = opts.skipAutoInit ?? false;
   const log = opts.log ?? getLogger('boot');
 
-  // The resolved server.* runtime. The CLI passes its fully-layered resolution
-  // (flags > env > project-local > project > user); the desktop utility passes
-  // an equivalent scope-resolved runtime (its `resolveDesktopServerRuntime`
-  // runs the same three-layer `loadConfig`), so desktop's Remote control pane
-  // consent (project-local `server.allowExternal`) now takes effect through the
-  // trusted branch. Direct embedders that DON'T pass one (the dev-server
-  // plugin, tests) fall back to a files-only resolution — but that Config is
-  // NOT scope-resolved: it carries the committed `.ok/config.yml` alone, so a
-  // committed `server.allowExternal` would arm consent from a cloned repo (the
-  // exact clone-leak the scope-correct load exists to prevent). Config-derived
-  // consent is therefore untrusted here: force `allowExternal` off so only a
-  // caller that resolved it scope-correctly (the CLI's or desktop's explicit
-  // `serverRuntime`) can consent. A committed non-loopback bind or `externalUrl`
-  // then trips the interlock below — the correct refusal, not a silent exposure.
   const serverRuntime = opts.serverRuntime ?? {
     ...resolveServerRuntimeConfig(opts.config),
     allowExternal: false,
   };
 
-  // The addresses the listener will ACTUALLY bind — the single source of truth
-  // for BOTH the exposure interlock below and the multi-listener bind later, so
-  // the check and the bind can never diverge. This mirrors the `listenAddresses`
-  // rule exactly: an explicit `bind` list wins, else the single `host`, else the
-  // loopback default. Load-bearing: a caller can pass a non-loopback `host` /
-  // `bind` that diverges from the resolved `serverRuntime.bind` (ephemeral
-  // single-file mode boots with `HOST=0.0.0.0` and NO bind/serverRuntime), which
-  // would otherwise bind wide open while the interlock — reading only
-  // serverRuntime.bind — saw loopback and let it through.
   const effectiveBindAddresses =
     opts.bind !== undefined && opts.bind.length > 0
       ? opts.bind
       : [opts.host ?? DEFAULT_SERVER_HOST];
 
-  // The exposure consent interlock: a NON-LOOPBACK bind reaches beyond this
-  // machine, and the server refuses to boot without recorded consent. Checked
-  // against the EFFECTIVE bind (above) AND the resolved serverRuntime — either
-  // being non-loopback trips it. A committed server.externalUrl under a loopback
-  // bind is inert metadata and does NOT trip this (see requiresExternalConsent)
-  // — that would lock out a teammate who clones a VPS-deploy repo and opens it
-  // locally. Enforced here — the single boot chokepoint every launcher goes
-  // through — BEFORE locks, auto-init, or the listener, so refusal is fast and
-  // side-effect-free. Consent is only ever honored from an explicit
-  // `serverRuntime` (scope-correctly resolved by the CLI); config-derived
-  // consent was forced off above, so a committed project-file `allowExternal`
-  // can never arm this.
   const bindExposes =
     requiresExternalConsent(serverRuntime) || !isLoopbackOnlyBind(effectiveBindAddresses);
   if (bindExposes && !serverRuntime.allowExternal) {
@@ -617,22 +311,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     );
   }
 
-  // ONE ingress policy for the whole listener — HTTP gates, WS upgrade
-  // admission, config-doc admission, and the local-op checks all consult this
-  // object. Built from the resolved server.* runtime (consent, declared bind
-  // literals, externalUrl).
-  //
-  // The policy's admitted Host names come from `serverRuntime.bind` — the
-  // DECLARED bind (which Host headers to accept) — NOT the physical
-  // `effectiveBindAddresses`. These legitimately differ: a tailnet / VPS deploy
-  // declares `server.bind: […, 100.64.0.7]` so the tailnet IP is an admitted
-  // Host, even when the process physically binds loopback behind the tailnet's
-  // NAT (composition-rig Case 2 pins exactly this — declared `100.64.0.7`,
-  // physical `127.0.0.1`). The EXPOSURE interlock above asks the opposite
-  // question — "what does the process actually bind?" — so it keys off
-  // `effectiveBindAddresses`. Different questions, deliberately different
-  // sources; do NOT unify them (doing so drops declared-but-not-physically-
-  // bound Hosts from the allowlist → spurious 403s).
   const ingressPolicy = buildIngressPolicy({ serverRuntime });
   if (
     serverRuntime.allowExternal &&
@@ -640,20 +318,11 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     serverRuntime.externalUrl === undefined
   ) {
     if (ingressPolicy.bindLiterals.length === 0) {
-      // Wildcard bind (0.0.0.0 / ::) contributes NO admissible Host name, and
-      // with no server.externalUrl the Host allowlist is loopback-only — so
-      // every external request 403s and the server is externally unusable
-      // despite consent. This is a misconfiguration, not a refusal (a
-      // container behind a platform edge that rewrites Host is legitimate),
-      // so warn loudly and name the fix.
       log.warn(
         { bind: serverRuntime.bind },
         '[ingress] server.allowExternal is set on a wildcard bind (0.0.0.0/::) with no server.externalUrl — external requests will be REFUSED (403 host-not-allowed) because no external Host name is admitted. Set server.externalUrl to the public origin clients dial (e.g. behind a reverse proxy or platform edge), or bind a specific address instead of a wildcard.',
       );
     } else {
-      // A specific non-loopback bind (e.g. a tailnet IP) IS admissible as a
-      // Host literal, so direct-IP access works; only friendly names need
-      // server.externalUrl.
       log.info(
         { bind: serverRuntime.bind },
         '[ingress] server.allowExternal is set with no server.externalUrl — the bind-address literals are admitted as Host names (direct IP access). Set server.externalUrl to admit a hostname.',
@@ -661,27 +330,17 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   }
 
-  // Lock-kind resolution. Explicit option wins over env. `OK_LOCK_KIND` is
-  // the contract used by the MCP detach-spawn path in
-  // `packages/cli/src/mcp/shim.ts` — direct callers (CLI `ok start`,
-  // Electron utility) leave it unset. Default `interactive` so
-  // omitted-everywhere boots are user-facing servers. Idle-shutdown is the
-  // sole teardown trigger; there is no parent-death watch.
   const envLockKind =
     process.env.OK_LOCK_KIND === 'mcp-spawned' || process.env.OK_LOCK_KIND === 'interactive'
       ? process.env.OK_LOCK_KIND
       : undefined;
   const lockKind = opts.lockKind ?? envLockKind ?? 'interactive';
 
-  // Lazy-import node:http so this module can be `import`'d in a browser-like
-  // environment for typechecking without pulling network deps at parse time.
-  // `ws` (the WebSocket server) is loaded by `mountMcpAndApi` further down.
   const { createServer: createHttpServer } = await import('node:http');
   const { markServerLockDraining, releaseServerLock, updateServerLockPort } = await import(
     './server-lock.ts'
   );
 
-  // Pre-createServer scaffold hook. CLI passes initContent; desktop omits.
   let didAutoInit = false;
   if (!skipAutoInit && opts.autoInitFn) {
     try {
@@ -692,19 +351,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   }
 
-  // Pre-listen config-presence check. Boot refuses if `.ok/config.yml` is
-  // absent (States A and B). When only `.ok/.gitignore` is missing (State C)
-  // we emit a per-boot hygiene warning (one stderr line per bootServer
-  // invocation; not deduplicated across restarts) and proceed — boot does
-  // not read .gitignore, so refusing on its absence would be the only place
-  // this code enforces git hygiene as a hard gate.
-  //
-  // The check resolves against `projectDir`, NOT `contentDir`. Config canonically
-  // lives at `<projectDir>/.ok/config.yml` (loader.ts), regardless of where
-  // `content.dir` points. When `content.dir` is set non-trivially (e.g. `docs`),
-  // `contentDir = <projectDir>/docs` while config still lives at `<projectDir>/.ok/`.
-  // Falling back to `contentDir` preserves existing behavior for callers that
-  // omit `projectDir` (they must mean the two are the same).
   const projectDir = opts.projectDir ?? opts.contentDir;
   const okDir = resolve(projectDir, OK_DIR);
   const configPath = resolve(okDir, 'config.yml');
@@ -720,16 +366,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     );
   }
 
-  // Git binary preflight. simple-git's failure mode for a missing/old git is
-  // a raw `Error: spawn git ENOENT` (or similar) bubbling up from whichever
-  // call site happens to fire first — typically deep in createServer's
-  // shadow-repo init. Detecting it here turns that into a typed error with
-  // platform-aware install guidance + a stable exit code.
-  //
-  // Skipped when git is disabled (the no-project ephemeral single-file shape,
-  // `gitEnabled: false`): that server never invokes git, so requiring the binary
-  // would block opening a loose file for a user without git — the zero-setup case
-  // the mode exists to serve.
   const preflight = opts.gitPreflight ?? assertGitAvailable;
   try {
     if (opts.gitEnabled !== false) preflight();
@@ -737,8 +373,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     if (err instanceof GitNotAvailableError || err instanceof GitTooOldError) {
       const detectedVersion = err instanceof GitTooOldError ? err.detected : '';
       const reason = err instanceof GitTooOldError ? 'too_old' : 'not_available';
-      // Failure-only telemetry. Bounded cardinality enforced by
-      // `emitPreflightFailureSpan`; no-op when OTEL is disabled.
       emitPreflightFailureSpan(err);
       log.warn(
         {
@@ -751,19 +385,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       );
       process.stderr.write(`${err.message}\n`);
     }
-    // Flush pending telemetry before re-throwing — applies to BOTH the typed
-    // preflight-failure branch above AND any non-typed error (programmer
-    // error, OOM, `spawnSync` permission error) that fell through to the
-    // catch-all path. `initTelemetry()` ran unconditionally at the top of
-    // `bootServer`, so the BatchSpanProcessor buffer holds spans either way;
-    // if the caller calls `process.exit()` on receiving the throw, the buffer
-    // is discarded and any emitted span never reaches the exporter.
-    // `shutdownTelemetry` is idempotent and bounded by its own 5s timeout,
-    // so a stuck exporter cannot indefinitely block the caller. The tolerance
-    // writer's drain has no internal deadline (a stalled writeFile/rename on
-    // an unresponsive mount would hold this error path open and keep the CLI
-    // from reaching its exit code), so cap it here to match — the normal
-    // destroy path gets the same bound via `runStep`.
     await shutdownTelemetry();
     await Promise.race([
       teardownToleranceTelemetryWriter(),
@@ -772,11 +393,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     throw err;
   }
 
-  // Per-machine runtime files moved from `.ok/<name>` to `.ok/local/<name>`.
-  // Warn once if a project still has the legacy layout AND `.ok/local/` is
-  // empty/missing — the new code reads/writes only under `.ok/local/`, so
-  // legacy files at the root sit inert until the developer cleans them up.
-  // No action taken; boot proceeds.
   const legacyFound = findLegacyRuntimeFiles(okDir);
   if (legacyFound.length > 0) {
     getLogger('boot').warn(
@@ -785,12 +401,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     );
   }
 
-  // Live `/collab` client count. The counter can only attach once the HTTP
-  // server exists (further down), while the API extension is built here — so
-  // the route reads through this indirection rather than a captured value.
   let collabClientCounter: CollabClientCounter | null = null;
 
-  // Compose createServer options from the subset we accept.
   const serverInstance = createServer({
     getCollabClientCount: () => collabClientCounter?.getCount() ?? 0,
     contentDir: opts.contentDir,
@@ -813,9 +425,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     authStreamHeartbeatMs: opts.authStreamHeartbeatMs,
     onAgentWrite: opts.onAgentWrite,
     lockKind,
-    // `"ui"` iff THIS process serves the React shell — the single-listener
-    // advertisement `preview_url` and the clone→open redirect read to
-    // distinguish a UI-serving server from an API-only (`--only server`) one.
     capabilities: opts.reactShellDistDir ? ['http', 'ws', 'ui'] : ['http', 'ws'],
     skipStateManifestCheck: opts.skipStateManifestCheck,
     detectGh: opts.detectGh,
@@ -845,32 +454,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
   })();
   let boundPort = opts.port ?? 0;
-  // Internal service-to-self base URL — the `serverUrl` the MCP tools and the
-  // ACP hosted-agent connect-back dial. Both consumers run on THIS machine:
-  // the MCP tools' enrichment reads and the document write/persist self-call
-  // (`content/enrichment.ts`, `mcp/tools/write.ts` → `POST /api/agent-write-md`),
-  // and the ACP-spawned agent subprocess dialing `${url}/mcp`. So the base MUST
-  // target this server's OWN bound listener (`mcpHost` is whatever address the
-  // server bound — loopback in the default bind). Behind an authenticating reverse proxy with a public
-  // `server.externalUrl`, routing these self-calls at the external origin
-  // hairpins them out through the edge and hits the auth gate, which answers
-  // `HTTP 401` with an HTML login body — the exact failure that broke MCP
-  // write/edit/move/delete (reads survive only because their enrichment
-  // self-calls are `.catch(() => null)`).
-  //
-  // This is NOT where user-facing "issued" links come from, so keeping it
-  // loopback does not regress preview/share URLs: `preview_url` and the
-  // per-response `previewUrl` route resolve their browser base from
-  // `server.lock` (this same listener origin by the one-URL
-  // contract below, never from this value), and `share_link` builds its public
-  // `https://openknowledge.ai/d/...` URL from the git remote. `externalUrl`
-  // still governs ingress admission (CORS/Host) via `ingressPolicy`; it just
-  // must never feed an internal self-call.
   const internalBaseUrl = (): string => `http://${mcpHost}:${boundPort}`;
-  // No-project ephemeral single-file mode mounts NO MCP endpoint:
-  // there are no agent capabilities. `mountMcpAndApi` leaves `/mcp`
-  // unmounted when `mcpHttpHandler` is undefined, so an undefined handler is
-  // the structural off-switch — no `/mcp` route exists to reach.
   const mcpHttpHandler = opts.ephemeral
     ? undefined
     : createMcpHttpHandler({
@@ -882,28 +466,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         log,
       });
 
-  // HTTP server — `mountMcpAndApi` installs the `/mcp` + `/api/*` request
-  // routing and the `/collab` + `/collab/keepalive` upgrade handler; the
-  // React shell mounts below when `reactShellDistDir` is set.
   const httpServer = createHttpServer();
-  // Resource-exhaustion bounds (defense-in-depth): cap headers + full
-  // request lifetimes so a slow client cannot dribble bytes below the 1 MB
-  // body cap in `request-validation.ts` and hold a handler's async slot
-  // indefinitely. `MAX_BODY_BYTES = 1 MB` finishes well under 30s on any
-  // realistic network, so 30s headers + 60s request-total is safe for
-  // legitimate clients while keeping slowloris-class abuse bounded. Node
-  // ships sane defaults (60s headers, 5 min request) but we pin both
-  // explicitly so the bound is part of the contract, not a runtime default
-  // that could shift across Node majors.
   httpServer.headersTimeout = 30_000;
   httpServer.requestTimeout = 60_000;
 
-  // Content-asset serving — default-on for every boot path so attach-mode
-  // desktop windows resolve inline-image srcs against any lock holder (see
-  // the `serveContentAssets` option doc). Reuses the canonical
-  // `createAssetServeMiddleware` (STOP rule: serve-side asset admission goes
-  // through this factory) so the inline/attachment Content-Disposition policy
-  // + fail-closed 404 guard match the Vite dev plugin and `ok ui`.
   const contentAssetMiddleware =
     opts.serveContentAssets !== false
       ? createAssetServeMiddleware({
@@ -916,39 +482,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         })
       : undefined;
 
-  // React-shell serving — the default for plain `ok start`, and the Electron
-  // utility path.
-  //   - `single: true` — SPA fallback to `index.html` for unknown routes
-  //   - `gzip: true` — standard hashed-asset perf flag
-  // Mounted in `mountMcpAndApi` AFTER `/mcp`, `/api/*`, the WS upgrade, and
-  // `contentAssetMiddleware` — so existing surfaces keep priority and the
-  // React shell is purely a fallback for non-data routes.
-  //
-  // Note: unlike `ok ui`'s shell handler, this middleware does NOT pass
-  // `extensions: []`. That guard exists in `ok ui` because its static
-  // handler shares URL space with `createAssetServeMiddleware` over a
-  // mixed dist + user-content layout — without it, `/foo` could
-  // transparently resolve `foo.html` and bypass Content-Disposition
-  // policy. Here the React-shell dist is isolated (no user-content
-  // overlap) and we want sirv's default `single: true` SPA-fallback
-  // behavior to work for unknown routes, which `extensions: []`
-  // suppresses (it disables sirv's directory-index resolution path
-  // that `single: true` rides on for `/` and bare deep-links).
-  // `dev: true` resolves each request against live disk instead of a
-  // boot-time file map — same rationale as `ok ui`'s shell handler: an
-  // in-place rebuild or `npm i -g` upgrade that rewrites the dist while this
-  // server is running must degrade to a 404/refresh, not stream from a
-  // boot-time map entry whose file is gone (observed: unhandled ENOENT from
-  // the stale map crashed the whole server). `etag: true` restores 304
-  // revalidation that dev mode otherwise drops; `immutable` is inert under
-  // `dev` (sirv only emits Cache-Control with `maxAge`).
-  //
-  // Dotfiles: sirv's dev lookup (`viaLocal`) has NO dotfile filter — that
-  // guard runs only in the boot-time cache path — so a `dotfiles: false`
-  // option here would be inert. This is safe ONLY because the shell dist is
-  // build output with no dotfiles; do not point this middleware at a tree
-  // that could contain them without adding an explicit dotfile reject in
-  // front. (`ok ui`'s shell handler carries the same constraint.)
   const reactShellMiddleware = opts.reactShellDistDir
     ? sirv(opts.reactShellDistDir, {
         single: true,
@@ -958,19 +491,11 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       })
     : undefined;
 
-  // ACP thread host — server-hosted external-agent threads. Ephemeral
-  // single-file mode has no agent capabilities (mirrors the `/mcp` off-switch
-  // above), so the manager is simply never constructed there and the
-  // `/collab/thread` upgrade branch fail-closes on the missing handle.
   const acpThreadManager = opts.ephemeral
     ? null
     : new AcpThreadManager({
         contentDir: opts.contentDir,
         localDir: lockDir,
-        // Transcripts persist under `~/.ok/threads`, shared across projects and
-        // cwd-scoped — surviving project-folder churn (like the agent binary and
-        // runtime caches already at `~/.ok`). The legacy per-project dir is read
-        // back for pre-move threads.
         globalDir: resolve(homedir(), OK_DIR),
         registry: serverInstance.acpRegistry,
         permissions: serverInstance.acpPermissions,
@@ -981,11 +506,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         isIgnoredPath: (rel) => serverInstance.contentFilter.isPathIgnored(rel),
         getLoadedDocText: (docName) =>
           hocuspocus.documents.get(docName)?.getText('source').toString() ?? null,
-        // MUST be `internalBaseUrl()` (same contract as the MCP-tools site above):
-        // the ACP agent is a subprocess on THIS machine dialing `${url}/mcp`, so a
-        // public `externalUrl` here would hairpin it through the auth proxy. Unlike
-        // the MCP-tools 401, that failure is SILENT (the agent just loses OK tools),
-        // so do not repoint this at `externalUrl`.
         getServerUrl: () => internalBaseUrl(),
         getMcpStdioCommand: () => buildOkMcpStdioCommand(opts.localOpCliArgs, boundPort, { log }),
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
@@ -993,13 +513,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         ensurePiAcpBridge: opts.ensurePiAcpBridge,
         log,
       });
-  // Rehydrate archived threads (metadata-only scan) before the WS surface
-  // mounts, so the first `list` already includes them.
   if (acpThreadManager !== null) await acpThreadManager.init();
 
-  // Readiness snapshot for /readyz. Both callbacks handle the promise so a
-  // failed async init cannot surface as an unhandled rejection here (the
-  // caller still owns `ready` and observes the real error there).
   let readinessState: ReadinessState = 'pending';
   ready.then(
     () => {
@@ -1032,35 +547,12 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     acpThreadManager,
   });
 
-  // Forward-declare destroy so idle-shutdown's onShutdown can reach the full
-  // teardown sequence (httpServer.close + telemetry + everything) rather than
-  // just destroyHocuspocus(). Without this hoist the only callable in scope is
-  // destroyHocuspocus, which releases the Hocuspocus layer + server.lock but
-  // leaves the http.Server LISTEN socket bound — so once the 30-min timer
-  // fired and `fired=true` latched, the process kept running indefinitely with
-  // an idle listener and no path back to shutdown. See `attachIdleShutdown`
-  // for the `fired` latch behavior.
-  //
-  // Sentinel-initialized rather than left uninitialized: the timer cannot fire
-  // before `httpServer.listen` resolves (the `scheduleShutdown` call inside
-  // `attachIdleShutdown` only schedules a timer; nothing pumps it until the
-  // event loop returns to libuv), and `destroy` is assigned synchronously
-  // before that listen resolves. But if something ever does call this before
-  // the real assignment, a clear error beats a "Cannot access 'destroy' before
-  // initialization" TDZ trace.
   let destroy: (reason?: ServerExitReason) => Promise<void> = async () => {
     throw new Error('bootServer: destroy() invoked before initialization — boot did not complete');
   };
 
-  // Attached unconditionally: the count is the termination guard's predicate,
-  // and desktop boots disable idle-shutdown entirely — exactly the topology
-  // where a window is attached and a stop would strand it.
   collabClientCounter = attachCollabClientCounter(httpServer);
 
-  // Idle-shutdown wiring — suppressed entirely when idleShutdownMs is null.
-  // The CLI uses this to tear the server down after 30 min of zero WS
-  // clients; the Electron utility disables it because window-close IS the
-  // shutdown trigger.
   let idleHandle: IdleShutdownHandle | null = null;
   if (opts.idleShutdownMs !== null) {
     const idleMs = opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS;
@@ -1071,8 +563,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       });
     idleHandle = attachIdleShutdown({
       httpServer,
-      // Share the counter attached above rather than attaching a second
-      // listener to the same server for the same events.
       counter: collabClientCounter,
       thresholdMs: idleMs,
       log,
@@ -1082,48 +572,18 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     });
   }
 
-  // Eagerly restore `lifecycle.status='conflict'` for any docs tracked in
-  // `.ok/local/conflicts.json` before HTTP/MCP starts accepting requests.
-  // Closes the server-restart race where the in-memory lifecycle map was
-  // lost on shutdown and the file-watcher cannot re-emit because mtime
-  // didn't change. Errors are swallowed (warn-log + continue) so a missing
-  // or malformed `conflicts.json` never blocks boot.
   await restoreLifecycleFromConflictsJson({
     hocuspocus,
     projectDir: opts.projectDir ?? opts.contentDir,
     log,
   });
 
-  // Listen — resolves only after the kernel has bound the port so callers
-  // can probe `port` immediately.
-  //
-  // Multi-address bind: `server.bind` is a real LIST. The first address is
-  // the primary listener (it decides the port — explicit, or
-  // kernel-allocated); every further address gets its own `http.Server` on
-  // the SAME port, sharing the primary's `request` + `upgrade` listeners by
-  // reference. The copy happens after `mountMcpAndApi` and
-  // `attachIdleShutdown` have both attached, so routing, WS admission, and
-  // idle tracking behave identically on every listener — one composition, N
-  // sockets. Duplicate addresses collapse so a repeated entry can't
-  // EADDRINUSE against ourselves.
-  // Same source as the exposure interlock's `effectiveBindAddresses` (they must
-  // agree — see there), with duplicate addresses collapsed so a repeated entry
-  // can't EADDRINUSE against ourselves.
   const listenAddresses = [...new Set(effectiveBindAddresses)];
   const primaryAddress = listenAddresses[0];
   const cleanupAfterListenFailure = async (): Promise<void> => {
-    // Listen failed after the server.lock was acquired; destroyHocuspocus
-    // releases it (immediately, below, since the process may keep living
-    // after a failed boot).
     await destroyHocuspocus().catch((teardownErr) => {
-      // Best-effort — the original listen error is what we ultimately throw,
-      // but a teardown failure here can strand resources, so record it rather
-      // than swallow it silently.
       log.warn({ err: teardownErr }, 'destroyHocuspocus failed during listen-error cleanup');
     });
-    // The process may keep living after a failed boot, so the
-    // deferred-to-exit unlink would strand a live-pid draining lock.
-    // Release immediately on this error path.
     releaseServerLock(lockDir);
   };
   const listenOn = (server: HttpServer, port: number, address: string): Promise<void> =>
@@ -1158,11 +618,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     try {
       await listenOn(secondary, primaryPort, address);
     } catch (err) {
-      // A secondary bind failure fails the whole boot — a server that
-      // silently serves a subset of its configured addresses is a
-      // misconfiguration trap. Name the address that failed and how many were
-      // already bound (incl. the primary) so the raw EADDRINUSE/EACCES is
-      // actionable, then unwind everything already bound.
       log.error(
         {
           err,
@@ -1176,9 +631,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         bound.closeAllConnections?.();
         await new Promise<void>((resolveClose) => {
           bound.close((closeErr) => {
-            // Best-effort teardown — we still throw the original bind error
-            // below — but a close failure here can strand a listener, so record
-            // it rather than swallow it.
             if (closeErr) log.warn({ err: closeErr }, '[boot] listener close failed during unwind');
             resolveClose();
           });
@@ -1190,28 +642,14 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     secondaryServers.push(secondary);
   }
 
-  // Boot is usable for HTTP from here; record the listen latency. The
-  // background `initAsync` (seed walk + indexes) still runs and feeds the
-  // remaining boot-timing fields before `ready` resolves.
   const listenMs = bootElapsedMs();
   if (listenMs !== undefined) recordBootPhase('httpListenMs', listenMs);
 
   const addr = httpServer.address();
   const realPort = typeof addr === 'object' && addr !== null ? addr.port : (opts.port ?? 0);
   boundPort = realPort;
-  // One-URL contract: the advertised origin is the same base `getServerUrl`
-  // hands MCP/ACP consumers. `boundPort` is now `realPort`, so `internalBaseUrl()`
-  // yields exactly this listener's origin — reusing it keeps the lock URL and
-  // the self-call base structurally identical rather than two literals in sync.
   const boundBaseUrl = internalBaseUrl();
   updateServerLockPort(lockDir, realPort, boundBaseUrl);
-  // The only record that a server actually bound this port, as opposed to a
-  // lock file claiming it did. Those are different facts: the lock outlives the
-  // process that wrote it, so a reader with only the lock cannot tell a live
-  // listener from a stale advertisement, and cannot tell WHICH pid owns a port
-  // when two servers have run for one directory. Every address is named because
-  // a client failing on one family while another answers is otherwise
-  // indistinguishable from the port being dead.
   log.info(
     {
       event: 'server-listening',
@@ -1245,9 +683,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     if (destroyed) return;
     destroyed = true;
     log.info({ reason, pid: process.pid, lockDir }, `[server] shutdown initiated (${reason})`);
-    // Flip /readyz to not-ready synchronously, before any teardown step, so
-    // probe-driven routers stop sending traffic during the drain window —
-    // the HTTP mirror of the lock-file draining mark below.
     readinessState = 'draining';
     const errors: unknown[] = [];
     const runStep = async (name: string, work: () => Promise<void>): Promise<void> => {
@@ -1259,10 +694,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       }
     };
 
-    // Advertise teardown before the first close step so discovery and
-    // supervisors stop treating this server as dialable the moment shutdown
-    // begins — not seconds later when the Hocuspocus destroy reaches its own
-    // draining mark. Idempotent with the mark inside `destroyHocuspocus`.
     try {
       markServerLockDraining(lockDir);
     } catch (err) {
@@ -1282,20 +713,9 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       log.warn({ err, step: 'idleHandle.detach' }, 'bootServer destroy step failed');
     }
 
-    // Kill agent subprocesses FIRST — their threads hold `/collab/thread`
-    // sockets open, and a live agent outliving the server would orphan a
-    // process no UI can reach anymore.
     if (acpThreadManager !== null) {
       await runStep('acpThreads.destroy', () => acpThreadManager.destroy());
     }
-    // Secondary bind listeners close BEFORE the primary's mount/wss teardown.
-    // They share the primary's request + upgrade listeners BY REFERENCE, so if
-    // they kept accepting after `mount.shutdown()` / `mount.wss.close()` removed
-    // or closed those handlers on the primary, an upgrade arriving on a
-    // secondary in that window would run against an already-torn-down
-    // composition. Closing them first shuts the window; the primary teardown
-    // below then covers the rest. A close() failure is logged, not swallowed,
-    // so a stranded listener leaves a trace.
     await runStep('secondaryListeners.close', async () => {
       for (const secondary of secondaryServers) {
         secondary.closeAllConnections?.();
@@ -1335,18 +755,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         }),
     );
     await runStep('destroyHocuspocus', () => destroyHocuspocus());
-    // Flush pending spans/metrics so the teardown sequence itself is
-    // observable. shutdownTelemetry is idempotent and has its own timeout.
     await runStep('shutdownTelemetry', () => shutdownTelemetry());
-    // Unhook + drain the tolerance-telemetry JSONL appender so fires from
-    // the destroy steps above land on disk (no-op when the flag is off).
     await runStep('teardownToleranceTelemetry', () => teardownToleranceTelemetryWriter());
-    // Drain Pino file-sink writes LAST so log records emitted during the
-    // prior destroy steps (including shutdownTelemetry's own warnings) land
-    // on disk before the caller's process.exit(). Pino's built-in flush is
-    // sync and only addresses sonic-boom; the file sink writes through an
-    // async RotatingAppender chain that needs an explicit drain. No-op when
-    // the local sink is disabled.
     await runStep('flushLogFileSinks', () => loggerFactory.flushAllFileSinks());
 
     if (errors.length > 0) {
@@ -1354,11 +764,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     }
   };
 
-  // Store→in-place migration (best-effort, non-fatal, idempotent): relocate any
-  // remaining `.ok/skills/<name>` bundles to their precedence editor-dir paths
-  // — conflicts are skipped, never clobbered. Runs BEFORE the
-  // reconcile pass so reconcile sees the post-migration reality; the live
-  // in-place re-scan admits the moved bundles without a restart.
   try {
     const m = await migrateStoreSkillsInPlace({
       projectDir,
@@ -1382,10 +787,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     );
   }
 
-  // GLOBAL store migration (store retirement): same pass over `~/.ok/skills`,
-  // targeting the user-home editor dirs (`~/.claude/skills`, …, `~/.agents`
-  // hub). Move-not-delete, conflicts skip, built-ins skip, placements of
-  // in-place skills skip. Runs once per boot; empty store is a no-op.
   try {
     const home = homedir();
     const gm = await migrateStoreSkillsInPlace({
@@ -1411,11 +812,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     );
   }
 
-  // Reconcile on open (best-effort, non-fatal): heal drifted/broken symlinks of
-  // skills OK already owns in `.ok/skills`, collapse redundant editor-dir copies
-  // of them, drop orphan links. In-place editor-dir skills are never
-  // touched. One hook covers CLI `ok start`, desktop, and dev. The shipped
-  // bundle sweep (no-create, copy) owns OK's own bundle.
   try {
     const r = await reconcileSkillInstalls({
       projectDir,
@@ -1456,22 +852,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   };
 }
 
-/**
- * Read `.ok/local/conflicts.json` and pre-seed `lifecycle.status =
- * 'conflict'` on every tracked doc's Y.Map before HTTP/MCP starts accepting
- * requests. Without this restoration, a server restart while a conflict is
- * outstanding loses the in-memory lifecycle gate; the file-watcher cannot
- * re-emit the conflict because the marker-laden file's mtime is unchanged;
- * the next mutating write reaches the doc unguarded.
- *
- * Failure mode is best-effort: a missing or malformed `conflicts.json` must
- * not block boot. The structural defense is at-write gating in the
- * mutating-handler spines, not this restoration; if the restore degrades,
- * the next file-watcher event still recovers correct state.
- *
- * Emits a structured `lifecycle-restored-from-conflicts-json` event per
- * restored doc so adoption can be tracked from logs.
- */
 export async function restoreLifecycleFromConflictsJson(args: {
   hocuspocus: ServerInstance['hocuspocus'];
   projectDir: string;
@@ -1492,32 +872,12 @@ export async function restoreLifecycleFromConflictsJson(args: {
   }
   if (entries.length === 0) return;
 
-  // Reconcile against git's source of truth BEFORE seeding lifecycle Y.Maps.
-  // The user may have resolved a conflict externally (CLI: `git checkout
-  // --ours/--theirs && git add && git commit`, or `git merge --abort`) while
-  // OK was closed. Without this reconcile, the boot scan would re-seed
-  // `lifecycle.status='conflict'` on docs git already considers clean — the
-  // DiffView would mount with no actual stages to show ("Loading conflict
-  // for <path>" indefinitely because conflicts.json + lifecycle disagree
-  // with /api/sync/conflicts after the sync engine's own reconcile clears
-  // the store).
-  // Working-tree conflicts (pull-only overlays) have no MERGE_HEAD and are never
-  // in the git unmerged index, so the merge-native reconciliation must not treat
-  // them as stale — they are always restored. Only merge-native entries
-  // reconcile against git's index.
   const isWorkingTree = (e: { variant?: string }): boolean => e.variant === 'working-tree';
   let stillUnmerged: Set<string> | null = null;
   try {
-    // Linked-worktree safety: `<projectDir>/.git` is a regular file (not a
-    // directory) when running from a `git worktree add`-created tree. The
-    // real gitdir is `<repo>/.git/worktrees/<name>/`, and MERGE_HEAD lives
-    // there. A hardcoded `join(projectDir, '.git', 'MERGE_HEAD')` would
-    // miss it and silently drop conflict entries. `resolveGitDir` reads
-    // the gitdir pointer when present.
     const gitDir = resolveGitDir(projectDir);
     const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
     if (!mergeHeadPath || !existsSync(mergeHeadPath)) {
-      // No merge in progress — every MERGE-NATIVE entry is stale.
       const staleMergeNative = entries.filter((e) => !isWorkingTree(e));
       for (const entry of staleMergeNative) store.removeConflict(entry.file);
       entries = entries.filter(isWorkingTree);
@@ -1536,15 +896,12 @@ export async function restoreLifecycleFromConflictsJson(args: {
       stillUnmerged = new Set(await listNames(pg, ['diff', '--name-only', '--diff-filter=U']));
     }
   } catch (err) {
-    // Probe failed — fall through and restore everything; the sync
-    // engine's own reconcile on `start()` will mop up any stragglers.
     log.warn(
       { err, projectDir },
       '[boot] lifecycle restore: git unmerged probe failed — restoring all entries',
     );
   }
 
-  // Prune merge-native entries git considers resolved (working-tree entries kept).
   if (stillUnmerged !== null) {
     let pruned = 0;
     for (const entry of entries) {
@@ -1567,18 +924,6 @@ export async function restoreLifecycleFromConflictsJson(args: {
   }
 
   for (const entry of entries) {
-    // TODO(content.dir-aware-boot-restore): `ConflictEntry.file` is
-    // project-relative (git root); docName is contentDir-relative with
-    // the supported doc extension stripped. The two coincide when
-    // `projectDir === contentDir` (the default), but when `content.dir`
-    // is set to a subdirectory of `projectDir` (schema-supported), `stripDocExtension`
-    // alone misroutes — `docs/foo.md` yields docName `docs/foo` instead
-    // of `foo`, and `openDirectConnection` opens a different / phantom
-    // doc. The sibling on-load helper at `conflict-lifecycle-seed.ts:
-    // entryMatchesDocName` does the correct `join` + `relative` +
-    // `stripDocExtension` mapping. Threading `contentDir` into this
-    // function and sharing one helper between both sites is the right
-    // fix; no shipped project is known to use `content.dir != "."`.
     const docName = stripDocExtension(entry.file);
     let dc: Awaited<ReturnType<typeof hocuspocus.openDirectConnection>> | null = null;
     let restored = false;
@@ -1590,7 +935,6 @@ export async function restoreLifecycleFromConflictsJson(args: {
       lifecycleMap.set('status', 'conflict');
       lifecycleMap.set('reason', 'conflict-markers');
       restored = true;
-      // Structured-JSON event — assertable in tests.
       console.warn(
         JSON.stringify({
           event: 'lifecycle-restored-from-conflicts-json',
@@ -1603,9 +947,6 @@ export async function restoreLifecycleFromConflictsJson(args: {
         '[boot] lifecycle restore: failed to set lifecycle for doc — skipping',
       );
     } finally {
-      // Disconnect failures are independent of whether the lifecycle write
-      // succeeded — surface them as their own warn so operators don't
-      // misread a successful restore as a failure.
       if (dc) {
         try {
           await dc.disconnect();

@@ -1,9 +1,3 @@
-/**
- * Symlink containment for the lint read path: symlinks resolving inside the
- * content dir are supported (realpath-based identity), escapes are refused —
- * lint diagnostics echo source text, so an escaped read is exfiltration.
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,7 +9,6 @@ let root: string;
 let outside: string;
 
 const SECRET = 'TOP-SECRET-OUTSIDE-CONTENT';
-// MD010 (hard tabs) is on by default; a doc with a tab produces a diagnostic.
 const DOC_WITH_TAB = '# Title\n\n\tindented with a tab\n';
 
 const base: LinterConfig = {

@@ -7,15 +7,6 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { UninstallApp } from './UninstallApp';
 
-/**
- * Routing coverage for the uninstall entry root. Main answers the `ready` pull
- * with a screen spec and UninstallApp mounts the matching screen; jsdom has no
- * `window.okUninstall`, so without this the always-on tiers only ever reach the
- * loading fallback. Mocking that one renderer↔main seam drives each branch, and
- * the refused / rejected cases pin that a non-screen answer keeps the loading
- * placeholder rather than hanging the window.
- */
-
 function stubBridge(ready: () => Promise<UninstallDispatchResult>): void {
   window.okUninstall = {
     ready,
@@ -72,8 +63,6 @@ describe('UninstallApp routing', () => {
   test('keeps the loading placeholder when the ready invoke rejects', async () => {
     stubBridge(() => Promise.reject(new Error('ipc channel closed')));
     render(<UninstallApp />);
-    // A rejected invoke must not hang the window or surface as an unhandled
-    // rejection — requestUninstallScreen swallows it and the placeholder stays.
     expect(await screen.findByText('Preparing to uninstall OpenKnowledge')).toBeDefined();
   });
 });

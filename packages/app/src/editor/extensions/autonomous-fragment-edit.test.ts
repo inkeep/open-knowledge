@@ -3,19 +3,12 @@ import { describe, expect, test } from 'vitest';
 import { autonomousFragmentEditAllowed } from './autonomous-fragment-edit.ts';
 import { setEditorSourceMode } from './editor-mode-context.ts';
 
-/**
- * The single enforcement boundary the autonomous structural dispatchers route
- * through (JsxComponentView auto-convert + retries, RawMdxFallbackCMView
- * blur-commit). Keyed on the Editor instance via the same WeakMap the
- * source-mode signal uses, so a bare object stands in for an editor.
- */
 function fakeEditor(): Editor {
   return {} as Editor;
 }
 
 describe('autonomousFragmentEditAllowed', () => {
   test('allows autonomous structural edits in WYSIWYG mode (default)', () => {
-    // Default-false source mode = visible WYSIWYG = the authoritative surface.
     expect(autonomousFragmentEditAllowed(fakeEditor())).toBe(true);
   });
 

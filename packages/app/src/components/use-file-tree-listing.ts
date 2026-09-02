@@ -17,8 +17,6 @@ import {
 import { mergeRootEntriesAdditive, spliceLazyFolderChildren } from './file-tree-merge';
 import { type FileEntry, filterVisibleEntries, isFolderEntry } from './file-tree-utils';
 
-// Desktop auto-update can intentionally stop the server for up to 10 seconds.
-// A steady retry also self-heals when the relaunch aborts without another focus or CC1 event.
 const CONNECTIVITY_RECONNECT_RETRY_MS = 2_000;
 
 interface ListingMessages {
@@ -61,8 +59,6 @@ export function useFileTreeListing({
   const [error, setError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
   const [truncatedShownCount, setTruncatedShownCount] = useState<number | null>(null);
-  // Filtered documents cannot distinguish an empty project from one whose root rows are all
-  // hidden, so preserve the pre-filter count for empty-state classification.
   const [unfilteredRootEntryCount, setUnfilteredRootEntryCount] = useState(0);
   const relaunchInFlight = useRelaunchInFlight();
 
@@ -70,8 +66,6 @@ export function useFileTreeListing({
   const visibilityRef = useRef({ showHiddenFiles, showOnlyMarkdownFiles, showOkFolders });
   const messagesRef = useRef(messages);
   const expandedFolderPathsRef = useRef<ReadonlySet<string>>(new Set());
-  // Preserve local creates while parcel-watcher/inotify catches up; the merge helper expires or
-  // confirms each entry within its bounded window.
   const optimisticAddsRef = useRef<Map<string, number>>(new Map());
   const loadedFolderPathsRef = useRef<Set<string>>(new Set());
   const childControllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -217,10 +211,7 @@ export function useFileTreeListing({
           onBatch: (batch) => {
             if (!active || controller.signal.aborted || rootController !== controller) return;
             const visibleBatch = filterVisibleEntries(batch, visibility());
-            // Hidden rows can arrive first; keep the skeleton until a visible row paints so a
-            // non-empty knowledge base never flashes its empty state.
             if (visibleBatch.length === 0) return;
-            // Batches only add because pruning here would drop root rows not streamed yet.
             setDocuments((previous) => mergeRootEntriesAdditive(previous, visibleBatch));
             if (!paintedFirstVisibleBatch) {
               paintedFirstVisibleBatch = true;
@@ -237,8 +228,6 @@ export function useFileTreeListing({
         console.warn('[FileTree] fetch failed:', result.cause);
       } else if (result.kind === 'http-error') {
         reportServerReachableError(result.title);
-        // Only streamed server errors carry a cause and leave a meaningful partial-list count;
-        // buffered HTTP or schema failures invalidate the prior completed-list count.
         if (result.cause === undefined) {
           setTruncatedShownCount(null);
         } else {
@@ -247,7 +236,6 @@ export function useFileTreeListing({
       } else {
         const currentVisibility = visibility();
         const serverEntries = filterVisibleEntries(result.entries, currentVisibility);
-        // Successful completion owns the single authoritative prune and optimistic-add reconcile.
         setDocuments((previous) =>
           spliceLazyFolderChildren(previous, '', serverEntries, optimisticAddsRef.current),
         );

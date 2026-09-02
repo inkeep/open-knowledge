@@ -1,13 +1,3 @@
-/**
- * Plane discipline for the link-mark asset-activation branch.
- *
- * The same branch serves two authored forms whose hrefs live on different
- * planes: a markdown destination is a URI whose percent escapes decode, while
- * a `sourceForm: 'wikiembed'` mark carries literal filesystem bytes. The
- * resolved `projectRelPath` is what `shell.openPath` / `showItemInFolder`
- * receive, so a decode on the wrong plane opens a neighbouring file.
- */
-
 import { classifyMarkdownHref } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { resolveLinkMarkAssetActivation } from './internal-link';
@@ -43,9 +33,6 @@ describe('resolveLinkMarkAssetActivation', () => {
   });
 
   test('the same bytes on a markdown mark DO decode', () => {
-    // The classified target is asset-shaped either way, so only `sourceForm`
-    // separates the two readings — this is the assertion that would go green
-    // with the plane hard-coded to the wrong value.
     expect(activate('./media/100%20done.png', undefined)).toEqual({
       kind: 'asset',
       url: './media/100%20done.png',

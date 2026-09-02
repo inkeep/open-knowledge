@@ -11,16 +11,6 @@ import {
   seedPoolServerInstanceId,
 } from './test-harness';
 
-/**
- * Abrupt transport drops: the raw WebSocket dies without a close frame (the
- * client sees code 1006 with an EMPTY reason — the server never sends one, so
- * an empty reason IS the transport-drop fingerprint) while the server keeps
- * running. Every provider on the socket re-authenticates; the doc the user is
- * looking at must re-sync on its own, and server-side changes made after the
- * drop must still reach it — a doc that stays blank after a drop is the bug
- * class these pin against.
- */
-
 const FIXTURE = `# Drop Doc
 
 Body before the drop.
@@ -43,8 +33,6 @@ async function openSynced(server: RestartableServer, pool: ProviderPool, docName
   await wait(150);
 }
 
-/** Terminate every raw socket of the doc's connections — no close frame, no
- *  reason: the abrupt-drop shape a flaky transport produces. */
 function dropTransport(server: RestartableServer, docName: string): number {
   const document = server.instance.hocuspocus.documents.get(docName);
   if (!document) return 0;
@@ -71,12 +59,8 @@ describe('ProviderPool transport drop recovery', () => {
 
     expect(dropTransport(server, docName)).toBeGreaterThan(0);
 
-    // The provider must come back on its own — no user action, no reload.
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 15_000, 100);
 
-    // And the recovered session must still be LIVE: a disk change made after
-    // the drop reaches the client doc. A provider that "re-synced" but sits on
-    // a dead doc-level session (the blank-tab symptom) fails here.
     writeFileSync(
       join(server.contentDir, `${docName}.md`),
       `${FIXTURE}\nPOST-DROP MARKER\n`,
@@ -93,10 +77,6 @@ describe('ProviderPool transport drop recovery', () => {
   }, 60_000);
 
   test('a drop landing mid-churn (many concurrent disk writes) still recovers', async () => {
-    // Real drops land while the server is busy (a pack install fanning out
-    // ~30 file writes + a content-filter rebuild). Recreate the churn half:
-    // burst-write files while the transport drops, then require full recovery
-    // AND the post-drop marker to land.
     const server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
     const docName = `test-${crypto.randomUUID()}`;
@@ -131,9 +111,6 @@ describe('ProviderPool transport drop recovery', () => {
   }, 60_000);
 
   test('two consecutive drops in quick succession still recover', async () => {
-    // Observed drops arrive in bursts seconds apart; a second drop landing
-    // while the first recovery is mid-flight is the racy shape most likely to
-    // wedge.
     const server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
     const docName = `test-${crypto.randomUUID()}`;
@@ -144,7 +121,6 @@ describe('ProviderPool transport drop recovery', () => {
     await openSynced(server, pool, docName);
 
     dropTransport(server, docName);
-    // Let the reconnect get part-way, then drop again.
     await pollUntil(() => dropTransport(server, docName) > 0, 10_000, 100);
 
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 20_000, 100);

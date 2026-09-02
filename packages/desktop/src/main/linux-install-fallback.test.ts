@@ -99,8 +99,6 @@ describe('detectGraphicalAuthCommand', () => {
 
   test('each probe gets the remaining shared budget, capped at the per-probe ceiling', () => {
     const timeouts: number[] = [];
-    // Clock advances 1500ms per probe: remaining budget shrinks 4000 → 2500
-    // → 1000, so the third probe gets less than the 2000ms ceiling.
     let clock = 0;
     const now = () => clock;
     const hasCommand = vi.fn((_cmd: string, timeoutMs: number) => {
@@ -110,7 +108,6 @@ describe('detectGraphicalAuthCommand', () => {
     });
     expect(detectGraphicalAuthCommand(hasCommand, now)).toBeNull();
     expect(timeouts).toEqual([2000, 2000, 1000]);
-    // The fourth wrapper is never probed — the budget was spent.
     expect(hasCommand).toHaveBeenCalledTimes(3);
   });
 
@@ -134,8 +131,6 @@ describe('hasCommandOnPath', () => {
   test('probes via `command -v` through a shell (load-bearing: `command` is a shell built-in)', () => {
     const spy = vi.fn().mockReturnValue({ error: null, status: 0 });
     expect(hasCommandOnPath('pkexec', spy as never)).toBe(true);
-    // Single command string, no args array: args + `shell: true` trips
-    // Node's DEP0190 deprecation warning on every probe.
     expect(spy).toHaveBeenCalledWith(
       'command -v pkexec',
       expect.objectContaining({ shell: true, timeout: 2000 }),

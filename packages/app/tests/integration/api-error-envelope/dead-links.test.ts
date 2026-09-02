@@ -1,14 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleDeadLinks`.
- *
- * Asserts the canonical RFC 9457 wire shape for `GET /api/dead-links[?sourceDocName=...]`:
- *   - happy path: status 200, `Content-Type: application/json`, body parses
- *     against `DeadLinksSuccessSchema`, no `ok` discriminator.
- *   - unsafe sourceDocName → `urn:ok:error:invalid-request`.
- *   - method-not-allowed on POST emits `urn:ok:error:method-not-allowed` +
- *     `Allow: GET` header.
- */
-
 import { DeadLinksSuccessSchema, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';

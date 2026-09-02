@@ -6,22 +6,7 @@ import {
   type UninstallModuleGraph,
 } from '../support/uninstall-module-graph.test-helper';
 
-/**
- * "Connects to nothing" — the PRIMARY gate. The survey and completion screens
- * render after `ok uninstall --yes` has stopped the local Hocuspocus server and
- * removed `~/.ok`, so the uninstall entry's transitive module graph must never
- * reach the editor, the CRDT stack, the provider pool, or the server bootstrap.
- *
- * This asserts over the entry's whole loaded-module set (see the helper), not a
- * single output chunk. The GritQL rule (`no-uninstall-forbidden-import.grit`) is
- * only fast, shallow, first-hop feedback; this graph check is the real gate
- * because it also catches a forbidden module reached indirectly through a shared
- * module.
- */
 describe('uninstall entry connects to nothing', () => {
-  // Building the real renderer pipeline (React Compiler + Lingui macro) takes a
-  // couple of seconds; the planted-positive build pulls the editor + CRDT stack
-  // and takes longer.
   const BUILD_TIMEOUT_MS = 120_000;
 
   describe('the forbidden-module denylist', () => {
@@ -44,9 +29,6 @@ describe('uninstall entry connects to nothing', () => {
     });
 
     test('does not flag the allowed shared surface (core, shadcn, markdown-render libs)', () => {
-      // The allowed graph legitimately reaches @inkeep/open-knowledge-core (shared
-      // types + feedback constants) and, through its markdown pipeline, plain
-      // prosemirror / @tiptap rendering libs — none of which connect to anything.
       const hits = findForbiddenModules([
         '/repo/packages/app/src/uninstall/UninstallSurveyScreen.tsx',
         '/repo/packages/app/src/components/ui/button.tsx',
@@ -72,8 +54,6 @@ describe('uninstall entry connects to nothing', () => {
     });
 
     test('stays within the module-count budget', () => {
-      // Lower bound proves the build actually resolved the real tree (not an empty
-      // or short-circuited graph that would pass the denylist vacuously).
       expect(graph.moduleIds.length).toBeGreaterThan(200);
       expect(graph.moduleIds.length).toBeLessThanOrEqual(MODULE_GRAPH_BUDGET);
     });
@@ -86,10 +66,6 @@ describe('uninstall entry connects to nothing', () => {
   test(
     'the gate fires when an editor module enters the graph',
     async () => {
-      // Planted positive: import the provider pool, which itself pulls
-      // @hocuspocus/provider + yjs. Proves the gate detects both the editor module
-      // directly AND the CRDT/server stack it reaches indirectly — the leak shape a
-      // first-hop-only check would miss.
       const planted = await buildUninstallModuleGraph(['@/editor/provider-pool']);
       const categories = new Set(findForbiddenModules(planted.moduleIds).map((h) => h.category));
 

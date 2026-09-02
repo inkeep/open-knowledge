@@ -21,12 +21,6 @@ function makeExec(responses: Record<string, { token?: string; error?: NodeJS.Err
   return { exec, calls };
 }
 
-/**
- * A scripted `gh` keyed on the full argv, so `--user` handling is observable.
- * An argv with no scripted answer throws the way a non-zero `gh` exit reaches
- * `execFileSync` — which is how an unknown account surfaces (`gh auth token
- * --user <nobody>` exits 1 with empty stdout).
- */
 function makeScriptedGh(script: Record<string, string>): {
   exec: ExecFileSyncFn;
   calls: string[];
@@ -297,9 +291,6 @@ describe('detectGhAccounts', () => {
     expect(accounts).toEqual([{ login: 'alice', active: true }]);
   });
 
-  // gh filters the payload by --hostname today; this pins that a payload
-  // carrying several hosts anyway cannot let a GHES account name itself as
-  // the identity behind a github.com probe.
   test('a multi-host JSON payload reads only the requested host', () => {
     const { exec } = makeScriptedGh({
       'gh auth status --hostname github.com --json hosts': JSON.stringify({
@@ -315,12 +306,6 @@ describe('detectGhAccounts', () => {
     expect(accounts).toEqual([{ login: 'alice', active: true }]);
   });
 
-  // The narrowing must hold even when the payload does NOT key the requested
-  // host at all — flattening every host there would name a GHES account as
-  // the identity behind a github.com probe, the exact attribution the filter
-  // exists to prevent. And "doesn't describe that host" must read as
-  // cannot-tell, not as a confident empty listing: the text tier that
-  // follows can still hold the right answer.
   test('a JSON payload that omits the requested host falls through to the text listing', () => {
     const { exec, calls } = makeScriptedGh({
       'gh auth status --hostname github.com --json hosts': JSON.stringify({
@@ -355,11 +340,6 @@ describe('detectGhAccounts', () => {
     expect(accounts).toBeUndefined();
   });
 
-  // gh prints a failed account's DETAIL lines (including `- Active account:
-  // true`) after its "Failed to log in to" header, even though the header
-  // itself never becomes an account — so without an anchor reset the broken
-  // account's active flag lands on the healthy account parsed before it,
-  // and the identity copy then confidently names the wrong person.
   test('a failed account\u2019s active flag does not attach to the previous healthy account', () => {
     const statusText = [
       'github.com',

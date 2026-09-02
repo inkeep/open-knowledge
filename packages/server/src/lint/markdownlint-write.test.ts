@@ -1,10 +1,3 @@
-/**
- * Unit tests for the native markdownlint write surface against a real temp dir:
- * create-on-first-edit (seeded with OK's tuned defaults, materialized),
- * format preservation, merge, key removal, `extends` preservation, and
- * prune-to-empty file deletion. Round-trips are asserted via the discovery read.
- */
-
 import {
   chmodSync,
   existsSync,
@@ -36,8 +29,6 @@ describe('writeMarkdownlintRule', () => {
     const res = writeMarkdownlintRule(dir, 'MD010', false);
     expect(res).toEqual({ action: 'written', file: '.markdownlint.json' });
     expect(existsSync(join(dir, '.markdownlint.json'))).toBe(true);
-    // The create materializes OK's defaults into the file — from now on the
-    // file is the whole story for every native tool; OK layers nothing under.
     expect(discoverMarkdownlintConfig(dir)?.rules).toEqual({
       ...DEFAULT_MARKDOWNLINT_CONFIG,
       MD010: false,
@@ -105,7 +96,6 @@ describe('writeMarkdownlintRule', () => {
     const res = writeMarkdownlintRule(dir, 'MD010', false);
     expect(res.file).toBe('.markdownlint.yaml');
     expect(existsSync(join(dir, '.markdownlint.json'))).toBe(false);
-    // The on-disk file is still parseable as YAML and carries both rules.
     const raw = readFileSync(join(dir, '.markdownlint.yaml'), 'utf-8');
     expect(parseYaml(raw)).toEqual({ MD013: false, MD010: false });
   });
@@ -115,13 +105,10 @@ describe('writeMarkdownlintRule', () => {
     writeFileSync(join(dir, '.markdownlint.cjs'), original, 'utf-8');
     const res = writeMarkdownlintRule(dir, 'MD010', false);
     expect(res).toEqual({ action: 'declined-executable', file: '.markdownlint.cjs' });
-    // The module body is untouched, byte for byte.
     expect(readFileSync(join(dir, '.markdownlint.cjs'), 'utf-8')).toBe(original);
     expect(existsSync(join(dir, '.markdownlint.json'))).toBe(false);
   });
 
-  // Root reads any file regardless of mode, so the permission probe only
-  // proves the abort when the process isn't privileged.
   test.runIf(process.getuid?.() !== 0)(
     'a transient read failure ABORTS the write — the hand-tuned file is untouched',
     () => {
@@ -130,8 +117,6 @@ describe('writeMarkdownlintRule', () => {
       writeFileSync(file, original, 'utf-8');
       chmodSync(file, 0o000);
       try {
-        // An unreadable file must never be mistaken for "no rules": merging
-        // into an empty base would rewrite the file with only the new rule.
         expect(() => writeMarkdownlintRule(dir, 'MD010', false)).toThrow();
       } finally {
         chmodSync(file, 0o644);
@@ -155,13 +140,11 @@ describe('writeMarkdownlintRule', () => {
       'utf-8',
     );
     writeMarkdownlintRule(dir, 'MD010', false);
-    // Own keys only: the extends key survives, the base's MD041 is NOT copied in.
     expect(readOwnNativeRules(dir)?.rules).toEqual({
       extends: './base.markdownlint.json',
       MD013: false,
       MD010: false,
     });
-    // The flattened resolution still sees the base through the chain.
     expect(discoverMarkdownlintConfig(dir)?.rules).toEqual({
       MD041: false,
       MD013: false,
@@ -217,8 +200,6 @@ describe('JSONC comment preservation', () => {
       'utf-8',
     );
     const res = writeMarkdownlintRule(dir, 'MD013', null);
-    // The emptied config keeps governing (native defaults, no OK underlay) —
-    // deleting would destroy the user's comments.
     expect(res.action).toBe('written');
     const raw = readFileSync(join(dir, '.markdownlint.jsonc'), 'utf-8');
     expect(raw).toContain('// our lint philosophy, hand-tuned');
@@ -231,8 +212,6 @@ describe('JSONC comment preservation', () => {
       '{\n  // about MD013 specifically\n  "MD013": false\n}\n',
       'utf-8',
     );
-    // jsonc-parser removes the property together with the comment attached to
-    // it — nothing meaningful remains, so the file goes too.
     const res = writeMarkdownlintRule(dir, 'MD013', null);
     expect(res.action).toBe('deleted');
     expect(existsSync(join(dir, '.markdownlint.jsonc'))).toBe(false);
@@ -247,9 +226,6 @@ describe('JSONC comment preservation', () => {
 });
 
 describe('JSONC format-preserving round-trip', () => {
-  // Every construct a naive re-serialization to strict JSON would destroy, in
-  // one hand-authored file: a leading comment, an `extends` reference, a
-  // trailing comma on the last entry, and a rule disabled with `false`.
   const HAND_AUTHORED = [
     '// hand-tuned markdownlint rules',
     '{',
@@ -270,10 +246,8 @@ describe('JSONC format-preserving round-trip', () => {
     expect(raw).toContain('// hand-tuned markdownlint rules');
     expect(raw).toContain('"extends": "./shared.markdownlint.json"');
     expect(raw).toContain('"MD013": false');
-    // A comma still sits before the closing brace — the trailing comma survived.
     expect(raw).toMatch(/,\s*}\s*$/);
 
-    // The edit landed on its own keys without materializing the extends base.
     expect(readOwnNativeRules(dir)?.rules).toEqual({
       extends: './shared.markdownlint.json',
       MD007: { indent: 2 },
@@ -304,7 +278,6 @@ describe('alias-keyed configs', () => {
     );
     writeMarkdownlintRule(dir, 'MD013', { line_length: 120 });
     const parsed = JSON.parse(readFileSync(join(dir, '.markdownlint.json'), 'utf-8'));
-    // Last-key-wins in the engine: editing the shadowed MD013 would be a no-op.
     expect(parsed).toEqual({ MD013: false, 'line-length': { line_length: 120 } });
   });
 

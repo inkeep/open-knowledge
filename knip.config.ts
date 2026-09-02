@@ -55,6 +55,7 @@ export default {
     'packages/server/src/http/error-response.ts': ['exports'],
     'packages/app/src/editor/http-client.ts': ['types'],
     '.{agents,codex}/skills/**': ['files'],
+    'lint-plugins/no-comments/__fixtures__/**': ['files'],
     'biome-plugins/__fixtures__/**': ['files'],
     'scripts/compute-next-beta.mjs': ['files'],
     'scripts/build-slack-release-payload.mjs': ['files'],

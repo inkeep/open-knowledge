@@ -6,23 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
 
-/**
- * Characterization: the natively-routed share group over a REAL socket
- * through the composed `bootServer` stack — native registration and the
- * shared admission posture. Gate BEHAVIOR is owned by
- * `api-admission-composition.test.ts` (path-agnostic by construction); the
- * rebound-Host pins below re-pin gate REACHABILITY for this family — a
- * native-registration bug could mount the group outside
- * `createApiRequestPipeline` without changing any happy-path response, and a
- * hostile-header probe is the only wire signal that tells those apart. The
- * group's EMPTY mutating declaration (`share/publish` deliberately excluded)
- * is pinned at the table tier in `http/share-routes.test.ts`.
- *
- * Every request below refuses BEFORE any git subprocess or GitHub egress —
- * wrong verb, invalid identifiers, or the no-git-repo fallbacks — so the
- * suite never spawns the share CLI.
- */
-
 const ALL_ROUTES = [
   '/api/share/construct-url',
   '/api/share/target-status',

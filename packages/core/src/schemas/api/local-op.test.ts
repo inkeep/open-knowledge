@@ -92,5 +92,3 @@ describe('LocalOpAuthEmptySuccessSchema', () => {
     ).toBe(true);
   });
 });
-
-// ─── Cluster H: sync + seed handlers ───────────────────────────────

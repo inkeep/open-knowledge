@@ -1,14 +1,3 @@
-/**
- * Typed `$$…$$` / `$…$` input rule — conversion, currency safety, exclusion
- * contexts, and the one-undo-restores-the-literal contract against a real
- * y-undo binding.
- *
- * Input rules fire only from `handleTextInput`, so these rigs type through
- * `view.someProp('handleTextInput', …)` with the same unhandled-fallback
- * insertion the real DOM input path performs — a bare `insertText` dispatch
- * never triggers a rule.
- */
-
 import { MathInline } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
@@ -35,11 +24,6 @@ function makeEditor(opts: { content?: string } = {}): Editor {
   });
 }
 
-/**
- * Type text the way the DOM input path does: each character goes through
- * `handleTextInput` (where input rules run) and falls back to a plain
- * insertion when no rule claims it.
- */
 function typeText(editor: Editor, text: string): void {
   for (const char of text) {
     const { from, to } = editor.state.selection;
@@ -53,8 +37,6 @@ function typeText(editor: Editor, text: string): void {
   }
 }
 
-/** All `mathInline` atoms in the doc, in order. Returned as their attr snapshot
- *  so a test can assert on `formula` + `sourceDelimiter` in one shot. */
 function mathAtoms(editor: Editor): Array<{ formula: string; sourceDelimiter: string | null }> {
   const atoms: Array<{ formula: string; sourceDelimiter: string | null }> = [];
   editor.state.doc.descendants((node) => {
@@ -69,10 +51,6 @@ function mathAtoms(editor: Editor): Array<{ formula: string; sourceDelimiter: st
   return atoms;
 }
 
-// ---------------------------------------------------------------------------
-// Conversion
-// ---------------------------------------------------------------------------
-
 describe('math input rule — conversion', () => {
   test('typing `$$x+y$$` collapses to a mathInline atom on the closing `$$`', async () => {
     const editor = makeEditor();
@@ -82,8 +60,6 @@ describe('math input rule — conversion', () => {
 
       const atoms = mathAtoms(editor);
       expect(atoms).toEqual([{ formula: 'x+y', sourceDelimiter: '$$' }]);
-      // The raw literal is gone from textContent; PM renders the atom as a
-      // single non-text position.
       expect(editor.state.doc.textContent).toBe('');
     } finally {
       editor.destroy();
@@ -116,10 +92,6 @@ describe('math input rule — conversion', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Currency safety — pandoc-style guard for the single-dollar form
-// ---------------------------------------------------------------------------
-
 describe('math input rule — currency safety', () => {
   test('`$5.00` typed alone stays literal (single trailing `$` never fires)', async () => {
     const editor = makeEditor();
@@ -140,9 +112,6 @@ describe('math input rule — currency safety', () => {
       typeText(editor, 'between $5 and $10');
       await flushMicrotasksAndTimers();
 
-      // Opening `$` after "and " has a space before it (allowed), but content
-      // is `5 and $` — the `\s$` inside forces a mismatch; even if it matched
-      // once, the leading `5 and ` would violate the trim-safe outer edges.
       expect(mathAtoms(editor)).toEqual([]);
     } finally {
       editor.destroy();
@@ -176,15 +145,10 @@ describe('math input rule — currency safety', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Exclusion contexts
-// ---------------------------------------------------------------------------
-
 describe('math input rule — exclusions', () => {
   test('does not fire inside a code block', async () => {
     const editor = makeEditor({ content: '<pre><code>x</code></pre>' });
     try {
-      // Caret at the end of the code block content.
       editor.commands.setTextSelection(editor.state.doc.content.size - 1);
       typeText(editor, '$$a+b$$');
       await flushMicrotasksAndTimers();
@@ -196,10 +160,6 @@ describe('math input rule — exclusions', () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// Undo isolation (real y-undo binding)
-// ---------------------------------------------------------------------------
 
 describe('math input rule — one undo restores the literal', () => {
   test('a single undo brings back `$$x+y$$` as raw text and drops the atom', async () => {
@@ -231,8 +191,6 @@ describe('math input rule — one undo restores the literal', () => {
       await flushMicrotasksAndTimers();
       expect(mathAtoms(editor)).toEqual([{ formula: 'x+y', sourceDelimiter: '$$' }]);
 
-      // Keystrokes after the collapse land within captureTimeout of it; the
-      // closing stopCapturing must keep them OUT of the collapse's undo item.
       typeText(editor, ' more');
       await flushMicrotasksAndTimers();
       expect(editor.state.doc.textContent).toBe(' more');
@@ -241,7 +199,6 @@ describe('math input rule — one undo restores the literal', () => {
       undoManager?.undo();
       await flushMicrotasksAndTimers();
 
-      // Only the trailing typing is removed; the converted atom survives.
       expect(mathAtoms(editor)).toEqual([{ formula: 'x+y', sourceDelimiter: '$$' }]);
       expect(editor.state.doc.textContent).toBe('');
     } finally {

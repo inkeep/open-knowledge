@@ -1,19 +1,3 @@
-/**
- * Cross-producer agreement: the source-mode heading enumerator must see exactly
- * the same headings, in the same order, with the same slugs, as the server's
- * outline producer.
- *
- * The outline rows come from the server; source-mode navigation and
- * active-heading tracking resolve them against client-side line offsets. The
- * two are joined by ordinal alone, so any line one producer admits and the
- * other skips shifts every row after it — a silent off-by-N that looks like a
- * scroll bug rather than a scan bug.
- *
- * Expected values come from the independent producer, never from a slug array
- * written here, so the test cannot be satisfied by back-fitting a constant to
- * whatever the client happens to do.
- */
-
 import { EditorState } from '@codemirror/state';
 import { extractHeadings } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
@@ -111,17 +95,10 @@ const CASES: Case[] = [
     lines: ['# Real', '', '```js', '# inside', '## still inside'],
   },
   {
-    // A CRLF document. The client builds its doc the way production does (see the
-    // `EditorState.create` below), which splits on CodeMirror's DefaultSplit and
-    // drops the `\r` before the enumerator runs — while the server scans the raw
-    // `\r`-bearing bytes. Both must still agree.
     name: 'CRLF line endings',
     lines: ['# Intro\r', '\r', '## Details\r', ''],
   },
   {
-    // CRLF plus frontmatter whose body carries a hash line: the client's
-    // frontmatter partition and the server's must agree on skipping it, or that
-    // in-frontmatter `# …` surfaces as a phantom heading and shifts every ordinal.
     name: 'CRLF line endings with an in-frontmatter hash',
     lines: ['---\r', 'title: Doc\r', '# yaml comment, not a heading\r', '---\r', '\r', '# Real\r'],
   },
@@ -132,17 +109,10 @@ describe('client/server heading enumeration agreement', () => {
     test(name, () => {
       const md = lines.join('\n');
 
-      // Build the client doc exactly as the running editor does: `EditorState.create`
-      // splits the string on CodeMirror's DefaultSplit (`/\r\n?|\n/`), so a CRLF
-      // document reaches `sourceHeadingLines` with the `\r` already stripped.
-      // Splitting on `\n` alone here would feed the enumerator a `\r` production
-      // never delivers, testing a path the editor cannot take.
       const clientDoc = EditorState.create({ doc: md }).doc;
       const client = sourceHeadingLines(clientDoc).map((entry: SourceHeadingLine) => entry.slug);
       const server = extractHeadings(md).map((heading) => heading.slug);
 
-      // Every fixture carries at least one real heading, so a case cannot pass
-      // by both producers finding nothing.
       expect(server.length).toBeGreaterThan(0);
       expect(client).toEqual(server);
     });

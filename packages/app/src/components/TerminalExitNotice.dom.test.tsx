@@ -1,11 +1,3 @@
-/**
- * Behavioral tests for the docked-terminal exit/crash notice.
- *
- * Assertions are on user-visible outcomes — the message that conveys what
- * happened, the restart affordance, and the alert live region — not on source
- * or internal call patterns.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TerminalExitNotice } from './TerminalExitNotice';
@@ -37,7 +29,6 @@ describe('TerminalExitNotice', () => {
         onRestart={() => {}}
       />,
     );
-    // The crash copy is shown; the raw internal error string is never rendered.
     expect(screen.getByText(/stopped unexpectedly/i)).toBeTruthy();
     expect(screen.queryByText(/host crashed/)).toBeNull();
   });

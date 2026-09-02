@@ -1,22 +1,3 @@
-/**
- * JsxInlineView — descriptor-dispatched inline NodeView.
- *
- * Two branches:
- *  - `componentName` set → registered inline descriptor. Renders the
- *    descriptor's React component with sanitized structured props (paired
- *    bodies arrive as `props.children`). Widget is atomic
- *    (contentEditable={false}) so users can't drift the body from sourceRaw.
- *    Click selects the node (NodeSelection) and opens a PropPanel popover —
- *    the same selection-sync + position-targeted-commit contract as
- *    MathInlineView, with `sourceDirty: true` on every prop write so the
- *    serializer reconstructs from the edit instead of re-emitting stale
- *    sourceRaw. Wrapped in an ErrorBoundary that emits the shared
- *    `jsx-render-failure` telemetry event, matching the block
- *    `JsxComponentView` contract.
- *  - `componentName === ''` → thin shape. The text children carry the raw
- *    source; surface them via a plain span so unregistered inline JSX still
- *    round-trips as visible source text.
- */
 import { incrementJsxRenderFailure } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
@@ -60,14 +41,7 @@ function RegisteredInlineView({
   const [popoverOpen, setPopoverOpen] = useState(false);
   const wasSelected = useRef(false);
 
-  // Route props through the shared extractor so URL-schemes / dangerous
-  // handlers / `dangerouslySetInnerHTML` get stripped before render — same
-  // sanitization contract as JsxComponentView.
   const primitiveProps = extractPrimitiveProps(node.attrs, descriptor.reactNodePropNames);
-  // The paired body is captured as a plain STRING in `props.children`; the
-  // extractor strips reactNode-classified props, so re-attach it — a string
-  // child is inert (no elements, no handlers) and is exactly what the
-  // source `<Name>body</Name>` said.
   const bodyText = (node.attrs.props as Record<string, unknown> | undefined)?.children;
   if (typeof bodyText === 'string' && bodyText !== '') {
     (primitiveProps as Record<string, unknown>).children = bodyText;
@@ -82,17 +56,8 @@ function RegisteredInlineView({
     primitiveProps,
     sourceDocName,
   );
-  // `stableHash` sorts keys recursively so a props re-serialization that
-  // reorders insertion order doesn't remount the ErrorBoundary mid-render.
   const resetKey = `${descriptor.name}::${stableHash(primitiveProps)}`;
 
-  // Popover follows a NodeSelection at THIS widget's position, driven off
-  // the editor's selectionUpdate event. MathInlineView gates on TipTap's
-  // `selected` prop instead; that prop is true for any range selection
-  // crossing the widget (drag-select, Cmd+A) and its delivery is unreliable
-  // for jsxInline nested inside a jsxComponent's children — the
-  // position-exact check covers both, hence the deliberate divergence. Open on select, close on
-  // navigate-away; Radix handles Escape/outside-click on its own.
   useEffect(() => {
     const sync = () => {
       const p = typeof getPos === 'function' ? getPos() : undefined;
@@ -110,10 +75,6 @@ function RegisteredInlineView({
   }, [editor, getPos]);
 
   const structuredProps = (node.attrs.props ?? {}) as Record<string, unknown>;
-  // `children` is the captured paired body, not a PropDef — PropPanel only
-  // renders descriptor-declared props, so it never surfaces; keep it out of
-  // the values map anyway so a future PropDef named `children` can't
-  // accidentally bind to it.
   const { children: _body, ...panelValues } = structuredProps;
 
   return (
@@ -126,9 +87,7 @@ function RegisteredInlineView({
     >
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
-          {/* Click → NodeSelection is handled PM-natively by the extension's
-              handleClickOn plugin (see jsx-inline.ts) — a React handler here
-              loses the race against PM's own mousedown handling. */}
+          {}
           <span data-jsx-inline-widget="">
             <ErrorBoundary
               resetKeys={[resetKey]}
@@ -158,15 +117,10 @@ function RegisteredInlineView({
           side="bottom"
           align="start"
           onOpenAutoFocus={(e) => {
-            // Let PropPanel's autoFocus land on its first input.
             e.preventDefault();
           }}
           onCloseAutoFocus={(e) => {
-            // Hand focus back to the editor with the caret AFTER the widget
-            // so the author keeps typing — MathInlineView's dismiss contract.
             e.preventDefault();
-            // Radix fires this async on unmount too — after teardown the
-            // editor is destroyed and `editor.view` is the throwing proxy.
             if (editor.isDestroyed) return;
             const p = typeof getPos === 'function' ? getPos() : undefined;
             if (typeof p === 'number') {
@@ -191,19 +145,11 @@ function RegisteredInlineView({
             descriptor={descriptor}
             values={panelValues}
             onChange={(propName, value) => {
-              // Target by position, not selection — the popover input holds
-              // DOM focus, so selection-based updateAttributes would no-op.
-              // Re-apply the NodeSelection after the markup change so the
-              // selection-sync effect doesn't dismiss the popover on the
-              // first keystroke (MathInlineView's commit contract).
               const p = typeof getPos === 'function' ? getPos() : undefined;
               if (typeof p !== 'number') return;
               const curNode = editor.state.doc.nodeAt(p);
               if (!curNode || curNode.type.name !== 'jsxInline') return;
               const nextProps = { ...curNode.attrs.props, [propName]: value };
-              // `sourceDirty: true` routes the serializer onto the
-              // reconstruct-from-props path — without it the stale
-              // sourceRaw would be re-emitted and the edit silently lost.
               const tr = editor.state.tr.setNodeMarkup(p, null, {
                 ...curNode.attrs,
                 props: nextProps,

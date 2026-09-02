@@ -31,8 +31,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
-// Resolve repo root deterministically from this file's own path.
-// packages/server/src/<this>.test.ts → ../../.. = repo root.
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..', '..');
 
@@ -45,14 +43,6 @@ const GUARDED_FILES = [
   'packages/app/src/editor/observers.ts',
 ] as const;
 
-/**
- * Forbidden patterns. Each entry carries a human-readable name so the
- * failure message points at the specific rule that fired.
- *
- * We match parenthesis-after-identifier for function-like calls (so
- * `setTimeout` appearing inside a comment or a word like "setTimeout-free"
- * does NOT match) and type-position consumption for Scheduler types.
- */
 const FORBIDDEN: ReadonlyArray<{ name: string; regex: RegExp }> = [
   { name: 'setTimeout() call', regex: /\bsetTimeout\s*\(/ },
   { name: 'setInterval() call', regex: /\bsetInterval\s*\(/ },
@@ -65,13 +55,6 @@ const FORBIDDEN: ReadonlyArray<{ name: string; regex: RegExp }> = [
   { name: '<Scheduler> generic consumption', regex: /<\s*Scheduler\b/ },
 ];
 
-/**
- * Strip `//` line comments and `/* ... *\/` block comments from a source
- * text so the regex scan only sees executable tokens. Handles strings
- * conservatively: we don't do full lexical analysis, but we do skip
- * backtick/single/double-quoted strings so call-pattern matches inside
- * template-literal explanations are ignored.
- */
 function stripCommentsAndStrings(src: string): string {
   let out = '';
   let i = 0;
@@ -79,16 +62,13 @@ function stripCommentsAndStrings(src: string): string {
   while (i < n) {
     const c = src[i];
     const next = src[i + 1];
-    // Block comment
     if (c === '/' && next === '*') {
       const end = src.indexOf('*/', i + 2);
       if (end < 0) break;
-      // Preserve newlines so the reported line numbers stay accurate.
       for (let j = i; j < end + 2; j++) if (src[j] === '\n') out += '\n';
       i = end + 2;
       continue;
     }
-    // Line comment
     if (c === '/' && next === '/') {
       const end = src.indexOf('\n', i + 2);
       if (end < 0) break;
@@ -96,7 +76,6 @@ function stripCommentsAndStrings(src: string): string {
       i = end + 1;
       continue;
     }
-    // Single/double/backtick strings — skip content, preserve newlines.
     if (c === '"' || c === "'" || c === '`') {
       const quote = c;
       out += c;
@@ -104,7 +83,6 @@ function stripCommentsAndStrings(src: string): string {
       while (i < n) {
         const ch = src[i];
         if (ch === '\\' && i + 1 < n) {
-          // Preserve escape but don't advance into it as source.
           if (src[i + 1] === '\n') out += '\n';
           i += 2;
           continue;
@@ -160,7 +138,6 @@ describe('Precedent #13(b): no wall-clock setTimeout in bridge observers (SPEC R
   test('meta: GUARDED_FILES entries exist on disk', () => {
     for (const relPath of GUARDED_FILES) {
       const absPath = join(repoRoot, relPath);
-      // readFileSync throws if the file is missing — that's the assertion.
       const src = readFileSync(absPath, 'utf8');
       expect(src.length).toBeGreaterThan(0);
     }

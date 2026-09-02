@@ -7,16 +7,6 @@ import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
 
-/**
- * Characterization for GET/PUT /api/folder-config ahead of the files/folders
- * extraction — neither method had any server-unit coverage. Pins the wire
- * contract: GET's self-only `frontmatter_local` (no ancestor cascade, null
- * when absent, {} when the YAML is a non-object, null again when malformed),
- * PUT's merge-patch outcomes (written/deleted/noop) landing in
- * `<folder>/.ok/frontmatter.yml`, the project-root-relative path gate, and
- * the single-file-mode refusal.
- */
-
 interface CapturedResponse {
   status: number;
   headers: Record<string, string>;
@@ -113,10 +103,6 @@ describe('GET/PUT /api/folder-config', () => {
   });
 
   test('GET does not cascade an ancestor sidecar onto a sidecar-less child', async () => {
-    // Pins the SELF-ONLY contract against a fixture where a cascade would be
-    // observable: `docs/.ok/frontmatter.yml` exists, `docs/sub` has no
-    // sidecar of its own. An accidental reuse of the template-resolution
-    // ancestor walk would surface the parent's map here instead of null.
     mkdirSync(join(contentDir, 'docs', 'sub'), { recursive: true });
     const ext = buildExt();
     const captured = await dispatch(
@@ -157,10 +143,6 @@ describe('GET/PUT /api/folder-config', () => {
   });
 
   test('PUT refuses a folder that symlinks out of the content root', async () => {
-    // The lexical prefix gate cannot see this shape: `escape/x` resolves under
-    // the content dir as a string while the directory link routes the write to
-    // `/outside/x/.ok/frontmatter.yml`. The canonical containment arm in
-    // `validateFolderRel` is what refuses it.
     const outside = join(tmpDir, 'outside');
     mkdirSync(outside);
     symlinkSync(outside, join(contentDir, 'escape'), 'dir');
@@ -175,11 +157,6 @@ describe('GET/PUT /api/folder-config', () => {
   });
 
   test('PUT refuses a REAL folder whose .ok is a symlink out of the content root', async () => {
-    // The spelling the folder-anchored gate missed: the folder itself realpaths
-    // in-root, and the planted link sits one component deeper, exactly where
-    // the writer targets. The gate must anchor on `<folder>/.ok`, not the
-    // folder — `assertNoSymlinkEscape` never inspects components below its
-    // argument.
     const outside = join(tmpDir, 'outside-okdir');
     mkdirSync(outside);
     mkdirSync(join(contentDir, 'notes-real'));
@@ -195,9 +172,6 @@ describe('GET/PUT /api/folder-config', () => {
   });
 
   test('PUT surfaces a missing content root as a 500, not a 400', async () => {
-    // The 400 arm refuses the caller's path; a vanished content root is the
-    // SERVER's fault and must not land in the path-escape bucket — the split
-    // is the substance of the containment taxonomy, so it gets its own pin.
     const ext = buildExt();
     rmSync(contentDir, { recursive: true, force: true });
     const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
@@ -222,10 +196,6 @@ describe('GET/PUT /api/folder-config', () => {
     expect(existsSync(sidecar)).toBe(true);
     expect(await readFile(sidecar, 'utf-8')).toContain('status: draft');
 
-    // No diff detection: an identical re-patch (and even a delete of a
-    // nonexistent key on an existing sidecar) rewrites and reports
-    // 'written' again. 'noop' fires only when there is nothing to do at
-    // all: a null-only patch against a folder with no sidecar.
     const second = await dispatch(ext, '/api/folder-config', 'PUT', {
       path: 'plain',
       frontmatter: { status: 'draft' },

@@ -38,7 +38,6 @@ export function useBlockSelection(editor: Editor | null): BlockSelection | null 
       return;
     }
 
-    // Seed with the current state on mount.
     setSnapshot(getBlockSelection(editor));
 
     const update = () => {

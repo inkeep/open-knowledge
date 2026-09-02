@@ -1,11 +1,3 @@
-/**
- * Bug report history dialog — the command-palette (⌘K) entry point to the
- * persisted report list. A thin transient surface over `BugReportHistoryList`;
- * the list is rendered only while open so each open re-reads the sidecars. The
- * empty-state CTA hands off to the compose "Report a bug" dialog via
- * `onReportABug`. Desktop-only — the mount site gates on the bridge.
- */
-
 import { Trans } from '@lingui/react/macro';
 import { BugReportHistoryList } from '@/components/BugReportHistory';
 import {
@@ -20,7 +12,6 @@ import {
 interface BugReportHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Opens the compose "Report a bug" dialog from the empty-state CTA. */
   onReportABug: () => void;
 }
 

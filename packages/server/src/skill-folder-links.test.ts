@@ -19,8 +19,6 @@ import {
   unlinkEditorSkillFolder,
 } from './skill-folder-links.ts';
 
-/** Explicit opt-out for tests whose subject is not the consent gate. `mayCreate`
- *  is required precisely so this is greppable rather than an omitted argument. */
 const allow = (): boolean => true;
 
 function writeSkill(root: string, rel: string, body: string): void {
@@ -42,9 +40,6 @@ afterEach(() => {
 
 describe('linkEditorSkillFolder (merge-then-swap)', () => {
   test('a dangling per-skill symlink never blocks the link', () => {
-    // An uninstall / scope move deletes a delivery link's target and can leave
-    // the dead link behind. It holds no bytes a link could strand, so it must
-    // classify as removable (disclosed in the plan), never as a stray.
     writeSkill(base, '.codex/skills/real', '# A');
     symlinkSync(join(base, 'gone-away'), join(base, '.codex/skills/open-knowledge-discovery'));
 
@@ -106,7 +101,6 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
     if (r.ok) return;
     expect(r.reason).toBe('conflicts');
     expect(r.conflicts).toEqual(['fork']);
-    // Abort is a no-op: nothing moved, folder still a real dir.
     expect(lstatSync(join(base, '.codex/skills')).isDirectory()).toBe(true);
     expect(lstatSync(join(base, '.codex/skills')).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(base, '.codex/skills/movable/SKILL.md'), 'utf-8')).toContain('# B');
@@ -115,7 +109,6 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
   test('a DANGLING symlink at the merge destination is replaced, not ENOTDIR-crashed', () => {
     writeSkill(base, '.codex/skills/mover', '# Bytes');
     mkdirSync(join(base, '.agents', 'skills'), { recursive: true });
-    // Stale pointer at the destination (its target no longer exists).
     symlinkSync(join(base, 'gone-away'), join(base, '.agents/skills/mover'), 'dir');
 
     const r = linkEditorSkillFolder({
@@ -180,10 +173,6 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
   test("a harness's own bookkeeping in its skills folder does not block LINK", () => {
     mkdirSync(join(base, '.codex/skills/foo'), { recursive: true });
     writeFileSync(join(base, '.codex/skills/foo/SKILL.md'), '# foo');
-    // Codex ships its bundled skills under `.system` and leaves an empty
-    // runtime dir behind. Neither is content a link could strand, and neither is
-    // something the user can clean up — treating them as strays meant this
-    // folder could never be linked at all.
     mkdirSync(join(base, '.codex/skills/.system/imagegen'), { recursive: true });
     writeFileSync(join(base, '.codex/skills/.system/imagegen/SKILL.md'), '# vendor');
     mkdirSync(join(base, '.codex/skills/codex-primary-runtime'), { recursive: true });
@@ -214,7 +203,6 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
   test('benign dotfiles (.DS_Store) do not count as strays — LINK still succeeds', () => {
     mkdirSync(join(base, '.codex/skills/foo'), { recursive: true });
     writeFileSync(join(base, '.codex/skills/foo/SKILL.md'), '# foo');
-    // macOS Finder drops this into any browsed dir; it must not block LINK.
     writeFileSync(join(base, '.codex/skills/.DS_Store'), 'noise');
     const r = linkEditorSkillFolder({
       base,
@@ -228,7 +216,6 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
 });
 
 describe('previewEditorFolderLink (what a LINK would do)', () => {
-  /** Every path under `dir`, with symlinks reported as links (not followed). */
   function tree(dir: string): string[] {
     const out: string[] = [];
     const walk = (rel: string): void => {
@@ -284,8 +271,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
     writeFileSync(join(base, '.codex/skills/foo/SKILL.md'), '# foo');
     mkdirSync(join(base, '.codex/skills/.system/imagegen'), { recursive: true });
     writeFileSync(join(base, '.codex/skills/.system/imagegen/SKILL.md'), '# vendor');
-    // Benign OS noise stays out of the disclosure — nobody needs consent to
-    // lose a `.DS_Store`.
     writeFileSync(join(base, '.codex/skills/.DS_Store'), 'noise');
 
     const p = previewEditorFolderLink({
@@ -320,8 +305,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
-    // The disclosure folds both lists into one "moves" — a linked bundle that
-    // fell out of the plan would under-report what the link touches.
     expect(p.plan.linkedBundlesToMove.map(({ name }) => name)).toEqual(['foreign']);
     expect(p.plan.toMove).toEqual([]);
 
@@ -340,7 +323,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
     writeSkill(base, '.codex/skills/foo', '# foo');
     mkdirSync(join(base, '.codex/skills/.git/objects'), { recursive: true });
     writeFileSync(join(base, '.codex/skills/.git/HEAD'), 'ref: refs/heads/main');
-    // Sibling git dotfiles are recoverable noise and stay silent.
     writeFileSync(join(base, '.codex/skills/.gitignore'), 'node_modules');
 
     const p = previewEditorFolderLink({
@@ -359,7 +341,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       targetRootRel: '.agents/skills',
       mayCreate: allow,
     });
-    // The disclosure has to match what actually happens: the history is gone.
     expect(existsSync(join(base, '.agents/skills/.git'))).toBe(false);
   });
 
@@ -367,8 +348,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
     writeSkill(base, '.ok/skills/shared', '# Delivered');
     writeSkill(base, '.codex/skills/shared', '# Codex own copy');
     mkdirSync(join(base, '.agents', 'skills'), { recursive: true });
-    // `.agents/skills/shared` follows `.ok/skills/shared` — exactly what
-    // unlinkEditorSkillFolder materializes.
     symlinkSync(join(base, '.ok/skills/shared'), join(base, '.agents/skills/shared'), 'dir');
 
     const p = previewEditorFolderLink({
@@ -388,8 +367,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       targetRootRel: '.agents/skills',
       mayCreate: allow,
     });
-    // The delivery is gone: the target now holds codex's real copy, and
-    // `.ok/skills/shared` no longer reaches it.
     expect(lstatSync(join(base, '.agents/skills/shared')).isSymbolicLink()).toBe(false);
     expect(readFileSync(join(base, '.agents/skills/shared/SKILL.md'), 'utf-8')).toContain(
       '# Codex own copy',
@@ -412,8 +389,6 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
-    // Still removed before the rename, but it pointed at nothing — nobody
-    // needs to consent to losing it.
     expect(p.plan.destLinks).toEqual(['mover']);
     expect(p.plan.liveDestLinks).toEqual([]);
   });
@@ -482,7 +457,6 @@ describe('unlinkEditorSkillFolder (materialize as per-skill links)', () => {
     if (!r.ok) return;
     expect(r.linked.sort()).toEqual(['keep-a', 'keep-b']);
     expect(existsSync(join(base, '.codex/skills/not-for-codex'))).toBe(false);
-    // The pool keeps the skill — only codex's view dropped it.
     expect(existsSync(join(base, '.agents/skills/not-for-codex/SKILL.md'))).toBe(true);
   });
 
@@ -519,9 +493,6 @@ describe('mayCreate consent gate', () => {
   });
 
   test('refuses when the FOLDER operand would be created — the half a target-only guard missed', () => {
-    // A link mkdirs `dirname(folderAbs)` too, so an absent `folderRel` creates a
-    // dotdir for a tool the user never installed. Guarding only the target left
-    // this reachable from MCP and any direct call.
     mkdirSync(join(base, '.agents', 'skills'), { recursive: true });
     const r = linkEditorSkillFolder({
       base,
@@ -549,9 +520,6 @@ describe('mayCreate consent gate', () => {
   });
 
   test('bypasses the predicate entirely when neither root needs creating', () => {
-    // Named for what the body does. `deny` proves the point: with both roots
-    // present the gate is never consulted, so a refusing predicate cannot block
-    // a link that creates nothing.
     mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
     mkdirSync(join(base, '.agents', 'skills'), { recursive: true });
     const r = linkEditorSkillFolder({
@@ -564,9 +532,6 @@ describe('mayCreate consent gate', () => {
   });
 
   test('PERMITS and creates when the predicate allows — the common path', () => {
-    // The refusal direction was well covered and the permit direction was not,
-    // so nothing proved the gate ever lets a legitimate link through. This is
-    // the ordinary flow: `.claude` installed, `.claude/skills` not yet.
     mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
     const r = linkEditorSkillFolder({
       base,
@@ -579,10 +544,6 @@ describe('mayCreate consent gate', () => {
   });
 
   test('asks about the skills-root rel, not an absolute path or the dotdir', () => {
-    // Pins the argument contract. Every other test here ignores what the
-    // predicate receives, so passing `join(base, rel)` or the dotdir instead
-    // would leave them all green while breaking the route's real predicate,
-    // which resolves the dotdir itself via skillRootActivationPath.
     mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
     const seen: string[] = [];
     linkEditorSkillFolder({

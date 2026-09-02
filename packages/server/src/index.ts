@@ -114,11 +114,9 @@ export {
 } from './content-filter.ts';
 export { safeContentPath } from './content-path.ts';
 export {
-  // Back-compat public export; new code should use swapContributors().
   // oxlint-disable-next-line typescript/no-deprecated
   clearContributors,
   contributorCount,
-  // Back-compat public export; new code should use formatContributorsFrom().
   // oxlint-disable-next-line typescript/no-deprecated
   formatContributors,
   formatContributorsFrom,
@@ -374,14 +372,6 @@ export {
   MissingOkConfigError,
   type MissingOkConfigKind,
 } from './missing-ok-config-error.ts';
-// perf-measurement.ts's HTTP route (installPerfMeasurementHttpRoute) is
-// DEV-only test instrumentation for the cap-graduation sweep harness, gated
-// behind NODE_ENV + OK_PERF_SERVER_MEMORY_ENABLED. It is intentionally NOT
-// re-exported here — putting the route in the package's public surface would
-// imply consumers may depend on it. The pure captureServerMemorySnapshot
-// helper is reused by the production server memory gauge
-// (server-memory-telemetry.ts), which imports it directly; the DEV-only gate
-// applies to the route, not the snapshot helper.
 export {
   createPersistenceExtension,
   type PersistenceHandle,
@@ -430,10 +420,6 @@ export {
   splitMarkdownBlocks,
 } from './reconciliation.ts';
 export { resolvePackageVersion } from './resolve-package-version.ts';
-// Seed scaffolder (`ok seed`) — shared module for the CLI Commander wrapper
-// and the Electron IPC handler. Deterministic plan/apply split; writes the
-// Karpathy three-layer starter + optional log.md + per-folder
-// `<folder>/.ok/frontmatter.yml` + starter templates.
 export {
   type ApplyError,
   type ApplyResult,
@@ -444,7 +430,6 @@ export {
   type FileEntry,
   formatPackRationale,
   isKnownPackId,
-  // Back-compat public export; new code should read STARTER_PACKS['knowledge-base'].
   // oxlint-disable-next-line typescript/no-deprecated
   LOG_MD_TEMPLATE,
   listStarterPacks,
@@ -457,12 +442,10 @@ export {
   SeedRootDirError,
   type SkipEntry,
   STARTER_FOLDER_FRONTMATTER_FILENAME,
-  // Back-compat public export; new code should read STARTER_PACKS['knowledge-base'].
   // oxlint-disable-next-line typescript/no-deprecated
   STARTER_FOLDERS,
   STARTER_PACK_IDS,
   STARTER_PACKS,
-  // Back-compat public export; new code should read STARTER_PACKS['knowledge-base'].
   // oxlint-disable-next-line typescript/no-deprecated
   STARTER_TEMPLATES,
   type StarterFolder,

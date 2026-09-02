@@ -93,27 +93,14 @@ import { mark } from '@/lib/perf';
 
 export const chunkWrapperDecorationKey = new PluginKey('chunkWrapperDecoration');
 
-/** CSS class consumed by `.ProseMirror .ok-chunk-wrapper` in globals.css. */
 export const OK_CHUNK_WRAPPER_CLASS = 'ok-chunk-wrapper';
 
 let firstEmitFired = false;
 
-/**
- * Test-only — resets the once-per-session emit flag so unit tests can assert
- * the mark fires on first emit without cross-test contamination. Not used
- * outside test files.
- */
 export function __resetFirstEmitForTesting(): void {
   firstEmitFired = false;
 }
 
-/**
- * Returns true when the current environment supports `content-visibility:
- * auto`, OR when `CSS.supports` is unavailable (SSR / unit tests with no DOM).
- * The unavailable branch defaults to `true` so the plugin keeps emitting
- * decorations in test environments where the feature-detection itself can't
- * run; tests assert decoration shape, not browser support.
- */
 function supportsContentVisibilityAuto(): boolean {
   if (typeof globalThis.CSS === 'undefined' || typeof globalThis.CSS.supports !== 'function') {
     return true;
@@ -124,9 +111,6 @@ function supportsContentVisibilityAuto(): boolean {
 const cvAutoSupported = supportsContentVisibilityAuto();
 
 export function chunkWrapperDecorationPlugin(): Plugin {
-  // Browsers without CV:auto support get a no-op plugin: the CSS rule is
-  // already inert there, so emitting decorations would just churn DOM
-  // attributes per-transaction for no rendering benefit.
   if (!cvAutoSupported) {
     return new Plugin({ key: chunkWrapperDecorationKey });
   }
@@ -136,10 +120,7 @@ export function chunkWrapperDecorationPlugin(): Plugin {
       decorations(state) {
         const decos: Decoration[] = [];
         state.doc.forEach((node, pos) => {
-          // Skip text-only at root (rare); only emit for block children.
           if (node.isInline) return;
-          // jsxComponent paints chrome (halo, hover zone, toolbar) outside its
-          // border box; CV:auto's paint containment would clip it.
           if (node.type.name === 'jsxComponent') return;
           decos.push(
             Decoration.node(pos, pos + node.nodeSize, {

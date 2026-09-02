@@ -1,11 +1,3 @@
-/**
- * Managed-runtime download path: checksum verification, atomic install, and
- * fast-path reuse. The download is exercised
- * end-to-end against a real `tar` extract of a synthetic runtime tree served
- * through a fake `fetch` — no network, but the archive → verify → extract →
- * rename → locate-launcher pipeline runs for real.
- */
-
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -48,7 +40,6 @@ afterEach(() => {
   dirs = [];
 });
 
-/** Build a `.tar.gz` containing `<innerDir>/<file>` entries and return its sha. */
 function buildTarball(
   dir: string,
   innerDir: string,
@@ -78,7 +69,6 @@ const NODE_NAMES = [
   'win-arm64.zip',
 ];
 
-/** A fake fetch that serves `bytes` for any archive URL and `sha` in the checksum sidecar. */
 function makeFetch(bytes: Buffer, sha: string): typeof fetch {
   return (async (url: string | URL | Request) => {
     const u = String(url);
@@ -160,9 +150,7 @@ describe('ensureManagedRuntime', () => {
     if (runtime.kind !== 'node') throw new Error('unreachable');
     expect(existsSync(runtime.npxBin)).toBe(true);
     expect(runtime.npxBin.endsWith('npx')).toBe(true);
-    // Bin dir (for PATH) holds the sibling node the launcher needs.
     expect(existsSync(join(runtime.binDir, 'node'))).toBe(true);
-    // Now discoverable via the fast path.
     const found = await findManagedRuntime('node', root);
     expect(found?.npxBin).toBe(runtime.npxBin);
   });
@@ -302,7 +290,6 @@ describe('ensureManagedRuntime', () => {
     const root = tmp();
     const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
     await ensureManagedRuntime('node', log, { root, fetchImpl: makeFetch(bytes, sha) });
-    // A fetch that would throw proves the second call never hits the network.
     const throwingFetch = (async () => {
       throw new Error('should not fetch');
     }) as unknown as typeof fetch;
@@ -363,8 +350,6 @@ describe('quarantineManagedRuntime', () => {
 
     expect(await quarantineManagedRuntime('node', log, root)).toBe(true);
 
-    // Gone from the fast path, and nothing left behind for the staging sweep
-    // to trip over — the install-shaped name is the fallback, not the plan.
     expect(await findManagedRuntime('node', root)).toBeNull();
     expect(readdirSync(join(root, 'node'))).toHaveLength(0);
     const again = await ensureManagedRuntime('node', log, {
@@ -374,9 +359,6 @@ describe('quarantineManagedRuntime', () => {
     expect(existsSync(again.kind === 'node' ? again.npxBin : again.uvxBin)).toBe(true);
   });
 
-  // Denying write on the parent is how this forces the rename to fail. Root
-  // ignores the mode, and Windows doesn't enforce it that way at all — on
-  // either the rename would succeed and the assertion would measure nothing.
   test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     'reports failure instead of pretending the tree is gone',
     async () => {
@@ -385,11 +367,6 @@ describe('quarantineManagedRuntime', () => {
       const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/node', 'bin/npx']);
       await ensureManagedRuntime('node', log, { root, fetchImpl: makeFetch(bytes, sha) });
       const kindDir = join(root, 'node');
-      // Renaming the version dir needs write permission on its parent. Denying
-      // it is the portable stand-in for the Windows EBUSY this guards: another
-      // agent holding the launcher open blocks the rename there. A false verdict
-      // would send the caller on to re-download, adopt the SAME damaged copy off
-      // the fast path, and blame the machine for a fresh copy that never landed.
       chmodSync(kindDir, 0o500);
       try {
         expect(await quarantineManagedRuntime('node', log, root)).toBe(false);

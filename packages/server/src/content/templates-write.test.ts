@@ -176,9 +176,6 @@ describe('applyTemplateWrite', () => {
   });
 
   test('writes a minimal-frontmatter template (title only — description optional)', () => {
-    // Title is MUST; description is SHOULD (warning). With only title
-    // set, write succeeds and serializes a single-block file with the identity
-    // under the reserved `template:` key and no doc-frontmatter.
     const result = applyTemplateWrite({
       projectDir,
       folder: 'meetings',
@@ -192,14 +189,10 @@ describe('applyTemplateWrite', () => {
     const content = readFileSync(abs, 'utf-8');
     expect(content).toContain('---\ntemplate:\n  title: Minimal\n---');
     expect(content).toContain('just body');
-    // Description-missing warning fires.
     expect(result.warnings.some((w) => w.match(/description is missing/))).toBe(true);
   });
 
   test('rejects body frontmatter containing the reserved template: key', () => {
-    // A top-level `template:` in the doc-frontmatter would collide with the
-    // identity key in the composed single-block file and leak `template: {...}`
-    // into every doc created from it.
     const result = applyTemplateWrite({
       projectDir,
       folder: 'meetings',
@@ -257,7 +250,6 @@ describe('applyTemplateDelete', () => {
       body: 'b',
       frontmatter: { title: 'T', description: 'D' },
     });
-    // Plant a frontmatter.yml so .ok/ has another tenant
     writeFileSync(join(projectDir, 'meetings', '.ok', 'frontmatter.yml'), 'tags: [meeting]\n');
 
     const result = applyTemplateDelete({ projectDir, folder: 'meetings', name: 'tpl' });
@@ -265,7 +257,6 @@ describe('applyTemplateDelete', () => {
     if (!result.ok) return;
     expect(result.cleanedEmpty.templatesDir).toBe(true);
     expect(result.cleanedEmpty.okDir).toBe(false);
-    // .ok/ remains because frontmatter.yml is still there
     expect(existsSync(join(projectDir, 'meetings', '.ok', 'frontmatter.yml'))).toBe(true);
   });
 
@@ -298,7 +289,6 @@ describe('applyTemplateDelete', () => {
   });
 
   test('plants directories so we can verify cleanup edges', () => {
-    // Make sure mkdirSync isn't unused-import bait
     mkdirSync(join(projectDir, 'sentinel'), { recursive: true });
     expect(existsSync(join(projectDir, 'sentinel'))).toBe(true);
   });
@@ -315,9 +305,6 @@ describe('applyTemplateMove', () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  // Inject a plain fs rename for the relocation so the orchestration is tested
-  // without a git repo. `false` mirrors the untracked / local-only path; the
-  // server handler injects the git-mv variant.
   const fsRelocate = async (from: string, to: string) => {
     renameSync(from, to);
     return false;
@@ -360,7 +347,6 @@ describe('applyTemplateMove', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(existsSync(tplPath('projects', 'scorecard'))).toBe(true);
-    // Source was the only template → templates/ and .ok/ are removed.
     expect(result.cleanedEmpty.templatesDir).toBe(true);
     expect(result.cleanedEmpty.okDir).toBe(true);
     expect(existsSync(join(projectDir, 'research', '.ok'))).toBe(false);
@@ -385,7 +371,7 @@ describe('applyTemplateMove', () => {
   });
 
   test('404s when the source is absent (exact folder; inherited not resolved here)', async () => {
-    seed('research', 'a'); // ancestor copy only
+    seed('research', 'a');
     const result = await applyTemplateMove({
       projectDir,
       fromFolder: 'research/sub',

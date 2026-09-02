@@ -15,18 +15,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useSkillScopeMove } from '@/hooks/use-skill-scope-move';
 
-/**
- * The skill-specific toolbar cluster (level + install + add-properties), with a
- * container-query collapse so it degrades gracefully as the editor pane narrows.
- * Above `@xl/toolbar` everything sits inline; below it the Level picker and
- * Add-properties fold into a single overflow menu, leaving only the install pill
- * + overflow + panel toggle in the row so the controls never overlap the
- * centered mode toggle or the provenance line. The install pill stays visible at
- * every width — it's the primary skill affordance.
- *
- * Breakpoint is `@xl/toolbar` (36rem); tune both the visibility class here and
- * the container on `EditorToolbar` together.
- */
 export function SkillToolbarControls({
   scope,
   name,
@@ -39,8 +27,6 @@ export function SkillToolbarControls({
   name: string;
   showAddPropertyButton: boolean;
   onAddProperty: () => void;
-  /** Schema-required properties the skill doc is missing — badged on the
-   *  Add-properties button, the same surface non-skill docs use. */
   problemCount?: number;
   problemMessages?: readonly string[];
 }) {
@@ -49,8 +35,7 @@ export function SkillToolbarControls({
 
   return (
     <>
-      {/* `gap-2` so the two bordered dropdowns don't read as cramped next to the
-          ghost icon buttons (whose padding adds visual air). */}
+      {}
       <div className="flex items-center gap-2">
         <SkillLevelSelect
           value={scope}
@@ -92,8 +77,7 @@ export function SkillToolbarControls({
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
-      {/* Rendered outside the DropdownMenu so selecting a level (which closes the
-          menu) doesn't unmount the confirm dialog before it can open. */}
+      {}
       {move.dialog}
     </>
   );

@@ -17,17 +17,6 @@ import {
   removeInPlaceSkillCopies,
 } from './skill-projection.ts';
 
-/**
- * PROPERTY TEST — the permanent tripwire for the skill-occurrence state machine.
- *
- * Invariant (the one that died on 2026-07-22, taking four skills' bytes with
- * it): after ANY sequence of install-menu operations, a skill has EXACTLY ONE
- * real directory, every symlink occurrence resolves to it, and no link is
- * dangling or self-referential. Random operation sequences over the three
- * primitives (fan-out, lossless removal, source relocation) must never break
- * it. Deterministic seeds — a failure prints the sequence to replay.
- */
-
 const HOSTS = ['agents', 'claude', 'cursor', 'codex'] as const;
 const ROOT_OF: Record<(typeof HOSTS)[number], string> = {
   agents: '.agents/skills',
@@ -36,7 +25,6 @@ const ROOT_OF: Record<(typeof HOSTS)[number], string> = {
   codex: '.codex/skills',
 };
 
-/** Tiny deterministic PRNG (mulberry32) so failures are replayable by seed. */
 function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -62,9 +50,6 @@ function seedSkill(name: string): void {
   writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: Use for prop.\n---\n# P`);
 }
 
-/** The invariant: NEVER zero real dirs; all real dirs byte-identical; every
- *  link resolves to a real dir (no dangles, no loops); the scan still finds
- *  the skill. Multiple real dirs are legal — that is what copy mode means. */
 function assertInvariant(name: string, context: string): void {
   const realDirs: string[] = [];
   const links: string[] = [];
@@ -175,9 +160,6 @@ describe('skill occurrence state machine (property)', () => {
     const name = 'guardrail';
     seedSkill(name);
     const c = canonicalOf(name);
-    // Create a link occurrence, then hand the MOVER the link path as if the
-    // election had (wrongly) chosen it — the primitive must resolve to the
-    // real dir instead of renaming the link file (the analyze-nuke class).
     projectInPlaceSkill({
       canonicalAbs: c.abs,
       canonicalHash: c.hash,
@@ -189,7 +171,7 @@ describe('skill occurrence state machine (property)', () => {
     });
     const linkPath = join(base, '.codex/skills', name);
     const moved = relocateInPlaceCanonical({
-      canonicalAbs: linkPath, // the lie
+      canonicalAbs: linkPath,
       canonicalHash: c.hash,
       name,
       cwd: base,
@@ -198,7 +180,6 @@ describe('skill occurrence state machine (property)', () => {
     });
     expect(moved.ok).toBe(true);
     assertInvariant(name, 'after relocate-with-link-path');
-    // The real bytes moved; nothing self-links.
     expect(lstatSync(join(base, '.agents/skills', name)).isSymbolicLink()).toBe(false);
   });
 });

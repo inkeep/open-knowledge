@@ -25,7 +25,6 @@ import { getLogger } from './logger.ts';
 
 const log = getLogger('external-change-attribution');
 
-/** Who caused an imminent disk write, in `recordContributor`'s vocabulary. */
 export interface ExternalChangeWriter {
   writerId: string;
   displayName: string;
@@ -36,16 +35,8 @@ interface Claim extends ExternalChangeWriter {
   expiresAtMs: number;
 }
 
-/**
- * How long a claim stays valid. The write and the watcher event that carries
- * it are decoupled by fs-event latency plus the sync engine's batch drain
- * (`setBatchInProgress` buffers the burst git emits), so this is a
- * generous multiple of the observed gap rather than a tight bound — an expired
- * claim costs attribution, never correctness.
- */
 const CLAIM_TTL_MS = 30_000;
 
-/** Bounds the map if a caller ever claims without a write following. */
 const MAX_CLAIMS = 256;
 
 const claims = new Map<string, Claim>();
@@ -56,20 +47,6 @@ function pruneExpired(nowMs: number): void {
   }
 }
 
-/**
- * Record that the next external change to `docName` is attributable to
- * `writer`. Overwrites any outstanding claim for the same doc: two resolutions
- * racing on one file means the later actor is the one whose bytes land.
- *
- * `ttlMs` exists because not every claimed write produces an ingest to consume
- * it. A resolve can leave the bytes unchanged, delete the file, or touch a doc
- * nobody has open — and consumption happens only on a loaded doc whose bytes
- * actually changed. An unconsumed claim then sits for its full window waiting
- * to mis-credit whoever edits that file next. A caller that knows its write is
- * imminent should say so with a window sized to the ingest, not to the worst
- * case: an expired claim costs attribution, which this module has always
- * preferred to crediting the wrong person.
- */
 export function claimExternalChange(
   docName: string,
   writer: ExternalChangeWriter,
@@ -77,8 +54,6 @@ export function claimExternalChange(
   ttlMs: number = CLAIM_TTL_MS,
 ): void {
   pruneExpired(nowMs);
-  // Oldest-first eviction (Map preserves insertion order) — a flood of
-  // unconsumed claims must not grow without bound.
   if (claims.size >= MAX_CLAIMS && !claims.has(docName)) {
     const oldest = claims.keys().next();
     if (!oldest.done) claims.delete(oldest.value);
@@ -86,11 +61,6 @@ export function claimExternalChange(
   claims.set(docName, { ...writer, expiresAtMs: nowMs + ttlMs });
 }
 
-/**
- * Consume the claim for `docName`, if one is live. Single-use: a second
- * external change to the same doc is a genuinely new event and attributing it
- * to the same actor would be a guess.
- */
 export function takeExternalChangeAttribution(
   docName: string,
   nowMs: number = Date.now(),
@@ -99,9 +69,6 @@ export function takeExternalChangeAttribution(
   if (!claim) return undefined;
   claims.delete(docName);
   if (claim.expiresAtMs <= nowMs) {
-    // Worth a line: a claim that consistently expires means the window no
-    // longer matches how long a resolution takes to reach the watcher, and the
-    // symptom (rows silently reading "File System" again) is otherwise mute.
     log.debug({ docName }, 'external-change claim expired before its write arrived');
     return undefined;
   }
@@ -109,19 +76,10 @@ export function takeExternalChangeAttribution(
   return writer;
 }
 
-/**
- * Drop the claim for `docName` without consuming it.
- *
- * A claim is filed before the write it describes, so a write that then fails
- * leaves one standing with no bytes coming. The next genuine external edit to
- * that doc inside the TTL would consume it and credit the actor for someone
- * else's change — the wrong-but-silent outcome this module exists to avoid.
- */
 export function releaseExternalChangeClaim(docName: string): void {
   claims.delete(docName);
 }
 
-/** Test seam — drops every outstanding claim. */
 export function clearExternalChangeClaims(): void {
   claims.clear();
 }

@@ -1,10 +1,3 @@
-/**
- * Unit tests for `ok ps` command logic.
- *
- * All filesystem and process-scan side effects are injected via the `deps`
- * argument — no actual processes or lock files needed.
- */
-
 import { describe, expect, test } from 'vitest';
 import { extractOkBinaryPath } from '../utils/process-scan.ts';
 import type { LockState } from './lock-state.ts';
@@ -12,10 +5,6 @@ import { isDesktopCommand, renderTable, runPs, timeAgo } from './ps.ts';
 
 const ELECTRON_UTILITY_COMMAND =
   '/path/to/Electron Helper.app/Contents/MacOS/Electron Helper --type=utility --utility-sub-type=node.mojom.NodeService --lang=en-US';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function makeAliveServer(overrides?: {
   worktreeRoot?: string;
@@ -87,10 +76,6 @@ const corruptLock: LockState = {
   lockPath: '/tmp/notes/.ok/server.lock',
 };
 
-// ---------------------------------------------------------------------------
-// timeAgo tests
-// ---------------------------------------------------------------------------
-
 describe('timeAgo', () => {
   test('returns seconds when diff < 60s', () => {
     const now = new Date('2026-05-05T10:00:30.000Z').getTime();
@@ -116,10 +101,6 @@ describe('timeAgo', () => {
     expect(timeAgo('not-a-date')).toBe('—');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Default filter: alive + foreign-host (dead-pid hidden)
-// ---------------------------------------------------------------------------
 
 describe('runPs default (alive + foreign-host)', () => {
   test('shows alive server, hides dead-pid server', async () => {
@@ -186,10 +167,6 @@ describe('runPs default (alive + foreign-host)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// --all flag: includes dead-pid and foreign-host
-// ---------------------------------------------------------------------------
-
 describe('runPs --all', () => {
   test('includes dead-pid entries', async () => {
     const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes' });
@@ -233,10 +210,6 @@ describe('runPs --all', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Desktop label override
-// ---------------------------------------------------------------------------
-
 describe('isDesktopCommand', () => {
   test('returns true for Electron utility process with NodeService sub-type', () => {
     expect(isDesktopCommand(ELECTRON_UTILITY_COMMAND)).toBe(true);
@@ -253,9 +226,6 @@ describe('isDesktopCommand', () => {
   });
 
   test('returns false for non-Electron Chromium utility (e.g. VS Code, Slack)', () => {
-    // VS Code Helper carries `--type=utility` but a different sub-type
-    // (network.mojom.NetworkService etc.). Without NodeService pairing we
-    // must NOT misidentify it as our desktop server.
     expect(
       isDesktopCommand(
         '/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper --type=utility --utility-sub-type=network.mojom.NetworkService',
@@ -288,8 +258,6 @@ describe('runPs desktop labeling', () => {
   });
 
   test('foreign-host server with --type=utility command shows "desktop", not "foreign"', async () => {
-    // Hostname-drift case: lock written when hostname=Mac, current host=foo.local.
-    // Since the live process is an Electron utility, surface it as desktop.
     const foreignServerState = makeForeignServer({ worktreeRoot: '/tmp/vault' });
 
     const lines: string[] = [];
@@ -340,11 +308,6 @@ describe('runPs desktop labeling', () => {
   });
 
   test('dead-pid + Electron command keeps "stale" label (not "desktop")', async () => {
-    // Pins the displayStatus invariant: the desktop override only fires for
-    // alive/foreign-host server states. A dead PID plus an Electron utility
-    // command is still stale — `isDesktopCommand` succeeding doesn't tell us
-    // whether the dead process was actually OUR desktop, and surfacing
-    // `desktop` would make `ok stop` and `ok clean` semantics inconsistent.
     const deadServerState = makeDeadServer({ worktreeRoot: '/tmp/notes' });
 
     const lines: string[] = [];
@@ -352,7 +315,7 @@ describe('runPs desktop labeling', () => {
       discover: async () => ['/tmp/notes/.ok'],
       inspect: () => deadServerState,
       resolveCommand: () => ELECTRON_UTILITY_COMMAND,
-      all: true, // dead-pid hidden by default
+      all: true,
       log: (msg) => lines.push(msg),
     });
 
@@ -361,10 +324,6 @@ describe('runPs desktop labeling', () => {
     expect(output).not.toContain('desktop');
   });
 });
-
-// ---------------------------------------------------------------------------
-// --json flag: always includes all statuses
-// ---------------------------------------------------------------------------
 
 describe('runPs --json', () => {
   test('includes all statuses unconditionally', async () => {
@@ -396,8 +355,6 @@ describe('runPs --json', () => {
   });
 
   test('json output shape has required fields', async () => {
-    // Single-listener: the server advertises `ui`, so the ui row is derived from
-    // server.lock and mirrors the server's own pid/port/usage.
     const aliveServerState = makeAliveServer({
       worktreeRoot: '/tmp/notes',
       port: 5173,
@@ -448,7 +405,6 @@ describe('runPs --json', () => {
     expect(entry.server.status).toBe('alive');
     expect(entry.server.pid).toBe(12345);
     expect(typeof entry.server.startedAt).toBe('string');
-    // ui mirrors the server (single-listener) — same port/pid/usage.
     expect(entry.ui).not.toBeNull();
     expect(entry.ui?.port).toBe(5173);
     expect(entry.ui?.pid).toBe(12345);
@@ -485,9 +441,6 @@ describe('runPs --json', () => {
   });
 
   test('ui reflects the server optimistically when server.lock omits `capabilities` (pre-v2)', async () => {
-    // A pre-capabilities server.lock is indeterminate; `lockAdvertisesUi` treats
-    // it as ui-capable (matching preview_url / status), so the ui row is present
-    // — never a divergence where ps hides a UI that preview_url would navigate to.
     const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
 
     const lines: string[] = [];
@@ -504,10 +457,6 @@ describe('runPs --json', () => {
     expect(parsed[0]?.ui?.port).toBe(5173);
   });
 });
-
-// ---------------------------------------------------------------------------
-// PORTS column format
-// ---------------------------------------------------------------------------
 
 describe('PORTS column', () => {
   test('server port 0 shows (starting)', async () => {
@@ -543,8 +492,6 @@ describe('PORTS column', () => {
   });
 
   test('ui-capable server shows the shared port in PORTS (single-listener)', async () => {
-    // The UI is served by the server itself, so the ui column mirrors the
-    // server port rather than a separate sibling port.
     const aliveServer = makeAliveServer({
       worktreeRoot: '/tmp/notes',
       port: 5173,
@@ -562,10 +509,6 @@ describe('PORTS column', () => {
     expect(output).toContain('5173 / 5173');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Discard entries with missing or corrupt server lock
-// ---------------------------------------------------------------------------
 
 describe('server lock missing/corrupt discards entry', () => {
   test('missing server lock: entry discarded', async () => {
@@ -592,10 +535,6 @@ describe('server lock missing/corrupt discards entry', () => {
     expect(output).toBe('No open-knowledge servers found.');
   });
 });
-
-// ---------------------------------------------------------------------------
-// renderTable tests
-// ---------------------------------------------------------------------------
 
 describe('renderTable', () => {
   test('renders header row', () => {
@@ -634,10 +573,6 @@ describe('renderTable', () => {
     expect(output).toContain('/tmp/open-knowledge/packages/cli/src/cli.ts');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Binary path extraction
-// ---------------------------------------------------------------------------
 
 describe('extractOkBinaryPath', () => {
   test('extracts source cli path from node invocation', () => {

@@ -6,42 +6,18 @@ import {
 } from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-/**
- * ACP's typed `notice` update is the eventual home for agent warnings, but no
- * released SDK carries it. These characterize what the INSTALLED SDK does with
- * one today, so an upgrade that starts accepting notices cannot slip past as a
- * silent behavior change. The connection is built exactly as the thread
- * manager builds it — `acpClient(...)` over `ndJsonStream` — because the
- * rejection happens in the SDK's own static session-update router, upstream of
- * any handler this codebase registers.
- *
- * The agent side is a pair of in-memory web streams: no child process, no
- * socket, no registry fetch.
- */
-
-/** JSON-RPC 2.0 "Invalid params". */
 const INVALID_PARAMS = -32602;
 
 const SESSION_ID = 'canary-session';
 
 type Peer = {
-  /** Deliver one raw JSON-RPC message from the agent side. */
   send: (message: unknown) => void;
-  /** Close the agent's output stream, as a departing agent would. */
   endAgentOutput: () => void;
-  /** Every `session/update` that survived the SDK's router. */
   delivered: SessionNotification[];
   connectionState: () => 'open' | 'settled';
   dispose: () => Promise<void>;
 };
 
-/**
- * A refused notification produces no JSON-RPC response — a notification has no
- * id to answer — so the SDK's log line is the only signal that it ran the
- * message and declined it. Collecting the error payloads makes "the SDK has
- * finished refusing N messages" a condition tests can wait on instead of a
- * duration they have to guess.
- */
 let refusals: Record<string, unknown>[] = [];
 
 beforeEach(() => {
@@ -92,13 +68,6 @@ function connectToFakeAgent(): Peer {
   };
 }
 
-/**
- * A `notice` session update carrying the required severity + title of ACP's
- * unstable Session Notices schema. Whether the installed SDK knows the
- * discriminator at all is settled by the core session-update roster check;
- * this payload is here to characterize what the runtime validator does when
- * one arrives.
- */
 function typedNoticeNotification(): unknown {
   return {
     jsonrpc: '2.0',
@@ -163,8 +132,6 @@ describe('installed ACP SDK versus a typed session notice', () => {
   test('drops a typed notice before it reaches a session-update handler', async () => {
     const peer = openPeer();
 
-    // The supported update behind it is the positive control: an empty
-    // delivery list would otherwise read the same as a broken transport.
     peer.send(typedNoticeNotification());
     peer.send(agentTextNotification('ordinary answer'));
     await until(
@@ -212,8 +179,6 @@ describe('installed ACP SDK versus a typed session notice', () => {
     expect(refusals).toHaveLength(run);
   });
 
-  // Without this, every `connectionState() === 'open'` assertion above would
-  // hold just as well for a probe that can never report anything else.
   test('settles the connection once the agent stops writing', async () => {
     const peer = openPeer();
     expect(peer.connectionState()).toBe('open');

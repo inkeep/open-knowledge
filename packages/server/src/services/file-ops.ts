@@ -16,32 +16,6 @@ import {
 import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
 
-/**
- * Domain operations for the files/folders capability (create, hard delete,
- * trash reconciliation, duplication). Transports validate and map outcomes;
- * this module owns the ordered server-state teardown that
- * both destructive paths share:
- *
- *   capture-and-close live docs → mark recently-removed → (delete only:
- *   disk mutation) → index purges → derived-doc deletion → CC1 signal
- *
- * Hard delete and trash-cleanup are deliberate twins: trash's file is
- * already in the OS Trash before the call (Step 1 of the two-step flow),
- * so it reconciles the same server state while never touching disk.
- *
- * Every deletion enumerates docs from DISK, not the lagging file index
- * (`listManagedDocNamesUnderFolder` via deps) — except trash-cleanup, whose
- * source of truth is deliberately the in-memory index: disk is already
- * post-deletion there, and an empty index means the watcher won the race
- * and the idempotent fast-path returns an empty list.
- */
-
-/**
- * Thrown by the duplicate-name allocators when every `copy` / `copy N` slot
- * for a source path is taken. Lives here (not in a route file) so both the
- * extension-side allocators that throw it and the native duplicate-path
- * handler that `instanceof`-matches it import the same class identity.
- */
 export class DuplicateNameExhaustedError extends Error {
   constructor(readonly sourcePath: string) {
     super(`Could not find an available duplicate name for ${sourcePath}`);
@@ -81,12 +55,9 @@ export interface FileOpsDeps {
     path: string,
   ) => string[];
   getFileIndex: () => ReadonlyMap<string, unknown>;
-  /** Conflicted files per the sync engine's store (empty set when no engine). */
   getConflictedFiles: () => ReadonlySet<string>;
-  /** Lifecycle-conflict check against the live Hocuspocus doc, when loaded. */
   isDocNameInLifecycleConflict: (docName: string) => boolean;
   captureAndCloseDocuments: (docNames: string[], reason: 'deleted-upstream') => Promise<unknown>;
-  /** Present in project mode; absent in harnesses without the LRU. */
   markRecentlyRemoved?: (docName: string) => void;
   mutateFileIndexDelete?: (args: { path: string; docName: string }) => void;
   removeFolderIndexEntries: (folderPath: string) => void;
@@ -94,10 +65,8 @@ export interface FileOpsDeps {
   deleteDerivedDocumentsBestEffort: (docNames: string[], source: string) => Promise<void>;
   invalidateReferencedAssetsCache: () => void;
   signalFiles: () => void;
-  /** "name copy N" allocation; throws when all slots are taken. */
   nextAvailableDuplicateDocName: (sourceDocName: string) => { docName: string };
   nextAvailableDuplicateFolderPath: (sourceFolderPath: string) => { folderPath: string };
-  /** Containment- and symlink-checked absolute destination for a doc duplicate. */
   resolveDuplicateDocPath: (docName: string, extension: string) => string;
   collectMarkdownCopies: (
     folderPath: string,
@@ -124,15 +93,6 @@ export interface FileOpsDeps {
 
 export interface FileOpsService {
   createFolder(folderPath: string): CreateFolderOutcome;
-  /**
-   * Create-exclusive doc write plus the synchronous registration set that
-   * keeps the watcher, content filter, and file index coherent with a
-   * self-write. Deliberately synchronous end-to-end: the caller records
-   * contributors immediately after, and any async yield before that
-   * recording opens a window where a pending shadow-commit timer drains the
-   * contributor accumulator without this file's attribution. The caller
-   * then seeds the derived index and emits the CC1 signal.
-   */
   createPage(input: {
     fullPath: string;
     docName: string;
@@ -145,11 +105,6 @@ export interface FileOpsService {
     operationDocName: string,
     logSource: string,
   ): Promise<{ deletedDocNames: string[] }>;
-  /**
-   * Unlike delete/trash, duplication does NOT emit the CC1 files signal —
-   * the caller signals after contributor recording so attribution is
-   * queryable by the time the renderer refetches the tree.
-   */
   duplicatePath(
     kind: 'file' | 'folder',
     requestedPath: string,
@@ -165,9 +120,6 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
   function markRemoved(docNames: string[], logSource: string): void {
     if (!deps.markRecentlyRemoved) return;
     for (const docName of docNames) {
-      // STOP gate at the documentName-keyed entry point: synthetic docs
-      // cannot appear here today (path validation rejects them upstream),
-      // but the filter stays defense-in-depth.
       if (isSystemDoc(docName) || isConfigDoc(docName)) continue;
       deps.markRecentlyRemoved(docName);
       console.info(
@@ -190,9 +142,6 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
     }
   }
 
-  // Conflict-aware refusal, dual-source (same rationale as the rename
-  // spine): the live doc's lifecycle state catches loaded docs, the sync
-  // engine's store catches docs evicted from memory.
   function findConflictedFile(docNames: string[]): string | null {
     const conflictedFiles = deps.getConflictedFiles();
     for (const docName of docNames) {
@@ -216,16 +165,7 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         }
         throw err;
       }
-      // Eager invalidation: legitimate recreation at a recently-renamed or
-      // recently-deleted name drops the stale cache entry so the next
-      // connection admits cleanly. No-op when absent.
       deps.unmarkRecentlyRemoved?.(docName);
-      // Synchronously bump the content filter's sibling-asset dirCount so any
-      // sibling asset drop that follows is admitted by the `LINKABLE_ASSET_EXTENSIONS`
-      // rule. The file watcher's `create` event will also increment later,
-      // which would double-count — so we also `registerWrite` to mark this
-      // as a self-write, and the watcher skips its own `incrementMdDir` on
-      // self-writes. See file-watcher.ts for the paired logic.
       deps.contentFilter?.incrementMdDir(dirname(docName));
       registerWrite(fullPath, contentHash(initialContent));
       deps.mutateFileIndexCreate?.({ path: fullPath, docName, content: initialContent });
@@ -259,10 +199,6 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         return { ok: false, kind: 'type-mismatch' };
       }
 
-      // Disk-truth enumeration BEFORE the disk delete — the watcher-fed
-      // index lags fresh writes, and an empty list here would skip the
-      // capture/close + recently-removed population while the rm below
-      // still removes the directory (orphaned in-memory Y.Docs).
       const deletedDocNames =
         operationKind === 'asset'
           ? []
@@ -272,17 +208,12 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
                 deps.resolveContentEntryPath(contentDir, 'folder', operationPath),
               );
 
-      // Any conflicted child blocks a folder delete — resolution must
-      // finish first.
       const conflictedFile = findConflictedFile(deletedDocNames);
       if (conflictedFile !== null) {
         return { ok: false, kind: 'conflict', file: conflictedFile };
       }
 
       await deps.captureAndCloseDocuments(deletedDocNames, 'deleted-upstream');
-      // Populate the removal cache BEFORE the disk delete so a fast
-      // reconnect that observes the file gone via the watcher also sees
-      // the cache entry.
       markRemoved(deletedDocNames, 'handleDeletePath');
 
       if (operationKind === 'file' || operationKind === 'asset') {
@@ -326,9 +257,6 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         deps.removeFolderIndexEntries(path);
       }
       await deps.deleteDerivedDocumentsBestEffort(deletedDocNames, 'trash-cleanup');
-      // Synchronous CC1 emit closes the race where the renderer expects the
-      // updated tree right after the response; the watcher's later emit is
-      // idempotent at the consumer.
       deps.signalFiles();
       return { deletedDocNames };
     },
@@ -356,12 +284,6 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
         return { ok: false, kind: 'type-mismatch' };
       }
 
-      // Duplicating a conflicted source would copy the raw `<<<<<<< HEAD` /
-      // `=======` / `>>>>>>>` marker bytes from disk into a new file at the
-      // destination, producing a broken duplicate. Refuse; the user must
-      // resolve the conflict first. Disk-truth enumeration for the same
-      // watcher-lag reason as deletePath — a fresh, unindexed conflicted
-      // child must not be silently skipped.
       const sourceDocNames =
         kind === 'file'
           ? [deps.docNameForPath(requestedPath)]

@@ -58,30 +58,14 @@ export const ORIGIN_TREE_TO_TEXT = {
   context: { origin: 'sync-from-tree' },
 } as const satisfies LocalTransactionOrigin;
 
-/**
- * Transaction origin for Observer B (historical text → tree direction).
- * See `ORIGIN_TREE_TO_TEXT` JSDoc for the identity rationale.
- */
 export const ORIGIN_TEXT_TO_TREE = {
   source: 'local',
   skipStoreHooks: false,
   context: { origin: 'sync-from-text' },
 } as const satisfies LocalTransactionOrigin;
 
-// ─────────────────────────────────────────────────────────────
-// Typing state (agent-presence guard consumer — SystemDocSubscriber)
-// ─────────────────────────────────────────────────────────────
-
-/**
- * Module-level keystroke timestamp — shared across all docs so nav
- * suppression in `SystemDocSubscriber` can react to typing anywhere in the
- * editor. Global by design because the nav decision is global. Always
- * tracks `Date.now()` because `SystemDocSubscriber` compares against the
- * real wall clock.
- */
 let lastGlobalUserKeystrokeMs = 0;
 
-/** Read the most-recent global user-keystroke timestamp (0 if never typed). */
 export function getLastUserKeystroke(): number {
   return lastGlobalUserKeystrokeMs;
 }
@@ -100,10 +84,6 @@ export function getLastUserKeystroke(): number {
 export function markUserTyping(): void {
   lastGlobalUserKeystrokeMs = Date.now();
 }
-
-// ─────────────────────────────────────────────────────────────
-// Observer shell
-// ─────────────────────────────────────────────────────────────
 
 interface ObserverDeps {
   doc: Y.Doc;
@@ -137,25 +117,9 @@ export function setupObservers(deps: ObserverDeps): () => void {
 
   const observerA = (_events: Y.YEvent<Y.XmlFragment>[], _transaction: Y.Transaction): void => {
     // Intentionally empty under server-authoritative bridge (precedent #14).
-    // The server observer (`server-observers.ts`) owns XmlFragment → Y.Text
-    // propagation on its own copy of the Y.Doc. The client observer
-    // subscribes only to keep the callback slot wired for future read-side
-    // instrumentation without breaking call-site signatures.
   };
 
-  const observerB = (_event: Y.YTextEvent, _transaction: Y.Transaction): void => {
-    // Intentionally empty. The prior iteration ran `mdManager.parse(body)`
-    // here for diagnostic error surfacing via `onSyncError`, but that parse
-    // fired synchronously inside every local `ydoc.transact()` drain —
-    // including every keystroke in source mode AND every chunk of
-    // `chunkedYTextInsert`. For docs >10 KB this added per-keystroke lag
-    // and defeated the rAF yields that large-paste chunking relies on
-    // (the yield happens after the observer callback, so the parse
-    // blocked the frame regardless). The server's Observer B runs the
-    // same parse with the same transient-error classification; real
-    // failures surface via the `serverObserverErrorsB` counter and the
-    // structured `bridge-merge-content-loss` logs.
-  };
+  const observerB = (_event: Y.YTextEvent, _transaction: Y.Transaction): void => {};
 
   xmlFragment.observeDeep(observerA);
   ytext.observe(observerB);

@@ -28,10 +28,6 @@ describe('ok embeddings set-url / clear-url', () => {
     restoreWrite = () => {
       process.stderr.write = orig;
     };
-    // Command actions set `process.exitCode = 1` on failure and leave it on
-    // success. Bun's `process.exitCode = undefined` does NOT clear a prior value,
-    // so reset to 0 ("success") before each test — and again after, so a reject
-    // test's exit code never leaks to the `bun test` process.
     process.exitCode = 0;
   });
 
@@ -41,7 +37,6 @@ describe('ok embeddings set-url / clear-url', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // Build a fresh command each run so commander carries no state between calls.
   function run(...args: string[]): Promise<unknown> {
     return embeddingsCommand().parseAsync(args, { from: 'user' });
   }
@@ -86,9 +81,6 @@ describe('ok embeddings set-url / clear-url', () => {
     expect(readLocalConfig(dir)).toContain(DEFAULT_EMBEDDINGS_BASE_URL);
   });
 
-  // The other half of pointing at your own server: a custom endpoint is only
-  // usable once you can name the model it serves, and this persona is often
-  // headless with no Settings UI to reach for.
   test('set-model writes a free-text model id to project-local config', async () => {
     await run('set-model', 'nomic-embed-text', '--cwd', dir);
     expect(process.exitCode).toBe(0);

@@ -1,24 +1,3 @@
-/**
- * Settings → This project → Skills Studio, top block: the `open-knowledge`
- * skill this project ships to whoever opens it.
- *
- * The project-scope sibling of `BuiltInSkillsSection`, moved out of This
- * project → AI tools for the same reason. Moving only the
- * user-global half would have left exactly one skill filed under AI tools,
- * which is worse than no rule at all: skills live in Skills Studio,
- * connections live in AI tools, no exceptions to carry in your head.
- *
- * Unlike the user-global bundles this one is committed to the repo, so the
- * block says so — installing it installs it for everyone on the project.
- *
- * Sourced from `/api/skills`, the same list the sidebar, the tree and the
- * skill's own page read. It used to read the desktop bridge instead, which is a
- * second answer to a question that already had one: the bridge enumerates the
- * bundles the app SHIPS, the endpoint reports what is on disk. They disagreed
- * the moment anything changed from the skill's own page, and this row went on
- * showing the install set from before.
- */
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -41,10 +20,7 @@ export function ProjectSkillSection() {
   const heading = (
     <div>
       <h4 className="text-sm font-medium">
-        {/* Same heading as the user-scope block: both are skills OpenKnowledge
-            ships, and naming provenance there but scope here would split one
-            kind of thing across two axes. The scope difference is the second
-            sentence's job, and the page's own scope chip already says it. */}
+        {}
         <Trans comment="Heading above the project's own skill row, in Settings → This project → Skills Studio">
           Skills from OpenKnowledge
         </Trans>
@@ -79,8 +55,7 @@ export function ProjectSkillSection() {
         data-testid="settings-project-skill"
       >
         {heading}
-        {/* Same shape as SettingsContentSkeleton: a bare skeleton is silence to
-            a screen reader, which is indistinguishable from an empty page. */}
+        {}
         <div
           role="status"
           aria-live="polite"
@@ -99,9 +74,6 @@ export function ProjectSkillSection() {
 
   const skill = skills.data.find((s) => s.managed === true && s.scope === 'project') ?? null;
   if (skill === null) {
-    // Not installed. The row used to vanish entirely, which read as "there is
-    // no such skill" — instead say so and offer the install (desktop only: the
-    // bridge owns the project-skill seeding path).
     if (!bridge) return null;
     return (
       <section
@@ -143,9 +115,6 @@ export function ProjectSkillSection() {
     );
   }
   const source = builtinBundleDir(skill.absolutePath);
-  // Falls back to the frontmatter description only if the copy module does not
-  // know this bundle (a newer server shipping one we have no localized line
-  // for).
   const rowDescription = blurbFor('project') ?? skill.description ?? '';
   const openPreview = source
     ? () =>
@@ -173,8 +142,6 @@ export function ProjectSkillSection() {
             hosts={skillClusterHosts(skill)}
             onActivate={openPreview}
             control={
-              // An explicit verb beside the row: the body-click preview was the
-              // only way in, and nothing said the row was interactive at all.
               openPreview ? (
                 <Button
                   variant="outline"

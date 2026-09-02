@@ -51,21 +51,6 @@ describe('upload extension sets', () => {
     }
   });
 
-  // Partition guard — defense against drift between dispatch surfaces
-  // (pickInsertShape, handlers.wikiLinkEmbed). If a new extension lands in
-  // WIKI_EMBED_EXTENSIONS without a matching home in IMAGE / VIDEO / AUDIO
-  // / FILE_ATTACHMENT, this fails loudly so the dispatch tables stay in
-  // sync.
-  //
-  // FILE_ATTACHMENT_EXTENSIONS — the
-  // `WikiEmbedFile` compat dispatches block-context wiki-embeds whose
-  // extension lives in that set to the `File` canonical (Notion-style
-  // inline-row chrome). The dispatch ladder
-  // (`markdown/index.ts:wikiLinkEmbed`) is now image → video → audio
-  // → file → text+link fallback. PDF lives inside FILE_ATTACHMENT
-  // (the wikilink form renders as a File row alongside docx / zip /
-  // …); the pdfjs canvas viewer is reachable via the `<Pdf>` JSX form
-  // rather than auto-routed from `![[doc.pdf]]`.
   test('IMAGE ∪ VIDEO ∪ AUDIO ∪ FILE_ATTACHMENT === WIKI_EMBED_EXTENSIONS (set equality)', () => {
     const union = new Set<string>([
       ...IMAGE_EXTENSIONS,
@@ -74,28 +59,17 @@ describe('upload extension sets', () => {
       ...FILE_ATTACHMENT_EXTENSIONS,
     ]);
 
-    // ⊆ direction: union subset of WIKI_EMBED_EXTENSIONS
     for (const ext of union) {
       expect(WIKI_EMBED_EXTENSIONS.has(ext)).toBe(true);
     }
 
-    // ⊇ direction: WIKI_EMBED_EXTENSIONS subset of union
     for (const ext of WIKI_EMBED_EXTENSIONS) {
       expect(union.has(ext)).toBe(true);
     }
 
-    // Same cardinality (defense against duplicates inside individual sets)
     expect(union.size).toBe(WIKI_EMBED_EXTENSIONS.size);
   });
 
-  // FILE_ATTACHMENT_EXTENSIONS must be disjoint from the inline-media
-  // sets (image / video / audio) — the dispatch ladder stops at the
-  // first matching branch, so an overlapping ext would render through
-  // whichever tier ran first, which is a class of confusion this test
-  // prevents. PDF is INTENTIONALLY a member of FILE_ATTACHMENT (the
-  // wikilink/drop form treats it like any other downloadable file); the
-  // explicit `<Pdf>` JSX is a separate authoring path with its own
-  // canonical and is unaffected.
   test('FILE_ATTACHMENT_EXTENSIONS is disjoint from IMAGE / VIDEO / AUDIO', () => {
     for (const ext of FILE_ATTACHMENT_EXTENSIONS) {
       expect(IMAGE_EXTENSIONS.has(ext)).toBe(false);
@@ -104,20 +78,12 @@ describe('upload extension sets', () => {
     }
   });
 
-  // Every type OK lets you embed/link (`![[file.ext]]`) MUST be one OK admits
-  // into the file index and serves — otherwise the link resolves against a set
-  // that omits it and renders as a "non-existent" redlink while /api/asset 404s.
-  // ASSET_EXTENSIONS is the serve/index/link-resolution predicate;
-  // WIKI_EMBED_EXTENSIONS is the embed/link predicate. The latter must be a
-  // subset of the former.
   test('WIKI_EMBED_EXTENSIONS ⊆ ASSET_EXTENSIONS (embeddable ⇒ servable + resolvable)', () => {
     for (const ext of WIKI_EMBED_EXTENSIONS) {
       expect(ASSET_EXTENSIONS.has(ext)).toBe(true);
     }
   });
 
-  // User-authored files linked by their own bare extension (not droppable
-  // embeds, so absent from WIKI_EMBED) still must resolve + serve.
   test('ASSET_EXTENSIONS admits user-linked non-embed types (html/htm/gpx)', () => {
     expect(ASSET_EXTENSIONS.has('html')).toBe(true);
     expect(ASSET_EXTENSIONS.has('htm')).toBe(true);
@@ -126,10 +92,6 @@ describe('upload extension sets', () => {
 });
 
 describe('mediaKindForSidebarAssetExtension', () => {
-  // Pins the central dispatch function called by `DocumentContext` when
-  // building sidebar asset rows. The classifier returns the discriminant
-  // that `AssetPreview` switches on to pick a render component.
-
   test.each([
     ['png', 'image'],
     ['jpg', 'image'],
@@ -181,10 +143,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
   });
 
   test('mmd and mermaid are absent from ASSET_EXTENSIONS and INLINE_RENDERABLE_EXTENSIONS', () => {
-    // Mirrors the text-viewer-fallback guard: MERMAID_FILE_EXTENSIONS are
-    // LINKABLE (indexable + wiki-linkable, /api/asset-text-served) but must
-    // NOT enter the XSS/serve allowlist. Diagram render is client-side —
-    // the raw bytes never need to go through the inline-renderable path.
     for (const ext of MERMAID_FILE_EXTENSIONS) {
       expect(ASSET_EXTENSIONS.has(ext)).toBe(false);
       expect(INLINE_RENDERABLE_EXTENSIONS.has(ext)).toBe(false);
@@ -193,9 +151,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
   });
 
   test('base and canvas are absent from ASSET_EXTENSIONS and INLINE_RENDERABLE_EXTENSIONS', () => {
-    // These extensions resolve to mediaKind:'text' via TEXT_VIEWER_FALLBACK_EXTENSIONS
-    // rather than the inline-text set, so the serve/XSS boundary (ASSET_EXTENSIONS +
-    // INLINE_RENDERABLE_EXTENSIONS) is unchanged — /api/asset keeps returning 415 for them.
     expect(ASSET_EXTENSIONS.has('base')).toBe(false);
     expect(ASSET_EXTENSIONS.has('canvas')).toBe(false);
     expect(INLINE_RENDERABLE_EXTENSIONS.has('base')).toBe(false);
@@ -205,8 +160,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
   test('TEXT_VIEWER_FALLBACK_EXTENSIONS contains exactly base and canvas', () => {
     expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.has('base')).toBe(true);
     expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.has('canvas')).toBe(true);
-    // Size pin guards accidental widening of the text-viewer-only path, which
-    // bypasses the XSS/serve boundary that ASSET_EXTENSIONS enforces.
     expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.size).toBe(2);
   });
 
@@ -244,9 +197,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
 
   describe('EXCALIDRAW_FILE_EXTENSIONS', () => {
     test('scoped to `.excalidraw` only — `.canvas` stays with the text-viewer fallback set', () => {
-      // `.canvas` is Obsidian's canvas JSON schema (different format,
-      // Excalidraw can't parse it); it must keep routing through the
-      // TEXT_VIEWER_FALLBACK path with syntax highlighting.
       expect(EXCALIDRAW_FILE_EXTENSIONS.has('excalidraw')).toBe(true);
       expect(EXCALIDRAW_FILE_EXTENSIONS.has('canvas')).toBe(false);
       expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.has('canvas')).toBe(true);
@@ -256,7 +206,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
       expect(mediaKindForSidebarAssetExtension('.excalidraw')).toBe('excalidraw');
       expect(mediaKindForSidebarAssetExtension('excalidraw')).toBe('excalidraw');
       expect(mediaKindForSidebarAssetExtension('.EXCALIDRAW')).toBe('excalidraw');
-      // `.canvas` still routes to text, not excalidraw.
       expect(mediaKindForSidebarAssetExtension('.canvas')).toBe('text');
     });
 
@@ -269,15 +218,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
     });
 
     test('excalidraw is absent from ASSET_EXTENSIONS and INLINE_RENDERABLE_EXTENSIONS (XSS boundary)', () => {
-      // Same allowlist stance as MERMAID_FILE_EXTENSIONS above: canvas render
-      // is a client-side React component (`ExcalidrawDocEditor`) that reads
-      // via the CRDT, not a raw asset stream. Admitting `.excalidraw` to the
-      // XSS/serve boundary would route the file through inline `/api/asset`
-      // instead of the CSP-sandboxed `/api/asset-text` — a stored-XSS regress
-      // if a `.excalidraw` file ever carried untrusted bytes. Pin the
-      // exclusion so accidental widening (adding `excalidraw` to
-      // ASSET_EXTENSIONS or INLINE_RENDERABLE_EXTENSIONS in upload.ts)
-      // fails CI immediately.
       for (const ext of EXCALIDRAW_FILE_EXTENSIONS) {
         expect(ASSET_EXTENSIONS.has(ext)).toBe(false);
         expect(INLINE_RENDERABLE_EXTENSIONS.has(ext)).toBe(false);
@@ -287,10 +227,6 @@ describe('mediaKindForSidebarAssetExtension', () => {
   });
 
   test('lock files dispatch to TextViewer regardless of stem prefix', () => {
-    // `lock` is the file extension — covers `bun.lock`, `Cargo.lock`,
-    // `Gemfile.lock`, OK's own `.ok/local/server.lock`, etc. The
-    // dispatch keys off the extension only; the stem prefix is
-    // irrelevant.
     expect(mediaKindForSidebarAssetExtension('lock')).toBe('text');
     expect(mediaKindForSidebarAssetExtension('.lock')).toBe('text');
     expect(mediaKindForSidebarAssetExtension('LOCK')).toBe('text');
@@ -300,8 +236,8 @@ describe('mediaKindForSidebarAssetExtension', () => {
     'csv',
     'docx',
     'zip',
-    'mkv', // in INLINE_RENDERABLE_EXTENSIONS but excluded from sidebar video set
-    'svg', // intentionally excluded from sidebar image set (XSS posture)
+    'mkv',
+    'svg',
     'tiff',
   ])('returns null for non-sidebar-renderable extension %s', (ext) => {
     expect(mediaKindForSidebarAssetExtension(ext)).toBeNull();
@@ -331,7 +267,6 @@ describe('isMermaidDocFile', () => {
   });
 
   test('matches only the final extension segment', () => {
-    // A markdown doc whose stem merely contains `mmd`/`mermaid` is not a match.
     expect(isMermaidDocFile('mmd-notes/plan')).toBe(false);
     expect(isMermaidDocFile('flow.mmd.md')).toBe(false);
   });

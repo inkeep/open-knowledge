@@ -1,13 +1,3 @@
-/**
- * Browser coverage for the OKF generated-index disclosure and its disk effects.
- *
- * The unique worker option is the isolation boundary: Playwright cannot place
- * this file in a worker whose content directory is shared by ordinary specs.
- * That matters after confirmation because the generator intentionally authors
- * index.md throughout the tree. One test owns the full decline-then-confirm
- * sequence so those generated files cannot leak between tests in this file.
- */
-
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

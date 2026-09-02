@@ -19,7 +19,6 @@ function tmp(): string {
   return mkdtempSync(join(tmpdir(), 'ok-mcp-remove-'));
 }
 
-// A byte-for-byte OK chain entry, JSON-embedded the way `ok init` writes it.
 const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
 
 describe('removeOwnMcpEntry — JSON', () => {
@@ -27,7 +26,6 @@ describe('removeOwnMcpEntry — JSON', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.json');
-      // Comment + a foreign sibling that must survive byte-for-byte.
       const raw = `{
   // my mcp servers
   "mcpServers": {
@@ -71,13 +69,11 @@ describe('removeOwnMcpEntry — JSON', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.json');
-      // A squatting / forked entry pointing elsewhere — NOT OK's managed chain.
       const foreign = { command: '/usr/bin/evil', args: ['--pwn'] };
       const raw = `${JSON.stringify({ mcpServers: { [MCP_SERVER_NAME]: foreign } }, null, 2)}\n`;
       writeFileSync(configPath, raw);
       const outcome = removeOwnMcpEntry(EDITOR_TARGETS.claude, dir, undefined, configPath);
       expect(outcome.kind).toBe('left-foreign');
-      // Byte-identical: a foreign server is never touched.
       expect(readFileSync(configPath, 'utf-8')).toBe(raw);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -158,14 +154,13 @@ describe('removeOwnMcpEntry — JSON', () => {
     try {
       const configPath = join(dir, 'openclaw.json');
       const own = EDITOR_TARGETS.openclaw.buildEntry(dir);
-      // OpenClaw nests servers one level deeper than the others.
       const raw = `${JSON.stringify({ mcp: { servers: { other: { command: 'x' }, [MCP_SERVER_NAME]: own } } }, null, 2)}\n`;
       writeFileSync(configPath, raw);
       const outcome = removeOwnMcpEntry(EDITOR_TARGETS.openclaw, dir, undefined, configPath);
       expect(outcome.kind).toBe('removed');
       const after = JSON.parse(readFileSync(configPath, 'utf-8'));
       expect(after.mcp.servers[MCP_SERVER_NAME]).toBeUndefined();
-      expect(after.mcp.servers.other).toEqual({ command: 'x' }); // sibling preserved
+      expect(after.mcp.servers.other).toEqual({ command: 'x' });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -195,8 +190,6 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
     const dir = tmp();
     try {
       const configPath = join(dir, 'config.toml');
-      // Build OK's entry the way init writes it, then hand-serialize a config
-      // with a foreign sibling that must survive byte-for-byte.
       const chain = (OWN_ENTRY.args as string[])[2];
       const raw = `# codex config\nmodel = "gpt-5"\n\n[mcp_servers.other]\ncommand = "node"  # keep me\n\n[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\n`;
       writeFileSync(configPath, raw);
@@ -238,7 +231,6 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
         'removed',
       );
       const after = readFileSync(configPath, 'utf-8');
-      // CRLF is preserved (toml_edit normalizes to LF; the wrapper restores it).
       expect(after.includes('\r\n')).toBe(true);
       expect(after).not.toContain(`[mcp_servers.${MCP_SERVER_NAME}]`);
       expect(after).toContain('[mcp_servers.other]');
@@ -255,7 +247,7 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
       writeFileSync(configPath, raw);
       const outcome = removeOwnMcpEntry(EDITOR_TARGETS.codex, dir, undefined, configPath);
       expect(outcome.kind).toBe('left-foreign');
-      expect(readFileSync(configPath, 'utf-8')).toBe(raw); // byte-identical
+      expect(readFileSync(configPath, 'utf-8')).toBe(raw);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -268,16 +260,14 @@ describe('removeOwnMcpEntry — TOML (Codex)', () => {
       const chain = (OWN_ENTRY.args as string[])[2];
       const raw = `[mcp_servers.${MCP_SERVER_NAME}]\ncommand = "/bin/sh"\nargs = ["-l", "-c", ${JSON.stringify(chain)}]\n`;
       writeFileSync(configPath, raw);
-      // Force the JS fallback (no format-preserving writer) — a whole-file
-      // rewrite would strip comments, so OK declines rather than degrade.
       setTomlConfigEngineForTesting(createTomlConfigEngine(() => null));
       try {
         const outcome = removeOwnMcpEntry(EDITOR_TARGETS.codex, dir, undefined, configPath);
         expect(outcome.kind).toBe('declined');
         if (outcome.kind === 'declined') expect(outcome.reason).toBe('no-native-writer');
-        expect(readFileSync(configPath, 'utf-8')).toBe(raw); // byte-identical
+        expect(readFileSync(configPath, 'utf-8')).toBe(raw);
       } finally {
-        setTomlConfigEngineForTesting(null); // restore the lazy default
+        setTomlConfigEngineForTesting(null);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -307,9 +297,6 @@ describe('removeOwnMcpEntry — Pi managed extension file', () => {
   });
 
   test('removes a STALE-version drop (ownership marker is version-agnostic)', () => {
-    // Unlike chain entries (dev/stale → left-foreign), the managed file's
-    // first-line marker is an unambiguous OK signature, so stale drops are
-    // removable — a deinit must not strand `-v0` files forever.
     const dir = tmp();
     try {
       const configPath = piConfigPath(dir);

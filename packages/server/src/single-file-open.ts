@@ -1,21 +1,3 @@
-/**
- * Shared bootstrap for the no-project single-file open (`ok <file>`).
- *
- * Consumed by BOTH the CLI (`packages/cli`) and the desktop main process
- * (`packages/desktop`) so the two delivery surfaces compute the same plan and
- * can't diverge. The load-bearing rule: **realpath the file
- * BEFORE project detection** — detection keys on the inode, while the editor's
- * write-back forces `contentDir = realpath-parent` (the `symlink-escape` gate).
- * Routing detection on a non-canonical path would mis-route a symlink into a
- * real project to ephemeral mode and clobber the project's file on the same
- * inode.
- *
- *   - Project mode: the file's realpath sits under an ancestor `.ok/config.yml`
- *     → open that project focused on the file's ext-less doc path.
- *   - Ephemeral mode: a standalone file → an ephemeral single-file session
- *     (temp projectDir, real-parent contentDir, single-file content scope).
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -24,7 +6,6 @@ import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { findEnclosingProjectRoot, isProjectRoot } from './fs/find-project-root.ts';
 
-/** The file passed to `ok <file>` does not exist on disk. */
 export class SingleFileNotFoundError extends Error {
   constructor(readonly filePath: string) {
     super(`File not found: ${filePath}`);
@@ -32,7 +13,6 @@ export class SingleFileNotFoundError extends Error {
   }
 }
 
-/** The path passed to `ok <file>` resolves to a directory, not a file. */
 export class SingleFileNotAFileError extends Error {
   constructor(readonly filePath: string) {
     super(`Not a file: ${filePath}. \`ok <file>\` opens a single markdown file.`);
@@ -40,11 +20,6 @@ export class SingleFileNotAFileError extends Error {
   }
 }
 
-/**
- * An explicit `--project` override could not be honored (the path is not an
- * OpenKnowledge project root, or the file does not live under it). Callers
- * exit non-zero rather than silently resolving a different project.
- */
 export class SingleFileProjectOverrideError extends Error {
   constructor(
     readonly projectRoot: string,
@@ -55,7 +30,6 @@ export class SingleFileProjectOverrideError extends Error {
   }
 }
 
-/** The file passed to `ok <file>` is not a supported markdown file (.md/.mdx). */
 export class SingleFileNotMarkdownError extends Error {
   constructor(readonly filePath: string) {
     super(`OpenKnowledge edits markdown files (.md / .mdx): ${filePath}`);
@@ -66,38 +40,19 @@ export class SingleFileNotMarkdownError extends Error {
 export type SingleFileOpenPlan =
   | {
       readonly mode: 'project';
-      /** Absolute path of the enclosing project root (where `.ok/config.yml` lives). */
       readonly projectRoot: string;
-      /** Ext-less doc path relative to the project's resolved content dir (forward slashes). */
       readonly docName: string;
-      /** `realpath(filePath)` — the canonical inode path. */
       readonly canonicalFilePath: string;
     }
   | {
       readonly mode: 'ephemeral';
-      /** `realpath(filePath)` — also the ephemeral-session dedup key. */
       readonly canonicalFilePath: string;
-      /** The file's real parent directory — the ephemeral session's contentDir. */
       readonly contentDir: string;
-      /** Basename of the file — the single-file content scope key. */
       readonly singleDocRelPath: string;
-      /** Ext-less doc name (`notes.md` → `notes`) — the `#/<doc>` route target. */
       readonly docName: string;
     };
 
-/**
- * Resolve `filePath` to a single-file open plan. Throws a typed error for a
- * missing path, a directory, or a non-markdown file (callers render a clean CLI
- * message). REALPATHS the file first, then runs project detection on the
- * canonical parent dir.
- */
 export interface PrepareSingleFileOpenOptions {
-  /**
-   * Explicit project root (the `--project` override). When given, the ancestor
-   * walk is skipped entirely and the named root is used — or the call fails
-   * loudly. Never a silent fallback: an override that cannot be honored is a
-   * wrong-project open waiting to happen.
-   */
   readonly projectRoot?: string;
 }
 
@@ -105,8 +60,6 @@ export function prepareSingleFileOpen(
   filePath: string,
   options: PrepareSingleFileOpenOptions = {},
 ): SingleFileOpenPlan {
-  // Validate the markdown extension on the user-supplied path before touching
-  // the filesystem — a clear, fast rejection for `ok notes.txt`.
   if (!isSupportedDocFile(filePath)) {
     throw new SingleFileNotMarkdownError(filePath);
   }
@@ -155,7 +108,6 @@ export function prepareSingleFileOpen(
   if (hit) {
     const projectRoot = hit.rootPath;
     const projectContentDir = resolveProjectContentDir(projectRoot);
-    // doc path relative to the project's content dir, ext-less, forward slashes.
     const relPath = relative(projectContentDir, canonicalFilePath).split(sep).join('/');
     return {
       mode: 'project',
@@ -175,11 +127,6 @@ export function prepareSingleFileOpen(
   };
 }
 
-/**
- * Resolve a project's content directory by reading its `.ok/config.yml`. Falls
- * back to the project root (content.dir defaults to `.`) on any read/parse
- * failure — `readConfigSafely` never throws.
- */
 function resolveProjectContentDir(projectRoot: string): string {
   const config = readConfigSafely({
     absPath: resolveConfigPath('project', projectRoot),
@@ -190,49 +137,20 @@ function resolveProjectContentDir(projectRoot: string): string {
   return resolve(projectRoot, contentRel);
 }
 
-/**
- * Basename prefix of every throwaway ephemeral projectDir this module mints
- * (`mkdtemp` under `os.tmpdir()`). The CLI's idle-shutdown reap uses it as a
- * provenance check before recursively deleting a projectDir — a dir that is
- * not a direct `ok-ephemeral-*` child of the temp root is never a sanctioned
- * reap target, whatever flag value claimed it was.
- */
 export const EPHEMERAL_PROJECT_DIR_PREFIX = 'ok-ephemeral-';
 
-/**
- * Seed an existing directory as an ephemeral single-file projectDir: a
- * synthesized minimal `.ok/config.yml` (so the boot config gate passes) plus
- * a `.ok/.gitignore` (so the boot hygiene warning stays quiet). Writes
- * unconditionally — callers that might hand it a dir with a real config guard
- * with their own existence check first.
- *
- * `contentDir` is written into `content.dir` for honesty, but the ephemeral
- * boot passes `contentDir` explicitly — config resolution does not drive it.
- */
 export function seedEphemeralProjectDir(projectDir: string, contentDir: string): string {
   const okDir = resolve(projectDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });
-  // Minimal valid YAML config — empty would also parse to schema defaults, but
-  // recording content.dir keeps the throwaway project self-describing.
   writeFileSync(
     resolve(okDir, 'config.yml'),
     `# Ephemeral single-file session (\`ok <file>\`). Throwaway — safe to delete.\ncontent:\n  dir: ${JSON.stringify(contentDir)}\n`,
     'utf-8',
   );
-  // Keeps the per-boot "`.ok/.gitignore` missing" hygiene warning quiet; the
-  // dir is in os.tmpdir with no git, so the contents are informational only.
   writeFileSync(resolve(okDir, '.gitignore'), 'local/\n', 'utf-8');
   return projectDir;
 }
 
-/**
- * Create the throwaway `projectDir` for an ephemeral single-file session: an
- * `os.tmpdir()` `mkdtemp` seeded via `seedEphemeralProjectDir`. The
- * `.ok/local/` runtime state (lock, shadow, caches) lands here, never in the
- * user's directory. The owner of the session lifecycle (the CLI browser path,
- * the desktop window, or `bootStartServer` when it self-provisions for a
- * direct `ok start --single-file`) removes this directory on teardown.
- */
 export function createEphemeralProjectDir(contentDir: string): string {
   return seedEphemeralProjectDir(
     mkdtempSync(resolve(tmpdir(), EPHEMERAL_PROJECT_DIR_PREFIX)),

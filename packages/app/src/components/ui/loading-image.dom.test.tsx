@@ -1,13 +1,3 @@
-/**
- * Behavioral tests for LoadingImage's target-existence-aware placeholder
- * contract. Existence is supplied directly via the `targetExistence` prop
- * (the WYSIWYG oracle wiring is exercised separately in Image.dom.test.tsx),
- * so every case here is a deterministic pin on the presentation state machine:
- * proven-absent → "Image not found"; present/unknown display failure → "Image
- * couldn't be displayed"; heal on target creation; break on target deletion;
- * clipboard/DOM fidelity of the hidden authored <img>.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { LoadingImage } from './loading-image';
@@ -33,8 +23,6 @@ describe('LoadingImage — truthful placeholders', () => {
     const slot = screen.getByTestId('image-slot');
     expect(slot.getAttribute('data-image-error')).toBe('true');
     expect(slot.getAttribute('data-image-error-kind')).toBe('not-found');
-    // No load event fired — the placeholder is authoritative from the oracle,
-    // and the skeleton is not left announcing forever.
     expect(screen.queryByTestId('image-loading-skeleton')).toBeNull();
 
     const overlay = slot.querySelector('[role="img"]');
@@ -43,8 +31,6 @@ describe('LoadingImage — truthful placeholders', () => {
     expect(overlay?.getAttribute('aria-label')).toBe('Image not found: /images/ghost.png');
     expect(overlay?.textContent).toContain('Image not found');
     expect(overlay?.querySelector('.ok-image-error-target')?.textContent).toBe('/images/ghost.png');
-    // Non-color cue: an icon accompanies the text (aria-hidden so it isn't
-    // announced twice), so the state is not conveyed by color alone.
     expect(overlay?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 
@@ -69,8 +55,6 @@ describe('LoadingImage — truthful placeholders', () => {
   });
 
   test('unknown existence never claims absence on a load failure', () => {
-    // Default targetExistence is 'unknown' (no oracle / off-project src). A
-    // failure must read as "couldn't be displayed", not "not found".
     const { container } = render(<LoadingImage src="https://cdn.example.com/x.png" alt="" />);
     fireEvent.error(container.querySelector('img') as HTMLImageElement);
 
@@ -99,13 +83,10 @@ describe('LoadingImage — truthful placeholders', () => {
     );
     expect(screen.getByTestId('image-slot').getAttribute('data-image-error')).toBe('true');
 
-    // Target created on disk → oracle flips missing → exists.
     rerender(<LoadingImage src="/images/created.png" alt="" targetExistence="exists" />);
 
     const slot = screen.getByTestId('image-slot');
     expect(slot.getAttribute('data-image-error')).toBeNull();
-    // Remounted to re-request: skeleton returns until the fresh load resolves,
-    // and the img is visible again (not hidden).
     expect(screen.queryByTestId('image-loading-skeleton')).not.toBeNull();
     expect(slot.querySelector('img')?.hasAttribute('hidden')).toBe(false);
   });
@@ -117,8 +98,6 @@ describe('LoadingImage — truthful placeholders', () => {
     fireEvent.load(container.querySelector('img') as HTMLImageElement);
     expect(screen.getByTestId('image-slot').getAttribute('data-image-error')).toBeNull();
 
-    // Target deleted on disk → oracle flips exists → missing, over the loaded
-    // bitmap.
     rerender(<LoadingImage src="/images/live.png" alt="" targetExistence="missing" />);
 
     const slot = screen.getByTestId('image-slot');

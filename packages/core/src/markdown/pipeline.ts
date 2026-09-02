@@ -54,9 +54,6 @@ interface PipelineOptions {
   toMarkdownHandlers?: Record<string, unknown>;
 }
 
-/** Options needed by `serializeMd` for the PM→mdast pre-pass. Kept separate
- * from the (pre-baked) processor so one cached serialize processor can serve
- * calls that share schema/handler registrations. */
 interface SerializeMdOptions {
   schema: Schema;
   pmNodeHandlers: FromProseMirrorOptions<string, string>['nodeHandlers'];

@@ -56,7 +56,6 @@ describe('AcpPermissionStore', () => {
     await store.recordChoice('gemini', toolCall('edit'), always);
 
     expect(store.decide('gemini', toolCall('edit'), OPTIONS).auto).not.toBeNull();
-    // Different agent / different kind: still asks.
     expect(store.decide('cursor', toolCall('edit'), OPTIONS).auto).toBeNull();
     expect(store.decide('gemini', toolCall('execute'), OPTIONS).auto).toBeNull();
 

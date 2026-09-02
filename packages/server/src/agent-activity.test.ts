@@ -1,9 +1,3 @@
-/**
- * Unit tests for agent-activity.ts
- *
- * Tests the pure diff-synthesis functions and listAgentActivity using
- * real Y.Doc / Y.UndoManager instances (no mocks of internal CRDT state).
- */
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
@@ -14,11 +8,6 @@ import {
 } from './agent-activity.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Create a write origin + UndoManager pair tracking a Y.Text. */
 function makeUMPair(_doc: Y.Doc, text: Y.Text) {
   const origin = Object.freeze({
     source: 'local' as const,
@@ -32,15 +21,11 @@ function makeUMPair(_doc: Y.Doc, text: Y.Text) {
   });
   const um = new Y.UndoManager([text], {
     trackedOrigins: new Set([origin]),
-    captureTimeout: 0, // each transact = one StackItem
+    captureTimeout: 0,
     captureTransaction: (tr: { origin: unknown }) => tr.origin !== undoOrigin,
   });
   return { origin, undoOrigin, um };
 }
-
-// ---------------------------------------------------------------------------
-// synthesizeStackItemDiff
-// ---------------------------------------------------------------------------
 
 describe('synthesizeStackItemDiff', () => {
   test('single insert — reports insertion span, no deletions', () => {
@@ -68,14 +53,12 @@ describe('synthesizeStackItemDiff', () => {
     const text = doc.getText('source');
     const { origin, um } = makeUMPair(doc, text);
 
-    // Pre-populate outside tracked origin — not on undo stack.
     doc.transact(() => {
       text.insert(0, 'hello world');
     });
 
-    // Now delete within tracked origin.
     doc.transact(() => {
-      text.delete(0, 5); // delete 'hello'
+      text.delete(0, 5);
     }, origin);
 
     expect(um.undoStack).toHaveLength(1);
@@ -93,8 +76,6 @@ describe('synthesizeStackItemDiff', () => {
   test('empty undoStack (no bursts) → synthesize on empty UM returns sensible values', () => {
     const doc = new Y.Doc();
     const text = doc.getText('source');
-    // Just verify synthesize handles an empty text gracefully.
-    // Use createDeleteSet() since DeleteSet is not a public export.
     const dummyStackItem = {
       insertions: Y.createDeleteSet(),
       deletions: Y.createDeleteSet(),
@@ -113,7 +94,6 @@ describe('synthesizeStackItemDiff', () => {
     const text = doc.getText('source');
     const { origin, um } = makeUMPair(doc, text);
 
-    // Insert in two parts that merge into one StackItem (captureTimeout: 0 isolates by transact).
     doc.transact(() => {
       text.insert(0, 'foo');
       text.insert(3, 'bar');
@@ -129,10 +109,6 @@ describe('synthesizeStackItemDiff', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// synthesizeStackItemDiffText
-// ---------------------------------------------------------------------------
-
 describe('synthesizeVersionDiffText', () => {
   test('version 0 (original) is an empty diff', () => {
     const doc = new Y.Doc();
@@ -140,7 +116,6 @@ describe('synthesizeVersionDiffText', () => {
     const { origin, um } = makeUMPair(doc, text);
     doc.transact(() => text.insert(0, 'new line\n'), origin);
 
-    // keptCount 0 → original vs original → empty (the pre-edit file).
     // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
     expect(synthesizeVersionDiffText(um.undoStack as any, 0, text, 'doc.md')).toBe('');
   });
@@ -169,21 +144,18 @@ describe('synthesizeVersionDiffText', () => {
     doc.transact(() => text.insert(text.length, 'three\n'), origin);
     expect(um.undoStack.length).toBe(3);
 
-    // Version 1: whole file at edit 1 = just "one" (no later lines).
     // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
     const v1 = synthesizeVersionDiffText(um.undoStack as any, 1, text, 'doc.md');
     expect(v1).toContain('+one');
     expect(v1).not.toContain('two');
     expect(v1).not.toContain('three');
 
-    // Version 2: whole file at edit 2 = "one" + "two", not "three".
     // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
     const v2 = synthesizeVersionDiffText(um.undoStack as any, 2, text, 'doc.md');
     expect(v2).toContain('+one');
     expect(v2).toContain('+two');
     expect(v2).not.toContain('three');
 
-    // Version 3 (now): the whole current document.
     // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
     const v3 = synthesizeVersionDiffText(um.undoStack as any, 3, text, 'doc.md');
     expect(v3).toContain('+one');
@@ -201,12 +173,9 @@ describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
 
     // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs
     const v1 = synthesizeVersionDiff(um.undoStack as any, 1, text, 'doc.md');
-    // Frontmatter is stripped from the rendered bodies; body content remains.
     expect(v1.after).toContain('body line');
     expect(v1.after).not.toContain('title: T');
     expect(v1.before).toBe('');
-    // The unified diff is body-only too — the frontmatter is reported
-    // structurally instead, so Source mode does not show raw YAML lines.
     expect(v1.diff).toContain('body line');
     expect(v1.diff).not.toContain('title: T');
     expect(v1.properties.changes).toMatchObject([{ key: 'title', kind: 'added' }]);
@@ -225,12 +194,6 @@ describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
     expect(v0.properties.changes).toEqual([]);
   });
 
-  /**
-   * Seed a document OUTSIDE the tracked origin so it is the pre-agent original
-   * (version 0), then apply one tracked frontmatter rewrite. Seeding inside the
-   * tracked origin would make version 0 the empty document and every property
-   * an addition, which is not the case under test.
-   */
   function seedThenRewriteFm(seed: string, rewritten: string) {
     const doc = new Y.Doc();
     const text = doc.getText('source');
@@ -245,8 +208,6 @@ describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
     return synthesizeVersionDiff(stack, stack.length, text, 'doc.md');
   }
 
-  // The defect this guards: an agent write that only touched frontmatter had no
-  // body diff and no property signal, so the pane showed nothing at all.
   test('a frontmatter-only edit reports a property delta with an empty body diff', () => {
     const latest = seedThenRewriteFm(
       '---\nstatus: draft\n---\nbody\n',
@@ -267,16 +228,6 @@ describe('synthesizeVersionDiff (bodies for the WYSIWYG diff)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// listAgentActivity
-// ---------------------------------------------------------------------------
-
-/**
- * Minimal mock of `AgentSessionManager` — exposes the two public accessors
- * `listAgentActivity` consumes (`sessionsForConnection`, `getLiveSession`).
- * Tests seed sessions by (docName, agentId) in the key shape the real
- * AgentSessionManager uses: `${docName}\0${agentId}`.
- */
 function makeSessionManager(sessions: Map<string, unknown>): AgentSessionManager {
   return {
     *sessionsForConnection(connectionId: string) {
@@ -351,18 +302,15 @@ describe('listAgentActivity', () => {
     const ytextB = docB.getText('source');
     const pairB = makeUMPair(docB, ytextB);
 
-    // Write to A first, then B (so B has a newer timestamp).
     docA.transact(() => {
       ytextA.insert(0, 'aaa');
     }, pairA.origin);
 
-    // Force a small delay between the two operations.
     const tsBefore = Date.now();
     docB.transact(() => {
       ytextB.insert(0, 'bbb');
     }, pairB.origin);
 
-    // Manually set timestamps to guarantee ordering.
     if (pairA.um.undoStack[0].meta instanceof Map) {
       pairA.um.undoStack[0].meta.set('time', tsBefore - 1000);
     }
@@ -404,7 +352,6 @@ describe('listAgentActivity', () => {
     const manager = makeSessionManager(sessions);
     const result = listAgentActivity(manager, 'agent-abc');
 
-    // B should come first (newer timestamp).
     expect(result.files[0].docName).toBe('file-b.md');
     expect(result.files[1].docName).toBe('file-a.md');
   });
@@ -414,7 +361,6 @@ describe('listAgentActivity', () => {
     const ytext = doc.getText('source');
     const { origin, um } = makeUMPair(doc, ytext);
 
-    // captureTimeout: 0 → each transact = one StackItem
     doc.transact(() => {
       ytext.insert(0, 'first\n');
     }, origin);
@@ -454,7 +400,6 @@ describe('listAgentActivity', () => {
 
     const bursts = result.files[0].bursts;
     expect(bursts).toHaveLength(3);
-    // Newest first: stackIndex should descend
     expect(bursts[0].stackIndex).toBeGreaterThan(bursts[1].stackIndex);
     expect(bursts[1].stackIndex).toBeGreaterThan(bursts[2].stackIndex);
   });

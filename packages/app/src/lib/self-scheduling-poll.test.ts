@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createSelfSchedulingPoll, type PollOutcome } from './self-scheduling-poll.ts';
 
-// Injectable fake timer — records scheduled callbacks; `runPending` fires the
-// next one. No real time elapses, so the scheduling contract is deterministic.
 function makeTimerHarness() {
   const timers: Array<{ fn: () => void; ms: number; id: number }> = [];
   let nextId = 1;
@@ -24,8 +22,6 @@ function makeTimerHarness() {
   };
 }
 
-// Controllable poll — each call returns a fresh promise resolved/rejected by the
-// test via `resolve`/`reject` on the latest call.
 function makePollController() {
   let calls = 0;
   let resolveLatest: (o: PollOutcome) => void = () => {};
@@ -46,7 +42,6 @@ function makePollController() {
   };
 }
 
-// Flush microtasks so the continuation after `await poll()` runs.
 const flush = async () => {
   await Promise.resolve();
   await Promise.resolve();
@@ -68,16 +63,15 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     loop.start();
     await flush();
     expect(ctrl.calls).toBe(1);
-    expect(timer.timers).toHaveLength(0); // nothing armed while a poll is in flight
+    expect(timer.timers).toHaveLength(0);
 
-    // The poll is still in flight — no second poll can be issued.
     await flush();
     expect(ctrl.calls).toBe(1);
 
     ctrl.resolve('ok');
     await flush();
-    expect(timer.timers).toHaveLength(1); // next armed only after settle
-    expect(timer.timers[0]?.ms).toBe(1000); // base cadence on success
+    expect(timer.timers).toHaveLength(1);
+    expect(timer.timers[0]?.ms).toBe(1000);
     expect(ctrl.calls).toBe(1);
 
     timer.runPending();
@@ -105,19 +99,16 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     await flush();
     expect(timer.timers).toHaveLength(1);
 
-    // Tab goes hidden; the armed tick fires but parks instead of polling.
     paused = true;
     timer.runPending();
     await flush();
-    expect(ctrl.calls).toBe(1); // zero requests while hidden
-    expect(timer.timers).toHaveLength(0); // parked, no timer
+    expect(ctrl.calls).toBe(1);
+    expect(timer.timers).toHaveLength(0);
 
-    // resume() while still hidden is a no-op.
     loop.resume();
     await flush();
     expect(ctrl.calls).toBe(1);
 
-    // Tab shown → resume polls exactly once.
     paused = false;
     loop.resume();
     await flush();
@@ -141,25 +132,25 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     await flush();
     ctrl.resolve('error');
     await flush();
-    expect(timer.timers[0]?.ms).toBe(2000); // base * 2
+    expect(timer.timers[0]?.ms).toBe(2000);
 
     timer.runPending();
     await flush();
     ctrl.resolve('error');
     await flush();
-    expect(timer.timers[0]?.ms).toBe(4000); // 2000 * 2
+    expect(timer.timers[0]?.ms).toBe(4000);
 
     timer.runPending();
     await flush();
     ctrl.resolve('error');
     await flush();
-    expect(timer.timers[0]?.ms).toBe(4000); // capped at max — no tight loop
+    expect(timer.timers[0]?.ms).toBe(4000);
 
     timer.runPending();
     await flush();
     ctrl.resolve('ok');
     await flush();
-    expect(timer.timers[0]?.ms).toBe(1000); // recovered → base
+    expect(timer.timers[0]?.ms).toBe(1000);
     loop.stop();
   });
 
@@ -179,14 +170,14 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     await flush();
     ctrl.reject(new Error('network'));
     await flush();
-    expect(timer.timers[0]?.ms).toBe(2000); // rejection treated as error → backoff
+    expect(timer.timers[0]?.ms).toBe(2000);
 
     timer.runPending();
     await flush();
-    loop.stop(); // aborts the in-flight poll
+    loop.stop();
     ctrl.reject(new Error('aborted-after-stop'));
     await flush();
-    expect(timer.timers).toHaveLength(0); // stopped → no reschedule
+    expect(timer.timers).toHaveLength(0);
   });
 
   test('stop() clears the pending timer and start()/resume() are no-ops afterward', async () => {
@@ -208,12 +199,12 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     expect(timer.timers).toHaveLength(1);
 
     loop.stop();
-    expect(timer.timers).toHaveLength(0); // pending timer cleared
+    expect(timer.timers).toHaveLength(0);
 
     loop.start();
     loop.resume();
     await flush();
-    expect(ctrl.calls).toBe(1); // no new poll after stop
+    expect(ctrl.calls).toBe(1);
   });
 
   test('a second start() while running is a no-op (does not spawn a second loop)', async () => {
@@ -232,7 +223,6 @@ describe('createSelfSchedulingPoll (PRD-6972 FR1)', () => {
     await flush();
     expect(ctrl.calls).toBe(1);
 
-    // Re-starting mid-flight must not fire a second concurrent poll.
     loop.start();
     await flush();
     expect(ctrl.calls).toBe(1);

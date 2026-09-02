@@ -19,7 +19,7 @@ describe('resolveLucideIcon', () => {
 
   test('returns null for unknown lucide names (not in allowlist)', () => {
     expect(resolveLucideIcon('lucide:DoesNotExist')).toBeNull();
-    expect(resolveLucideIcon('lucide:lightbulb')).toBeNull(); // case-sensitive
+    expect(resolveLucideIcon('lucide:lightbulb')).toBeNull();
   });
 
   test('returns the component for known allowlist names', () => {
@@ -51,9 +51,6 @@ describe('LUCIDE_ICON_ENTRIES', () => {
 
   test('every component is a function (renderable React component)', () => {
     for (const [, Component] of LUCIDE_ICON_ENTRIES) {
-      // lucide-react exports forwardRef objects; both function and object
-      // values are acceptable React component shapes — assert non-nullish
-      // and not a primitive.
       expect(Component).not.toBeNull();
       expect(['function', 'object']).toContain(typeof Component);
     }

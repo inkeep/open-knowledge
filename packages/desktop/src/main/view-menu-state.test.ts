@@ -122,10 +122,6 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
   });
 
   test('TerminalDock push (terminalLive only) composes with the other publishers without clobbering', () => {
-    // TerminalDock is the third runtime publisher into the merged menu state
-    // (terminalLive, the Kill-Terminal enablement signal). Its push must not
-    // clobber EditorPane's terminalVisible or the sidebar/doc-panel fields, and
-    // a later terminalVisible push must not clobber terminalLive.
     const afterEditorPane = mergeViewMenuState(initial, { terminalVisible: true });
     const afterTerminalDock = mergeViewMenuState(afterEditorPane, { terminalLive: true });
 
@@ -134,17 +130,12 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
     expect(afterTerminalDock.docPanelVisible).toBe(true);
     expect(afterTerminalDock.sidebarVisible).toBe(true);
 
-    // Reverse direction: a subsequent terminalVisible push preserves terminalLive.
     const afterToggleHide = mergeViewMenuState(afterTerminalDock, { terminalVisible: false });
     expect(afterToggleHide.terminalLive).toBe(true);
     expect(afterToggleHide.terminalVisible).toBe(false);
   });
 
   test('agents-panel push composes with every terminal publisher without clobbering', () => {
-    // The agents panel is the fourth runtime publisher. It shares EditorPane's
-    // visibility edge but is a wholly independent panel, so its push must leave
-    // terminalVisible / terminalLive alone — and a later terminal push must
-    // leave agentPanelVisible alone. Both panels open at once is the normal case.
     const afterEditorPane = mergeViewMenuState(initial, { terminalVisible: true });
     const afterTerminalDock = mergeViewMenuState(afterEditorPane, { terminalLive: true });
     const afterAgentsPanel = mergeViewMenuState(afterTerminalDock, { agentPanelVisible: true });
@@ -154,12 +145,10 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
     expect(afterAgentsPanel.terminalLive).toBe(true);
     expect(afterAgentsPanel.sidebarVisible).toBe(true);
 
-    // Hiding the terminal leaves the agents panel open.
     const afterHideTerminal = mergeViewMenuState(afterAgentsPanel, { terminalVisible: false });
     expect(afterHideTerminal.agentPanelVisible).toBe(true);
     expect(afterHideTerminal.terminalVisible).toBe(false);
 
-    // …and hiding the agents panel leaves the terminal's own state alone.
     const afterHideAgents = mergeViewMenuState(afterAgentsPanel, { agentPanelVisible: false });
     expect(afterHideAgents.agentPanelVisible).toBe(false);
     expect(afterHideAgents.terminalVisible).toBe(true);
@@ -169,8 +158,6 @@ describe('mergeViewMenuState — multi-publisher non-clobbering contract', () =>
 
 describe('createDefaultEditorViewMenuState — pre-first-push menu state', () => {
   test("matches the renderer's resolved config defaults exactly", () => {
-    // toEqual on the full object: adding a snapshot field without deciding
-    // its pre-push default must fail here, not silently read undefined.
     expect(createDefaultEditorViewMenuState()).toEqual({
       showHiddenFiles: false,
       showOkFolders: false,
@@ -184,20 +171,13 @@ describe('createDefaultEditorViewMenuState — pre-first-push menu state', () =>
       terminalPlacement: 'bottom',
       terminalLive: false,
       agentPanelVisible: false,
-      // Restrictive by design: this one gates a context-menu row, and a row
-      // offered before the renderer says the jump is live would do nothing.
       canViewInSource: false,
-      // Same posture: pre-push, assume no selection so View → Agents reads as
-      // the plain Show/Hide toggle. Defaulting true would rename the item to
-      // "Ask AI About Selection" on a window that has no selection at all.
       hasEditorSelection: false,
     });
   });
 });
 
 describe('buildViewMenuStateDeps — snapshot → menu-deps wiring', () => {
-  // Every field deliberately differs from the pre-push default so an
-  // accidental default-instead-of-snapshot read fails the mapping assertions.
   const snapshot = {
     showHiddenFiles: true,
     showOkFolders: true,

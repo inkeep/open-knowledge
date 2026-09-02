@@ -1,12 +1,3 @@
-/**
- * L1 integration coverage for the unified advisory channel on the agent
- * write path: `POST /api/agent-write-md` and `POST /api/agent-patch` report
- * post-write mermaid parse failures (and co-occurring write-integrity
- * advisories) as `warnings` entries without affecting the write itself
- * (storage stays byte-faithful; advisory only). The deprecated single-valued
- * `warning` field never carries render entries.
- */
-
 import type { AdvisoryWarning } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -74,13 +65,10 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
     expect(w.fenceFirstLine).toBe('sequenceDiagram');
     expect(w.message).toContain('Parse error');
     expect(w.line).toBeGreaterThan(0);
-    // Render entries never ride the deprecated single-valued `warning` slot.
     expect(body.warning).toBeUndefined();
   });
 
   test('valid fences and fence-less docs carry no render warnings', async () => {
-    // Filter to render entries: lint-violation advisories (e.g. MD047 on a
-    // fixture without a trailing newline) legitimately ride the same array.
     const valid = await writeMd(VALID_FENCE, uniqueDoc('rw-valid'));
     expect(valid.status).toBe(200);
     expect((valid.body.warnings ?? []).filter((w) => w.kind === 'mermaid-parse-error')).toEqual([]);
@@ -92,8 +80,6 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
 
   test('append composition is validated on the post-write state', async () => {
     const docName = uniqueDoc('rw-append');
-    // An unclosed fence is valid mermaid on its own (CommonMark runs it to
-    // EOF) — the appended prose lands INSIDE the fence body and breaks it.
     const first = await writeMd('```mermaid\ngraph LR\n  A-->B', docName);
     expect((first.body.warnings ?? []).filter((w) => w.kind === 'mermaid-parse-error')).toEqual([]);
 
@@ -111,8 +97,6 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
     expect(status).toBe(200);
     expect(typeof body.timestamp).toBe('string');
     const state = getServerState(server, docName);
-    // The invalid fence is stored exactly as written — the `;` that breaks
-    // the grammar is preserved (storage never sanitizes).
     expect(state?.ytext.toString()).toContain('A->>B: payload + nonce; cookie cleared');
     expect(state?.ytext.toString()).toBe(INVALID_SEQUENCE_FENCE);
   });
@@ -152,20 +136,16 @@ describe('advisory co-occurrence (the unification win: no masking)', () => {
     const { join } = await import('node:path');
     const docName = uniqueDoc('rw-cooccur');
     await writeMd('# V1\n\nbody-v1\n', docName);
-    // Wait for the L1 store so the doc exists on disk before the native edit.
     const pollDelay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     for (let i = 0; i < 100; i++) {
       if (getServerState(server, docName)?.ytext.toString().includes('body-v1')) break;
       await pollDelay(20);
     }
-    // Native out-of-band edit straight to disk, bypassing OK; the next agent
-    // write must reconcile it (disk-edit-reconciled advisory).
     writeFileSync(
       join(server.contentDir, `${docName}.md`),
       '# V2 NATIVE OUT-OF-BAND EDIT\n\nbody-v2-native\n',
       'utf-8',
     );
-    // The agent append also carries a grammar-broken mermaid fence.
     const { status, body } = await writeMd(
       '\n```mermaid\nsequenceDiagram\n  A->>B: hi; there\n```\n',
       docName,
@@ -174,8 +154,6 @@ describe('advisory co-occurrence (the unification win: no masking)', () => {
     expect(status).toBe(200);
     const kinds = (body.warnings ?? []).map((w) => w.kind).sort();
     expect(kinds).toEqual(['disk-edit-reconciled', 'mermaid-parse-error']);
-    // The deprecated single slot carries only its highest-precedence
-    // integrity entry — the render entry exists ONLY in `warnings`.
     expect(body.warning?.kind).toBe('disk-edit-reconciled');
   });
 });
@@ -194,8 +172,6 @@ describe('advisory warnings on POST /api/agent-patch', () => {
   test('an unrelated edit surfaces a pre-existing broken fence with its locator', async () => {
     const docName = uniqueDoc('rw-preexisting');
     await writeMd(`${INVALID_SEQUENCE_FENCE}\nTrailing prose paragraph.\n`, docName);
-    // Edit only the prose — the broken fence predates this edit, and the
-    // locator fields point the agent at it (deliberate surfacing semantics).
     const { status, body } = await patchDoc(docName, 'Trailing prose', 'Edited prose');
     expect(status).toBe(200);
     expect(body.warnings).toHaveLength(1);
@@ -216,18 +192,10 @@ describe('content-rule (lint) violations on the agent write path', () => {
   test('markdownlint violations ride warnings[] so agents see what the GUI shows', async () => {
     const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
-    // markdownlint is opt-in (off by default); enable it for this project so the
-    // write-path advisory surfaces the violation the GUI would show. The base
-    // config is read fresh per request, so writing it here takes effect on the
-    // write below. Restore it afterward so sibling tests keep the default (off).
     const cfgPath = join(server.contentDir, '.ok', 'config.yml');
     writeFileSync(cfgPath, 'contentRules:\n  markdownlint:\n    enabled: true\n', 'utf-8');
     try {
       const docName = uniqueDoc('rw-lint-style');
-      // The body carries a hard tab (markdownlint MD010). Agent writes surface
-      // the same content-rule violations the editor GUI shows — whole-doc,
-      // advisory only, capped — so an MCP client learns about them without a
-      // separate `lint` round-trip.
       const { status, body } = await writeMd(
         '---\ntitle: Hi\n---\n\n# Doc\n\n\tindented\n',
         docName,
@@ -245,10 +213,6 @@ describe('content-rule (lint) violations on the agent write path', () => {
 
   test('a dead link written by THIS write rides warnings[] immediately (no index-debounce race)', async () => {
     const docName = uniqueDoc('rw-dead-link');
-    // The live-derived index updates 100 ms AFTER a change; the advisory is
-    // computed synchronously in the handler. This asserts the write path
-    // refreshes the index for the written doc before validating, so the very
-    // write that introduces the dead link is the one that reports it.
     const target = `rw-ghost-${crypto.randomUUID().slice(0, 8)}`;
     const { status, body } = await writeMd(`# Doc\n\nSee [[${target}]].\n`, docName);
     expect(status).toBe(200);
@@ -258,12 +222,9 @@ describe('content-rule (lint) violations on the agent write path', () => {
     expect(dead).toBeDefined();
     if (dead?.kind !== 'lint-violation') throw new Error('narrowed above');
     expect(dead.source).toBe('links');
-    // Default posture: warnings (validation.links).
     expect(dead.severity).toBe('warning');
     expect(dead.message).toContain(target);
-    // The unresolved target rides verbatim so the agent can create the page.
     expect(dead.linkTarget).toBe(target);
-    // Line is exact (0-based range 2 → 1-based display 3).
     expect(dead.line).toBe(3);
   });
 
@@ -277,8 +238,6 @@ describe('content-rule (lint) violations on the agent write path', () => {
       (good.body.warnings ?? []).some((w) => w.kind === 'lint-violation' && w.code === 'dead-link'),
     ).toBe(false);
 
-    // With the project posture off, even a genuinely dead link stays silent —
-    // the setting is read fresh per request.
     const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const cfgPath = join(server.contentDir, '.ok', 'config.yml');

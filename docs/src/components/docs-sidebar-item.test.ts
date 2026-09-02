@@ -70,8 +70,6 @@ describe('docs sidebar item', () => {
 
   beforeEach(() => {
     actEnv.IS_REACT_ACT_ENVIRONMENT = true;
-    // Sidebar branches on `matchMedia` for its mobile variant; pin it to the
-    // desktop branch, keeping whatever descriptor was there for restoration.
     priorMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -111,16 +109,6 @@ describe('docs sidebar item', () => {
       );
     });
 
-  /**
-   * Render the whole page tree the way production does: Fumadocs' own
-   * SidebarPageTree walks `source.pageTree` and hands each page node to the
-   * layout's registered Item slot, so these tests also cover the slot name,
-   * the `item` prop, and the tree walk passing the sidebar label through.
-   *
-   * Precondition: rows under a folder mount only when `pathname` points inside
-   * that folder. Fumadocs opens a folder when the active path includes it, and
-   * a closed folder's rows are unmounted entirely, not hidden.
-   */
   const renderTree = (pathname: string) =>
     render(
       createElement(
@@ -141,11 +129,6 @@ describe('docs sidebar item', () => {
       pathname,
     );
 
-  /**
-   * The rendered row for a URL, failing loudly when it never mounted: an
-   * icon-only assertion against a missing anchor would otherwise pass
-   * vacuously, since `undefined?.querySelector('svg')` is not null.
-   */
   const anchorByHref = (href: string) => {
     const anchor = [...container.querySelectorAll('a')].find(
       (a) => a.getAttribute('href') === href,

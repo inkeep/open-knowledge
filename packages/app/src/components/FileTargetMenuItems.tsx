@@ -87,11 +87,6 @@ export interface FileTargetMenuItemsProps {
   workspaceReady: boolean;
 }
 
-/**
- * Target actions shared by file-tree rows and editor tabs. Callers supply the
- * matching Radix primitive family so one action definition can live inside a
- * DropdownMenu or ContextMenu without detaching keyboard navigation.
- */
 export function FileTargetMenuItems({
   busy = false,
   deleteLabel,

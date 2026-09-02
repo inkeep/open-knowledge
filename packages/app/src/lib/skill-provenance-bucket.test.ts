@@ -44,14 +44,10 @@ describe('bucketForSkill', () => {
   });
 
   test('built-ins are not special-cased — they bucket under their source like anything else', () => {
-    // Verified against a real `~/.ok/skills-lock.json`: the global built-ins
-    // carry this exact source, so they land beside ordinary imports from it.
     const b = bucketForSkill(
       skill({ source: 'inkeep/open-knowledge-skills', importedAt: '2026-08-13T00:00:00.000Z' }),
     );
     expect(b).not.toBeNull();
-    // The key carries the publisher: repo TAILS collide across owners
-    // (anthropics/skills vs mattpocock/skills must never merge).
     expect(b && bucketKey(b)).toBe('source:open-knowledge-skills\u0001inkeep');
   });
 
@@ -66,8 +62,6 @@ describe('bucketForSkill', () => {
   });
 
   test('a cache copy with a server-resolved marketplaceUrl carries a verified parent owner', () => {
-    // The server resolves the URL from the harness registry
-    // (known_marketplaces.json) at list time — the client only reads it back.
     const b = bucketForSkill(
       skill({
         source: '/Users/x/.claude/plugins/cache/inkeep-team-skills/applied-ai/1.0.0/skills/codie',
@@ -84,8 +78,6 @@ describe('bucketForSkill', () => {
   });
 
   test('a detected plugin carries the marketplace repo the registry recorded', () => {
-    // The URL cannot be derived here — `marketplace` is a local alias — so the
-    // enumerator stamps it and this only reads it back.
     const d = detected('ponytail');
     const withRepo = {
       ...d,
@@ -138,15 +130,12 @@ describe('bucketForDetected', () => {
   });
 
   test('off Claude there is no plugin provenance, so nothing groups', () => {
-    // "Rich for Claude plugins; empty for bare skill-dirs that carry none."
     expect(bucketForDetected(detected())).toBeNull();
   });
 });
 
 describe('bucketForSkill — plugin identity', () => {
   test('a skill that IS a plugin skill groups under the plugin, like its cache residents', () => {
-    // Same kind + id as bucketForDetected produces for the plugin's own
-    // residents, so the two populations can never split into twin groups.
     const bucket = bucketForSkill({
       scope: 'project',
       name: 'linux-vm',

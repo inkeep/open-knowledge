@@ -26,9 +26,6 @@ export function LargeFileEditorState({ docName, size, limit, backNav }: LargeFil
   const canGoBack = backNav !== undefined;
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  // Two panes can show a large-file state at once in a split view, so the
-  // label target has to be unique per instance or the second pane's status
-  // region resolves aria-labelledby to the first pane's heading.
   const titleId = useId();
 
   useEffect(() => {
@@ -43,8 +40,6 @@ export function LargeFileEditorState({ docName, size, limit, backNav }: LargeFil
     <Empty
       role="status"
       aria-labelledby={titleId}
-      // Overrides the primitive's own slot: the pane identifies itself by this
-      // value, which predates the primitive.
       data-slot="large-file-editor-state"
       className="h-full gap-8 p-8"
     >
@@ -55,10 +50,7 @@ export function LargeFileEditorState({ docName, size, limit, backNav }: LargeFil
         <FileWarning className="size-9" aria-hidden="true" />
       </EmptyMedia>
       <EmptyHeader className="max-w-md gap-1">
-        {/* Classes go on EmptyTitle, not the h2: Slot concatenates the two
-            className strings without resolving Tailwind conflicts, so the
-            primitive's own text-sm/font-medium would win over this heading's
-            size and weight. Routing them through EmptyTitle lets `cn` merge. */}
+        {}
         <EmptyTitle asChild className="text-2xl font-light outline-none">
           <h2 ref={headingRef} id={titleId} tabIndex={canGoBack ? undefined : -1}>
             <Trans>File too large to open</Trans>

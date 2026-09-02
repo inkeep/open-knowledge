@@ -1,21 +1,3 @@
-/**
- * RTL behavior tests for `ViewInSourceBubbleButton` — the WYSIWYG bubble-menu
- * "View in source" entry.
- *
- * These exercise the real `requestViewInSource` wiring end to end: the button
- * reads the doc name and Y.Doc off the editor, derives the source `Y.Text`, and
- * drives the jump. The observable effects are the real ones — the flip event
- * that `EditorPane` subscribes to, and the jump navigation banked in the shared
- * pending-navigation store — so nothing internal is mocked.
- *
- * The keyboard cases are the point of the story: the icon-only siblings in this
- * bar act on `mousedown` only and so never fire from the keyboard. This entry
- * puts its action on `onClick`, which a focused button raises from Enter and
- * Space alike, and leaves `mousedown` to only hold the selection paint.
- *
- * Invocation: `pnpm run test:dom` from `packages/app/`.
- */
-
 import { MarkdownManager, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -37,20 +19,12 @@ const schema = getSchema(sharedExtensions);
 
 const DOC = '# Title\n\nfirst\n\ntarget paragraph';
 
-/** PM position just inside top-level block `index`. */
 function pmPosOfBlock(doc: PmNode, index: number): number {
   let pos = 0;
   for (let i = 0; i < index; i++) pos += doc.child(i).nodeSize;
   return pos + 1;
 }
 
-/**
- * A stand-in TipTap editor complete enough for the real jump: a ProseMirror
- * view carrying the caret + doc (`getEditorView`), a Collaboration extension
- * whose document is the seeded Y.Doc (`getYDoc`), and a registered doc name
- * (`getEditorDocName`). Pass `docName: null` to leave it unregistered. `caretBlock`
- * places the caret inside that top-level block, so the jump targets it.
- */
 function makeEditor(
   markdown: string,
   caretBlock: number,
@@ -148,8 +122,6 @@ describe('ViewInSourceBubbleButton', () => {
     const { editor } = makeEditor(DOC, 2);
     renderButton(editor);
 
-    // A bare mousedown (no click, no keyboard) must not act — that is exactly the
-    // mouse-down-only shape the icon siblings use, which the keyboard cannot reach.
     fireEvent.mouseDown(screen.getByTestId('view-in-source-bubble-button'));
 
     expect(flipped).toEqual([]);

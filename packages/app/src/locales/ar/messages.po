@@ -2824,6 +2824,7 @@ msgstr "يجري استنساخ {repoName}..."
 msgid "Cloning..."
 msgstr "يجري الاستنساخ..."
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4779,7 +4780,6 @@ msgid "Disconnecting"
 msgstr "يجري قطع الاتصال"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
@@ -7317,6 +7317,10 @@ msgstr "رابط المشاركة غير صالح."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "YAML غير صالح"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "يضيف أيضًا تقارير الأعطال التي سجّلها macOS لـ OpenKnowledge وعملياتها المساعدة، تقاريرنا وحدها ولا تقارير أي تطبيق آخر أبدًا."
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

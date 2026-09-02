@@ -2824,6 +2824,7 @@ msgstr "Clonage de {repoName}…"
 msgid "Cloning..."
 msgstr "Clonage…"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4779,7 +4780,6 @@ msgid "Disconnecting"
 msgstr "Déconnexion"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
@@ -7317,6 +7317,10 @@ msgstr "URL de partage non valide."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "YAML non valide"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "Il ajoute également les rapports de plantage que macOS a enregistrés pour OpenKnowledge et ses processus auxiliaires, uniquement les nôtres et jamais ceux d'une autre application."
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

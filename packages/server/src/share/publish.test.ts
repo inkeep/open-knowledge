@@ -1,10 +1,3 @@
-/**
- * Unit tests for the pure share-publish helpers — name/owner validation,
- * JSON-line picker, and the three event-shape mappers (owners, name-check,
- * publish). The HTTP handlers themselves live in `api-extension.ts` and
- * are exercised by the integration test at `./publish.integration.test.ts`.
- */
-
 import { describe, expect, test } from 'vitest';
 import {
   isValidShareOwnerName,
@@ -256,10 +249,6 @@ describe('redactShareSubprocessStderr', () => {
     expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
   });
 
-  // The `\\s` exclusion is now the only thing holding the userinfo span to one
-  // token. These three shapes are not producible by git stderr, but they fail
-  // loudly if a future edit widens the class to `[^/]*` — which would swallow
-  // whole sentences of a diagnostic into a `***`.
   test('a later email on the line is not swallowed into the URL userinfo', () => {
     const stderr = "fatal: 'https://github.com' — contact alice@corp.example";
     expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
@@ -275,9 +264,6 @@ describe('redactShareSubprocessStderr', () => {
     expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
   });
 
-  // The userinfo span runs to the LAST @ before a slash or whitespace, like
-  // the clone side's stripUrlPassword: a raw @ inside a hand-written
-  // password must not split the match early and leave the password's tail.
   test('redacts the whole password even when it contains a raw @', () => {
     const redacted = redactShareSubprocessStderr(
       'fatal: unable to access https://alice:p@ss@github.com/o/r',

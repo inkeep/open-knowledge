@@ -1,11 +1,3 @@
-/**
- * Browser coverage for the OKF recommendation's complete install path.
- *
- * The dedicated worker owns its skill roots because the test authors a real
- * project skill. Reloading after installation drops the card's optimistic state,
- * proving the server's skills listing recognizes what the install endpoint wrote.
- */
-
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';

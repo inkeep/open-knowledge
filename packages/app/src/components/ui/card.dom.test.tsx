@@ -1,13 +1,3 @@
-/**
- * DOM-substrate tests for Card. The contract that matters most here is the
- * `asChild` escape hatch: the call sites are named `<section>` region
- * landmarks, and a Card that silently rendered a div would drop a landmark
- * screen-reader users navigate by. The slot markers and the spacing custom
- * property are the other half — sibling slots key their padding off the root's
- * `--card-spacing`, and the root keys its own padding off whether a footer is
- * present, so both are structural rather than cosmetic.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { expectVisualClassTokens } from '@/test-utils/visual-contract';
@@ -38,8 +28,6 @@ describe('Card', () => {
   });
 
   test('asChild renders the caller element and keeps it a named landmark', () => {
-    // Both migrated call sites depend on this: their heading is a <p>, so the
-    // section carries its own aria-label rather than aria-labelledby.
     render(
       <Card asChild>
         <section aria-label="Stay in the loop">body</section>
@@ -121,8 +109,6 @@ describe('Card', () => {
   });
 
   test('root drops its bottom padding when a footer is present', () => {
-    // The footer is flush to the card edge and carries its own border and
-    // fill, so the root's bottom padding would read as a gap below the rule.
     const { container } = render(
       <Card>
         <CardContent>Content</CardContent>

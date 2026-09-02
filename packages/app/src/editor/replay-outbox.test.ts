@@ -1,9 +1,3 @@
-/**
- * Unit tests for the durable replay outbox — the IndexedDB store that carries
- * an unsynced edit across a tab crash in the `server-instance-mismatch`
- * recycle window. Runs against the globally-installed `fake-indexeddb`
- * (idb-preload setup file), which wipes all databases after each test.
- */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   consumeReplayOutboxEntry,
@@ -21,11 +15,6 @@ async function hasOutboxDb(dbName: string): Promise<boolean> {
   return dbs.some((d) => d.name === dbName);
 }
 
-/**
- * Run `body` against an engine that has no `indexedDB.databases()` (Firefox
- * < 126 / Safari < 14). Shadowing the prototype method on the instance is
- * what the module's own capability probe reads.
- */
 async function withoutDatabasesApi(body: () => Promise<void>): Promise<void> {
   const factory = indexedDB as unknown as { databases?: unknown };
   factory.databases = undefined;
@@ -63,7 +52,6 @@ describe('replay-outbox', () => {
       namespace: null,
     });
     expect(read).toBeNull();
-    // A normal doc open must not litter an empty outbox database.
     expect(await hasOutboxDb('ok-replay-outbox:main:never-written')).toBe(false);
   });
 
@@ -83,15 +71,12 @@ describe('replay-outbox', () => {
       { branch: 'main', docName: 'doc-claim', namespace: null },
       { delta: bytes(1), fullState: bytes(2) },
     );
-    // The claim: first consumer takes the record, every later consumer of the
-    // same record is told it lost.
     expect(
       await consumeReplayOutboxEntry({ branch: 'main', docName: 'doc-claim', namespace: null }),
     ).toBe(true);
     expect(
       await consumeReplayOutboxEntry({ branch: 'main', docName: 'doc-claim', namespace: null }),
     ).toBe(false);
-    // Never written at all reads the same as already-claimed.
     expect(
       await consumeReplayOutboxEntry({
         branch: 'main',
@@ -107,11 +92,6 @@ describe('replay-outbox', () => {
       { delta: bytes(7), fullState: bytes(8) },
     );
 
-    // Two tabs of one project racing the same `(namespace, branch, docName)`
-    // token. The count+delete pair runs inside ONE readwrite transaction, and
-    // IndexedDB serializes overlapping readwrite transactions across
-    // connections, so this is an atomic compare-and-claim rather than a
-    // check-then-act that both callers could win.
     const results = await Promise.all([
       consumeReplayOutboxEntry({ branch: 'main', docName: 'doc-race', namespace: null }),
       consumeReplayOutboxEntry({ branch: 'main', docName: 'doc-race', namespace: null }),
@@ -155,9 +135,6 @@ describe('replay-outbox', () => {
   });
 
   it('reads null for a foreign/truncated record rather than returning garbage', async () => {
-    // Plant a record whose shape is not {delta, fullState} Uint8Arrays,
-    // directly against the outbox DB's store shape (a truncated write or a
-    // record from a future schema must read as "nothing to replay").
     await new Promise<void>((resolve, reject) => {
       const req = indexedDB.open('ok-replay-outbox:main:garbage');
       req.onupgradeneeded = () => req.result.createObjectStore('entry');
@@ -186,10 +163,6 @@ describe('replay-outbox', () => {
   });
 
   it('writes nothing on an engine with no indexedDB.databases()', async () => {
-    // Without `databases()` the read path can never probe for this record, so
-    // a write would strand a full doc-state payload in storage that nothing
-    // can consume or reclaim. The write must decline and SAY it declined, so
-    // the caller knows its buffer is RAM-only.
     await withoutDatabasesApi(async () => {
       const persisted = await writeReplayOutboxEntry(
         { branch: 'main', docName: 'no-databases-api', namespace: null },
@@ -208,11 +181,6 @@ describe('replay-outbox', () => {
   });
 
   it('rejects with a timeout rather than hanging when IndexedDB stalls', async () => {
-    // The recycle awaits the write BEFORE clearData(), so an operation that
-    // never settles strands the whole recovery: the IDB is never cleared, the
-    // providers are never recycled, the in-flight marker never clears, and
-    // flush-on-hide stays inert behind it. A stalled storage layer has to
-    // surface as a bounded failure.
     vi.useFakeTimers();
     vi.spyOn(indexedDB, 'databases').mockReturnValue(new Promise(() => {}));
 
@@ -241,10 +209,6 @@ describe('replay-outbox', () => {
   });
 
   it('commits the write transaction explicitly and still stores the entry', async () => {
-    // The whole point of this write is to be durable before `clearData()`
-    // runs, and a tab can die before the idle turn that would auto-commit it.
-    // The write path is the only one here that calls commit() explicitly, so a
-    // call on the prototype during it is attributable to that path.
     const commitSpy = vi.spyOn(IDBTransaction.prototype, 'commit');
     try {
       const persisted = await writeReplayOutboxEntry(
@@ -260,7 +224,6 @@ describe('replay-outbox', () => {
       commitSpy.mockRestore();
     }
 
-    // Committing early must not cost durability: the entry is readable back.
     const entry = await readReplayOutboxEntry({
       branch: 'main',
       docName: 'doc-explicit-commit',
@@ -272,17 +235,6 @@ describe('replay-outbox', () => {
   });
 });
 
-/**
- * The outbox database name must carry a project component.
- *
- * `docName` is repo-root-relative and branch names repeat, so two worktrees of
- * one repository checked out on the same branch address the same doc path.
- * Every packaged project window loads the renderer through `loadFile`, so they
- * also share one `file://` origin — same-origin means same-app, not
- * same-project. Without a project component those two windows share one outbox
- * database, and the payload is buffered document content: a collision crosses
- * edits between projects instead of raising an error.
- */
 describe('replay-outbox project scoping', () => {
   const PROJECT_A = '/Users/dev/repo/.worktrees/a';
   const PROJECT_B = '/Users/dev/repo/.worktrees/b';
@@ -297,8 +249,6 @@ describe('replay-outbox project scoping', () => {
       { delta: bytes(2), fullState: bytes(0xbb) },
     );
 
-    // Each project reads back its OWN bytes. Unscoped, B's write lands on A's
-    // record and both reads return 0xbb.
     const fromA = await readReplayOutboxEntry({
       branch: 'main',
       docName: 'notes/todo.md',
@@ -323,9 +273,6 @@ describe('replay-outbox project scoping', () => {
       { delta: bytes(2), fullState: bytes(0xbb) },
     );
 
-    // The cross-tab exactly-once claim is per PROJECT, not per app. A window
-    // in project A replaying its edit must not stand down a window in
-    // project B, whose edit is a different document entirely.
     expect(
       await consumeReplayOutboxEntry({
         branch: 'main',
@@ -347,8 +294,6 @@ describe('replay-outbox project scoping', () => {
       { branch: 'main', docName: 'notes/todo.md', namespace: PROJECT_A },
       { delta: bytes(1), fullState: bytes(0xaa) },
     );
-    // Two tabs of one project still contend for one record: the second must
-    // lose the claim, or the edit replays twice.
     expect(
       await consumeReplayOutboxEntry({
         branch: 'main',
@@ -366,9 +311,6 @@ describe('replay-outbox project scoping', () => {
   });
 
   it('leaves the database name unchanged when there is no project namespace', async () => {
-    // Web hosts are served per project on `http://127.0.0.1:<port>`, so the
-    // origin already isolates them and the bare name stays correct. Holding
-    // the name steady there also means no existing record is orphaned.
     await writeReplayOutboxEntry(
       { branch: 'main', docName: 'doc-unscoped', namespace: null },
       { delta: bytes(1), fullState: bytes(2) },

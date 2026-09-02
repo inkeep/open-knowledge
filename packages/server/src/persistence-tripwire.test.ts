@@ -46,7 +46,6 @@ describe('classifyDuplication — incident shape blocks', () => {
 
   test('over-collapsed inter-copy whitespace still blocks', () => {
     const base = load('incident-changeset-readme-doubled.base.md');
-    // Many blank lines and tabs between the copies are tolerated.
     const candidate = `${base}\n\n\n\n\t  \n\n${base}`;
     const result = classifyDuplication(candidate, base);
     expect(result.kind).toBe('block');

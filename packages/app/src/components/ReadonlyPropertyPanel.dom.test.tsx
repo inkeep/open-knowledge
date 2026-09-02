@@ -1,10 +1,3 @@
-/**
- * RTL tests for the read-only frontmatter viewer used by the read-only
- * skill-file markdown viewer. Asserts the rendered surface: the "Properties"
- * disclosure, each frontmatter key + value, the no-frontmatter empty render,
- * and that complex values fall back to the read-only preview.
- */
-
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import * as linguiShim from '../../tests/lingui-macro-shim';
@@ -21,10 +14,8 @@ describe('ReadonlyPropertyPanel', () => {
       />,
     );
     expect(screen.getByTestId('readonly-property-panel')).toBeTruthy();
-    // Both keys render as visible labels.
     expect(screen.getByText('name')).toBeTruthy();
     expect(screen.getByText('description')).toBeTruthy();
-    // Each value is scoped to its key so duplicate testids stay unambiguous.
     const nameValue = container.querySelector(
       '[data-testid="readonly-property-value"][data-key="name"]',
     );
@@ -47,7 +38,6 @@ describe('ReadonlyPropertyPanel', () => {
     const { container } = render(
       <ReadonlyPropertyPanel text={'---\nname: foo\n---\n\n# Body\n'} />,
     );
-    // Read-only: the value is plain text, not an input the user could type into.
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('textarea')).toBeNull();
     expect(screen.getByTestId('readonly-property-value').textContent).toBe('foo');
@@ -59,7 +49,6 @@ describe('ReadonlyPropertyPanel', () => {
         text={'---\nname: foo\nmetadata:\n  version: 1\n  stage: beta\n---\n\n# Body\n'}
       />,
     );
-    // Complex values reuse the editable panel's read-only ComplexValueWidget.
     expect(screen.getByTestId('complex-value-widget')).toBeTruthy();
   });
 });

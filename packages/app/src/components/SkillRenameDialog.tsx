@@ -15,21 +15,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 interface Props {
-  /** The skill to rename; `null` keeps the dialog closed. */
   skill: SkillsListEntry | null;
-  /** Existing names in this skill's scope, for the collision check. */
   existingNames: ReadonlySet<string>;
   onOpenChange: (open: boolean) => void;
-  /** Called after a successful rename with the new name. */
   onRenamed?: (name: string) => void;
 }
 
-/**
- * Rename a skill. Thin wrapper over `moveSkill` (the same POST `/api/skill`
- * rename the editor's name field uses) with the shared `SKILL_NAME_REGEX` +
- * collision validation, so a skill can be renamed from its row without opening
- * the editor — mirroring the file row's Rename.
- */
 export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRenamed }: Props) {
   const renameSkill = useRenameSkill();
   const open = skill !== null;
@@ -37,7 +28,6 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Seed the field from the skill each time the dialog opens for a new target.
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed only when the target skill changes, not on every keystroke.
   useEffect(() => {
     if (skill) setName(skill.name);
@@ -47,8 +37,6 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
 
   const trimmed = name.trim();
   const unchanged = trimmed === skill.name;
-  // A space is the most common mistake, so message it explicitly (§12.9); the
-  // 64-char cap is also enforced by the input's maxLength (§12.10).
   const hasSpace = /\s/.test(name);
   const tooLong = trimmed.length > 64;
   const invalid = trimmed === '' || !SKILL_NAME_REGEX.test(trimmed) || tooLong;
@@ -58,12 +46,9 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
   async function submit() {
     if (!skill || !canSave) return;
     setSaving(true);
-    // Shared flow: POST the move, toast, AND retarget the open tab. Before this the
-    // dialog only did the move + toast, so renaming the skill you were viewing left
-    // the tab stranded on the deleted source doc.
     const result = await renameSkill({ scope: skill.scope, name: skill.name }, trimmed);
     setSaving(false);
-    if (!result.ok) return; // the shared hook already surfaced the error toast
+    if (!result.ok) return;
     onRenamed?.(trimmed);
     onOpenChange(false);
   }

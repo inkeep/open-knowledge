@@ -78,10 +78,6 @@ describe('installEditorLifecycleFlush', () => {
     const doc = makeFakeDoc('visible');
     installEditorLifecycleFlush({ onHide, onVisible, win, doc });
 
-    // The close sequence browsers actually emit: visibilitychange → hidden,
-    // then pagehide. Both listeners exist because neither fires reliably in
-    // every teardown, but one close is one hide — otherwise every open doc
-    // gets two forceSync()s and two concurrent full-state IDB flushes.
     doc.setVisibility('hidden');
     doc.emit('visibilitychange');
     win.emit('pagehide');
@@ -100,7 +96,6 @@ describe('installEditorLifecycleFlush', () => {
     doc.emit('visibilitychange');
     expect(onHide).toHaveBeenCalledTimes(1);
 
-    // A restored page (tab switch back, bfcache restore) hides again normally.
     doc.setVisibility('visible');
     doc.emit('visibilitychange');
     doc.setVisibility('hidden');
@@ -130,7 +125,6 @@ describe('installEditorLifecycleFlush', () => {
   it('is a safe no-op when globals are absent', () => {
     const onHide = vi.fn();
     const onVisible = vi.fn();
-    // Neither win nor doc provided and (in the node test env) no real globals.
     const uninstall = installEditorLifecycleFlush({ onHide, onVisible });
     expect(() => uninstall()).not.toThrow();
     expect(onHide).not.toHaveBeenCalled();

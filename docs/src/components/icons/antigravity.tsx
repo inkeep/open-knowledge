@@ -1,11 +1,5 @@
 import type { SVGProps } from 'react';
 
-// Antigravity brand mark, rendered monochrome via `currentColor` so it inherits
-// the sidebar text color like every other nav brand icon. A simple geometric
-// "upward" glyph (evoking anti-gravity) stands in for the official multi-color
-// logo, which OK does not ship. The SVG markup is kept identical to the app-side
-// icon at `packages/app/src/components/icons/antigravity.tsx` (the surrounding
-// comment is tailored per context, matching the pi.tsx / opencode.tsx pattern).
 export function AntigravityIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

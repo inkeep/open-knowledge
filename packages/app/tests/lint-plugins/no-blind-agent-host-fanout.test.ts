@@ -26,7 +26,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
 
-// __dirname → packages/app/tests/lint-plugins/. OK subtree root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/no-blind-agent-host-fanout.fixture.tsx';
 const PLUGIN_REL = './biome-plugins/no-blind-agent-host-fanout.grit';
@@ -38,31 +37,21 @@ describe('no-blind-agent-host-fanout GritQL plugin', () => {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
-    // Surface a spawn failure explicitly: without this, `status` is null on a
-    // `pnpm exec` spawn error and the `not.toBe(0)` below passes vacuously,
-    // masking the failure as "0 diagnostics".
     expect(result.error).toBeUndefined();
-    // biome check exits non-zero when any diagnostic (incl. plugin) fires.
     expect(result.status).not.toBe(0);
     const output = `${result.stdout}\n${result.stderr}`;
     const fires = (
       output.match(/User-global skill installs must be gated on detected hosts/g) ?? []
     ).length;
     expect(fires).toBe(5);
-    // Diagnostic names the replacement API, not just the prohibition.
     expect(output).toContain('detectUserSkillHosts');
     expect(output).toContain('HOSTS_WITH_USER_SKILL_DIR');
-    // Diagnostic message appends a docs URL — generic URL regex + anchor
-    // substring, so the regex can't be vacuously satisfied by an unrelated URL.
     expect(output).toMatch(/https?:\/\/[^\s]+/);
     expect(output).toContain('biome-plugins/README.md#no-blind-agent-host-fanoutgrit');
   });
 
   test('registered as an override over the packages that own the install, tests included', () => {
     const config = readBiomeConfig(REPO_ROOT);
-    // NOT at root plugins[] — the workspace has legitimate `--agent` argv in
-    // unrelated surfaces (ACP agent spawning), so a workspace-wide promotion
-    // would redden `pnpm lint`.
     const rootPlugins: string[] = config.plugins ?? [];
     expect(rootPlugins).not.toContain(PLUGIN_REL);
 
@@ -70,36 +59,24 @@ describe('no-blind-agent-host-fanout GritQL plugin', () => {
     const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
     expect(entry).toBeDefined();
     const includes = entry?.includes ?? [];
-    // The fixture must be in scope so the firing test above can trigger the rule.
     expect(includes).toContain(FIXTURE_REL);
-    // Both packages that can reach the user-global install must be covered.
     expect(includes).toContain('packages/server/src/**/*.ts');
     expect(includes).toContain('packages/cli/src/**/*.ts');
-    // Tests are deliberately IN scope, unlike the sibling spawn rule: a test
-    // that re-introduces the shell-out would re-introduce the fan-out. Assert
-    // no test-exclusion crept in.
     for (const excluded of ['!**/*.test.ts', '!**/*.test-helper.ts']) {
       expect(includes).not.toContain(excluded);
     }
   });
 
   test('bans every range shape of the spec, not just the one that shipped', () => {
-    // Strip `//` comment lines so the docstring's illustrative `skills@~1.5.0`
-    // mention is not mistaken for an `or {}` arm.
     const gritArms = readFileSync(GRIT_ABS, 'utf-8')
       .split('\n')
       .filter((line) => !line.trimStart().startsWith('//'))
       .join('\n');
     const matched = [...gritArms.matchAll(/`'([^']+)'`/g)].map((m) => m[1]).sort();
-    // Non-vacuity: a failed extraction would make the subset checks below pass
-    // against an empty set.
     expect(matched.length).toBeGreaterThan(0);
-    // `~` is what v0.3.0 shipped; the other three are the shapes a well-meaning
-    // "let's pin it properly" or "let's float it" edit would reach for.
     for (const spec of ['skills@~1.5.0', 'skills@^1.5.0', 'skills@1.5.0', 'skills@latest']) {
       expect(matched).toContain(spec);
     }
-    // The flag token itself — the `'*'` value is what bypassed host detection.
     expect(matched).toContain('--agent');
   });
 });

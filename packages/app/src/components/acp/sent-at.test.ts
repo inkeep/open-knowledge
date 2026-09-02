@@ -1,15 +1,8 @@
-/**
- * The sent-message stamp: how much date each age gets. Assertions read the
- * shape (does it carry a weekday / a month / a year) rather than exact
- * punctuation, which is the runtime locale's business.
- */
-
 import { describe, expect, test } from 'vitest';
 import { formatSentAt } from './sent-at';
 
 const NOW = new Date('2026-08-25T18:48:00').getTime();
 
-/** The locale-rendered weekday for a timestamp, to compare a stamp against. */
 function weekdayOf(at: number): string {
   return new Date(at).toLocaleString(undefined, { weekday: 'long' });
 }
@@ -41,8 +34,6 @@ describe('formatSentAt', () => {
   });
 
   test('the weekday window is exclusive at exactly seven days', () => {
-    // The `<` vs `<=` an off-by-one would flip: at the boundary itself and one
-    // millisecond either side.
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
     const atBoundary = NOW - sevenDays;
     expect(formatSentAt(atBoundary + 1, NOW)).toContain(weekdayOf(atBoundary + 1));
@@ -51,8 +42,6 @@ describe('formatSentAt', () => {
   });
 
   test('a stamp equal to now is today, not a zero-age weekday', () => {
-    // `age === 0` sits outside the `age > 0` guard, so the same-day branch has
-    // to be what catches it.
     expect(formatSentAt(NOW, NOW)).toBe(
       new Date(NOW).toLocaleTimeString(undefined, {
         hour: 'numeric',
@@ -62,8 +51,6 @@ describe('formatSentAt', () => {
   });
 
   test('an explicit locale is honoured over the machine default', () => {
-    // The weekday branch is the exposed one: a full English "Wednesday" beside
-    // Arabic interface copy is what passing the app's locale prevents.
     const at = new Date('2026-08-19T18:48:00').getTime();
     expect(formatSentAt(at, NOW, 'fr-FR')).toContain(
       new Date(at).toLocaleString('fr-FR', { weekday: 'long' }),
@@ -71,8 +58,6 @@ describe('formatSentAt', () => {
   });
 
   test('a future stamp falls back to the date rather than claiming a weekday just passed', () => {
-    // Clock skew and replayed logs both produce these. "Wednesday 6:48 PM" for
-    // something not yet sent reads as a moment the reader already missed.
     const at = new Date('2026-08-27T18:48:00').getTime();
     const stamp = formatSentAt(at, NOW);
     expect(stamp).not.toContain(weekdayOf(at));

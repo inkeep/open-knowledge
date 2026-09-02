@@ -1,7 +1,3 @@
-/**
- * Shared extension list used by the editor, persistence layer, and round-trip tests.
- * Single source of truth — drift between these causes silent data corruption.
- */
 import Highlight from '@tiptap/extension-highlight';
 import { TableRow } from '@tiptap/extension-table';
 import StarterKit from '@tiptap/starter-kit';
@@ -39,82 +35,37 @@ import { WikiLink } from './wiki-link.ts';
 import { WikiLinkEmbed } from './wiki-link-embed.ts';
 
 export const sharedExtensions = [
-  // JsxComponent MUST be before StarterKit so its schema is registered.
   JsxComponent,
-  // rawMdxFallback holds raw source for blocks that fail to parse.
   RawMdxFallback,
-  // jsxInline — inline MDX like <Icon />.
   JsxInline,
-  // mathInline — PM atom node for `$$x$$` mid-paragraph and `<InlineMath />`.
-  // jsxInline remains the generic inline-MDX target.
   MathInline,
-  // WikiLink also needs to register before StarterKit.
   WikiLink,
-  // WikiLinkEmbed sits next to WikiLink — same priority ordering concern.
   WikiLinkEmbed,
-  // Tag — `#tagname` inline atom (Obsidian parity). Sister to WikiLink:
-  // also a custom inline atom that registers a parseHTML-friendly element
-  // (`<a data-tag>`), needs schema priority over the StarterKit Link.
   Tag,
-  // Unified list extension — single list+listItem NodeSpec (replaces the
-  // BulletList/OrderedList/ListItem/TaskList/TaskItem fragmentation).
   List,
   ListItem,
-  // Fidelity overrides: StarterKit built-ins are disabled (e.g. bold: false)
-  // so these extensions are the active definitions, not overrides. Mark
-  // names are mdast-canonical (`strong`/`emphasis`); StarterKit disable keys
-  // stay as 'bold'/'italic' because those are TipTap extension keys, not
-  // schema names.
   EmphasisFidelity,
   StrongFidelity,
-  // StrikeFidelity carries `sourceDelimiter` ('~' vs '~~') so GFM
-  // single-tilde strikethrough round-trips byte-equal; replaces the
-  // StarterKit Strike.
   StrikeFidelity,
-  // UnderlineFidelity carries `sourceForm` ('u' vs 'ins') so both inline-HTML
-  // spellings of underline re-emit as authored; replaces the StarterKit
-  // Underline, which had no serializable markdown form at all.
   UnderlineFidelity,
-  // Override @tiptap/extension-code's `excludes: '_'` so the Code mark can
-  // coexist with emphasis/strong on the same span. CommonMark allows it;
-  // the upstream exclusion broke round-trip for `*a \`*\`*` and `_a \`_\`_`
-  // inputs.
   CodeMarkFidelity,
   CodeBlockFidelity,
-  // BlockquoteFidelity wraps Blockquote with `sourceMarkerSpacings` per-line:
-  // captures `> foo` vs `>foo` form per source line so the to-markdown
-  // handler emits each line with the user's chosen marker form.
   BlockquoteFidelity,
   HeadingFidelity,
-  // ThematicBreak — mdast-canonical name (not horizontalRule).
   ThematicBreakFidelity,
   LinkFidelity,
   HtmlBlockFidelity,
   LinkRefDefFidelity,
   HardBreakFidelity,
-  // escapeMark for structurally-ambiguous backslash escapes
   EscapeMark,
-  // Doc-level `sourceDocBoundary` attr: document-boundary bytes (head BOM,
-  // leading/trailing blanks, inter-block blank-line counts) captured at
-  // parse time so the programmatic parse→PM→serialize round-trip is
-  // byte-exact. The Y fragment never carries doc attrs, so the CRDT path
-  // is unaffected by construction.
   DocFidelity,
-  // Verbatim source text for unsupported inline markdown constructs.
   SourceLiteralMark,
-  // Keeps `renderText`'s position-faithful placeholder out of plain-text copy.
   PlainTextClipboard,
   StarterKit.configure({
     undoRedo: false,
     bulletList: false,
     orderedList: false,
     listItem: false,
-    // StarterKit's ListKeymap drives GFM-correct Backspace/Delete in lists
-    // (join into previous item, lift out, merge a trailing paragraph back into
-    // the list). Its default wrapperNames are ['bulletList','orderedList'] —
-    // neither exists here, since the unified List extension names the wrapper
-    // `list`. Without the correct name handleBackspace's hasListBefore check
-    // never matches and PM's default joinBackward spawns a stray empty bullet.
     listKeymap: {
       listTypes: [{ itemName: 'listItem', wrapperNames: ['list'] }],
     },
@@ -134,63 +85,18 @@ export const sharedExtensions = [
       width: 2,
     },
   }),
-  // Preempts ListKeymap's two nested-boundary misfires (orphan lift on
-  // Backspace, wrong-depth/checked-loss on Delete). MUST stay registered
-  // after StarterKit: at equal priority the later-registered extension's
-  // key handlers run first, which is the entire delivery mechanism.
   ListBoundaryMerge,
-  // TableFidelity wraps Table with a `sourceDashCounts` attr: the GFM
-  // alignment-row dash counts captured at parse time and threaded back to
-  // the to-markdown handler so `:---:` round-trips byte-equal.
   TableFidelity.configure({
     resizable: true,
   }),
   TableRow,
-  // TableHeaderFidelity / TableCellFidelity carry per-cell `sourcePadding`
-  // ({ left, right }) captured at parse time. The to-markdown table handler
-  // re-emits the user's padding so hand-aligned tables round-trip byte-equal.
   TableHeaderFidelity,
   TableCellFidelity,
-  // ImageSrcFidelity wraps Image with a `sourceUrl` attr (the original
-  // doc-relative markdown URL) so the rendered `src` can be normalized to a
-  // server-absolute / desktop-origin form while PM→mdast round-trips byte-
-  // identical; its `renderHTML` applies the desktop-origin rewrite for inline
-  // images (which render through TipTap's NodeView, not the React Image.tsx).
   ImageSrcFidelity.configure({ inline: true }),
-  // Inline atom that preserves `![alt][ref]` / `![ref][]` / `![ref]` shapes
-  // so reference identity survives round-trip. Plain inline images
-  // (`![alt](src)`) keep flowing through the `image` node above.
   ImageReferenceFidelity,
   Highlight,
-  // Legibility contract for the two comment descriptors below: neither
-  // self-hides any more, so a consumer that mounts this schema owns the
-  // `.comment-mark` / `.comment-block` styling that marks an annotation as
-  // one. Without it a comment renders as ordinary prose. The app supplies it
-  // in `globals.css`; nothing else in this workspace renders the schema to a
-  // DOM (the server never does, docs render through `mdastToHtml`).
-  //
-  // Custom comment mark — literal authoring annotation. Recognises
-  // `%%text%%` (Obsidian) and `<!-- text -->` (HTML comment) inline
-  // forms. Renders with `data-clipboard-omit="true"` so the text is
-  // dropped from cross-app clipboard payloads, and dimmed rather than
-  // hidden in WYSIWYG so a promoted run never removes typed text from
-  // the editing surface. The PM mark carries `sourceForm` (`'percent' |
-  // 'html'`); PM-mediated saves preserve the form the author typed.
   CommentMark,
-  // Block counterpart — block-level literal authoring annotation.
-  // Recognises `%%\n…\n%%` (Obsidian fence) and `<!-- … -->`
-  // (single-paragraph HTML comment, including multi-child paragraphs
-  // whose body contains inline markdown). Same dimmed-not-hidden
-  // treatment and `data-clipboard-omit="true"`. PM node carries
-  // `sourceForm` + `sourceLayout`; saves preserve byte-stable round-trip.
   CommentBlock,
-  // Footnote inline reference `[^id]` (atom) + block definition
-  // `[^id]: body` (block). remark-gfm parses into mdast `footnoteReference`
-  // / `footnoteDefinition` nodes; round-trip via remark-gfm's existing
-  // stringify path. Footnote refs corrupted to literal
-  // `"footnoteReference"` text via the inline-unknown fallback; defs
-  // were silently dropped via the ignore-list. These extensions fix the
-  // corruption.
   FootnoteReference,
   FootnoteDefinition,
 ];

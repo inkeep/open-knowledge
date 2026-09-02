@@ -1,23 +1,9 @@
-/**
- * Tier-3 RTL mount tests for Settings → Link previews (external link-preview
- * egress control; on by default, this section is the per-machine opt-out).
- *
- * Behavior is driven through the project-local ConfigContext (mocked binding +
- * preference) and asserted on user-visible output: the toggle state, the egress
- * confirmation gate, and the disable-is-immediate path. The exact CRDT patch is
- * pinned so a payload-shape regression fails here rather than silently writing
- * the wrong key.
- */
-
 import type { Config, ConfigBinding } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { describedTextOf } from './settings-a11y.test-helper';
 
-// Radix Dialog mounts a focus-trap that reaches for DOM globals the jsdom
-// preload doesn't expose. Hoist the same shims the sibling settings DOM tests
-// use.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -63,7 +49,6 @@ function configWithLinkPreviews(enabled: boolean): Config {
   return { linkPreviews: { enabled } } as unknown as Config;
 }
 
-// Records every patch payload so tests can assert the exact CRDT write.
 function makeBinding(): { binding: ConfigBinding; calls: unknown[] } {
   const calls: unknown[] = [];
   const binding = {
@@ -120,9 +105,6 @@ describe('LinkPreviewsSection', () => {
   });
 
   test('the egress disclosure is announced with the toggle, not just shown beside it', () => {
-    // The body text is what tells you hovering a link reaches out to the
-    // destination site. Without aria-describedby a screen-reader user hears
-    // only "Enable external link previews" and never learns that.
     const { binding } = makeBinding();
     mockProjectLocalBinding = binding;
     mockProjectLocalConfig = configWithLinkPreviews(true);
@@ -155,7 +137,6 @@ describe('LinkPreviewsSection', () => {
 
     await user.click(screen.getByTestId('settings-link-previews-toggle'));
 
-    // Confirmation gate is open with the egress disclosure; nothing written yet.
     expect(await screen.findByText("This sends the link's address off your machine")).toBeDefined();
     expect(calls.length).toBe(0);
 
@@ -207,9 +188,6 @@ describe('LinkPreviewsSection', () => {
     await user.click(toggle);
     await user.click(await screen.findByRole('button', { name: /cancel/i }));
 
-    // The dialog is opened programmatically (no Radix trigger), so without the
-    // explicit onCloseAutoFocus redirect Radix would focus a null triggerRef
-    // and focus would drop to document.body.
     await waitFor(() => {
       expect(screen.queryByTestId('settings-link-previews-confirm')).toBeNull();
     });
@@ -236,8 +214,6 @@ describe('LinkPreviewsSection', () => {
 
   test('write failure keeps the confirm dialog open for retry (egress consent invariant)', async () => {
     const user = userEvent.setup();
-    // A binding whose patch always fails — the dialog must stay open so the user
-    // keeps their retry for a privacy-sensitive action.
     const failBinding = {
       ...makeBinding().binding,
       patch: () => ({ ok: false, error: { code: 'noop', message: 'fail' } }),
@@ -250,7 +226,6 @@ describe('LinkPreviewsSection', () => {
     await user.click(screen.getByTestId('settings-link-previews-toggle'));
     await user.click(await screen.findByTestId('settings-link-previews-confirm-enable'));
 
-    // Still open (success-gated close did not fire on the failed write).
     expect(await screen.findByTestId('settings-link-previews-confirm')).toBeDefined();
   });
 });

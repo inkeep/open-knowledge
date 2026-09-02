@@ -28,8 +28,6 @@ describe('buildLinkPathSuggestions', () => {
 
   test('returns nothing for a bare query that matches no path', () => {
     expect(buildLinkPathSuggestions({ value: 'zzz-nope', pages, folderPaths })).toEqual([]);
-    // URL-shaped values match no path; suppression of the panel for real URLs
-    // is the component's job, not this pure matcher's.
     expect(buildLinkPathSuggestions({ value: 'https://example.com', pages, folderPaths })).toEqual(
       [],
     );
@@ -77,8 +75,6 @@ describe('buildLinkPathSuggestions', () => {
       { kind: 'page', path: 'notes/api' },
       { kind: 'page', path: 'guides/api/reference' },
     ];
-    // Same ranking whether the query carries a leading slash or not — the query
-    // is normalized before scoring, so both forms hit the identical code path.
     expect(
       buildLinkPathSuggestions({
         value: '/api',
@@ -96,7 +92,6 @@ describe('buildLinkPathSuggestions', () => {
   test('browse ordering keeps content pages ahead of dot-directory files', () => {
     const mixed = new Set(['.github/ci', '.changeset/note', 'docs/install', 'guides/intro']);
     const browsed = buildLinkPathSuggestions({ value: '', pages: mixed }).map((s) => s.path);
-    // Every non-dot page appears before any dot-directory page.
     const firstDotIndex = browsed.findIndex((p) => p.split('/')[0]?.startsWith('.'));
     const lastNonDotIndex = browsed.reduce(
       (last, p, i) => (p.split('/')[0]?.startsWith('.') ? last : i),

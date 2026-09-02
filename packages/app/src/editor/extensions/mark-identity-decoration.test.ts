@@ -1,13 +1,3 @@
-/**
- * markIdentityDecorationPlugin — unit tests.
- *
- * Covers the decoration-emission contract: given a `markIdentityPlugin` state
- * with N tracked marks, the decoration plugin emits a DecorationSet of N
- * inline decorations, each carrying `data-mark-id` attributes matching the
- * IDs assigned by the identity plugin. Pure PM state operations — no live
- * editor needed.
- */
-
 import { type Mark, Schema } from '@tiptap/pm/model';
 import { EditorState, type Plugin } from '@tiptap/pm/state';
 import type { DecorationSet } from '@tiptap/pm/view';
@@ -18,10 +8,6 @@ import {
   markIdentityDecorationKey,
   markIdentityDecorationPlugin,
 } from './mark-identity-decoration';
-
-// ---------------------------------------------------------------------------
-// Test schema — mirrors mark-identity.test.ts for shared conventions
-// ---------------------------------------------------------------------------
 
 const schema = new Schema({
   nodes: {
@@ -55,21 +41,6 @@ interface DecorationSpec {
   attrs: Record<string, string>;
 }
 
-/**
- * Extract decorations from a plugin.props.decorations(state) result into a
- * plain shape so tests can assert without reaching into PM internals.
- *
- * PM's `props.decorations` is a method with `this: Plugin` binding; calling
- * via `plugin.props.decorations(state)` would rebind `this` to `plugin.props`.
- * Use `.call(plugin, state)` to preserve the documented binding.
- *
- * The return type of `props.decorations` is `DecorationSource | null | undefined`;
- * `DecorationSource` is a supertype of `DecorationSet` without `.find()`. This
- * plugin always returns `DecorationSet.create(...)` or null, so the cast is safe.
- *
- * Inline decoration attrs on PM's internal `InlineType` are stored directly
- * (not nested under `.attributes`): `{ 'data-mark-id': 'm1', class?, style? }`.
- */
 function decorationSpecs(state: EditorState): DecorationSpec[] | null {
   const plugin = state.plugins.find((p) => p.spec.key === markIdentityDecorationKey) as
     | Plugin
@@ -105,15 +76,9 @@ function makeState(doc: ReturnType<typeof buildDoc>): EditorState {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Exports + factory shape
-// ---------------------------------------------------------------------------
-
 describe('markIdentityDecorationPlugin — exports', () => {
   test('markIdentityDecorationKey is a stable PluginKey', () => {
     expect(markIdentityDecorationKey).toBeDefined();
-    // PluginKey has a .key field (internal name); its identity is stable
-    // across module reloads because we hold a single module-level instance.
     expect(markIdentityDecorationKey).toBe(markIdentityDecorationKey);
   });
 
@@ -127,15 +92,10 @@ describe('markIdentityDecorationPlugin — exports', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Decoration emission
-// ---------------------------------------------------------------------------
-
 describe('markIdentityDecorationPlugin — decoration emission', () => {
   test('empty doc → no decorations', () => {
     const state = makeState(buildDoc([{ text: 'plain text' }]));
     const specs = decorationSpecs(state);
-    // Either null (plugin bails out on empty state) or empty array.
     expect(specs === null || specs.length === 0).toBe(true);
   });
 
@@ -167,8 +127,8 @@ describe('markIdentityDecorationPlugin — decoration emission', () => {
   test('decoration from/to match MarkInfo range', () => {
     const state = makeState(
       buildDoc([
-        { text: 'pre ' }, // positions 1..5
-        { text: 'LINK', marks: [linkMark('https://x.com')] }, // positions 5..9
+        { text: 'pre ' },
+        { text: 'LINK', marks: [linkMark('https://x.com')] },
         { text: ' post' },
       ]),
     );
@@ -186,15 +146,11 @@ describe('markIdentityDecorationPlugin — decoration emission', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Safe degradation
-// ---------------------------------------------------------------------------
-
 describe('markIdentityDecorationPlugin — safe degradation', () => {
   test('without markIdentityPlugin installed → decorations returns null', () => {
     const state = EditorState.create({
       doc: buildDoc([{ text: 'x', marks: [linkMark('https://a.com')] }]),
-      plugins: [markIdentityDecorationPlugin()], // NO identity plugin
+      plugins: [markIdentityDecorationPlugin()],
     });
     const specs = decorationSpecs(state);
     expect(specs).toBeNull();

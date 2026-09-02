@@ -8,7 +8,6 @@ import {
   notFoundMessage,
 } from './desktop-dispatch.ts';
 
-/** Construct a baseline deps object for darwin + interactive + no overrides. */
 function baseDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
   return {
     platform: 'darwin',
@@ -21,7 +20,6 @@ function baseDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
   };
 }
 
-/** Stat impl that returns "is a file" for an exact path, null otherwise. */
 function statForFile(path: string): DetectDeps['statSync'] {
   return (p) => (p === path ? { isFile: () => true, isDirectory: () => false } : null);
 }
@@ -49,8 +47,6 @@ describe('detectDesktop — platform gate (FR10)', () => {
 });
 
 describe('detectDesktop — Windows/Linux install resolution', () => {
-  // The one-click per-user NSIS install dir is the sanitized package name,
-  // not productName — see WIN_INSTALL_DIR_NAMES in desktop-dispatch.ts.
   const WIN_EXE =
     'C:\\Users\\u\\AppData\\Local\\Programs\\@inkeepopen-knowledge-desktop\\OpenKnowledge.exe';
   const DEB_EXE = '/opt/OpenKnowledge/openknowledge';
@@ -121,7 +117,6 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
       baseDeps({
         env: { ELECTRON_RUN_AS_NODE: '1' },
         execPath: '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge',
-        // Even if statSync returns null, introspection branch wins.
         statSync: () => null,
       }),
     );
@@ -149,11 +144,6 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
         },
       }),
     );
-    // Through the current DI surface a stat throw is caught inside
-    // probeBundle, so detectDesktop sees both probes return false and
-    // reports `no-bundle`. The outer `stat-error` catch in detectDesktop
-    // is unreachable here — defense-in-depth for a future probe path
-    // that bypasses probeBundle's catch.
     expect(result).toEqual({ available: false, reason: 'no-bundle' });
   });
 });
@@ -220,9 +210,6 @@ describe('detectDesktop — headless gate (FR9 — CI is intentionally NOT a tri
     expect(result.reason).toBe('headless');
   });
 
-  // win32 carve-out: Electron-as-Node stdio are pipes on Windows, so an
-  // interactive console run of ok.cmd probes isTTY=undefined — never true.
-  // VM-verified against a live NSIS install.
   test('win32: isTTY=undefined → available (console-wrapper signature)', () => {
     const result = detectDesktop(
       baseDeps({
@@ -331,8 +318,6 @@ describe('launchDesktop — spawn shape (FR11)', () => {
     }) as unknown as Parameters<typeof launchDesktop>[0]['spawn'];
 
     let logged = '';
-    // Platform pinned: launchDesktop defaults to process.platform (the CI
-    // test host is Linux); the darwin branch is the `open -b` shape.
     launchDesktop({ spawn: fakeSpawn, log: (m) => (logged = m), platform: 'darwin' });
 
     expect(captured.command).toBe('open');
@@ -376,11 +361,6 @@ describe('launchDesktop — spawn shape (FR11)', () => {
   }
 
   test('spawn env omits ELECTRON_RUN_AS_NODE so the launched GUI does not boot as a Node host', () => {
-    // The CLI wrapper sets ELECTRON_RUN_AS_NODE=1 to use the bundled Electron
-    // as Node. LaunchServices propagates env into the launched desktop
-    // process — without scrubbing this var, the desktop Electron main process
-    // sees it, becomes a headless Node host, and exits silently. Regression
-    // guard for the "Launching..." line prints but no GUI appears symptom.
     const prevValue = process.env.ELECTRON_RUN_AS_NODE;
     process.env.ELECTRON_RUN_AS_NODE = '1';
     try {
@@ -417,8 +397,6 @@ describe('UX message helpers — FR5 contextual notFoundMessage(reason)', () => 
     const msg = notFoundMessage('headless');
     expect(msg).toContain('headless');
     expect(msg).toContain('OK_FORCE_DESKTOP');
-    // Crucially: does NOT say "not found" — the bundle IS found here, the
-    // user's context is what gated it.
     expect(msg).not.toContain('not found');
   });
 
@@ -437,7 +415,6 @@ describe('UX message helpers — FR5 contextual notFoundMessage(reason)', () => 
 
   test('stat-error reason names the filesystem failure, platform-agnostically', () => {
     const msg = notFoundMessage('stat-error');
-    // No hardcoded install path: the message renders on all three platforms.
     expect(msg).not.toContain('/Applications');
     expect(msg).toMatch(/filesystem|permission/i);
   });

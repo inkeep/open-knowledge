@@ -203,7 +203,6 @@ import {
   waitForActiveProviderSynced,
 } from './_helpers';
 
-/** A crash is never flake. Rationale, costs and measurements: file header. */
 test.describe.configure({ retries: 0 });
 test.use({ trace: 'retain-on-failure' });
 
@@ -211,32 +210,11 @@ const WYSIWYG = '.ProseMirror:not(.composer-prosemirror)';
 const CHUNK_WRAPPER = `${WYSIWYG} .ok-chunk-wrapper`;
 const SCROLLER = '[data-testid="editor-scroll-container"]';
 
-/**
- * Tall enough that blocks away from the viewport genuinely leave the cv:auto
- * render margin — the scale the landing tests rely on for honest virtualization.
- * Much below this nothing ever locks and every arm would pass vacuously.
- */
 const BLOCK_COUNT = 400;
-/** Mid-document target: far from both ends, so neither edge special-cases it. */
 const TARGET_INDEX = 150;
-/** Marker text length (`OKBLK####`), the key lock transitions are recorded under. */
 const MARKER_LENGTH = 9;
-/** Budget for a scroll's relevance transitions to arrive and stop arriving. */
 const SETTLE_TIMEOUT_MS = 15_000;
-/**
- * Poll cadence for that wait. With `REQUIRED_STABLE_SAMPLES`, this is what
- * makes the accepted quiescence window an explicit half-second rather than
- * whatever `expect.poll`'s default backoff happens to produce.
- */
 const SETTLE_POLL_INTERVAL_MS = 100;
-/**
- * Clicks the churn arm lands while wrappers flip relevance underneath them.
- *
- * Named rather than inlined because `pressAndProbe`'s listener-cleanup rationale
- * depends on this being more than a couple — it is repeated presses against one
- * `Page` that turn a leaked `crash` listener into log noise. A bare literal in
- * the loop would let the two drift apart, and this value has already moved once.
- */
 const CHURN_CLICK_COUNT = 20;
 
 type ClickOutcome = 'alive' | 'renderer-crashed';
@@ -248,26 +226,20 @@ interface LockEvent {
 
 interface LockReport {
   events: LockEvent[];
-  /** Transitions into the locked state, across all wrappers. */
   skippedCount: number;
-  /** Whether the capture-phase arm ran at all. */
   armRan: boolean;
 }
 
-/** Shape of the page-context recorder the helpers below read and write. */
 interface CvRecorder {
   events: LockEvent[];
   armRan: boolean;
 }
 
-/** Install (or reset) cv:auto transition recording on every chunk wrapper. */
 async function trackLockTransitions(page: Page): Promise<void> {
   await page.evaluate(
     ({ wrapperSelector, markerLength }) => {
       const w = window as unknown as { __cv: CvRecorder; __cvBound?: boolean };
       w.__cv = { events: [], armRan: false };
-      // Listeners are bound once; re-invoking only clears the log, so a test can
-      // take a fresh reading between phases without double-recording.
       if (w.__cvBound) return;
       w.__cvBound = true;
       for (const el of document.querySelectorAll<HTMLElement>(wrapperSelector)) {
@@ -300,23 +272,6 @@ async function lockEventCount(page: Page): Promise<number> {
   });
 }
 
-/**
- * Wait until relevance transitions have both ARRIVED and STOPPED arriving.
- *
- * Condition-based rather than a fixed sleep, per the repo's zero-allowlist e2e
- * STOP rule. It is also the stronger check: requiring `count > since` means a
- * scroll that provoked nothing fails here instead of silently handing a later
- * absence-assertion a page where nothing ever happened.
- *
- * Several consecutive stable samples, not two. Relevance transitions arrive in
- * ragged waves as off-screen chunks refine their reserved size over successive
- * frames, so two equal readings are routinely a lull inside a burst rather than
- * its end. `scrollWysiwygBlockToTop` in `_helpers/landing.ts` reached the same
- * conclusion about the same phenomenon and holds for five stable frames; this
- * matches it. Under-waiting matters here more than it does there, because what
- * this gates is an ABSENCE assertion — settle too early and the target's lock
- * simply has not happened yet, which reads as the property holding.
- */
 const REQUIRED_STABLE_SAMPLES = 5;
 
 async function waitForLockTransitionsToSettle(page: Page, since: number): Promise<void> {
@@ -332,13 +287,6 @@ async function waitForLockTransitionsToSettle(page: Page, since: number): Promis
       },
       {
         timeout: SETTLE_TIMEOUT_MS,
-        // Fixed cadence, not `expect.poll`'s default exponential backoff. Under
-        // the default, five stable samples cannot be reached before the sixth
-        // attempt, which alone eats seconds of the budget and leaves real
-        // settling headroom well under what `SETTLE_TIMEOUT_MS` implies. It
-        // fails safe either way — a premature timeout is a false failure, never
-        // a false pass — but a fixed interval makes the accepted quiescence
-        // window a stated number rather than a side effect of the backoff curve.
         intervals: [SETTLE_POLL_INTERVAL_MS],
         message: 'cv:auto relevance transitions never arrived, or never stopped arriving',
       },
@@ -346,7 +294,6 @@ async function waitForLockTransitionsToSettle(page: Page, since: number): Promis
     .toBeGreaterThanOrEqual(REQUIRED_STABLE_SAMPLES);
 }
 
-/** Isolated per-test tall doc: seed, navigate, wait for sync + editor mount. */
 async function setupTallDoc(page: Page, api: ApiHelpers): Promise<void> {
   const docName = `test-cvauto-${randomUUID().slice(0, 8)}`;
   const { markdown } = generateTallDoc({ blockCount: BLOCK_COUNT });
@@ -356,7 +303,6 @@ async function setupTallDoc(page: Page, api: ApiHelpers): Promise<void> {
   await expect(page.locator(WYSIWYG).first()).toBeVisible();
 }
 
-/** Put the target at the readable top and confirm the scroll converged. */
 async function stageTargetForClick(page: Page, marker: string): Promise<void> {
   const settleDelta = await scrollWysiwygBlockToTop(page, marker);
   expect(
@@ -365,16 +311,6 @@ async function stageTargetForClick(page: Page, marker: string): Promise<void> {
   ).toBeLessThan(40);
 }
 
-/**
- * Scroll down by `viewports` viewport heights, then wait for the relevance
- * transitions that provokes to settle.
- *
- * Returns the distance the browser ACTUALLY applied. `scrollTop +=` is clamped
- * at the scroller's maximum, so a caller that reasons about distance has to
- * measure it: the phase asserting a clicked block never locks would otherwise
- * be silently weakened by a clamp while sibling-block transitions kept the run
- * looking healthy.
- */
 async function scrollAway(page: Page, viewports: number): Promise<number> {
   const before = await lockEventCount(page);
   const moved = await page.evaluate(
@@ -393,22 +329,7 @@ async function scrollAway(page: Page, viewports: number): Promise<number> {
   return moved;
 }
 
-/**
- * Press-and-release at (x, y), then classify whether the renderer survived.
- *
- * Raced against the page `crash` event because a dead renderer can leave the
- * in-flight input protocol call hanging (it would otherwise burn the whole test
- * budget before the assertion runs); either signal classifies as
- * `renderer-crashed` so the test fails on the assertion, not on infrastructure
- * noise. Mirrors the sibling `.ok-mode-hidden` pin's probe.
- */
 async function pressAndProbe(page: Page, x: number, y: number): Promise<ClickOutcome> {
-  // Registered and removed explicitly rather than via `once`, which only
-  // detaches when the event FIRES. On the asserted path the renderer survives,
-  // so a `once` listener would linger along with its never-settling promise,
-  // and the churn arm calls this repeatedly against a single `Page`
-  // (`CHURN_CLICK_COUNT`) — enough accumulation to spill listener warnings into
-  // exactly the CI log someone would be reading if this pin ever went red.
   let onCrash: (() => void) | undefined;
   const crashed = new Promise<ClickOutcome>((resolve) => {
     onCrash = () => resolve('renderer-crashed');
@@ -419,7 +340,6 @@ async function pressAndProbe(page: Page, x: number, y: number): Promise<ClickOut
       await page.mouse.move(x, y);
       await page.mouse.down();
       await page.mouse.up();
-      // Liveness probe: a crashed page rejects (or never answers) evaluate.
       await page.evaluate(() => document.readyState);
       return 'alive';
     })().catch((): ClickOutcome => 'renderer-crashed');
@@ -429,12 +349,6 @@ async function pressAndProbe(page: Page, x: number, y: number): Promise<ClickOut
   }
 }
 
-/**
- * A point over the block's emphasised marker element, so the hit test resolves
- * to a DESCENDANT of the wrapper rather than the wrapper itself — the only
- * shape that can reach the CHECK. Throws on an empty box, because a click at a
- * guessed coordinate would miss the editor and pass for the wrong reason.
- */
 async function pointInsideBlockText(page: Page, marker: string): Promise<{ x: number; y: number }> {
   const box = await page.evaluate(
     ({ marker, wrapperSelector }) => {
@@ -463,11 +377,6 @@ test('PRD-8158: a clicked .ok-chunk-wrapper stays out of the cv:auto paint lock'
   await setupTallDoc(page, api);
   const targetMarker = blockMarker(TARGET_INDEX);
 
-  // Phase 1 (control) — scroll the target away WITHOUT clicking it. This proves
-  // the display-lock machinery is live in this run and that the scroll distance
-  // is enough to move this particular block out of the render margin. Without
-  // it, phase 2's "did not lock" result would be indistinguishable from "never
-  // could have locked".
   await stageTargetForClick(page, targetMarker);
   await trackLockTransitions(page);
   const controlDistance = await scrollAway(page, 2);
@@ -477,8 +386,6 @@ test('PRD-8158: a clicked .ok-chunk-wrapper stays out of the cv:auto paint lock'
     `control failed: block "${targetMarker}" did not enter a cv:auto paint lock even unclicked, so this run cannot tell a selection pin from an inert page`,
   ).toBeGreaterThan(0);
 
-  // Phase 2 — bring it back (which makes it relevant again), click it to place
-  // the caret inside it, then scroll it FOUR TIMES the control distance away.
   await stageTargetForClick(page, targetMarker);
   await trackLockTransitions(page);
   const point = await pointInsideBlockText(page, targetMarker);
@@ -486,21 +393,12 @@ test('PRD-8158: a clicked .ok-chunk-wrapper stays out of the cv:auto paint lock'
   expect(outcome, 'renderer must survive an ordinary click into a chunk wrapper').toBe('alive');
   const clickedDistance = await scrollAway(page, 8);
 
-  // The distance claim is measured, not inferred from the seed geometry: a
-  // clamped or short scroll would quietly turn "distance-independent" into
-  // "barely moved". The bound has to be STRICTLY GREATER by a real margin, not
-  // merely "at least as far" — a clamp down to exactly the control distance
-  // would satisfy that weaker form while destroying the only thing this phase
-  // establishes, and every other check here would still pass because sibling
-  // blocks carry `skippedCount`.
   expect(
     clickedDistance,
     'the post-click scroll was clamped to near the control distance, so this phase no longer distinguishes a selection pin from simply not having travelled far enough',
   ).toBeGreaterThan(controlDistance * 2);
 
   const after = await readLockReport(page);
-  // Sibling blocks must still be locking, or the page went inert and the
-  // assertion below would pass for the wrong reason.
   expect(
     after.skippedCount,
     'no wrapper at all entered a cv:auto paint lock after the click — the page went inert, so the selection-pin assertion would be vacuous',
@@ -524,10 +422,6 @@ test('PRD-8158: a click survives its chunk wrapper being scrolled out of relevan
   await stageTargetForClick(page, targetMarker);
   await trackLockTransitions(page);
 
-  // Arm: on the next mousedown (capture phase — after Blink's hit test has
-  // resolved a descendant text node, before the default selection handling
-  // reads a caret out of it), scroll the clicked block two viewports out of the
-  // cv:auto render margin and force style+layout.
   await page.evaluate(
     ({ scrollSelector }) => {
       const scroller = Array.from(document.querySelectorAll<HTMLElement>(scrollSelector)).find(
@@ -558,15 +452,7 @@ test('PRD-8158: a click survives its chunk wrapper being scrolled out of relevan
 
   await waitForLockTransitionsToSettle(page, before);
   const report = await readLockReport(page);
-  // A `window` capture listener proves a press was DISPATCHED, not that it
-  // landed on a descendant of the target wrapper — so this cannot say "the
-  // click missed", only that no press reached the page at all.
   expect(report.armRan, 'no mousedown was dispatched to the page, so the arm never ran').toBe(true);
-  // Aggregate-only on purpose, unlike test 1's target-specific check. The
-  // clicked block CANNOT lock here — the click pins it relevant, which is the
-  // property test 1 establishes — so a symmetric per-target assertion would be
-  // asserting the opposite of a known result. What this arm needs is only that
-  // the scroll drove SOME wrapper out of relevance, proving the machinery ran.
   expect(
     report.skippedCount,
     'the scroll drove no wrapper into a cv:auto paint lock, so this run exercised nothing',
@@ -582,14 +468,6 @@ test('PRD-8158: rapid clicks during scroll churn survive cv:auto relevance flips
   await stageTargetForClick(page, targetMarker);
   await trackLockTransitions(page);
 
-  // The field stack has the click dispatched as RAF-aligned input from inside
-  // `BeginMainFrame` — Chromium coalesces input onto the frame boundary when
-  // the main thread is congested, which is the one path where a rendering
-  // update can occur inside an input dispatch. Script cannot select that path
-  // directly, so this arm reproduces the condition that selects it: a busy main
-  // thread plus continuous scrolling that keeps wrappers flipping in and out of
-  // relevance while clicks land. It therefore does NOT prove the RAF-aligned
-  // path was taken; it makes it likely and asserts the renderer survived.
   await page.evaluate(
     ({ scrollSelector }) => {
       const scroller = Array.from(document.querySelectorAll<HTMLElement>(scrollSelector)).find(
@@ -600,21 +478,13 @@ test('PRD-8158: rapid clicks during scroll churn survive cv:auto relevance flips
       w.__churn = 0;
       let direction = 1;
       let running = true;
-      // Cancellable: without this the loop keeps burning ~12 of every ~16ms and
-      // scrolling a viewport per frame through the post-loop reads, teardown,
-      // and any failure-artifact capture — which is both wasted CI time and a
-      // page still moving underneath whatever a red run tries to screenshot.
       w.__churnStop = () => {
         running = false;
       };
       const step = (): void => {
         if (!running) return;
-        // Overrun a 60Hz frame budget without stalling the run, so Chromium
-        // starts coalescing input onto the frame boundary.
         const until = performance.now() + 12;
-        while (performance.now() < until) {
-          /* deliberate main-thread burn */
-        }
+        while (performance.now() < until) {}
         scroller.scrollTop += direction * scroller.clientHeight;
         const maxScroll = scroller.scrollHeight - scroller.clientHeight;
         if (scroller.scrollTop <= 0 || scroller.scrollTop >= maxScroll) direction *= -1;
@@ -643,20 +513,11 @@ test('PRD-8158: rapid clicks during scroll churn survive cv:auto relevance flips
   for (let i = 0; i < CHURN_CLICK_COUNT && outcome === 'alive'; i++) {
     outcome = await pressAndProbe(page, band.x, band.top + ((i * 37) % span));
   }
-  // Survival is asserted FIRST, before anything else touches the page. The
-  // loop exits early on a crash, so any `page.evaluate` placed above this
-  // would be the first call against a dead renderer: it would reject, and the
-  // test would fail on "Target crashed" instead of on the message below, which
-  // names the property and the site that failed. That is exactly what
-  // `pressAndProbe` races the `crash` event to avoid, and it would be undone
-  // on the single path this whole file exists to detect.
   expect(
     outcome,
     'renderer must survive clicks landing while .ok-chunk-wrapper blocks flip cv:auto relevance under a congested main thread',
   ).toBe('alive');
 
-  // Now that the renderer is known alive, stop the churn so the reads below
-  // measure a settled page and nothing keeps scrolling during teardown.
   await page.evaluate(() => {
     (window as unknown as { __churnStop?: () => void }).__churnStop?.();
   });

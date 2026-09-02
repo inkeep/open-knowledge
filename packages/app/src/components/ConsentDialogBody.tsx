@@ -1,31 +1,4 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-/**
- * Per-project consent dialog implementation — split from
- * `ConsentDialog.tsx` so that file can lazy-load this module via
- * `React.lazy()`. See that file's header for the rationale.
- *
- * Reads as a confirmation screen: sensitive-path warning paragraphs
- * (role="alert"), git-root-promotion notice, a file-count preview line
- * (async + 750 ms throttle; cap surfaces as `≥ 50,000`), the AI-tool decision
- * (`ProjectAiToolsField`) and the config-sharing posture (side-by-side radio
- * cards) stay visible, while the remaining editable controls — content.dir text
- * input with `..`-escape rejection + Browse button, and ignore-patterns
- * textarea — collapse into an "Advanced settings" section (force-opened when
- * content.dir is invalid so its inline error stays reachable). Start
- * primary + Cancel secondary. Picking a
- * folder via
- * the dialog == agreeing to scaffold `.ok/`; users who don't want OK
- * scaffolded simply Cancel. Git is initialized implicitly when the
- * picked path has no real `.git/` (or is shell-only) — no UI toggle.
- *
- * The AI-tool row is one pre-checked checkbox over the tools detected on this
- * machine, the same component and answer shape the create-project dialog uses.
- * It replaced a per-tool multi-select over every supported editor, which asked
- * for a row-by-row audit on a screen most people answer once with "yes" — and
- * offered five user-global-only tools whose boxes wrote nothing at all, since
- * this flow only ever writes project-scoped artifacts. Picking among tools
- * lives in Settings > This project.
- */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
@@ -67,8 +40,6 @@ import { isContentDirSafe, relativeToProject } from '@/lib/project-paths';
 
 const PROBE_THROTTLE_MS = 750;
 
-// Module-level constants can't use the `t` macro — `msg` produces lazy
-// MessageDescriptors resolved per-render via `useLingui()._`.
 const WARNING_COPY: Record<OkOnboardingWarningKind, MessageDescriptor> = {
   root: msg`You picked the filesystem root (/). Scaffolding here will scan every file on this machine — make sure that's what you want.`,
   home: msg`You picked your home directory. OpenKnowledge will index everything in your home tree — large and may surface personal files.`,
@@ -82,7 +53,6 @@ const WARNING_COPY: Record<OkOnboardingWarningKind, MessageDescriptor> = {
 interface ConsentDialogBodyProps {
   store?: ConsentStore;
   toast?: ToastImpl;
-  /** Test-only override for the payload — production reads from `store`. */
   payload?: OkOnboardingShowPayload;
 }
 
@@ -110,29 +80,15 @@ interface ConsentDialogFormProps {
   toast: ToastImpl;
 }
 
-/** Dialog form — local state, async file-count probe, validation. */
 function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   const { t } = useLingui();
-  // Initialize-git-repo behavior is implicit: main runs `ensureProjectGit`
-  // whenever gitState is 'absent' or 'shell-only', matching the
-  // create-new-project IPC handler. The IPC payload still carries
-  // `initGit: true` so re-introducing a UI toggle later is a one-file
-  // change.
   const initGit = true;
   const formId = useId();
   const [contentDir, setContentDir] = useState(payload.defaultContentDir);
   const [additionalIgnores, setAdditionalIgnores] = useState('');
-  // Tools detected on this machine that will actually receive a project write,
-  // probed on mount. `null` means the probe is still in flight — distinct from
-  // `[]` ("probed, found nothing"), because the row is always visible and has to
-  // say which of the two it is rather than flashing an empty state.
   const [detectedEditors, setDetectedEditors] = useState<readonly OkMcpWiringEditorId[] | null>(
     null,
   );
-  // Whether to wire those tools on Setup. One decision, pre-checked: the write
-  // set is exactly the detected tools, so there is nothing to seed and no race
-  // with the probe — a late result changes the list the label names, never the
-  // answer the user gave.
   const [connectEditors, setConnectEditors] = useState(true);
   const [sharing, setSharing] = useState<SharingMode>(DEFAULT_SHARING_MODE);
   const [probe, setProbe] = useState<OkOnboardingProbeContentResult | null>(null);
@@ -140,10 +96,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   const [browseError, setBrowseError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // Throttled probe: 750 ms after the last contentDir edit. Probe runs
-  // asynchronously through the bridge — main caps the walk at 50,000
-  // entries and yields to setImmediate so the IPC reply doesn't block the
-  // main loop on huge trees.
   useEffect(() => {
     if (!isContentDirSafe(contentDir)) {
       setProbe(null);
@@ -171,13 +123,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     };
   }, [contentDir, t]);
 
-  // Editor detection, once on mount — this dialog is created fresh per folder
-  // pick, so there is no reopen to re-probe for. Filtered to the tools this
-  // setup will actually write something for (`receivesProjectIntegrationWrite`,
-  // not mere surface membership): a user-global-only tool has nothing to write
-  // here, and Copilot's project skill is gated on its user-global OpenKnowledge
-  // entry, so before that exists the write lands as `skipped-prerequisite`.
-  // Naming either in the checkbox label would promise a file that never appears.
   useEffect(() => {
     const bridge = window.okDesktop;
     if (!bridge) {
@@ -189,12 +134,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
       .status()
       .then((status) => {
         if (cancelled) return;
-        // `installed` only — deliberately stricter than the write path's own
-        // check, which asks whether ANY entry sits under OpenKnowledge's server
-        // name and so also passes on `foreign` (an entry under that name that
-        // isn't ours). A foreign entry means OK's MCP is not actually
-        // registered, so the skill would tell the agent to call tools that
-        // aren't there.
         const userMcpInstalled = new Set(
           status.editors.filter((e) => e.state === 'installed').map((e) => e.id),
         );
@@ -207,9 +146,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
         );
       })
       .catch((err: unknown) => {
-        // Best-effort: settle on an empty list so we never write for a tool we
-        // could not confirm, and the row says so rather than hanging on
-        // "Checking".
         console.warn('[ConsentDialog] editor-detection probe failed:', err);
         if (!cancelled) setDetectedEditors([]);
       });
@@ -219,21 +155,10 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   }, []);
 
   const contentDirSafe = isContentDirSafe(contentDir);
-  // The detection probe settles independently of everything else on this
-  // screen, so Setup could otherwise fire while `detectedEditors` is still null
-  // and submit `editorIds: []` — a project wired to nothing while the row still
-  // reads "Checking which AI tools you have". Only gate it while the user
-  // actually intends to connect: with the box unticked the list is never read.
   const detectionPending = connectEditors && detectedEditors === null;
   const startDisabled = busy || detectionPending || !contentDirSafe;
-  // Advanced settings collapse by default — the dialog reads as a
-  // confirmation screen. Force it open whenever the content dir is invalid
-  // so the inline error (which lives inside the section) can't hide off-screen.
   const advancedExpanded = advancedOpen || !contentDirSafe;
 
-  // Named locals so the git-root-promoted `<Trans>` extracts meaningful
-  // placeholder names (`{projectDir}` / `{pickedRelative}`) instead of the
-  // positional `{0}` / `{1}` a member expression would yield.
   const projectDir = payload.projectDir;
   const pickedRelative =
     relativeToProject(payload.projectDir, payload.pickedPath) ?? payload.pickedPath;
@@ -274,13 +199,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     }
   }
 
-  // Enter-on-any-field fires Start. The form wraps just the input fields
-  // inside DialogBody so DialogHeader / DialogBody / DialogFooter remain
-  // direct flex children of DialogContent (preserving its `gap-6` between
-  // sections). The Start button in the footer binds back via the HTML
-  // `form` attribute. Cancel is type="button" so it doesn't submit. Suppress
-  // the default form submission (page reload in a renderer) and route
-  // through the same Start path.
   function onSubmit(e: React.SyntheticEvent<HTMLFormElement, SubmitEvent>) {
     e.preventDefault();
     if (startDisabled) return;
@@ -304,14 +222,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
     <Dialog open onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-lg"
-        // Radix Dialog autofocuses the first focusable descendant on open. Both
-        // the file-count probe and the editor-detection probe are async, so
-        // ProbePreview and the AI-tools row each render a non-focusable
-        // placeholder at mount — making the sharing-info TooltipTrigger the
-        // first focusable element. A Radix Tooltip opens immediately on focus
-        // (delayDuration 0), so the info popover would pop open unbidden.
-        // Redirect initial focus to the primary control (the first sharing
-        // radio); keyboard users still get the tooltip on a later Tab to it.
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="radio"]')?.focus();
@@ -357,12 +267,7 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
           <form id={formId} onSubmit={onSubmit} data-testid="consent-form" className="space-y-6">
             {contentDirSafe ? <ProbePreview probe={probe} /> : null}
 
-            {/* AI-tool setup, always visible: it decides whether the project is
-              usable from the user's agents at all, which is not an advanced
-              concern. Same row the create-project dialog renders — one
-              pre-checked checkbox whose subtext names the write set, plus a
-              "What changes?" popover with the exact files. Per-tool control
-              lives in Settings > This project. */}
+            {}
             <ProjectAiToolsField
               detectedEditors={detectedEditors}
               checked={connectEditors}

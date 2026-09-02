@@ -35,7 +35,6 @@ import { markIdentityKey } from './mark-identity';
 
 export const markIdentityDecorationKey = new PluginKey('markIdentityDecoration');
 
-/** Attribute name the plugin writes to decorated ranges. */
 export const MARK_ID_DATA_ATTR = 'data-mark-id';
 
 export function markIdentityDecorationPlugin(): Plugin {

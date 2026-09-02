@@ -150,9 +150,6 @@ function readInlineCode(line: string, start: number): { text: string; nextIndex:
     index += closeLength;
   }
 
-  // Unmatched opening run — see backlink-index.ts readInlineCode for the
-  // CommonMark §6.1 rationale. Skip past the full run to avoid O(N²) re-scans
-  // on long unclosed backtick runs (DoS bound).
   return { text: line.slice(start, openEnd), nextIndex: openEnd };
 }
 
@@ -172,8 +169,6 @@ function readWikiLink(
 
   const label = match.alias ?? match.target;
   const rawLabel = match.alias ? match.aliasRaw : match.targetRaw;
-  // Alias raw capture ends right before the closing `]]`; target raw
-  // capture starts right after the opening `[[`.
   const labelIndexInMatch =
     match.alias && match.aliasRaw ? match.end - match.start - 2 - match.aliasRaw.length : 2;
   const labelTrimOffset = rawLabel?.indexOf(label) ?? 0;
@@ -476,11 +471,6 @@ function scanMarkdownForMentions(
 }
 
 function serializeLiveDocument(document: Document): string {
-  // Y.Text-is-truth contract (precedent #38): body source is the raw user
-  // bytes in `Y.Text('source')`. Reading from serialize(fragment) would
-  // emit canonical bytes (e.g., `[https://x](https://x)` instead of the
-  // user's typed `<https://x>` autolink form), making suggest-link
-  // snippets reflect a form the user never chose.
   return document.getText('source').toString();
 }
 

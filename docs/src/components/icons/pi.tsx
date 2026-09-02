@@ -1,9 +1,5 @@
 import type { SVGProps } from 'react';
 
-// Pi brand mark (the blocky "P" + square "i" dot from pi.dev/logo-auto.svg),
-// rendered monochrome via `currentColor` so it tracks the surrounding text
-// color in both themes — the upstream SVG ships its own light/dark media
-// query, which can't participate in the site's theme toggle.
 export function PiIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

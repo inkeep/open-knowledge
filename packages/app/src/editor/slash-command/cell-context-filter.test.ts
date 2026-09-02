@@ -1,16 +1,3 @@
-/**
- * Slash-menu cell-context filtering — inside a GFM table cell the menu must
- * withhold block-component items (they would no-op there, the cell-insertion
- * gate refuses them) while keeping every non-component item, and offer the
- * full set everywhere else.
- *
- * Real ProseMirror EditorViews over jsdom globals with the real core schema
- * (table + jsxComponent), the real item sources wired in `extensions/shared.ts`,
- * and the exact `buildSlashMenuItems` transform the slash extension runs — so
- * the predicate, the item flags, and the merge/filter path are all exercised on
- * production code, not re-implementations.
- */
-
 import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type JSONContent } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
@@ -27,12 +14,8 @@ import { getSlashCommandItems, type SlashCommandItem } from './items';
 
 const mdManager = new MarkdownManager({ extensions: coreExtensions });
 
-/** A 2x2 GFM table: header row (a,b) → tableHeader; data row (c,d) → tableCell. */
 const TABLE_MD = '| a | b |\n| - | - |\n| c | d |\n';
 
-// The production source list itself (not a mirror) — a source added to the
-// wiring is automatically covered here. Category order mirrors the
-// `categoryLabels` keys in `extensions/shared.ts`.
 const SOURCES: (() => SlashCommandItem[])[] = [...SLASH_ITEM_SOURCES];
 const CATEGORY_ORDER = ['content', 'layout', 'media', 'data', 'embed'];
 
@@ -64,7 +47,6 @@ function mount(content: string | JSONContent, withGate = false): Editor {
   return editor;
 }
 
-/** Caret inside the first node of the named type (its inner paragraph text). */
 function firstCellCaret(editor: Editor, cellType: 'tableCell' | 'tableHeader'): number {
   let cellPos = -1;
   editor.state.doc.descendants((node, pos) => {
@@ -75,7 +57,7 @@ function firstCellCaret(editor: Editor, cellType: 'tableCell' | 'tableHeader'): 
     return true;
   });
   if (cellPos < 0) throw new Error(`seed table has no ${cellType}`);
-  const caret = cellPos + 2; // cell open +1 → paragraph, +2 → paragraph text
+  const caret = cellPos + 2;
   expect(editor.state.doc.resolve(caret).parent.type.name).toBe('paragraph');
   return caret;
 }
@@ -101,8 +83,6 @@ describe('isSelectionInTableCell', () => {
   });
 
   test('a caret inside a header cell is in cell context', () => {
-    // Header cells flatten on serialize exactly like data cells, so they must
-    // count as cell context too.
     const editor = mount(mdManager.parse(TABLE_MD) as JSONContent);
     editor.commands.setTextSelection(firstCellCaret(editor, 'tableHeader'));
     expect(isSelectionInTableCell(editor.state)).toBe(true);
@@ -125,8 +105,6 @@ describe('insertsBlockComponent flag on the real item sources', () => {
   });
 
   test('formatting, embed, and inline-atom items are not flagged', () => {
-    // Inline atoms (link, Tag) and codeBlock-based embeds are representable in a
-    // cell, so they must stay offered — only block components are withheld.
     const unflagged = [
       ...getSlashCommandItems(),
       ...getEmbedStarterItems(),
@@ -157,7 +135,6 @@ describe('buildSlashMenuItems — cell-context filtering over the wired sources'
     expect(offered.some((i) => i.insertsBlockComponent)).toBe(false);
     expect(names(offered)).not.toContain('component-Callout');
     expect(names(offered)).not.toContain('component-File');
-    // Formatting, table, inline atoms, and embeds all survive.
     expect(names(offered)).toContain('heading1');
     expect(names(offered)).toContain('table');
     expect(names(offered)).toContain('link');
@@ -181,7 +158,6 @@ describe('buildSlashMenuItems — cell-context filtering over the wired sources'
     const offered = offeredAt(editor);
     expect(names(offered)).toContain('component-Callout');
     expect(names(offered)).toContain('component-File');
-    // Guard against a false green where nothing is ever flagged/offered.
     expect(offered.some((i) => i.insertsBlockComponent)).toBe(true);
   });
 
@@ -207,11 +183,6 @@ describe('component item command with a cell caret no-ops via the gate', () => {
     return item;
   }
 
-  /**
-   * Run an item the way the slash extension does. The range is zero-width at
-   * the caret so the trigger-range delete is a no-op and the only document
-   * change under test is the item's own insert.
-   */
   function runItem(editor: Editor, item: SlashCommandItem): void {
     const { from } = editor.state.selection;
     applySlashCommandItem({ editor, item, range: { from, to: from } });
@@ -232,9 +203,6 @@ describe('component item command with a cell caret no-ops via the gate', () => {
     const editor = mount('<p></p>', true);
     editor.commands.setTextSelection(1);
 
-    // Auto-open (focusInsertedComponent → rAF → setNodeSelection) is out of
-    // scope here; stub rAF so the deferred selection can't fire against the
-    // editor after afterEach tears it down.
     const originalRaf = globalThis.requestAnimationFrame;
     globalThis.requestAnimationFrame = (() => 0) as typeof globalThis.requestAnimationFrame;
     try {

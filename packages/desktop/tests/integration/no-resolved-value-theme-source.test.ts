@@ -27,7 +27,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper.ts';
 
-// __dirname → packages/desktop/tests/integration/. Repo root is 4 levels up.
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const FIXTURE_REL = 'biome-plugins/__fixtures__/no-resolved-value-theme-source.fixture.tsx';
 
@@ -41,11 +40,7 @@ describe('1-way theme contract — no-resolved-value-theme-source GritQL plugin'
     const output = `${result.stdout}\n${result.stderr}`;
     const fires = (output.match(/1-way theme contract:/g) ?? []).length;
     expect(fires).toBe(3);
-    // Diagnostic message names the fix (action verb-phrase substring).
     expect(output).toContain('pass the unresolved CRDT value');
-    // Diagnostic message appends a docs URL — generic URL regex + anchor
-    // substring. The anchor check keeps the regex from being vacuously
-    // satisfied by an unrelated URL biome might surface elsewhere.
     expect(output).toMatch(/https?:\/\/[^\s]+/);
     expect(output).toContain('biome-plugins/README.md#no-resolved-value-theme-sourcegrit');
   });

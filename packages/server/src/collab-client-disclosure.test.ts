@@ -6,12 +6,6 @@ import { WebSocket } from 'ws';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
 
-/**
- * `GET /api/server-info` discloses the live `/collab` client count so a caller
- * about to terminate this process can ask whether anything is using it. The
- * count is the only answerable form of that question — the process title is
- * rewritten at start, so provenance is not recoverable from the OS.
- */
 let tmpRoot: string;
 let booted: BootedServer;
 
@@ -49,8 +43,6 @@ describe('server-info collabClients', () => {
 
     ws.close();
     await new Promise<void>((resolvePromise) => ws.on('close', () => resolvePromise()));
-    // The count drops on the server's socket 'close', which can land after the
-    // client-side close event.
     for (let attempt = 0; attempt < 50; attempt++) {
       if ((await readCollabClients()) === 0) break;
       await new Promise((r) => setTimeout(r, 20));

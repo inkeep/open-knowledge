@@ -39,7 +39,6 @@ describe('applySkillWrite', () => {
     expect(raw).toContain('name: trip-log');
     expect(raw).toContain('description: Use when logging a fishing trip.');
     expect(raw).toContain('# Steps');
-    // No injected keys — frontmatter purity: only name + description.
     expect(raw).not.toContain('version:');
     expect(raw).not.toContain('title:');
   });
@@ -95,8 +94,6 @@ describe('applySkillWrite', () => {
   });
 
   test('allows empty description (draft) and rejects over-long description', () => {
-    // Empty description is a valid draft — "Start blank" creates with no
-    // description and the author fills it in the live editor.
     const empty = applySkillWrite({ skillsRoot, name: 'a', body: 'b', frontmatter: fm('a', '') });
     expect(empty.ok).toBe(true);
 
@@ -150,7 +147,7 @@ describe('applySkillMove', () => {
   const fsRelocate = async (from: string, to: string) => {
     const { renameSync } = await import('node:fs');
     renameSync(from, to);
-    return false; // plain rename (untracked)
+    return false;
   };
 
   test('renames the skill dir', async () => {
@@ -231,7 +228,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(script.ok).toBe(true);
     if (script.ok) expect(script.created).toBe(true);
 
-    // Overwrite reports created:false.
     const again = applySkillBundleFileWrite({
       skillsRoot,
       name: 'trip-log',
@@ -278,7 +274,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     seedSkill();
     const skillDir = join(skillsRoot, 'trip-log');
 
-    // Root-level file — the old references/scripts-only gate rejected these.
     const rootFile = applySkillBundleFileWrite({
       skillsRoot,
       name: 'trip-log',
@@ -288,7 +283,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(rootFile.ok).toBe(true);
     expect(readFileSync(join(skillDir, 'config.json'), 'utf-8')).toBe('{"a":1}');
 
-    // Non-standard subdir.
     const asset = applySkillBundleFileWrite({
       skillsRoot,
       name: 'trip-log',
@@ -297,7 +291,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     });
     expect(asset.ok).toBe(true);
 
-    // Binary bytes (round-trip exact).
     const png = new Uint8Array([0x89, 0x50, 0x00, 0xff]);
     const bin = applySkillBundleFileWrite({
       skillsRoot,
@@ -309,7 +302,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(bin.ok).toBe(true);
     expect(Array.from(readFileSync(join(skillDir, 'assets', 'logo.png')))).toEqual(Array.from(png));
 
-    // SKILL.md is not writable as a bundle file (it has its own write path).
     const skillMd = applySkillBundleFileWrite({
       skillsRoot,
       name: 'trip-log',
@@ -380,7 +372,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     });
     expect(del.ok).toBe(true);
     if (del.ok) expect(del.existed).toBe(true);
-    // Emptied references/ pruned; SKILL.md + skill dir intact.
     expect(existsSync(join(skillsRoot, 'trip-log', 'references'))).toBe(false);
     expect(existsSync(join(skillsRoot, 'trip-log', 'SKILL.md'))).toBe(true);
 
@@ -405,7 +396,6 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     expect(del.ok).toBe(true);
     if (del.ok) expect(del.existed).toBe(true);
     expect(existsSync(join(skillsRoot, 'trip-log', 'references', 'deep'))).toBe(false);
-    // Siblings and the skill itself survive.
     expect(existsSync(join(skillsRoot, 'trip-log', 'references', 'keep.md'))).toBe(true);
     expect(existsSync(join(skillsRoot, 'trip-log', 'SKILL.md'))).toBe(true);
   });

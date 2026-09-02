@@ -1,15 +1,3 @@
-/**
- * BugReportHistoryList DOM tests: the persisted report list renders rows with
- * state badges, an empty state with the Report-a-bug CTA, a degraded unknown
- * row, and the Retry / support / Reveal / Delete actions dispatching the right
- * bridge calls (Retry hands the row to the background send manager, which
- * reconstructs the send metadata from it).
- *
- * The send manager is the real module singleton, driven over the stubbed
- * desktop bridge — the boundary these surfaces actually meet.
- *
- * Substrate: jsdom via `pnpm run test:dom`.
- */
 import type { OkBugReportListRow, OkBugReportSendResult } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -20,9 +8,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
-// Superset factory: spreading the real module keeps every export the component
-// tree may reach for, so a sibling suite mocking the same specifier in the same
-// worker can't be left with a hole.
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
   Trans: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -32,8 +17,6 @@ vi.doMock('@lingui/react/macro', () => ({
   }),
 }));
 
-// Radix (Collapsible in the sibling disclosure) reaches for DOM globals the
-// jsdom preload does not expose on globalThis. Same hoist as the dialog test.
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
   WindowGlobals & { window?: WindowGlobals; ResizeObserver?: unknown };
@@ -47,31 +30,21 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
 
-// Sonner is stubbed so the retry-resurrects-the-toast path can be driven
-// end to end without a toast host. Spread the real module so anything else in
-// this graph reaching for sonner still finds it.
 const toast = {
   custom: vi.fn((_render: (id: string | number) => unknown, _options?: unknown) => 'toast-id'),
   dismiss: vi.fn((_id?: unknown) => {}),
 };
 vi.doMock('sonner', () => ({ ...actualSonner, toast }));
 
-// Imported after the mocks so the modules bind to the shims.
 const { BugReportHistoryList, BugReportPreviousReports } = await import('./BugReportHistory');
 const { installBugReportSendToasts } = await import('@/lib/install-bug-report-send-toasts');
 
-/**
- * Mint calls for one operation. Filtered by id because the adapter walks the
- * whole snapshot on its first notification, and the manager singleton still
- * holds the operations earlier tests in this file left behind.
- */
 function mintsFor(operationId: string): unknown[] {
   return toast.custom.mock.calls.filter(
     (call) => (call[1] as { id?: unknown } | undefined)?.id === operationId,
   );
 }
 
-/** The action bag the newest mint for an operation handed the toast body. */
 function latestActionsFor(operationId: string): { dismiss: () => void } {
   const mints = mintsFor(operationId);
   const render = mints[mints.length - 1]?.[0] as ((id: string) => unknown) | undefined;
@@ -162,7 +135,6 @@ function makeRow(overrides: Partial<OkBugReportListRow> & { id: string }): OkBug
   };
 }
 
-/** A send the test resolves by hand, so an operation can be held mid-flight. */
 function deferredSend() {
   let resolve: (result: OkBugReportSendResult) => void = () => {};
   return {
@@ -176,10 +148,6 @@ function deferredSend() {
 
 afterEach(async () => {
   cleanup();
-  // The send manager is a module singleton every test in this file shares. An
-  // operation left mid-flight keeps its progress interval ticking and makes the
-  // next start for the same bundle join the stale one instead of dispatching,
-  // so a leak surfaces as an unrelated test failing.
   await vi.waitFor(() => {
     expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
   });
@@ -239,8 +207,6 @@ describe('BugReportHistoryList', () => {
 
     render(<BugReportHistoryList />);
     expect(await screen.findByText('Unknown')).toBeDefined();
-    // A sidecar that parsed but carries a state this build does not recognize
-    // still has a real project on it, so the fallback must not give up on it.
     expect(screen.getByText('Report from demo')).toBeDefined();
   });
 
@@ -284,8 +250,6 @@ describe('BugReportHistoryList', () => {
     await vi.waitFor(() => {
       expect(bugReportSendManager.get('e-bugreport.zip')?.status).toBe('email-draft');
     });
-    // The draft is the toast's Open draft action now. History launching it
-    // itself is what made a retry mail support without being asked.
     expect(log.opened).toEqual([]);
   });
 
@@ -320,8 +284,6 @@ describe('BugReportHistoryList', () => {
     render(<BugReportHistoryList />);
     expect(await screen.findByText('Sending')).toBeDefined();
 
-    // A send for this same report started somewhere else in the window — the
-    // report dialog, the disclosure inside it — while this pane stayed open.
     bugReportSendManager.startBugReportSend({
       kind: 'history-row',
       row: makeRow({ id: 'g-bugreport.zip', state: 'uploading' }),
@@ -343,8 +305,6 @@ describe('BugReportHistoryList', () => {
     render(<BugReportHistoryList />);
     const retry = await screen.findByRole('button', { name: 'Retry' });
 
-    // The dialog already started this report; this pane is holding a row that
-    // predates the send and still reads as retryable.
     bugReportSendManager.startBugReportSend({
       kind: 'history-row',
       row: makeRow({ id: 'j-bugreport.zip', state: 'upload-failed' }),
@@ -378,8 +338,6 @@ describe('BugReportHistoryList', () => {
       expect(replies).toHaveLength(1);
     });
 
-    // A background send lands while the mount load is still unanswered, so the
-    // pane asks again.
     bugReportSendManager.startBugReportSend({
       kind: 'history-row',
       row: makeRow({ id: 'l-bugreport.zip', state: 'uploading' }),
@@ -389,7 +347,6 @@ describe('BugReportHistoryList', () => {
       expect(replies).toHaveLength(2);
     });
 
-    // The second ask answers first, with the report landed.
     replies[1]([
       makeRow({
         id: 'l-bugreport.zip',
@@ -401,7 +358,6 @@ describe('BugReportHistoryList', () => {
     ]);
     expect(await screen.findByText('Sent')).toBeDefined();
 
-    // The mount load answers last, describing the report before it was sent.
     await act(async () => {
       replies[0]([makeRow({ id: 'l-bugreport.zip', state: 'uploading', retryable: false })]);
     });
@@ -421,8 +377,6 @@ describe('BugReportHistoryList', () => {
       render(<BugReportHistoryList />);
       const retry = await screen.findByRole('button', { name: 'Retry' });
 
-      // The send is already running — started from the report dialog, whose
-      // toast the reporter then closed.
       bugReportSendManager.startBugReportSend({
         kind: 'history-row',
         row: makeRow({ id: 'm-bugreport.zip', state: 'upload-failed' }),
@@ -435,9 +389,6 @@ describe('BugReportHistoryList', () => {
 
       await userEvent.click(retry);
 
-      // Re-minted under the same id: that is what clears sonner's dismissed
-      // set, so the toast comes back rather than a second one stacking beside
-      // it — and rather than the press producing nothing at all.
       expect(mintsFor('m-bugreport.zip')).toHaveLength(2);
 
       pending.finish({ ok: true, reference: 'OK-8' });
@@ -522,9 +473,6 @@ describe('report row titles', () => {
 
     await userEvent.click(await screen.findByLabelText('Email support about this report'));
 
-    // The reference is the correlation key and support already holds the bundle,
-    // whose note.txt carries the note in full. A title in the subject would add
-    // length without adding anything the recipient lacks.
     expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=Bug%20report%20OK-54']);
   });
 });
@@ -542,8 +490,6 @@ describe('report row list semantics', () => {
 
     const items = await screen.findAllByRole('listitem');
     expect(items).toHaveLength(2);
-    // The title has to come first inside the item: a screen reader walking the
-    // list reads the row's own content in DOM order.
     expect(items[0]?.textContent?.startsWith('Sync hangs on a large vault')).toBe(true);
     expect(items[1]?.textContent?.startsWith('Paste of a wide table locks the editor')).toBe(true);
   });
@@ -559,8 +505,6 @@ describe('report row title fallbacks', () => {
   });
 
   test('a row with no project and no note is untitled, before and after a retry synthesizes a sidecar', async () => {
-    // An `ok bug-report` bundle: no sidecar, so main reports an unknown level
-    // and a system-wide claim nobody actually made.
     installBridge({
       reports: [
         makeRow({
@@ -576,9 +520,6 @@ describe('report row title fallbacks', () => {
     expect(await screen.findByText('Untitled report')).toBeDefined();
     unmount();
 
-    // After one Retry, main has written a stand-in sidecar asserting a standard
-    // level and a system-wide report. Nothing on the row got truer, so the
-    // title must not start claiming more than it did a moment ago.
     installBridge({
       reports: [
         makeRow({
@@ -598,10 +539,6 @@ describe('report row title fallbacks', () => {
   });
 
   test('a project slug outranks a system-wide claim on the same row', async () => {
-    // `toListRow` reads `systemWide` and `projectSlug` off independently
-    // optional fields of a loose on-disk schema, so a partially written or
-    // hand-edited sidecar can assert both. Only the slug requires a project to
-    // have actually been recorded, which is why it is the one the title trusts.
     installBridge({
       reports: [makeRow({ id: 'f6-bugreport.zip', projectSlug: 'demo', systemWide: true })],
     });
@@ -625,7 +562,6 @@ describe('report row title fallbacks', () => {
 
     render(<BugReportHistoryList />);
 
-    // The badge carries the send state; the title carries the incident.
     expect(await screen.findByText('Search returns nothing after a rename')).toBeDefined();
     expect(screen.getByText('Sending')).toBeDefined();
   });
@@ -637,11 +573,6 @@ describe('report row title fallbacks', () => {
 
     render(<BugReportHistoryList />);
 
-    // A title too long for the row truncates in CSS, so the tooltip is the only
-    // way the rest of it stays reachable. `dir="auto"` has to sit on the element
-    // that truncates: the ellipsis follows the containing block's direction, so
-    // without it a right-to-left note loses its opening words instead of its
-    // closing ones.
     const title = await screen.findByText(note);
     expect(title.getAttribute('title')).toBe(note);
     expect(title.getAttribute('dir')).toBe('auto');
@@ -675,8 +606,6 @@ describe('report row metadata line', () => {
 
     render(<BugReportHistoryList />);
 
-    // Size used to be the fallback arm of a mutually exclusive ternary, so a row
-    // that had a reference to show never showed how big its bundle was.
     expect(await screen.findByText('4 KB')).toBeDefined();
     expect(screen.getByText('OK-42')).toBeDefined();
   });
@@ -705,7 +634,6 @@ describe('report row metadata line', () => {
 
     render(<BugReportHistoryList />);
 
-    // `0 B` would be a claim about a file nobody has.
     await screen.findByText('Report from demo');
     expect(screen.queryByText('0 B')).toBeNull();
   });
@@ -720,7 +648,6 @@ describe('BugReportPreviousReports', () => {
       expect(log.listCalls).toBeGreaterThan(0);
     });
 
-    // An empty history must not put an empty disclosure in the compose step.
     expect(container.textContent).toBe('');
   });
 
@@ -735,7 +662,6 @@ describe('BugReportPreviousReports', () => {
     render(<BugReportPreviousReports />);
     const trigger = await screen.findByRole('button', { name: /Previous reports/ });
     expect(trigger.textContent).toContain('(2)');
-    // Collapsed: the trigger is the only affordance, no report actions yet.
     expect(screen.queryByLabelText('Reveal in Finder')).toBeNull();
 
     await userEvent.click(trigger);
@@ -772,8 +698,6 @@ describe('BugReportPreviousReports', () => {
     render(<BugReportPreviousReports />);
     await userEvent.click(await screen.findByRole('button', { name: /Previous reports/ }));
 
-    // The two mounts share one row component and differ only in available
-    // width, so the disclosure gets the list semantics and the title ordering.
     const items = await screen.findAllByRole('listitem');
     expect(items).toHaveLength(1);
     expect(items[0]?.textContent?.startsWith('Search returns stale results')).toBe(true);
@@ -782,8 +706,6 @@ describe('BugReportPreviousReports', () => {
   test('renders nothing when the bridge is absent', async () => {
     clearBridge();
     const { container } = render(<BugReportPreviousReports />);
-    // Unlike the standalone list, the compose-step disclosure stays silent on a
-    // load failure rather than showing an error inside the report form.
     await waitFor(() => {
       expect(container.textContent).toBe('');
     });

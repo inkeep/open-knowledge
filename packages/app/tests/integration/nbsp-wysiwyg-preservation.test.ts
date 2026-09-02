@@ -36,7 +36,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-/** Depth-first find the first Y.XmlText whose string contains `marker`. */
 function findXmlTextContaining(
   node: Y.XmlFragment | Y.XmlElement,
   marker: string,
@@ -54,13 +53,6 @@ function findXmlTextContaining(
   return null;
 }
 
-/**
- * Seed `body` via the agent path (bytes land verbatim), assert the NBSP is
- * intact at rest, then optionally append " EDITWORD" to the span containing
- * `editMarker` through the XmlFragment (the WYSIWYG write surface). Awaits the
- * server Observer A round-trip + local settlement, and returns the client's
- * Y.Text('source') string.
- */
 async function seedThenMaybeEdit(opts: { body: string; editMarker?: string }): Promise<string> {
   const docName = `nbsp-${crypto.randomUUID()}`;
   const client: TestClient = await createTestClient(server.port, docName, {
@@ -68,10 +60,6 @@ async function seedThenMaybeEdit(opts: { body: string; editMarker?: string }): P
   });
   try {
     await agentWriteMd(server.port, opts.body, { docName, position: 'replace' });
-    // Wait for the seed to land on the client, then confirm the seed itself is
-    // byte-sacred — the RED assertion below is only meaningful if the NBSP was
-    // present after the agent write and lost by the WYSIWYG edit, not absent
-    // from the start.
     await pollUntil(() => client.ytext.toString().includes('bar'), 5000);
     await awaitDocQuiescence(client.doc);
     expect(client.ytext.toString()).toContain(NBSP);
@@ -82,11 +70,8 @@ async function seedThenMaybeEdit(opts: { body: string; editMarker?: string }): P
         throw new Error(`edit marker not found in fragment: ${opts.editMarker}`);
       }
       target.insert(target.length, ' EDITWORD');
-      // Wait for the server Observer A settlement to echo back, then settle any
-      // follow-on observer cascade locally.
       await pollUntil(() => client.ytext.toString().includes('EDITWORD'), 5000);
       await awaitDocQuiescence(client.doc);
-      // Guard against a false-RED: prove the edit actually round-tripped.
       expect(client.ytext.toString()).toContain('EDITWORD');
     }
 
@@ -113,11 +98,6 @@ describe('document NBSP survives a WYSIWYG edit', () => {
     expect(ytext).toContain(NBSP);
   }, 25_000);
 
-  /**
-   * Byte-sacred control: with no WYSIWYG edit, Observer A never fires and the
-   * verbatim NBSP survives in Y.Text. Pins the byte-sacred write path itself.
-   *
-   */
   test('document NBSP survives verbatim with no WYSIWYG edit (byte-sacred control)', async () => {
     const ytext = await seedThenMaybeEdit({
       body: `Alpha foo${NBSP}bar keepme\n`,

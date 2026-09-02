@@ -1,16 +1,3 @@
-/**
- * Unit tests for `openExternalUrl` — the imperative external-open helper used
- * by non-anchor call sites (graph nodes, "Open link" buttons).
- *
- * Covered surfaces:
- *   (a) Electron host: forwards to `okDesktop.shell.openExternal`, NEVER opens
- *       a new in-app window via `window.open` (the bug this fixes — external
- *       graph links were opening inside Open Knowledge instead of the OS
- *       default browser).
- *   (b) Web host (no bridge): falls through to
- *       `window.open(url, '_blank', 'noopener,noreferrer')`.
- */
-
 import { describe, expect, test, vi } from 'vitest';
 import { openExternalUrl } from './external-link.ts';
 

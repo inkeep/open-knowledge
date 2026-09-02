@@ -1,20 +1,3 @@
-/**
- * Integration coverage for OK's built-in `open-knowledge` project skill being
- * surfaced READ-ONLY through the skills API.
- *
- * The built-in skill is force-installed into the editor host dirs
- * (`.claude/skills/open-knowledge/`), NOT `.ok/skills`, so it is normally
- * invisible to the Skills UI. These tests write a fake on-disk projection into
- * the harness's project dir and assert:
- *   - `GET /api/skills` lists it as a `managed` entry (installed, host = claude).
- *   - `GET /api/skill` + `GET /api/skill-file` serve its SKILL.md + references
- *     read-only (from the host dir, not `.ok/skills`).
- *   - every mutation (PUT / POST rename / DELETE / install / PUT file) is refused
- *     with `urn:ok:error:reserved-doc-name` (the defense-in-depth server gate,
- *     independent of the UI hiding those controls).
- *   - a refused DELETE leaves the on-disk file intact.
- */
-
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -45,7 +28,6 @@ let builtinSkillMd: string;
 
 beforeAll(async () => {
   server = await createTestServer();
-  // Fake the on-disk editor projection the reclaim/init path would install.
   const dir = join(server.contentDir, '.claude', 'skills', 'open-knowledge');
   mkdirSync(join(dir, 'references'), { recursive: true });
   builtinSkillMd = join(dir, 'SKILL.md');
@@ -71,8 +53,6 @@ describe('built-in open-knowledge skill: read-only surfacing', () => {
     expect(entry?.installed).toBe(true);
     expect(entry?.hosts).toContain('claude');
     expect(entry?.description).toBe('The OpenKnowledge project skill agents load for this KB.');
-    // Built-ins carry a skills.sh origin (repo link + manual update path), and
-    // are manual-update only — never silently re-pulled on a shared project.
     expect(entry?.origin?.source).toBe(OPENKNOWLEDGE_SKILLS_REPO);
     expect(entry?.origin?.skill).toBe('open-knowledge');
     expect(entry?.origin?.autoUpdate).toBe(false);
@@ -128,17 +108,13 @@ describe('built-in open-knowledge skill: read-only surfacing', () => {
   });
 
   test('rename TO a runtime name is refused (squat guard); rename FROM is an ordinary fork-away', async () => {
-    // Squat: nothing may take a runtime skill's name.
     const squat = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scope: 'project', fromName: 'authored', toName: 'open-knowledge' }),
     });
-    // 400 reserved (or 409 exists) — either way the name is untakeable.
     expect([400, 409]).toContain(squat.status);
 
-    // Lifecycle is ORDINARY: renaming AWAY from the runtime name succeeds
-    // (fork-away; the seeded original returns via seed/reimport).
     const away = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -149,8 +125,6 @@ describe('built-in open-knowledge skill: read-only surfacing', () => {
       }),
     });
     expect(away.status).toBe(200);
-    // Restore the fixture for later tests: rename back is REFUSED by the squat
-    // guard, so recreate the original on disk directly.
     const restored = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -1,34 +1,9 @@
-/**
- * Co-located unit tests for the non-portable-render source-fallback
- * helper. Mirrors the convention from `clipboard-walker-fallback-
- * palette.test.ts`: the vitest node environment has no DOM, so the DOM-shape behaviour of
- * `nonPortableRenderSourceFallback` is covered by Playwright E2E. This
- * file pins the **structural** dispatch contract that is testable
- * without a DOM via `sourceFallbackFormFor` (the inner pure classifier).
- *
- * Coverage tiers:
- *   1. Block jsxComponents (Math, DollarMath, MathFence, MermaidFence)
- *      → expected markdown-source bytes
- *   2. Preview-active codeBlock → fenced-source bytes; non-preview → null
- *   3. Falls through (Callout, paragraph, heading, mathInline,
- *      unknown jsxComponent) → null
- *   4. Edge cases — empty / missing / non-string props
- *   5. Registry-derived completeness — every descriptor rendering as a
- *      non-portable canonical yields a source form
- */
-
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { describe, expect, test } from 'vitest';
 import { nonPortableDescriptorNames } from './non-portable-descriptors.test-helper.ts';
 import { sourceFallbackFormFor } from './non-portable-render-source-fallback.ts';
 
-/**
- * Build a stub PmNode shape that matches the call sites'
- * `node.type.name`, `node.attrs.componentName`, `node.attrs.props`
- * access patterns. The classifier doesn't touch any other field, so
- * the cast is safe at runtime.
- */
 function stubPmNode(args: {
   typeName: string;
   componentName?: string;
@@ -60,9 +35,6 @@ describe('sourceFallbackFormFor — Math jsxComponent', () => {
   });
 
   test('newlines are load-bearing — pin block-vs-inline distinction', () => {
-    // `$$x$$` inline (no newlines) parses as inline math by remark-math
-    // even though our intent is block. Keep newlines so destinations
-    // re-parsing as markdown classify correctly.
     const node = stubPmNode({
       typeName: 'jsxComponent',
       componentName: 'Math',
@@ -81,10 +53,6 @@ describe('sourceFallbackFormFor — Math jsxComponent', () => {
   });
 
   test('non-string formula prop falls back to empty string', () => {
-    // Defensive against descriptor schema drift (e.g. a future
-    // `formula: number` migration). The string-narrow guard converts
-    // non-strings to '' rather than risk emitting `undefined` / `null`
-    // text into the clipboard.
     const node = stubPmNode({
       typeName: 'jsxComponent',
       componentName: 'Math',
@@ -128,9 +96,6 @@ describe('sourceFallbackFormFor — MermaidFence jsxComponent', () => {
   });
 
   test('non-string chart prop falls back to empty string', () => {
-    // Symmetric defense with the Math non-string formula test —
-    // descriptor schema drift (e.g. `chart: object` migration) shouldn't
-    // emit `[object Object]` into the clipboard.
     const node = stubPmNode({
       typeName: 'jsxComponent',
       componentName: 'MermaidFence',
@@ -141,12 +106,6 @@ describe('sourceFallbackFormFor — MermaidFence jsxComponent', () => {
 });
 
 describe('sourceFallbackFormFor — block-math compat authored forms (DollarMath / MathFence)', () => {
-  // `$$…$$`-authored block math parses to a `DollarMath` jsxComponent and
-  // ` ```math ` fences parse to `MathFence`; both `rendersAs: 'Math'` so
-  // they paste as the same non-portable KaTeX render as canonical `Math`.
-  // The source fallback must fire for all three authored forms — every
-  // block-math node that renders as KaTeX owes the clipboard the same
-  // readable `$$\nformula\n$$` bytes regardless of how it was authored.
   test('DollarMath emits the same `$$\\nformula\\n$$` source as canonical Math', () => {
     const dollar = stubPmNode({
       typeName: 'jsxComponent',
@@ -178,8 +137,6 @@ describe('sourceFallbackFormFor — block-math compat authored forms (DollarMath
   });
 
   test('block-math compat forms preserve the block-vs-inline newlines', () => {
-    // Same load-bearing newline invariant the canonical Math case pins:
-    // a single-line `$$x$$` re-parses as inline math at the destination.
     for (const componentName of ['DollarMath', 'MathFence']) {
       const node = stubPmNode({
         typeName: 'jsxComponent',
@@ -199,22 +156,9 @@ describe('sourceFallbackFormFor — block-math compat authored forms (DollarMath
 });
 
 describe('sourceFallbackFormFor — registry-derived non-portable coverage', () => {
-  // Symmetric guard to the palette's registry-derived coverage test. The
-  // primary walker path (`sourceFallbackFormFor`) must emit a source form
-  // for every descriptor whose RENDER identity is a non-portable canonical
-  // (`Math` / `MermaidFence`), not just the canonically-named ones — a
-  // compat descriptor authored as `$$…$$` (`DollarMath`) or ` ```math `
-  // (`MathFence`) renders as `<Math>` and so owes the same readable source.
-  // Deriving the set from the registry makes a newly-added non-portable
-  // compat descriptor fail loudly here instead of silently falling through
-  // to the KaTeX/SVG live-DOM clone. Set + predicate are shared with the
-  // palette guard via non-portable-descriptors.test-helper.ts.
-
   test('every descriptor that renders as a non-portable canonical yields a source form', () => {
     const descriptorNames = nonPortableDescriptorNames();
 
-    // Sanity: the registry must actually carry the two math compat rows,
-    // otherwise this test would vacuously pass.
     expect(descriptorNames).toEqual(
       expect.arrayContaining(['Math', 'MermaidFence', 'DollarMath', 'MathFence']),
     );
@@ -240,8 +184,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
   });
 
   test('xml + preview → recognized via the normalize path', () => {
-    // `html` normalizes to highlight.js's `xml` key; a block authored as
-    // `xml preview` renders the same iframe and must fall back too.
     const node = stubPmNode({
       typeName: 'codeBlock',
       language: 'xml',
@@ -254,8 +196,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
   });
 
   test('fence widens past a backtick run in the body (no early close)', () => {
-    // A body containing a ``` run would early-close a 3-backtick fence on
-    // re-parse (CommonMark §4.5); the fence widens to one longer.
     const body = 'before\n```\ninner\n```\nafter';
     const node = stubPmNode({
       typeName: 'codeBlock',
@@ -269,9 +209,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
   });
 
   test('tilde fence widens past a ~~~ run in the body (no early close)', () => {
-    // A backtick in the meta forces a tilde fence; a body containing a `~~~`
-    // run would early-close a 3-tilde fence on re-parse (CommonMark §4.5),
-    // so the tilde fence widens to one longer.
     const body = 'before\n~~~\ninner\n~~~\nafter';
     const node = stubPmNode({
       typeName: 'codeBlock',
@@ -294,8 +231,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
   });
 
   test('preview meta on a non-previewable language → null', () => {
-    // `js preview` renders no iframe — the preview pane only mounts for
-    // html/xml. The gate must not fire for other languages.
     const node = stubPmNode({
       typeName: 'codeBlock',
       language: 'js',
@@ -306,8 +241,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
   });
 
   test('null language attr → null (no preview gate, no throw)', () => {
-    // Symmetric defense with the Math/Mermaid non-string prop tests — a
-    // non-string attr narrows to '' and the preview gate declines it.
     const node = stubPmNode({
       typeName: 'codeBlock',
       language: null,
@@ -328,12 +261,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
   });
 
   test('meta carrying a backtick emits a valid fence (tilde), not a broken backtick fence', () => {
-    // A `title="…"` meta token may contain a backtick (setMetaTitle strips
-    // `"` and newlines but not backticks; a tilde-authored fence has no
-    // restriction). CommonMark §4.5 forbids backticks in a backtick fence's
-    // info-string, so embedding such meta after a backtick fence produces an
-    // opener that parsers reject — the block degrades to a paragraph. The
-    // emitted source must stay a valid fence so the round-trip intent holds.
     const node = stubPmNode({
       typeName: 'codeBlock',
       language: 'html',
@@ -344,7 +271,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
     expect(form).not.toBeNull();
     const source = form?.source ?? '';
     expect(source).not.toBe('');
-    // The info-string line must not embed the fence character it opens with.
     const fenceChar = source[0];
     const infoLine = source.slice(0, source.indexOf('\n'));
     expect(infoLine.slice(3)).not.toContain(fenceChar);
@@ -352,10 +278,6 @@ describe('sourceFallbackFormFor — preview-active codeBlock', () => {
 });
 
 describe('sourceFallbackFormFor — emitted fence round-trips through OK`s parser', () => {
-  // The whole point of emitting fenced source (rather than the live iframe) is
-  // that a markdown-aware destination — OK`s own parser included — re-parses it
-  // back to a code block. Drive the REAL markdown pipeline so a fence that only
-  // LOOKS valid but degrades to prose on re-parse is caught.
   const md = new MarkdownManager({ extensions: sharedExtensions });
   const topNodeType = (source: string): string | undefined => {
     const doc = md.parse(source) as { content?: Array<{ type?: string }> };
@@ -387,23 +309,11 @@ describe('sourceFallbackFormFor — emitted fence round-trips through OK`s parse
 
 describe('sourceFallbackFormFor — fall-through cases', () => {
   test('mathInline atom → null (handled by post-clone pass instead)', () => {
-    // mathInline is a PM atom (`inline: true, atom: true`) whose parent
-    // is always a paragraph. The walker's `nodesBetween` callback gates
-    // on `parent !== view.state.doc`, so inline atoms never surface as
-    // the iteration target — this helper is unreachable for them.
-    // Inline-atom source-fallback is handled by
-    // `clipboard-walker.ts:applyNonPortableInlineAtomReplacement` which
-    // walks the cloned paragraph subtree and replaces matching elements
-    // directly via the DOM. This branch returning null is intentional.
     const node = stubPmNode({ typeName: 'mathInline' });
     expect(sourceFallbackFormFor(node)).toBeNull();
   });
 
   test('Callout jsxComponent → null (palette path handles it separately)', () => {
-    // Callout has its own palette entry that emits a styled `<aside>`,
-    // and the walker primary path clones the live-rendered aside
-    // cleanly. Source-fallback is intentionally NOT applied — Callout
-    // is portable.
     const node = stubPmNode({
       typeName: 'jsxComponent',
       componentName: 'Callout',
@@ -413,11 +323,6 @@ describe('sourceFallbackFormFor — fall-through cases', () => {
   });
 
   test('img/video/audio jsxComponents → null (URL classifier handles)', () => {
-    // These have URL-portability source-fallback for non-portable URLs
-    // (data:, blob:, file:) handled separately in
-    // `clipboard-walker.ts:applyUrlClassifierPostPass`. The non-
-    // portable-RENDER fallback is for KaTeX/SVG, not URL-bearing
-    // primitives — distinct concerns.
     for (const componentName of ['img', 'video', 'audio']) {
       const node = stubPmNode({ typeName: 'jsxComponent', componentName });
       expect(sourceFallbackFormFor(node)).toBeNull();
@@ -439,10 +344,6 @@ describe('sourceFallbackFormFor — fall-through cases', () => {
   });
 
   test('unknown jsxComponent name → null', () => {
-    // Future descriptors that ship without opting into the source-
-    // fallback path stay null — the walker primary path clones their
-    // live render. Adding a non-portable descriptor requires also
-    // adding a case here (and to `PALETTE_DESCRIPTOR_NAMES`).
     const node = stubPmNode({
       typeName: 'jsxComponent',
       componentName: 'CustomFutureComponent',

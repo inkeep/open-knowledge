@@ -1,14 +1,3 @@
-/**
- * DOM tests for the lazy Slides toolbar action. The component is mounted past
- * its cheap host gate, so these cover the two conditions it owns — the doc
- * declares `slides: true`, and `slidev` resolved — plus activation and the
- * failure surface.
- *
- * The provider is a fake wrapping a real `Y.Doc` (so the frontmatter flag runs
- * through the real `bindFrontmatterDoc` parse), and `window.okDesktop.slides` is
- * a stub — the IPC boundary is the one system boundary these tests fake.
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { bindFrontmatterDoc } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
@@ -54,8 +43,6 @@ function makeProvider(initial = ''): FakeProvider {
   };
 }
 
-/** Mutate the shared frontmatter the way a property-panel edit would, so the
- *  hook's own observer fires. */
 function patchSlides(provider: FakeProvider, value: boolean | string | null): void {
   const writer = bindFrontmatterDoc(provider);
   writer.patch({ slides: value });
@@ -112,8 +99,6 @@ describe('SlidesToolbarControls — visibility', () => {
       status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
     });
     await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
-    // The control renders an icon with no visible text, so assistive tech has
-    // only the accessible name to go on — query by role+name, not by testid.
     expect(await screen.findByRole('button', { name: 'Open in Slidev' })).toBeTruthy();
   });
 
@@ -133,11 +118,7 @@ describe('SlidesToolbarControls — visibility', () => {
     });
     await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
     await waitFor(() => expect(statusSpy).toHaveBeenCalledTimes(1));
-    // A rejected probe degrades to "unavailable" (action hidden), never a crash.
     expect(screen.queryByTestId('slides-toolbar-action')).toBeNull();
-    // …and is logged with the rejection, so a broken bridge is distinguishable
-    // from "not installed" — a content match, not bare existence (which an
-    // ambient warn could satisfy).
     expect(warnSpy).toHaveBeenCalledWith('[slides] availability probe failed:', expect.any(Error));
     warnSpy.mockRestore();
   });
@@ -166,9 +147,6 @@ describe('SlidesToolbarControls — visibility', () => {
   });
 
   test('a mid-session install reveals the action on window focus, without remount', async () => {
-    // The first-run path: open a deck before slidev is installed (no action),
-    // install it in a terminal, switch back. That switch is the focus event —
-    // the toolbar re-probes and the action appears without reopening the doc.
     let available = false;
     const { statusSpy } = installBridge({
       status: () =>
@@ -183,10 +161,6 @@ describe('SlidesToolbarControls — visibility', () => {
     expect(screen.queryByTestId('slides-toolbar-action')).toBeNull();
 
     available = true;
-    // Focus re-probes are throttled so a never-installed slidev cannot spawn a
-    // login shell on every alt-tab. Installing takes far longer than that
-    // window, so advance the clock rather than firing focus instantly — the
-    // real path this covers is minutes long, not milliseconds.
     const realNow = Date.now();
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(realNow + 60_000);
     act(() => {
@@ -199,15 +173,10 @@ describe('SlidesToolbarControls — visibility', () => {
   });
 
   test('stops re-probing on focus once slidev has resolved available', async () => {
-    // Each status() runs a login-shell PATH probe for a global install, and a
-    // resolvable slidev rarely disappears mid-session — so once found, further
-    // window-focus events must not spawn another probe.
     const { statusSpy } = installBridge({
       status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
     });
     await renderControls(makeProvider('---\nslides: true\n---\nbody\n'));
-    // Awaiting the action guarantees the resolving probe's `.then` ran — which is
-    // where the focus listener unsubscribes.
     expect(await screen.findByTestId('slides-toolbar-action')).toBeTruthy();
     await waitFor(() => expect(statusSpy).toHaveBeenCalledTimes(1));
 
@@ -218,7 +187,6 @@ describe('SlidesToolbarControls — visibility', () => {
       window.dispatchEvent(new Event('focus'));
     });
 
-    // Still 1: the focus listener was removed once availability resolved.
     expect(statusSpy).toHaveBeenCalledTimes(1);
   });
 });
@@ -280,8 +248,6 @@ describe('SlidesToolbarControls — activation', () => {
   });
 
   test('a deck that crashes Slidev on boot gets a message distinct from a timeout', async () => {
-    // The discriminated reason drives distinct, actionable copy: a crashed boot
-    // (exited-early) is not the same problem as a hung boot (timeout).
     const user = userEvent.setup();
     installBridge({
       status: () => Promise.resolve({ kind: 'status', available: true, source: 'global' }),
@@ -336,8 +302,6 @@ describe('SlidesToolbarControls — activation', () => {
     await user.click(await screen.findByTestId('slides-toolbar-action'));
 
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledTimes(1));
-    // …and the rejection is logged, so a broken bridge stays distinguishable in
-    // diagnostics from a returned not-ok result — both surface the same toast.
     expect(warnSpy).toHaveBeenCalledWith('[slides] open dispatch failed:', expect.any(Error));
     warnSpy.mockRestore();
   });
@@ -345,9 +309,6 @@ describe('SlidesToolbarControls — activation', () => {
 
 describe('SlidesToolbarControls — focus re-probe is bounded', () => {
   test('rapid window focus does not re-probe on every event', async () => {
-    // Each status() runs a login-shell PATH probe on the desktop side. A deck
-    // open with slidev absent keeps the focus listener attached, so without a
-    // throttle every alt-tab would spawn a shell, indefinitely.
     const { statusSpy } = installBridge({
       status: () => Promise.resolve({ kind: 'status', available: false }),
     });
@@ -358,7 +319,6 @@ describe('SlidesToolbarControls — focus re-probe is bounded', () => {
       for (let i = 0; i < 20; i++) window.dispatchEvent(new Event('focus'));
     });
 
-    // Still just the mount probe — twenty focus events, no extra shells.
     expect(statusSpy).toHaveBeenCalledTimes(1);
   });
 });

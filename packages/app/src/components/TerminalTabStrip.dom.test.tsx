@@ -10,8 +10,6 @@ const SESSIONS: readonly TerminalTabDescriptor[] = [
   { id: 's3', label: 'Terminal 3' },
 ];
 
-// A stub for the host-provided New button — the strip renders whatever node the
-// host passes as `newButton` (the real merged split-button has its own test).
 function stubNewButton(onClick: () => void) {
   return (
     <button type="button" aria-label="New session" onClick={onClick}>
@@ -26,9 +24,7 @@ function renderStrip(props?: {
   edge?: 'bottom' | 'right';
   sessionKind?: 'terminal' | 'agent';
   draggable?: boolean;
-  /** Omit the rename handler to assert the affordance is inert without it. */
   renameDisabled?: boolean;
-  /** Render a stub trailing control (stands in for the history menu). */
   withTrailing?: boolean;
   reserveRightRevealTabGutter?: boolean;
 }) {
@@ -40,10 +36,6 @@ function renderStrip(props?: {
   const onCollapse = vi.fn(() => {});
   const onPlacementChange = vi.fn((_placement: 'bottom' | 'right') => {});
   const view = render(
-    // The app mounts a root TooltipProvider (main.tsx); the strip's control
-    // tooltips need that context, so the isolated render supplies its own.
-    // `draggable` mirrors the standalone terminal window's prop shape (same
-    // chrome, no collapse control); the default mirrors a docked panel.
     <TooltipProvider>
       <TerminalTabStrip
         sessions={props?.sessions ?? SESSIONS}
@@ -102,9 +94,6 @@ describe('TerminalTabStrip', () => {
     }
   });
 
-  // Both panels can be open at once, so a shared "Sessions" name would leave a
-  // screen-reader user with two indistinguishable tablists (WCAG 1.3.1). The
-  // names must differ by edge, not merely exist.
   test('names the tablist for its own panel so two open panels are distinguishable', () => {
     renderStrip({ edge: 'right' });
     expect(screen.getByRole('tablist', { name: 'Agent chats' })).toBeTruthy();
@@ -125,8 +114,6 @@ describe('TerminalTabStrip', () => {
 
   test('hovering a tab surfaces the full (untruncated) title in a tooltip', async () => {
     const user = userEvent.setup();
-    // A process-set OSC title long enough to hard-clip at the tab's max width;
-    // the tooltip must carry the whole thing so a hover reveals what was cut.
     const longTitle =
       'claude — refactor the terminal dock reveal affordance across every view kind';
     renderStrip({ sessions: [{ id: 's1', label: longTitle }], activeSessionId: 's1' });
@@ -176,8 +163,6 @@ describe('TerminalTabStrip', () => {
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
 
     expect(onSelect).toHaveBeenCalledWith('s2');
-    // No prop change happened, so the strip must still show the original active
-    // tab — the component owns no selection state of its own.
     expect(screen.getByRole('tab', { name: 'Terminal 1' }).getAttribute('aria-selected')).toBe(
       'true',
     );
@@ -190,13 +175,9 @@ describe('TerminalTabStrip', () => {
     const user = userEvent.setup();
     const { onTabActivate } = renderStrip({ activeSessionId: 's1' });
 
-    // Pointer/Enter activation routes through onTabActivate so the consumer can
-    // move focus into the terminal on a deliberate select.
     await user.click(screen.getByRole('tab', { name: 'Terminal 2' }));
     expect(onTabActivate).toHaveBeenCalledWith('s2');
 
-    // Arrow-key navigation must NOT fire onTabActivate — it would steal focus
-    // out of the tablist while the user is arrowing across tabs.
     onTabActivate.mockClear();
     act(() => screen.getByRole('tab', { name: 'Terminal 2' }).focus());
     await user.keyboard('{ArrowRight}');
@@ -224,7 +205,6 @@ describe('TerminalTabStrip', () => {
     await user.click(screen.getByRole('button', { name: 'New session' }));
 
     expect(onNewButtonClick).toHaveBeenCalledTimes(1);
-    // The strip is chrome — it never intercepts the New button's behavior.
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -232,8 +212,6 @@ describe('TerminalTabStrip', () => {
     renderStrip();
     const newButton = screen.getByRole('button', { name: 'New session' });
     const collapse = screen.getByRole('button', { name: 'Collapse Terminal' });
-    // The New button sits immediately right of the tablist; the spacer pushes the
-    // trailing group to the far right.
     expect(
       newButton.compareDocumentPosition(collapse) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -244,8 +222,6 @@ describe('TerminalTabStrip', () => {
     const trailing = screen.getByRole('button', { name: 'Reopen a past chat' });
     const newButton = screen.getByRole('button', { name: 'New session' });
     const collapse = screen.getByRole('button', { name: 'Collapse Terminal' });
-    // The New button hugs the tabs on the left; the trailing control sits in the
-    // far-right cluster, before the collapse control.
     expect(
       newButton.compareDocumentPosition(trailing) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -391,14 +367,9 @@ describe('TerminalTabStrip', () => {
     }
   });
 
-  // The standalone terminal window is frameless (titleBarStyle:'hiddenInset'),
-  // so its tab row doubles as the macOS title bar. The dock (default) must NOT —
-  // it sits at the bottom of the editor, clear of the traffic lights.
   test('window mode marks the bar as the draggable macOS title region; dock mode does not', () => {
     renderStrip({ draggable: true });
     expect(document.querySelector('[data-electron-drag]')).not.toBeNull();
-    // The window has no collapse control — window management is the OS title
-    // bar's job — but keeps the New button (feature parity).
     expect(screen.queryByRole('button', { name: 'Collapse Terminal' })).toBeNull();
     expect(screen.getByRole('button', { name: 'New session' })).toBeDefined();
     cleanup();
@@ -417,8 +388,6 @@ describe('TerminalTabStrip', () => {
     expect(onClose).toHaveBeenCalledWith('s1');
   });
 
-  // ---- Manual rename: double-click / F2 → inline input ----
-
   test('double-clicking a tab opens an inline rename input, prefilled and focused', async () => {
     const user = userEvent.setup();
     renderStrip({ activeSessionId: 's2' });
@@ -428,9 +397,6 @@ describe('TerminalTabStrip', () => {
     const input = screen.getByRole('textbox', { name: 'Rename Terminal 2' });
     expect(input).toBe(document.activeElement);
     expect((input as HTMLInputElement).value).toBe('Terminal 2');
-    // Rename is an auxiliary control outside the tablist ownership tree. The
-    // session remains represented by its tab throughout the edit, while the
-    // focused input overlays it visually without invalid interactive nesting.
     expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
     expect(screen.getByRole('tab', { name: 'Terminal 1' })).toBeDefined();
     expect(input.closest('[role="tab"]')).toBeNull();
@@ -443,14 +409,8 @@ describe('TerminalTabStrip', () => {
 
     await user.dblClick(screen.getByRole('tab', { name: 'Terminal 2' }));
 
-    // A double-click dispatches two click events (detail 1 then detail 2). The
-    // onClick guard suppresses the detail>=2 one; without it, the second
-    // activation focuses the terminal and blur-commits the rename input the same
-    // gesture just opened. Exactly one call (the initial detail=1 select) pins
-    // the guard — a regression that dropped or inverted it would read 2.
     expect(onTabActivate).toHaveBeenCalledTimes(1);
     expect(onTabActivate).toHaveBeenCalledWith('s2');
-    // The rename input is open and focused — the activation did not steal it.
     expect(screen.getByRole('textbox', { name: 'Rename Terminal 2' })).toBe(document.activeElement);
   });
 
@@ -477,8 +437,6 @@ describe('TerminalTabStrip', () => {
 
     expect(onRename).toHaveBeenCalledTimes(1);
     expect(onRename).toHaveBeenCalledWith('s2', 'build');
-    // Strip is controlled — the visible label only changes when the parent
-    // re-renders; here we assert the input closed and the trigger returned.
     expect(screen.queryByRole('textbox', { name: /Rename/ })).toBeNull();
     expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
   });
@@ -506,7 +464,6 @@ describe('TerminalTabStrip', () => {
     await user.type(input, 'discard-me');
     await user.keyboard('{Escape}');
 
-    // Escape sets the cancel guard, then blurs — the ensuing blur must NOT commit.
     expect(onRename).not.toHaveBeenCalled();
     expect(screen.queryByRole('textbox', { name: /Rename/ })).toBeNull();
     expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
@@ -536,9 +493,6 @@ describe('TerminalTabStrip', () => {
 
     await user.dblClick(screen.getByRole('tab', { name: 'my build' }));
     const input = screen.getByRole('textbox', { name: 'Rename my build' });
-    // Whitespace-only input must trim to '' -> label-clear, not a real label of
-    // spaces. Exercises the trim->empty path end-to-end (a broken trim would
-    // silently promote whitespace to a custom label).
     await user.clear(input);
     await user.type(input, '   ');
     await user.keyboard('{Enter}');
@@ -553,7 +507,6 @@ describe('TerminalTabStrip', () => {
     await user.dblClick(screen.getByRole('tab', { name: 'Terminal 3' }));
     expect(screen.getByRole('textbox', { name: 'Rename Terminal 3' })).toBeDefined();
 
-    // The session closes (PTY exit / ⌘W) — its descriptor leaves `sessions`.
     rerender(
       <TooltipProvider>
         <TerminalTabStrip
@@ -586,17 +539,9 @@ describe('TerminalTabStrip', () => {
     expect(screen.getByRole('tab', { name: 'Terminal 2' })).toBeDefined();
   });
 
-  // ---- Reorder wiring ----
-  // Pointer-drag geometry is covered by the chrome module's unit suite and the
-  // opt-in desktop smoke (jsdom cannot faithfully simulate the pointer sensor);
-  // here we pin that every tab is a sortable node and the tablist role survives
-  // the dnd-kit wrapping (no injected role="button" on the wrapper).
-
   test('every tab is wrapped in a sortable node without disturbing the tablist', () => {
     renderStrip();
     expect(document.querySelectorAll('[data-terminal-tab-sortable]')).toHaveLength(3);
-    // The dnd-kit wrapper is not focusable and adds no role — the Radix tablist
-    // still sees exactly three tabs.
     const tablist = screen.getByRole('tablist', { name: 'Terminal sessions' });
     expect(within(tablist).getAllByRole('tab')).toHaveLength(3);
     expect(within(tablist).queryAllByRole('button', { name: /^Terminal/ })).toHaveLength(0);

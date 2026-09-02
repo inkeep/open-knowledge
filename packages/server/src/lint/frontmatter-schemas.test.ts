@@ -73,11 +73,6 @@ describe('resolveFrontmatterSchemas — loading', () => {
   });
 
   test('a broken file mapped disabled-then-enabled still reports once', () => {
-    // The disabled mapping loads (and caches) the outcome first while staying
-    // silent. Reporting from inside the cache-miss branch would let the later
-    // ENABLED mapping hit the cache and never report, silently unvalidating
-    // docs it actively governs — and the suppression would depend on entry
-    // order, which the config contract says carries no precedence.
     write('.ok/schemas/broken.json', '{ not json');
     const { problems } = resolveFrontmatterSchemas(projectDir, [
       { file: '.ok/schemas/broken.json', appliesTo: 'archive/**', enabled: false },
@@ -160,8 +155,6 @@ describe('resolveFrontmatterSchemas — loading', () => {
     for (const dialect of SUPPORTED_SCHEMA_DIALECTS) {
       expect(problems[0]).toContain(dialect);
     }
-    // The message carries a paste-ready canonical `$schema` URI, not just the
-    // dialect labels, so the fix reads off directly.
     expect(problems[0]).toContain(CANONICAL_SCHEMA_DIALECT_URIS[DEFAULT_SCHEMA_DIALECT]);
     expect(entries[0]?.schema).toBeUndefined();
   });
@@ -317,9 +310,9 @@ describe('listProjectSchemaFiles', () => {
   test('enumerates .ok/schemas/*.json as project-relative paths, sorted', () => {
     write('.ok/schemas/zebra.json', '{}');
     write('.ok/schemas/alpha.schema.json', '{}');
-    write('.ok/schemas/notes.JSON', '{}'); // case-insensitive extension match
-    write('.ok/schemas/readme.md', '# not a schema'); // non-json ignored
-    mkdirSync(join(projectDir, '.ok/schemas/nested'), { recursive: true }); // dirs ignored
+    write('.ok/schemas/notes.JSON', '{}');
+    write('.ok/schemas/readme.md', '# not a schema');
+    mkdirSync(join(projectDir, '.ok/schemas/nested'), { recursive: true });
     const { schemas, truncated } = listProjectSchemaFiles(projectDir);
     expect(schemas).toEqual([
       '.ok/schemas/alpha.schema.json',

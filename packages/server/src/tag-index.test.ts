@@ -58,9 +58,7 @@ describe('TagIndex', () => {
     try {
       const idx = new TagIndex({ contentDir });
       idx.updateDocumentFromMarkdown('alpha', '#proj/team/2026 doc body.\n');
-      // Direct hit
       expect(idx.getDocsForTag('proj/team/2026')).toEqual(['alpha']);
-      // Rollup hits at every prefix level
       expect(idx.getDocsForTag('proj/team')).toEqual(['alpha']);
       expect(idx.getDocsForTag('proj')).toEqual(['alpha']);
     } finally {
@@ -77,7 +75,6 @@ describe('TagIndex', () => {
       expect(idx.getDocsForTag('typescript').sort()).toEqual(['alpha', 'beta']);
       idx.deleteDocument('alpha');
       expect(idx.getDocsForTag('typescript')).toEqual(['beta']);
-      // proj/* was alpha-only; should disappear entirely
       expect(idx.getDocsForTag('proj')).toEqual([]);
       expect(idx.getDocsForTag('proj/team')).toEqual([]);
     } finally {
@@ -111,7 +108,6 @@ describe('TagIndex', () => {
       const all = idx.getAllTags();
       const byName = new Map(all.map((t) => [t.name, t]));
 
-      // proj has both alpha + beta via rollup
       expect(byName.get('proj')).toEqual({ name: 'proj', count: 2, isLeaf: false });
       expect(byName.get('proj/team')).toEqual({ name: 'proj/team', count: 2, isLeaf: false });
       expect(byName.get('proj/team/2026')).toEqual({
@@ -126,7 +122,6 @@ describe('TagIndex', () => {
       });
       expect(byName.get('standalone')).toEqual({ name: 'standalone', count: 1, isLeaf: true });
 
-      // Sorted lexicographically
       expect(all.map((t) => t.name)).toEqual([
         'proj',
         'proj/team',
@@ -179,12 +174,6 @@ describe('TagIndex', () => {
   });
 
   test('inline-code stripping follows CommonMark §6.1 (no backslash escape inside spans)', () => {
-    // Per CommonMark, backslash is NOT a meaningful escape inside a code
-    // span — only the backtick run delimits. So `` `a\` `` is a complete
-    // code span with content `a\`, and what follows (`b\` and a stray
-    // backtick) is plain text. A `#tag` in that trailing text MUST be
-    // indexed. The earlier escape-aware regex would have swallowed the
-    // entire `` `a\`b` `` as one span, hiding the tag.
     const { contentDir, cleanup } = tempContentDir();
     try {
       const idx = new TagIndex({ contentDir });
@@ -196,9 +185,6 @@ describe('TagIndex', () => {
   });
 
   test('fence with info string opener does not close on a same-info-string line', () => {
-    // CommonMark: closing fence is the marker char repeated, with NO info
-    // string. An opener of ```python is closed only by ```/```` (or longer)
-    // followed by optional whitespace — not by another ```python line.
     const { contentDir, cleanup } = tempContentDir();
     try {
       const idx = new TagIndex({ contentDir });
@@ -249,12 +235,6 @@ describe('TagIndex', () => {
     }
   });
 
-  // Managed-artifact docs (skills/templates) participate in the link-axis
-  // indexes exactly like files — the gate excludes system + config only, not
-  // tree-hidden docs. Pairs with the synthetic short-circuit test to pin
-  // the two-axis split (tree-axis hides them from the file tree; link-axis
-  // still indexes their tags/backlinks). Mirrors the backlink + live-derived
-  // indexes' use of isLinkIndexExcludedDoc.
   test('managed-artifact docs are indexed for tags', () => {
     const { contentDir, cleanup } = tempContentDir();
     try {
@@ -270,11 +250,6 @@ describe('TagIndex', () => {
     }
   });
 
-  // Coverage for the dialog-distinguishing path: rolling up under a
-  // prefix should expose which authored tag(s) brought each doc in,
-  // not just the doc identity. Pins the byDocLiteral secondary index
-  // — if it regresses, the dialog's per-doc match chips silently
-  // disappear and the rollup becomes invisible.
   test("getDocsForTagWithMatches surfaces each doc's authored tags under the prefix", () => {
     const { contentDir, cleanup } = tempContentDir();
     try {
@@ -283,7 +258,6 @@ describe('TagIndex', () => {
       idx.updateDocumentFromMarkdown('beta', '#frontend\n');
       idx.updateDocumentFromMarkdown('gamma', '#frontend #frontend/util\n');
       const result = idx.getDocsForTagWithMatches('frontend');
-      // Sorted by docName; each entry's matchingTags sorted lexicographically.
       expect(result.map((r) => r.docName)).toEqual(['alpha', 'beta', 'gamma']);
       expect(result[0]?.matchingTags).toEqual(['frontend/component', 'frontend/hook']);
       expect(result[1]?.matchingTags).toEqual(['frontend']);
@@ -325,7 +299,6 @@ describe('TagIndex', () => {
       idx.renameDocument('alpha', 'alpha-renamed', '#frontend/component #typescript\n');
       expect(idx.getDocsForTag('typescript')).toEqual(['alpha-renamed']);
       expect(idx.getDocsForTag('frontend')).toEqual(['alpha-renamed']);
-      // Old key fully evicted from both maps.
       expect(idx.getDocsForTagWithMatches('frontend').map((r) => r.docName)).toEqual([
         'alpha-renamed',
       ]);

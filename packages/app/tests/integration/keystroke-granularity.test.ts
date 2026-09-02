@@ -1,24 +1,3 @@
-/**
- * Keystroke-granularity bridge health — char-by-char edits through the live
- * server observers with warn-channel-silence assertions.
- *
- * Character-granularity editing creates intermediate states single-shot
- * test edits never produce: every keystroke is its own transaction, drain,
- * and settlement. A paragraph momentarily ending in a just-typed space has
- * no round-trip-stable byte spelling (the serializer deliberately emits
- * paragraph-trailing spaces raw; parse strips them), so on docs resting
- * beyond byte tolerance the settlement's parse-equivalence rescue must
- * treat trailing line whitespace as the normalization the byte layer and
- * serializer already declare it to be — otherwise every space keystroke on
- * an organic lazy-continuation doc reports split-brain.
- *
- * No other tier reaches this combination: the fuzz generator's
- * type-chars op also types char-by-char but asserts only convergence and
- * content preservation — not warn-channel silence — e2e keystrokes cannot
- * observe the server-side warn channels, and the single-shot integration
- * suites settle exactly once.
- */
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
@@ -54,7 +33,6 @@ const LAZY_SLICE = '- Third bullet\n**Trigger to revisit:**';
 
 const CANONICAL_DOC = '# Keystroke granularity\n\nA plain paragraph.\n';
 
-/** Health events for one docName while `fn` runs (console.warn capture). */
 async function captureHealthEvents(docName: string, fn: () => Promise<void>): Promise<string[]> {
   const origWarn = console.warn;
   const lines: string[] = [];
@@ -70,7 +48,6 @@ async function captureHealthEvents(docName: string, fn: () => Promise<void>): Pr
   return lines.filter((l) => HEALTH_EVENT_RE.test(l) && l.includes(docName));
 }
 
-/** Append a paragraph and type the rest of `text` one char per transaction. */
 async function typeNewParagraph(client: TestClient, text: string, gapMs: number): Promise<void> {
   const p = new Y.XmlElement('paragraph');
   const t = new Y.XmlText();
@@ -85,8 +62,6 @@ async function typeNewParagraph(client: TestClient, text: string, gapMs: number)
   }
 }
 
-/** Plain text of a Y.XmlText from its delta — `.toString()` renders inline
- *  marks as XML tags, so indexOf on it does NOT map to a Yjs retain offset. */
 function plainText(t: Y.XmlText): string {
   let s = '';
   for (const op of t.toDelta() as Array<{ insert?: unknown }>) {
@@ -227,8 +202,6 @@ describe('keystroke granularity: canonical docs (controls)', () => {
         await wait(600);
       });
       expect(events).toHaveLength(0);
-      // Typed literals survive as literals through a fresh parse: the bytes
-      // must not have become live constructs.
       const bytes = clients[0].ytext.toString();
       expect(bytes).toContain('bold');
       expect(bytes).toContain('pipe');
@@ -247,7 +220,6 @@ describe('keystroke granularity: canonical docs (controls)', () => {
       await pollUntil(() => clients[0].ytext.toString().includes('| b |'), 5000);
       await wait(400);
       const events = await captureHealthEvents(clients[0].docName, async () => {
-        // Delete the last row one char per transaction (backspace cadence).
         for (let i = 0; i < '| b |\n'.length; i++) {
           await wait(20);
           clients[0].doc.transact(() => {

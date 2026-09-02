@@ -70,8 +70,6 @@ describe('SyncModeSchema', () => {
   });
   test('rejects unknown mode', () => {
     expect(SyncModeSchema.safeParse('bidirectional').success).toBe(false);
-    // A boolean is not a mode — this is the field that replaced the legacy
-    // `enabled` boolean on the wire.
     expect(SyncModeSchema.safeParse(true).success).toBe(false);
   });
 });
@@ -83,8 +81,6 @@ describe('PullOutcomeSchema', () => {
     }
   });
   test('rejects an unknown outcome', () => {
-    // `error-class` (hyphenated) is the retired near-miss — the canonical value
-    // is now `error`, so a producer emitting the old long form must fail here.
     expect(PullOutcomeSchema.safeParse('error-class').success).toBe(false);
     expect(PullOutcomeSchema.safeParse('pending').success).toBe(false);
   });
@@ -122,11 +118,6 @@ describe('SyncStatusSchema', () => {
     ).toBe(true);
   });
   test('parses a status carrying the identity-ambiguous not-found push error code', () => {
-    // The 404-masquerade code rides the same bounded-enum field as the other
-    // auth codes; a current client must accept it. Skew the other way (an
-    // older client receiving this code) cannot fail at parse time — no client
-    // schema-validates sync status — and render-time degradation is the
-    // formatters' default branch, pinned in SyncStatusBadge.dom.test.tsx.
     expect(
       SyncStatusSchema.safeParse({
         ...validStatus,
@@ -173,8 +164,6 @@ describe('SyncStatusSchema', () => {
     }
   });
   test('syncMode is additive: a status without it still parses', () => {
-    // Optional for version-skew safety — a payload from an engine predating the
-    // field must not fail validation on a newer client.
     expect('syncMode' in validStatus).toBe(false);
     expect(SyncStatusSchema.safeParse(validStatus).success).toBe(true);
   });
@@ -193,8 +182,6 @@ describe('SyncStatusSchema', () => {
     ).toBe(true);
   });
   test('lastPullUtc/lastPullOutcome are additive: a status without them still parses', () => {
-    // Optional for version-skew safety — a payload from an engine predating the
-    // one-shot-outcome contract must not fail validation on a newer client.
     expect('lastPullUtc' in validStatus).toBe(false);
     expect('lastPullOutcome' in validStatus).toBe(false);
     expect(SyncStatusSchema.safeParse(validStatus).success).toBe(true);
@@ -216,8 +203,6 @@ describe('SyncStatusSchema', () => {
     );
   });
   test('consecutivePushFailures is additive: a status without it still parses', () => {
-    // Optional for version-skew safety — a payload from an engine predating the
-    // split-leg backoff must not fail validation on a newer client.
     expect('consecutivePushFailures' in validStatus).toBe(false);
     expect(SyncStatusSchema.safeParse(validStatus).success).toBe(true);
   });
@@ -271,9 +256,6 @@ describe('PushPermissionSchema', () => {
     expect(parsed).toEqual({ checkStatus: 'denied', deniedReason: 'private-no-access' });
   });
   test('accepts a declaredSource value it has never heard of', () => {
-    // The declaration mechanism is an open string by contract: a future
-    // server-side source must degrade to generic wording on this client,
-    // not fail the whole sync-status parse.
     const parsed = PushPermissionSchema.safeParse({
       checkStatus: 'denied',
       deniedReason: 'private-no-access',
@@ -414,10 +396,6 @@ describe('SyncResolveConflictRequestSchema', () => {
 });
 
 describe('SyncConflictContentSuccessSchema', () => {
-  // The server contract is "always-present-nullable" for `lifecycleStatus`
-  // (matches read_document.lifecycle convention — SDK
-  // type stability). Every parse below includes `lifecycleStatus` so the
-  // schema can reject responses that drop the field.
   test('parses populated stages with lifecycleStatus: null (default branch)', () => {
     expect(
       SyncConflictContentSuccessSchema.safeParse({
@@ -623,12 +601,6 @@ describe('InstallSkillSuccessSchema (discriminated union)', () => {
     ).toBe(true);
   });
   test('parses skip-current with skillVersion only (recordedAt optional)', () => {
-    // Regression guard: server emits recordedAt conditionally
-    // (skill-install.ts — `...(recordedAt !== null ? { recordedAt } : {})`).
-    // The discriminatedUnion's skip-current variant must accept the
-    // recordedAt-absent case, otherwise successResponse's safeParse falls
-    // back to a 500 on every legitimate skip-current emit. This test pins
-    // the regression so a future edit can't re-introduce it.
     expect(
       InstallSkillSuccessSchema.safeParse({
         status: 'skip-current',
@@ -645,15 +617,6 @@ describe('InstallSkillSuccessSchema (discriminated union)', () => {
     ).toBe(false);
   });
   test('accepts forward-compat extra fields per .loose() variants', () => {
-    // Each discriminated-union variant declares `.loose()` for forward-
-    // compat: a future server adding e.g. `installedAt` to `installed`
-    // must not break older clients. The DU enforces variant-specific
-    // REQUIRED fields (status discriminant + per-variant mandatory shape),
-    // not blanket rejection of unknown extras. A test asserting
-    // `{ status: 'failed', outputPath: 'x' }` is rejected would falsely
-    // imply `.strict()` semantics. The actual contract: status routes to
-    // the right variant, required fields are checked, forward-compat
-    // extras pass through.
     expect(
       InstallSkillSuccessSchema.safeParse({
         status: 'failed',

@@ -1,20 +1,3 @@
-/**
- * Folder-level skill-root verbs:
- *
- *  - LINK: an editor's own skills folder merges into a target root, then the
- *    folder becomes a symlink to that root ("follow the root"). Merge is
- *    conflict-safe: same-hash bundles drop (redundant bytes), own-only bundles
- *    MOVE into the target, differing bundles ABORT the whole operation with a
- *    list — nothing is written on abort.
- *  - UNLINK: a linked folder materializes back into a real folder holding a
- *    per-skill SYMLINK for every bundle the target root exposes — lossless and
- *    behavior-preserving (each skill's menu can convert links to copies from
- *    there).
- *
- * Both verbs refuse to touch anything that isn't exactly what they expect
- * (stray files, unexpected link targets) — fail-loud beats a clever guess.
- */
-
 import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
@@ -27,11 +10,6 @@ export interface SkillFolderState {
   target?: string;
 }
 
-/**
- * Observable folder state per host skills root: `own` (real folder), `linked`
- * (the folder itself is a symlink → `target`), `linked-parent` (a parent dir
- * is the symlink — report-only; the parent is what's linked), `absent`.
- */
 export function scanSkillFolderStates(
   base: string,
   roots: ReadonlyArray<{ editor: string; root: string }>,
@@ -56,7 +34,7 @@ export function scanSkillFolderStates(
     try {
       real = realpathSync(abs);
     } catch {
-      return { host: editor, root, state: 'absent' as const }; // dangling link
+      return { host: editor, root, state: 'absent' as const };
     }
     if (st.isSymbolicLink()) {
       const target = relTo(real);
@@ -75,14 +53,6 @@ export function scanSkillFolderStates(
   });
 }
 
-/**
- * Discriminated on `reason`, so each failure carries exactly the payload it has
- * and TypeScript enforces it. The previous shape was one arm with every payload
- * optional, which forced `result.roots ?? []` at the call site — a fallback that
- * cannot fire (this is a same-process typed value, not a trust boundary) and
- * that would silently ship an empty list if it ever did, printing the sentence
- * with its subject removed.
- */
 export type FolderLinkResult =
   | { ok: true; moved: string[]; dropped: string[]; linked: string[] }
   | { ok: false; reason: 'not-permitted'; roots: string[] }
@@ -90,20 +60,8 @@ export type FolderLinkResult =
   | { ok: false; reason: 'stray-entries'; strays: string[] }
   | { ok: false; reason: 'not-linkable' }
   | { ok: false; reason: 'not-linked' }
-  /** partial-move: bundles moved before the failure — each move is a complete
-   *  rename, so RE-RUNNING the link resumes and completes. */
   | { ok: false; reason: 'partial-move'; moved: string[]; error?: string };
 
-/** OS / VCS noise that must not block a LINK. macOS Finder drops `.DS_Store`
- *  into any browsed directory, so treating every dotfile as a stray would
- *  permanently block LINK for a developer who opened `.claude/skills/` in
- *  Finder. These are ignored (neither bundle nor stray); other dotfiles stay
- *  strays so genuinely unexpected hidden content still trips the guard.
- *
- *  `.git` is deliberately NOT here. A link deletes the folder it consumes, so
- *  a skills folder that is itself a clone loses its history — the one loss in
- *  this set that can't be undone. Leaving it out routes it through the
- *  dot-entry branch below, where it gets disclosed before the write. */
 const BENIGN_DOTFILES = new Set([
   '.DS_Store',
   '.localized',
@@ -113,20 +71,12 @@ const BENIGN_DOTFILES = new Set([
   '.gitattributes',
 ]);
 
-/** Bundle dir names (entries containing a SKILL.md) directly under `root`.
- *  `ignored` are the entries a LINK neither moves nor treats as strays — they
- *  go away with the folder, so callers can disclose that before writing. */
 function bundleNames(rootAbs: string): { bundles: string[]; strays: string[]; ignored: string[] } {
   const bundles: string[] = [];
   const strays: string[] = [];
   const ignored: string[] = [];
   for (const e of readdirSync(rootAbs, { withFileTypes: true })) {
     if (BENIGN_DOTFILES.has(e.name)) continue;
-    // A skill dir name can't begin with a dot, so a dot-entry here is the
-    // HARNESS's own bookkeeping in its own folder — Codex keeps its bundled
-    // skills under `.system`. Treating those as strays meant a harness that
-    // writes anything beside your skills could never have its folder linked,
-    // which is not a state the user can clean up.
     if (e.name.startsWith('.')) {
       ignored.push(e.name);
       continue;
@@ -136,27 +86,16 @@ function bundleNames(rootAbs: string): { bundles: string[]; strays: string[]; ig
       bundles.push(e.name);
       continue;
     }
-    // A DANGLING symlink is a dead delivery pointer — an uninstall or scope
-    // move deleted its target and left the link behind. It holds no bytes a
-    // link could strand, but it fails the SKILL.md probe and is not a
-    // directory, so without this branch it classified as a stray and
-    // permanently blocked LINK on exactly the folders OK itself had touched.
-    // Disclosed via `ignored` (it goes away with the folder), never a blocker.
     if (e.isSymbolicLink() && !existsSync(p)) {
       ignored.push(e.name);
       continue;
     }
-    // An EMPTY directory holds nothing a link could strand (harness leftovers
-    // like `codex-primary-runtime`). A directory with contents but no SKILL.md
-    // is real content and still blocks.
     if (e.isDirectory() && isEmptyDir(p)) continue;
     strays.push(e.name);
   }
   return { bundles, strays, ignored };
 }
 
-/** True when `dirAbs` has no entries. Unreadable counts as non-empty: a folder
- *  we can't inspect is not one we can promise a link won't strand. */
 function isEmptyDir(dirAbs: string): boolean {
   try {
     return readdirSync(dirAbs).length === 0;
@@ -165,11 +104,6 @@ function isEmptyDir(dirAbs: string): boolean {
   }
 }
 
-/** What a LINK would do. `toDrop` and `removes` are deletions from the folder
- *  being consumed; `removes` are the entries no bundle move covers — they go
- *  away when the folder is replaced by the symlink. `liveDestLinks` is the one
- *  deletion on the OTHER side: a per-skill delivery link in the target that the
- *  merge overwrites, so that skill stops following the root it came from. */
 interface FolderLinkPlan {
   toMove: string[];
   toDrop: string[];
@@ -181,41 +115,16 @@ interface FolderLinkPlan {
 
 export type FolderLinkPreview =
   | { kind: 'plan'; plan: FolderLinkPlan }
-  /** Nothing to merge — the link is a bare symlink creation. */
   | { kind: 'absent' }
   | { kind: 'not-linkable' }
   | { kind: 'stray-entries'; strays: string[] }
   | { kind: 'conflicts'; conflicts: string[] }
-  /** A root the link would CREATE is not one the caller permits creating. */
   | { kind: 'not-permitted'; roots: string[] };
 
-/**
- * Classify what `linkEditorSkillFolder` would do, WITHOUT writing anything.
- * The link runs this first and applies the plan, so a caller can disclose the
- * exact moves and deletions before asking for them.
- */
 export function previewEditorFolderLink(opts: {
   base: string;
   folderRel: string;
   targetRootRel: string;
-  /** Consent gate for roots the link would CREATE. A link mkdirs BOTH the
-   *  target root and the folder's parent dotdir, so both operands are creation
-   *  sites — guarding only one leaves the other reachable.
-   *
-   *  REQUIRED, and deliberately so. Optional-with-permissive-default only moves
-   *  the remembering from "write the guard" to "pass the argument", and a
-   *  missing optional property has no signal — no type error, no lint, nothing
-   *  for a reviewer to see. Required means a caller that does not want the gate
-   *  has to say so in a greppable way. The sibling `symlink-guard.ts` models the
-   *  same fail-closed shape; this used to invert it.
-   *
-   *  Called ONLY for roots already proven absent, and answered about the
-   *  skills-root rel (`.copilot/skills`) — NOT the dotdir that actually gets
-   *  created for the folder operand. An implementer must decide whether the
-   *  root's creation is permitted, which for a host dir normally means asking
-   *  about its dotdir (`isActivatedSkillRoot` → `skillRootActivationPath` does
-   *  exactly that); answering the question literally would refuse the supported
-   *  `.copilot` present / `.copilot/skills` absent flow. */
   mayCreate: (rootRel: string) => boolean;
 }): FolderLinkPreview {
   const { base, folderRel, targetRootRel, mayCreate } = opts;
@@ -231,16 +140,13 @@ export function previewEditorFolderLink(opts: {
   } catch {
     return { kind: 'absent' };
   }
-  if (st.isSymbolicLink()) return { kind: 'not-linkable' }; // already a link
+  if (st.isSymbolicLink()) return { kind: 'not-linkable' };
   if (!st.isDirectory()) return { kind: 'not-linkable' };
   try {
-    if (realpathSync(folderAbs) === realpathSync(targetAbs)) return { kind: 'not-linkable' }; // same physical dir (parent alias)
-  } catch {
-    // target absent — created by the link
-  }
+    if (realpathSync(folderAbs) === realpathSync(targetAbs)) return { kind: 'not-linkable' };
+  } catch {}
   const { bundles, strays, ignored } = bundleNames(folderAbs);
   if (strays.length > 0) return { kind: 'stray-entries', strays };
-  // Classify EVERYTHING before touching anything (abort must be a no-op).
   const conflicts: string[] = [];
   const toMove: string[] = [];
   const toDrop: string[] = [];
@@ -257,9 +163,7 @@ export function previewEditorFolderLink(opts: {
       try {
         destIsLink = lstatSync(destDir).isSymbolicLink();
         destTarget = realpathSync(destDir);
-      } catch {
-        // An absent or dangling destination can be replaced below.
-      }
+      } catch {}
       if (destTarget === ownTarget) {
         toDrop.push(name);
       } else if (destTarget !== null) {
@@ -270,20 +174,12 @@ export function previewEditorFolderLink(opts: {
       }
       continue;
     }
-    // lstat the DEST: a symlink there (live OR dangling) is a stale pointer,
-    // not content — remove before the move. `existsSync` alone misclassified
-    // a DANGLING dest link as absent, and `rename(dir → symlink)` ENOTDIRs.
     let destIsLink = false;
     try {
       destIsLink = lstatSync(destDir).isSymbolicLink();
-    } catch {
-      /* truly absent */
-    }
+    } catch {}
     if (destIsLink) {
       destLinks.push(name);
-      // A link that still RESOLVES is a working delivery this merge overwrites
-      // — the one thing a link destroys outside the folder it consumes, so it
-      // needs saying. A dangling one points at nothing and is pure cleanup.
       if (existsSync(destDir)) liveDestLinks.push(name);
       toMove.push(name);
       continue;
@@ -304,15 +200,10 @@ export function previewEditorFolderLink(opts: {
   };
 }
 
-/**
- * Merge-then-swap: `folderRel` (an editor's own skills folder under `base`)
- * merges into `targetRootRel` and becomes a symlink to it.
- */
 export function linkEditorSkillFolder(opts: {
   base: string;
   folderRel: string;
   targetRootRel: string;
-  /** See `previewEditorFolderLink`. Required for the same reason. */
   mayCreate: (rootRel: string) => boolean;
 }): FolderLinkResult {
   const { base, folderRel, targetRootRel, mayCreate } = opts;
@@ -322,7 +213,6 @@ export function linkEditorSkillFolder(opts: {
   if (preview.kind === 'not-permitted')
     return { ok: false, reason: 'not-permitted', roots: preview.roots };
   if (preview.kind === 'absent') {
-    // Absent folder: nothing to merge — create the link directly.
     tracedMkdirSync(dirname(folderAbs), { recursive: true });
     tracedMkdirSync(targetAbs, { recursive: true });
     tracedSymlinkSync(relative(dirname(folderAbs), targetAbs), folderAbs, 'dir');
@@ -334,10 +224,6 @@ export function linkEditorSkillFolder(opts: {
   if (preview.kind === 'conflicts')
     return { ok: false, reason: 'conflicts', conflicts: preview.conflicts };
   const { toMove, toDrop, destLinks, linkedBundlesToMove } = preview.plan;
-  // Apply. Each move is a complete per-bundle rename, so a failure
-  // midway leaves a RESUMABLE half-merge (already-moved bundles classify as
-  // same-hash/absent on the next run) — report it structurally, never a bare
-  // throw: the caller tells the user to re-run the link.
   const movedSoFar: string[] = [];
   try {
     tracedMkdirSync(targetAbs, { recursive: true });
@@ -373,17 +259,9 @@ export function linkEditorSkillFolder(opts: {
   };
 }
 
-/**
- * Materialize a linked folder back into a real folder of per-skill symlinks —
- * every bundle the target exposed stays reachable at the same path, each now
- * individually managed (the per-skill menus take over from here).
- */
 export function unlinkEditorSkillFolder(opts: {
   base: string;
   folderRel: string;
-  /** Skill names to LEAVE OUT of the materialized per-skill links — the
-   *  "this agent shouldn't get that skill" remedy: the folder stops following
-   *  its target root and keeps everything it sees today except these. */
   exclude?: readonly string[];
 }): FolderLinkResult {
   const { base, folderRel } = opts;
@@ -400,8 +278,6 @@ export function unlinkEditorSkillFolder(opts: {
   try {
     targetAbs = realpathSync(folderAbs);
   } catch {
-    // Dangling link: removing it and leaving an empty real folder is the only
-    // lossless materialization.
     tracedRmSync(folderAbs, { force: true });
     tracedMkdirSync(folderAbs, { recursive: true });
     return { ok: true, moved: [], dropped: [], linked: [] };
@@ -409,9 +285,6 @@ export function unlinkEditorSkillFolder(opts: {
   const { bundles } = bundleNames(targetAbs);
   tracedRmSync(folderAbs, { force: true });
   tracedMkdirSync(folderAbs, { recursive: true });
-  // Both ends realpath'd before computing relative link targets — a symlinked
-  // ancestor on either side (e.g. macOS /var → /private/var) would otherwise
-  // yield dangling links.
   const folderReal = realpathSync(folderAbs);
   const linked: string[] = [];
   for (const name of bundles) {

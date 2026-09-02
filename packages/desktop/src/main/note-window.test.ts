@@ -31,8 +31,6 @@ const PROJECT: NoteWindowProject = {
   apiOrigin: 'http://localhost:5200',
 };
 
-/** A fake window exposing only what the factory touches; `closed` handlers are
- *  captured so a test can fire the lifecycle event. */
 function makeFakeWindow(id: number) {
   const closedHandlers: Array<() => void> = [];
   const window = {
@@ -378,13 +376,6 @@ describe('createNoteWindow', () => {
   });
 
   test('attaches the external-link safety net before the renderer loads, so a stray external window.open is denied and delegated to the OS browser', () => {
-    // The note window renders the same untrusted document content as an editor
-    // window; without this net a click that escapes the renderer's own handler
-    // navigates the top frame to an external origin, where the preload
-    // re-exposes the `okDesktop` bridge. Seam: the real `attachAssetSafetyNet`
-    // over a capturing webContents fake — asserting the captured handler denies
-    // an external URL and routes it to `openExternal` is the real behavior, not
-    // a mock of the factory's own logic. Mirrors `window-manager-safety-net`.
     let windowOpenHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null =
       null;
     let handlerRegisteredBeforeLoad = false;
@@ -466,8 +457,6 @@ describe('openNoteWindow — dedup and focus-existing', () => {
   });
 
   test('an open with no entry point is not counted either', () => {
-    // A server-restart recreate puts back a window that was already there.
-    // Counting it would inflate the one adoption number this feature reports.
     const h = makeDeps({ id: 1, docName: 'notes/alpha' });
     const result = openNoteWindow({ ...h.deps, focusWindowById: () => true });
 
@@ -488,9 +477,6 @@ describe('openNoteWindow — dedup and focus-existing', () => {
   });
 
   test('two same-tick opens for one document yield exactly one window', () => {
-    // Registration is synchronous and precedes the async renderer load, so the
-    // second call cannot miss the first call's entry. No in-flight promise map
-    // is needed (the slides-registry race does not apply here).
     const focusWindowById = vi.fn(() => true);
     const first = makeDeps({ id: 1, docName: 'notes/alpha' });
     const second = makeDeps({ id: 2, docName: 'notes/alpha' });
@@ -536,7 +522,6 @@ describe('openNoteWindow — dedup and focus-existing', () => {
     const first = makeDeps({ id: 1, docName: 'notes/alpha' });
     openNoteWindow({ ...first.deps, entryPoint: 'tab-menu', focusWindowById: () => true });
 
-    // The window died without firing 'closed', so focusing it fails.
     const second = makeDeps({ id: 2, docName: 'notes/alpha' });
     const result = openNoteWindow({
       ...second.deps,
@@ -613,8 +598,6 @@ describe('resolveNoteWindowProject', () => {
   });
 
   test('no project context resolves to null, never a project-less window', () => {
-    // A terminal window falls back to a home-directory shell here. A note
-    // window cannot: a document only exists inside a project.
     expect(resolveNoteWindowProject({ editor: null, note: undefined, ...helpers })).toBeNull();
   });
 });
@@ -637,8 +620,6 @@ describe('resolveWindowProjectScope', () => {
   });
 
   test('a note window resolves through the registry instead of refusing', () => {
-    // Before this fallback, every containment-gated handler saw a focused
-    // pop-out as project-less: asset clicks and copy-image refused outright.
     expect(resolveWindowProjectScope({ editor: undefined, note })).toEqual({
       projectPath: '/Users/me/project',
       apiOrigin: 'http://localhost:5200',
@@ -653,8 +634,6 @@ describe('resolveWindowProjectScope', () => {
   });
 
   test('resolves per field, so a path-only editor context is unchanged', () => {
-    // An editor context carrying a path but no origin must keep behaving
-    // exactly as it did; falling back wholesale would change its behavior.
     expect(
       resolveWindowProjectScope({ editor: { projectPath: '/Users/me/editor' }, note: undefined }),
     ).toEqual({ projectPath: '/Users/me/editor', apiOrigin: undefined });

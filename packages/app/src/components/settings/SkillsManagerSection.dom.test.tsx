@@ -1,15 +1,3 @@
-/**
- * RTL behavioral tests for the Settings Skills manager.
- *
- * The settings surface is now just the install-targets picker — authoring
- * (New / Import) and browsing authored skills live in the editor's Skills
- * sidebar. These tests pin that the section + picker render and none of the
- * removed authoring/listing chrome comes back.
- *
- * Lingui macros aren't transformed in this substrate — stub to identity
- * renderers, same as the sibling .dom.test.tsx files.
- */
-
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -43,8 +31,6 @@ afterEach(() => {
 
 const EMPTY_TARGETS = { targets: [], configured: false };
 
-// The section only mounts the targets picker (`/api/skill-targets`) now — hold
-// its response constant; these tests assert what renders, not the picker itself.
 function mockTargets() {
   global.fetch = vi.fn(async () => ({
     ok: true,
@@ -64,7 +50,6 @@ describe('SkillsManagerSection', () => {
   test('does not render authoring buttons or the scope-grouped skills list', async () => {
     mockTargets();
     render(<SkillsManagerSection scope="project" />);
-    // Give any stray effect a chance to fetch/render before asserting absence.
     await waitFor(() => expect(screen.getByTestId('settings-skills-section')).toBeDefined());
 
     expect(screen.queryByTestId('settings-skills-new-button')).toBeNull();

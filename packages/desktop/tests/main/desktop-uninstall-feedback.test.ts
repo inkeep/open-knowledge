@@ -10,7 +10,6 @@ import {
   runDesktopUninstallOutcomeStep,
 } from '../../src/main/desktop-uninstall.ts';
 
-/** Let every pending microtask run, so an abandoned promise shows up as done. */
 const settleQueue = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const answered: UninstallFeedbackAnswers = { reason: 'unreliable', note: 'crashed on open' };
@@ -163,7 +162,6 @@ describe('runDesktopUninstallOutcomeStep', () => {
         order.push('failure');
       },
     });
-    // Feedback runs AFTER the removal, and only before the finish screen.
     expect(order).toEqual(['feedback', 'completion']);
   });
 

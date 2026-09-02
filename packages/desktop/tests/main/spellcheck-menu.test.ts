@@ -1,11 +1,3 @@
-/**
- * Unit tests for the editor spellcheck context-menu template + pop dispatch.
- * Covers section composition per `ContextMenuParams` (edit roles, spellcheck
- * rows, Look Up / Search), separator omission for empty sections, and callback
- * dispatch wiring. Mirrors `asset-menu.test.ts` — template shape is exercised
- * without mounting Electron's Menu.
- */
-
 import type { BrowserWindow, Menu, MenuItemConstructorOptions } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -26,9 +18,6 @@ function makeActions() {
   };
 }
 
-// The view-in-source jump trails every section-composition case below, which
-// all build with the jump live (`canViewInSource` defaults to true in `build`).
-// Its own gate is covered by the not-live cases at the end of the describe.
 const VIEW_ROW = 'View in Source Markdown';
 
 const allEditFlags = {
@@ -57,7 +46,6 @@ function build(
   return buildSpellcheckMenuTemplate({ params, spellCheckEnabled, canViewInSource, actions });
 }
 
-/** Project a template to a comparable shape: role, label, or separator marker. */
 function shapeOf(template: MenuItemConstructorOptions[]): string[] {
   return template.map((e) => e.role ?? e.label ?? `[${e.type}]`);
 }
@@ -141,9 +129,6 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
   });
 
   test('flagged word with checking off → Enable row only, no suggestion rows', () => {
-    // `spellCheckEnabled` is OK's persisted flag while `misspelledWord` comes
-    // from Chromium — a toggle racing a right-click can deliver both, so this
-    // pins which branch wins: the disabled state.
     const params = makeParams({ misspelledWord: 'teh', dictionarySuggestions: ['the', 'tech'] });
     const template = build(params, false, makeActions());
     expect(shapeOf(template)).toEqual([
@@ -178,8 +163,6 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
   });
 
   test('no edit/spell/lookup rows → View in Source alone (no dangling separators)', () => {
-    // With the jump live and nothing else to offer, the view row is the sole
-    // entry, with no leading separator.
     const params = makeParams({
       editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: false },
     });
@@ -215,15 +198,10 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
     });
     const template = build(params, true, makeActions());
     const shape = shapeOf(template);
-    // Appended after everything else, behind its own separator.
     expect(shape.at(-1)).toBe(VIEW_ROW);
     expect(shape.at(-2)).toBe('[separator]');
   });
 
-  // The menu attaches to every editable field in the window, and the jump only
-  // means something over a document open in the visual editor. Everywhere else
-  // — the composer, a rename field, a dialog input, source mode, no document —
-  // the row is omitted rather than shown inert or greyed.
   test('the jump not being live omits the row, leaving the rest intact', () => {
     const params = makeParams({
       misspelledWord: 'teh',
@@ -252,9 +230,6 @@ describe('buildSpellcheckMenuTemplate — section composition', () => {
   });
 
   test('a capability-less field with the jump not live gets no menu rows at all', () => {
-    // The case that made the row unconditional-looking: an editable target with
-    // no edit flags, no misspelling and no selection. It must now come back
-    // empty rather than offering a lone row that does nothing.
     const params = makeParams({
       editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: false },
     });
@@ -351,9 +326,6 @@ describe('buildSpellcheckMenuTemplate — callback dispatch', () => {
 
   test('query truncation never splits a surrogate pair (encodeURIComponent-safe)', () => {
     const actions = makeActions();
-    // 199 BMP chars + an astral emoji straddling the 200-code-unit query cap —
-    // a naive slice leaves a trailing lone surrogate, which encodeURIComponent
-    // rejects with URIError at the search-URL sink.
     const template = build(makeParams({ selectionText: `${'x'.repeat(199)}😀` }), true, actions);
     clickRow(template, 'Search with Google');
     const query = actions.search.mock.calls[0]?.[0] ?? '';
@@ -363,7 +335,6 @@ describe('buildSpellcheckMenuTemplate — callback dispatch', () => {
 
   test('label truncation never splits a surrogate pair', () => {
     const actions = makeActions();
-    // 49 BMP chars + an astral emoji straddling the 50-code-unit label cap.
     const template = build(
       makeParams({ selectionText: `${'y'.repeat(49)}😀${'z'.repeat(10)}` }),
       true,

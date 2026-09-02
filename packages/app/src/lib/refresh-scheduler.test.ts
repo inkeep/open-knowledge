@@ -88,16 +88,15 @@ describe('createRefreshScheduler', () => {
       },
     );
 
-    scheduler.request(); // run 1 starts, hangs on `first`
+    scheduler.request();
     expect(calls).toBe(1);
-    scheduler.request(); // supersede → cancel fires, run coalesced to pending
+    scheduler.request();
     expect(cancels).toBe(1);
     expect(calls).toBe(1);
 
     first.resolve();
     await setImmediate();
 
-    // Exactly one trailing re-run, and no further cancel for the idle re-run.
     expect(calls).toBe(2);
     expect(cancels).toBe(1);
   });
@@ -121,12 +120,12 @@ describe('createRefreshScheduler', () => {
     scheduler.request();
     scheduler.request();
     expect(calls).toBe(1);
-    expect(cancels).toBe(3); // three supersedes against the one in-flight run
+    expect(cancels).toBe(3);
 
     first.resolve();
     await setImmediate();
 
-    expect(calls).toBe(2); // single trailing re-run despite three supersedes
+    expect(calls).toBe(2);
   });
 
   test('dispose invokes cancel to abort an in-flight fetch', async () => {

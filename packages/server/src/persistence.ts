@@ -1,21 +1,3 @@
-/**
- * Git auto-persistence pipeline.
- *
- * Layer 1 (CRDT → disk): onStoreDocument reads body bytes from
- * `Y.Text('source')` after the quiescence gate, runs a pre-write sanity
- * check via `assertBridgeInvariant` (site: 'persistence',
- * suppressDevThrow: true) against the canonical fragment view, queues a
- * fragment reconciliation on mismatch, then writes the ytext bytes
- * verbatim to disk via `tracedWriteFile`. Y.Text-is-truth (precedent
- * #38): fragment serialization is the comparator's RHS, not the
- * body-of-truth.
- * Layer 2 (disk → git): afterStoreDocument commits to shadow repo via git plumbing
- *
- * Hocuspocus config: debounce=2000, maxDebounce=10000 (L1)
- * Git commit debounced separately: 15s idle after last disk write (L2;
- * default, configurable via `commitDebounceMs`; exponential backoff up to
- * 32× under sustained git lock contention).
- */
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
@@ -178,7 +160,6 @@ export function resolveWriterFromOrigin(
     const ctx = o.context as Record<string, unknown> | undefined;
     if (!ctx) return null;
 
-    // Per-session origin (agent write, agent undo) — session_id is the connectionId
     if (typeof ctx.session_id === 'string') {
       const sessionId = ctx.session_id;
       return {
@@ -188,26 +169,18 @@ export function resolveWriterFromOrigin(
       };
     }
 
-    // Classified local origins by context.origin value
     if (ctx.origin === 'file-watcher') return FILE_SYSTEM_WRITER;
     if (ctx.origin === 'upstream-import' || ctx.origin === 'git-upstream') {
       return GIT_UPSTREAM_WRITER;
     }
-    // park-snapshot, rollback-apply, managed-rename → service fallback
     return SERVICE_WRITER;
   }
 
   if (o.source === 'connection') {
-    // Human browser write — principalId set via onAuthenticate.
     const conn = o.connection as Record<string, unknown> | undefined;
     const ctx = conn?.context as Record<string, unknown> | undefined;
     if (typeof ctx?.principalId === 'string') {
       const principalId = ctx.principalId as string;
-      // When the claimed principalId matches the loaded principal record,
-      // use the real display_name / display_email (e.g. git-config user.name)
-      // so `ok-actor:` body + Co-Authored-By trailers mirror the user's git
-      // identity. Fall back to a stub only when the server has no principal
-      // loaded or the claim doesn't match.
       const loaded = getPrincipal?.();
       if (loaded && loaded.id === principalId && loaded.display_name && loaded.display_email) {
         return {
@@ -228,17 +201,6 @@ export function resolveWriterFromOrigin(
   return null;
 }
 
-/**
- * Bounded-cardinality classes for `deferred-store-failed`.
- *
- * The deferred-drain catch in `flushDeferredStores` is the outermost
- * boundary; most errors that reach it are already-rethrown disk-write
- * failures from `storeDocumentNow`. The other bins exist because
- * forward-compat callers may re-route currently-swallowed inner errors
- * past their inner catch in the future — keeping the enum stable means
- * existing dashboards keep working when that happens. Operators index on
- * the bin labels, never on raw `errorMessageHash` values.
- */
 const DEFERRED_STORE_ERROR_CLASSES = [
   'disk-write',
   'serialize',
@@ -249,12 +211,6 @@ const DEFERRED_STORE_ERROR_CLASSES = [
 ] as const;
 type DeferredStoreErrorClass = (typeof DEFERRED_STORE_ERROR_CLASSES)[number];
 
-/**
- * NodeJS.ErrnoException codes the disk-write classifier treats as
- * filesystem-layer failures. Stable across Node versions; do not narrow
- * without checking the `tracedWriteFile` / `tracedRename` call sites in
- * `fs-traced.ts` for newly-surfaced codes.
- */
 const ERRNO_FS_CODES = new Set([
   'EACCES',
   'EBADF',
@@ -273,22 +229,6 @@ const ERRNO_FS_CODES = new Set([
   'EXDEV',
 ]);
 
-/**
- * Classify a deferred-store error into a bounded-cardinality bin for the
- * `deferred-store-failed` event. Inspects `err.code` (ErrnoException
- * contract) or simple string-startsWith on the message, and matches
- * `BridgeInvariantViolationError` via `instanceof` so a class rename surfaces
- * as a compile-time error at the import — intentionally NO stack inspection
- * (fragile across Node/Bun versions).
- *
- * Designed to never throw on its own input. The outer catch nevertheless
- * wraps the call in a try/catch so a malicious / unexpected error shape
- * (proxied properties, non-Error throw value with throwing getters) can't
- * break the structured-event emission path. That defensive outer wrap is
- * the observability boundary; treating its absence as "the classifier
- * never breaks" would re-introduce the silent-loss failure mode the
- * structured event is built to surface.
- */
 export function classifyDeferredStoreError(err: unknown): DeferredStoreErrorClass {
   if (err === null || typeof err !== 'object') return 'unknown';
   const e = err as { code?: unknown; message?: unknown };
@@ -305,87 +245,25 @@ export function classifyDeferredStoreError(err: unknown): DeferredStoreErrorClas
 export interface PersistenceOptions {
   contentDir: string;
   projectDir: string;
-  /**
-   * Durability registry shared with other server extensions. Standalone
-   * persistence callers may omit it; composition callers must give every
-   * durability consumer the same instance exposed on `PersistenceHandle`.
-   */
   durabilityState?: DocumentDurabilityState;
   gitEnabled?: boolean;
   commitDebounceMs?: number;
   wipRef?: string;
-  /** Shadow repo ref — read at commit time so deferred init propagates. */
   shadowRef?: ShadowRef;
-  /** Content root relative to project dir (e.g., 'content/docs'). Used for shadow repo staging. */
   contentRoot?: string;
   derivedDocumentIndex?: DerivedDocumentIndexPersistencePort;
-  /** Accessor for the current branch from the HEAD watcher. Used to scope WIP refs per branch. */
   getCurrentBranch?: () => string | null;
-  /**
-   * Resolves `![[photo.png]]` embed targets to disk-relative paths before PM
-   * dispatch. Consumed by `onLoadDocument`'s `mdManager.parseWithFallback`
-   * call so image-extension embeds materialize as PM `image` nodes with the
-   * resolved `src` (not the literal target).
-   */
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  /**
-   * Byte-size resolver for `![[file.ext]]` wikilinks whose extension is
-   * in `FILE_ATTACHMENT_EXTENSIONS`. The wikiLinkEmbed handler stamps
-   * the formatted size on the resulting jsxComponent's `size` prop so
-   * File-row size spans survive reloads. Same `(target, sourcePath)`
-   * signature as `resolveEmbed`. Server-side only.
-   */
   resolveSize?: (basename: string, sourcePath: string) => number | null;
-  /**
-   * Accessor for the server's principal record. When a browser connection's
-   * `ctx.principalId` matches `loadedPrincipal.id`, `resolveWriterFromOrigin`
-   * emits WriterIdentity with the real display_name / display_email instead
-   * of a "Local User" stub.
-   */
   getPrincipal?: () => Principal | null;
-  /**
-   * Optional callback fired after each successful `commitWipFromTree` for an
-   * agent writer (`writerId.startsWith('agent-')`). Used to emit CC1
-   * `ch:'session-activity'` so Activity Panel clients get live invalidations.
-   * Omitted in plugin mode where no CC1Broadcaster is available.
-   */
   onAgentCommit?: () => void;
-  /**
-   * Optional callback fired after EVERY successful shadow flush-commit (any
-   * writer, not just agents). The maintenance coordinator counts these and fires
-   * a background gc every ~200. Must be cheap and non-throwing —
-   * it runs on the write path; the coordinator does only a counter bump inline
-   * and fires gc off-path. Omitted in plugin mode.
-   */
   onFlushCommit?: () => void;
-  /**
-   * Optional callback fired after each successful L1 disk write
-   * (post-`tracedRename`). The state vector is captured PRE-WRITE so
-   * the watermark reflects exactly the doc state that landed on disk —
-   * any updates received after capture but before the rename completes
-   * are excluded by construction, matching the actual durable state.
-   *
-   * `persistedMarkdown` is the source bytes that just landed on disk;
-   * `previousMarkdown` is the reconciled base before the write, or `null`
-   * for first writes. Wired to `cc1Broadcaster.emitDiskAck(docName, sv)` in
-   * boot, with optional derived-view invalidations for content-sensitive
-   * sidebar rows.
-   * Omitted in plugin mode where no CC1Broadcaster is available
-   * — the closure shape is identical to `onAgentCommit`.
-   */
   onDiskFlush?: (
     docName: string,
     sv: Uint8Array,
     persistedMarkdown: string,
     previousMarkdown: string | null,
   ) => void;
-  /**
-   * Injectable disk-intake seam. Mirrors the full `applyDiskContentToDoc`
-   * signature — narrowing it to `(document, content)` made the trailing
-   * `detect` argument unreachable from every call site routed through the
-   * option, which silently opted the tripwire reset out of paired-intake
-   * derive-loss detection on the one path guaranteed to discard live content.
-   */
   applyDiskContentToDoc?: (
     document: Y.Doc,
     content: string,
@@ -394,105 +272,16 @@ export interface PersistenceOptions {
     resolveSize?: (basename: string, sourcePath: string) => number | null,
     detect?: DeriveLossDetectOptions,
   ) => void;
-  /**
-   * Override `os.homedir()` for config-doc persistence. Tests scope
-   * user-global writes (`__user__/config.yml`) to a tempdir; if unset,
-   * defaults to `os.homedir()` via `resolveConfigPath`.
-   */
   configHomedirOverride?: string;
-  /**
-   * Fired after the L3 persistence-hook reverts an invalid Y.Text
-   * mutation on a config doc. Wired in boot to
-   * `cc1Broadcaster.emitConfigValidationRejected(docName, error)`
-   * so any open Settings pane sees the rejection toast. Omitted in
-   * plugin mode where no CC1Broadcaster is available.
-   */
   onConfigRejected?: (docName: string, error: ConfigValidationError) => void;
-  /**
-   * Fired after the L3 persistence hook durably persists (or reconciles)
-   * a config doc on the self-originated Y.Doc path. Wired in boot to
-   * re-apply the now-durable config to the live in-process consumers (sync
-   * engine, semantic search) directly — either the value this persist wrote
-   * (`'persisted'`) or a winning external writer's value imported on reconcile
-   * (`'reconciled'`) — so it reaches them even when the chokidar echo never
-   * fires. Omitted in plugin mode.
-   */
   onConfigPersisted?: (docName: string) => void;
-  /**
-   * Fired after a MANAGED skill doc durably persists to disk (`'persisted'`
-   * outcome only). Wired in the server factory to re-sync recorded same-name
-   * copies for the GLOBAL tier, whose copies otherwise refresh at boot only —
-   * without it, editing a global skill that was converted to copies leaves
-   * every copy stale until the next restart. Omitted in rigs with no copy
-   * plumbing.
-   */
   onManagedSkillPersisted?: (docName: string) => void;
-  /**
-   * MarkdownManager instance used by `storeDocumentNow`'s pre-write
-   * sanity check (`fragmentBody = mgr.serialize(json)`). Defaults to
-   * the production singleton from `./md-manager.ts`. Tests inject a
-   * dedicated `new MarkdownManager({ extensions: sharedExtensions })`
-   * with `spyOn(...).serialize` so divergent canonical bytes can be
-   * exercised at this seam without touching the global singleton (and
-   * without coupling the test contract to the function's stack frame).
-   */
   mdManager?: MarkdownManager;
-  /**
-   * Accessor for the content-free loss ring. Closure-deferred because the ring
-   * is constructed later in boot than the persistence extension; `undefined`
-   * when loss capture is disabled or in rigs that wire no diagnostics. The
-   * pre-write divergence arms record their hold / checkpoint breadcrumbs here.
-   */
   getLossRing?: () => Pick<LossCaptureRing, 'record'> | undefined;
-  /**
-   * Probe into the removal cache (`RecentlyRemovedDocs`). Diagnostic only:
-   * when a store is about to write a doc the cache still records as
-   * removed, the write is logged + counted so a resurrection is visible in
-   * logs instead of being silently re-adopted as a self-write. Enforcement
-   * stays with the lifecycle guard + the removal-redirect auth guard.
-   */
   isRecentlyRemoved?: (docName: string) => boolean;
-  /**
-   * No-project ephemeral single-file mode (the `ok <file>` open). When `true`,
-   * the `onStoreDocument` no-op gate ALSO suppresses a write whose normalized
-   * content equals the CANONICAL serialization of the on-disk base
-   * (`normalizeBridge(prependFrontmatter(fm, serialize(parse(diskBody))))`),
-   * not just a byte-for-byte normalizeBridge match against the raw disk bytes.
-   *
-   * Rationale: a round-trip-unstable file (`## H\nP` → `## H\n\nP`,
-   * the `ng-taxonomy` class) load-canonicalizes on open — the editor's
-   * mount-init empty paragraph arrives as a `source:'connection'` transaction
-   * indistinguishable from a keystroke, so an origin gate is unsound. Comparing
-   * against the as-loaded canonical baseline suppresses the rewrite while still
-   * persisting any genuine post-load edit. Derived on-the-fly from the
-   * reconciled base (the raw disk bytes until the first real write), so it
-   * tracks external edits too. Scoped to ephemeral mode — the global
-   * persistence write-spine behavior is unchanged.
-   */
   ephemeral?: boolean;
 }
 
-/**
- * Atomic snapshot of a Y.Doc's pre-write state for the L1 persistence path.
- *
- * Returned together because the disk-ack watermark contract depends on
- * the SV being captured at the SAME synchronous instant the JSON is
- * extracted: any update applied to the doc AFTER `json` is read but
- * BEFORE `tracedRename` resolves is — by construction — NOT in the
- * markdown that lands on disk. Including it in the watermark would
- * tell clients "the server has durably persisted this update" when the
- * server has not, causing them to drop the corresponding unsynced bytes
- * from the recycle buffer on the next instance-mismatch.
- *
- * Single-threaded JS guarantees this helper is uninterruptible:
- * `Y.encodeStateVector` and `yXmlFragmentToProseMirrorRootNode` both
- * run synchronously, so a Y.js transaction cannot interleave between
- * them. Returning both as a single value (rather than two separate
- * locals at the call site) makes that uninterruptible-co-capture
- * a structural property — a future refactor can't naturally split
- * the SV from the JSON across an `await` boundary without explicitly
- * undoing the destructure, which is loud at review time.
- */
 export function captureDocSnapshotForPersistence(document: Y.Doc): {
   readonly sv: Uint8Array;
   readonly json: JSONContent;
@@ -503,30 +292,10 @@ export function captureDocSnapshotForPersistence(document: Y.Doc): {
   };
 }
 
-/**
- * The store spine's canonical "what would land on disk" form of raw
- * Y.Text bytes: frontmatter re-composed onto the body, then
- * `normalizeBridge`d. This is the LEFT side of `storeDocumentNow`'s
- * no-op skip (`markdownSemanticallyUnchanged`) AND the staleness
- * watchdog's divergence predicate — both compare it against
- * `normalizeBridge(reconciledBase)`. Single derivation site so the two
- * classifiers cannot drift: a doc the store would no-op must never read
- * as stale to the watchdog, and a doc the watchdog reads as converged
- * must never be one the store would rewrite.
- */
 export function normalizedSourceForm(rawYText: string): string {
   const { frontmatter, body } = stripFrontmatter(rawYText);
   return normalizeBridge(prependFrontmatter(frontmatter, body));
 }
-/**
- * Attached client count for a document, or 0 when the runtime does not expose
- * one. Hocuspocus hands its hooks a `Document` that carries the count, but the
- * bridge and persistence internals thread it as a bare `Y.Doc` — and the unit
- * rigs pass a genuine `Y.Doc` that has no such method — so the probe is
- * structural rather than a signature widening that would break those callers.
- * Absence reports as 0 (indistinguishable from "nobody attached"), which keeps
- * the field an attached-clients LOWER bound and never an overstatement.
- */
 function connectionCount(document: Y.Doc): number {
   const probe = (document as Y.Doc & { getConnectionsCount?: () => number }).getConnectionsCount;
   if (typeof probe !== 'function') return 0;
@@ -534,47 +303,25 @@ function connectionCount(document: Y.Doc): number {
     const n = probe.call(document);
     return typeof n === 'number' && Number.isFinite(n) ? n : 0;
   } catch {
-    /* diagnostic-only: a throwing probe must never break a repair path */
     return 0;
   }
 }
 
-/**
- * Extract a {@link StoreFailure} from a thrown value without touching it in a
- * way that can itself throw. Disk-write rejections are normally
- * `NodeJS.ErrnoException`, but a malicious / proxied error can carry throwing
- * `code` / `message` getters (the same shape `classifyDeferredStoreError`
- * guards against). Reading them unguarded inside the store catch would replace
- * the original error and defeat downstream classification, so each access is
- * isolated.
- */
 function toStoreFailure(err: unknown): StoreFailure {
   let code: string | undefined;
   try {
     const c = (err as NodeJS.ErrnoException | null)?.code;
     if (typeof c === 'string') code = c;
-  } catch {
-    /* throwing getter — leave code undefined */
-  }
+  } catch {}
   let message = 'unknown store error';
   try {
     message = err instanceof Error ? err.message : String(err);
-  } catch {
-    /* throwing getter / non-stringifiable — keep the default */
-  }
+  } catch {}
   return { code, message };
 }
 
-/**
- * Read-only snapshot of a persistence instance's pending-store depths, sampled
- * by the workload observable gauges at metric-export time. Owned here (the
- * domain module that owns those queues) rather than by the telemetry module
- * that consumes it, so telemetry depends on persistence and not the reverse.
- */
 export interface PersistenceQueueDepths {
-  /** Stores parked during a branch operation, awaiting replay. */
   readonly branchDeferred: number;
-  /** Docs whose store cycle is currently deferring on the quiescence gate. */
   readonly quiescenceDeferred: number;
 }
 
@@ -583,48 +330,11 @@ export interface PersistenceHandle {
   readonly durabilityState: DocumentDurabilityState;
   flushDeferredStores: (mode?: 'within-branch' | 'discard-stale') => Promise<void>;
   flushPendingGitCommit: () => Promise<void>;
-  /**
-   * Force a drain of the contributor map regardless of timer state. Used by
-   * write surfaces that mutate `pendingContributors` outside any Y.Doc transact
-   * lifecycle (renames are the canonical case — see `_performManagedRenameForDocs`).
-   */
   flushContributors: () => Promise<void>;
   waitForPendingCommits: () => Promise<void>;
-  /**
-   * Read-only snapshot of this instance's pending-store depths, for the
-   * workload observable gauges. Sampled at metric-export time only; never
-   * mutates state.
-   */
   getQueueDepths: () => PersistenceQueueDepths;
-  /**
-   * Force one immediate L1 store cycle for a loaded doc through the exact
-   * dispatch the debounced `onStoreDocument` hook uses: synthetic docs
-   * (system / config / managed-artifact / mermaid) short-circuit, a
-   * coordinated batch defers, and everything else runs `storeDocumentNow`
-   * with all of its guards (lifecycle, quiescence, no-op skip, tripwire,
-   * writeTracker registration). Exists for the staleness watchdog —
-   * Hocuspocus only re-arms its store debounce on a new Y.Doc update, so a
-   * store cycle that failed or was skipped after a session's last edit has
-   * no natural retry. Rejections mirror `storeDocumentNow`'s (the failure
-   * is also recorded for `takeStoreFailure`).
-   */
   forceStore: (document: Y.Doc, documentName: string) => Promise<void>;
-  /**
-   * Config-doc persistence context. Exposed so the file-watcher
-   * orchestration in `server-factory.ts` can call `applyExternalConfigChange`
-   * with the same LKG cache + `onConfigRejected` callback the L3 hook uses.
-   * Treat as read-only — direct mutation breaks the L3 invariant that the
-   * cache only updates after a successful persist.
-   */
   readonly configPersistenceCtx: ConfigPersistenceCtx;
-  /**
-   * Managed-artifact (skill/template) persistence context. Exposed so the
-   * skills file-watcher in `server-factory.ts` can call
-   * `applyExternalManagedArtifactChange` against the same LKG + reconciled-base
-   * state the onLoad/onStore hooks use. Read-only — direct mutation breaks the
-   * self-write short-circuit (the cache only updates after a successful persist
-   * or a reconcile-from-disk).
-   */
   readonly managedArtifactCtx: ManagedArtifactCtx;
 }
 
@@ -639,9 +349,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
   const projectDir = options?.projectDir ?? process.cwd();
   const shadowRef = options?.shadowRef;
-  // `relative(a, a) === ''` (falsy), so workspaces with content.dir at the
-  // project root must fall back to '.' — using the literal pathspec would
-  // make `git add <fallback>` look for a non-existent subfolder.
   const contentRoot = options?.contentRoot ?? (toPosix(relative(projectDir, contentDir)) || '.');
   const derivedDocumentIndex = options?.derivedDocumentIndex;
   const getPrincipal = options?.getPrincipal;
@@ -650,18 +357,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   const onDiskFlush = options?.onDiskFlush;
   const onConfigPersisted = options?.onConfigPersisted;
   const onManagedSkillPersisted = options?.onManagedSkillPersisted;
-  // Per-instance MarkdownManager seam used by `storeDocumentNow`'s pre-write
-  // sanity check. Defaults to the production singleton. Tests inject a
-  // dedicated `new MarkdownManager({ extensions: sharedExtensions })` so the
-  // serialize spy targets only persistence's call site without needing a
-  // stack-frame match on the function name.
   const mgr = options?.mdManager ?? mdManager;
   const ephemeral = options?.ephemeral ?? false;
 
-  // Per-server-instance LKG cache for config docs (L3 validation). Maps
-  // each well-known config doc name to the most recent successfully-
-  // validated YAML string. Lives in the closure so multiple server
-  // instances don't share mutable state.
   const configLkgCache = new Map<string, string>();
   const configPersistenceCtx: ConfigPersistenceCtx = {
     projectDir,
@@ -672,9 +370,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     ephemeral,
   };
 
-  // Managed-artifact (skill/template) persistence ctx. Separate LKG cache from
-  // config (distinct doc-name space). Reconciled-base accessors are injected
-  // here (rather than imported by the module) to avoid a circular import.
   const managedArtifactLkgCache = new Map<string, string>();
   const managedArtifactCtx: ManagedArtifactCtx = {
     projectDir,
@@ -686,59 +381,17 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       checkpointBeforeManagedArtifactReconcile(document, docName, liveContent, diskContent),
   };
 
-  // Mermaid (`.mmd`/`.mermaid`) persistence ctx. Y.Text-only, content-dir paths,
-  // its own LKG cache (distinct doc-name space). No reconciled-base: the markdown
-  // observer bridge is gated off for these, so there is no baseline to track.
   const mermaidLkgCache = new Map<string, string>();
   const mermaidPersistenceCtx: MermaidPersistenceCtx = {
     contentDir,
     lkgCache: mermaidLkgCache,
   };
 
-  // Frontmatter lives in the YAML region of `Y.Text('source')`:
-  // `onStoreDocument` reads FM via `stripFrontmatter(ytext.toString())` and
-  // writes Y.Text verbatim — no recompose step, no per-key cache, no L3 hook.
   const tripwireResetFailedDocs = new Set<string>();
-  /**
-   * Docs that have completed at least one store since they were loaded.
-   *
-   * The structural-duplication tripwire's two classes are indistinguishable at
-   * the classifier: a stale-cache merge and a select-all copy paste both arrive
-   * under a browser `source: 'connection'` origin and both duplicate with
-   * agreeing node shapes, so neither the transaction origin nor Observer A's
-   * provenance/shape race test separates them. What separates them is WHEN the
-   * doubling appears. The stale-cache merge materializes at provider-sync time,
-   * on a document that has not yet produced a settled write; a paste is an
-   * incremental edit on a document that already persisted cleanly this session.
-   *
-   * Membership is therefore the tripwire's licence to act destructively, and
-   * `onLoadDocument` clears it because a reload starts a fresh sync window.
-   * A document that stays resident rarely loads again, so in practice the
-   * licence lasts as long as the server process holds that document: the guard
-   * is armed for the sync window after each load, which is the window the
-   * stale-cache merge occupies.
-   */
   const docsWithSettledWrite = new Set<string>();
   const applyDiskContent = options?.applyDiskContentToDoc ?? applyDiskContentToDoc;
   let pendingDeferredStoreFlushMode: 'within-branch' | 'discard-stale' | null = null;
 
-  /**
-   * Per-doc deferral count for the quiescence gate.
-   *
-   * Hocuspocus's debounce can fire `onStoreDocument` mid-burst when the
-   * `maxDebounce` cap (10 s by default) elapses without any 2-second pause.
-   * If `isDocQuiescent` returns false at that moment, the gate skips the
-   * cycle and the next debounce retries — but if the user keeps typing,
-   * unrestricted deferrals would leave material work undurable indefinitely.
-   *
-   * After `QUIESCENCE_MAX_DEFER` consecutive deferrals (~16 s of sustained
-   * typing under default 2 s debounce), the gate force-flushes anyway. The
-   * counter resets on every successful (or no-op) store cycle that completes
-   * past the gate.
-   *
-   * Map key = `documentName`; values that hit zero are deleted to keep
-   * the map lean across long sessions.
-   */
   const QUIESCENCE_MAX_DEFER = 8;
   const persistenceDeferCounts = new Map<string, number>();
 
@@ -747,9 +400,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   const wipRef = options?.wipRef ?? 'refs/wip/main';
   const getCurrentBranch = options?.getCurrentBranch;
 
-  // Author resolved from contributor snapshot, not hardcoded.
-
-  // Debounce git commits
   let gitCommitTimer: ReturnType<typeof setTimeout> | null = null;
   let consecutiveGitFailures = 0;
   let commitInFlight: Promise<void> | null = null;
@@ -776,14 +426,12 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
 
   async function commitToWipRefInner(): Promise<void> {
-    // Read shadow ref at commit time (not construction time) so deferred init propagates
     const shadow = shadowRef?.current;
     if (shadow) {
-      const snapshot = swapContributors(); // atomic drain — new writes go to fresh map
+      const snapshot = swapContributors();
       const branch = getCurrentBranch?.() ?? 'main';
 
       if (snapshot.size === 0) {
-        // No attributed contributors — fall back to single SERVICE_WRITER commit
         const serviceActorEntry: OkActorEntry = {
           v: 1,
           writer_id: SERVICE_WRITER.id,
@@ -805,10 +453,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             { sha: sha.slice(0, 8), writer: SERVICE_WRITER.id },
             `[persistence] Shadow WIP commit: ${sha.slice(0, 8)} on refs/wip/${SERVICE_WRITER.id}`,
           );
-          // Service-writer backfill fallback. Anonymous rename → log entry
-          // attributed to `openknowledge-service` → empty contributor map →
-          // service-writer commit closes the lazy-pop window for those
-          // entries.
           try {
             backfillRenameLogCommitSha(
               shadow.gitDir,
@@ -837,14 +481,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       }
 
       // Per-writer fan-out (precedent #25): build tree once, commit per writer.
-      // All per-writer commits share the same tree SHA for this drain cycle.
-      // Writer IDs follow the taxonomy in parseWriterId (shadow-repo-layout.ts): agent-<connId>,
-      // principal-<UUID>, file-system, git-upstream, openknowledge-service.
       let treeSha: string;
       try {
         treeSha = await buildWipTree(shadow, contentRoot);
       } catch (e) {
-        // Tree build failed — restore all contributors and abort this cycle
         restoreContributors(snapshot);
         consecutiveGitFailures++;
         incrementGitAutoSaveFailure();
@@ -863,17 +503,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           email: `${writerId}@openknowledge.local`,
         };
         const docs = [...entry.docs];
-        // Consolidated write path: emit ONLY `ok-actor:` (retires the legacy
-        // `ok-contributors:` body line). `writer_id` is now carried as a
-        // first-class field so the commit body is self-describing without a
-        // ref-name join. Reader side (`readContributors` in shadow-repo-layout)
-        // prefers ok-actor and falls back to parseContributors for legacy
-        // on-disk commits — both surfaces keep rendering without migration.
         const a = entry.actor;
-        // Populate full actor tuple from ContributorEntry.actor when present.
-        // Classified writers (file-system, git-upstream, openknowledge-service)
-        // leave these null because they have no principal/agent attribution at
-        // record time.
         const summaries = [...entry.summaries];
         const previousPaths = [...entry.previousPaths];
         const actorEntry: OkActorEntry = {
@@ -892,18 +522,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           ...(previousPaths.length > 0 ? { previous_paths: previousPaths } : {}),
         };
         const baseSubject = entry.subjectOverride ?? formatWipSubject(docs);
-        // Project summaries onto the subject line too. Single-summary writes
-        // embed the summary inline (`wip: notes.md — added auth`); multi-summary
-        // drains get `(N edits)` + the bullets in the body. Zero summaries →
-        // baseSubject unchanged.
         const subject = composeCommitSubject(baseSubject, summaries);
         const writerMessage = `${subject}\n\n${formatOkActor(actorEntry)}`;
         try {
           const sha = await commitWipFromTree(shadow, writer, treeSha, writerMessage, branch);
           anySuccess = true;
-          // Count this flush-commit toward the coordinator's ~200-commit gc
-          // trigger (cheap, off-path gc). Never let a maintenance-counter bump
-          // break a write.
           try {
             onFlushCommit?.();
           } catch (err) {
@@ -913,10 +536,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             { sha: sha.slice(0, 8), writer: writerId, tree: treeSha.slice(0, 8) },
             `[persistence] Shadow WIP commit: ${sha.slice(0, 8)} on refs/wip/${writerId}`,
           );
-          // Lazy-population backfill. Commits that close the rename event's
-          // window now anchor the rename log entries to a real shadow commit,
-          // switching `expandPredecessors` from "skip" to "include" for those
-          // entries.
           try {
             backfillRenameLogCommitSha(
               shadow.gitDir,
@@ -927,12 +546,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           } catch (err) {
             log.warn({ err }, '[rename-log] backfill failed; will retry next commit');
           }
-          // Notify Activity Panel clients when an agent writer commits.
           if (writerId.startsWith('agent-')) {
             onAgentCommit?.();
           }
         } catch (e) {
-          // Per-writer failure — restore this writer's entry, let others succeed.
           restoreContributorEntry(writerId, entry);
           incrementGitWriterCommitFailure();
           log.error(
@@ -957,7 +574,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       return;
     }
 
-    // Legacy path: commit to project repo (used when no shadow repo is configured)
     const sg = shadowGit({
       gitDir: resolve(projectDir, '.git'),
       workTree: projectDir,
@@ -1019,23 +635,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     } finally {
       try {
         tracedUnlinkSync(tmpIndex);
-      } catch {
-        // ignore cleanup failure
-      }
+      } catch {}
     }
   }
 
-  /**
-   * Exponential backoff delay for the next commit attempt.
-   *
-   * Happy path (0 failures): fires at `commitDebounceMs` exactly — matches
-   * the pre-backoff behavior that tests + callers depend on.
-   *
-   * Under sustained git lock contention (N consecutive failures),
-   * multiplies by `2^min(N, 5)` and adds 0–25% jitter. Cap at 5 doublings
-   * ⇒ 32× base (e.g., 30s base → 16min ceiling). Jitter decorrelates
-   * retry storms if multiple processes hit the same lock.
-   */
   function computeCommitDelay(failures: number): number {
     if (failures <= 0) return commitDebounceMs;
     const exponent = Math.min(failures, 5);
@@ -1064,7 +667,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     }, computeCommitDelay(consecutiveGitFailures));
   }
 
-  /** Flush pending L1 writes by forcing the Hocuspocus store cycle. */
   async function flushPendingGitCommit(): Promise<void> {
     if (gitCommitTimer) {
       clearTimeout(gitCommitTimer);
@@ -1080,7 +682,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     if (commitInFlight) await commitInFlight;
   }
 
-  /** Await any in-flight git commit (for graceful shutdown). */
   async function _awaitPendingCommit(): Promise<void> {
     if (commitInFlight) await commitInFlight;
   }
@@ -1112,19 +713,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
    * tracking. Any throw deeper down logs but does not propagate — the disk
    * write that triggered this reconciliation is what matters for durability.
    */
-  /**
-   * The as-loaded canonical serialization of `rawBytes` — what the store would
-   * have written if it serialized the parsed disk content. Used ONLY by the
-   * ephemeral (single-file) no-op gate (G8): a round-trip-unstable file
-   * (`## H\nP`) load-canonicalizes to a different byte sequence on open, so
-   * comparing the store candidate against the raw disk bytes mis-fires and
-   * rewrites the file; comparing against this canonical baseline suppresses
-   * that rewrite while still letting genuine edits through. Mirrors the store
-   * candidate's own `prependFrontmatter(fm, mgr.serialize(...))` path so the
-   * two are directly comparable. Returns `null` on any parse/serialize throw —
-   * the caller then falls through to the normal write (fail-open, never
-   * suppress a real edit on a serialization error).
-   */
   function canonicalizeForEphemeralBaseline(rawBytes: string, documentName: string): string | null {
     try {
       const { frontmatter, body } = stripFrontmatter(rawBytes);
@@ -1135,18 +723,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             sourcePath: documentName,
           }
         : undefined;
-      // Parse AND serialize via `mgr` (the injected `options.mdManager`, or the
-      // module singleton) so the baseline is computed with the same parser the
-      // store candidate uses — parsing with the module `mdManager` while a
-      // caller injected a different manager would mis-classify the G8 compare.
       const json = mgr.parseWithFallback(body, parseOpts);
       const canonicalBody = mgr.serialize(json);
       return normalizeBridge(prependFrontmatter(frontmatter, canonicalBody));
     } catch (err) {
-      // Fail-open: never suppress a genuine edit on a serialization error. Debug
-      // log so a doc shape that always throws here — and thus silently bypasses
-      // the G8 no-rewrite gate, getting rewritten on every open — is
-      // discoverable instead of leaving only unexplained disk writes.
       log.debug(
         { err, documentName },
         '[g8] ephemeral canonical baseline failed; falling through to write',
@@ -1156,15 +736,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
 
   function reconcileFragmentNow(document: Y.Doc, body: string, documentName: string): void {
-    // Breadcrumb the rebuild ITSELF, not just the anchor mint that sometimes
-    // precedes it. The mint is deduped per document against its last payload and
-    // is skipped outright when serialization produced no fragment view, so on a
-    // document that diverges at this boundary on every write-back the rebuild
-    // recurs indefinitely while the ring shows at most one record. That is the
-    // difference between "a repair ran once" and "this document is stuck in a
-    // permanent repair loop", and only the latter explains a fragment that keeps
-    // changing under a user. Recorded before the work so a throw inside the
-    // rebuild cannot swallow the evidence that it was attempted.
     void options?.getLossRing?.()?.record({
       event: LOSS_EVENT_REPAIR_REBUILD,
       docName: documentName,
@@ -1189,15 +760,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         updateYFragment(document, xmlFragment, pmNode, meta);
       }, OBSERVER_SYNC_ORIGIN);
     } catch (err) {
-      // Reconciliation is best-effort. The watchdog already emitted; the
-      // disk write proceeded. The next user mutation will route through
-      // Observer A or B and converge fragment naturally.
-      //
-      // Counter surfaces "repair stuck" in operator dashboards without
-      // requiring log correlation: a non-zero rate alongside
-      // `bridgeInvariantViolations` means the divergence is being detected
-      // but the queued repair keeps failing — distinct from "divergence is
-      // detected and self-heals" (counter stays at 0).
       incrementPersistenceReconciliationFailures();
       log.warn(
         { err, documentName },
@@ -1206,33 +768,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     }
   }
 
-  /**
-   * The pre-write divergence arms' ring `site`, shared by the hold breadcrumb
-   * and the floor checkpoint so a bundle reader can pair them on one doc.
-   */
   const PERSISTENCE_PREWRITE_SITE = 'persistence-prewrite';
   const PERSISTENCE_DUPLICATION_SITE = 'persistence-duplication-reset';
   const PERSISTENCE_REALIGN_SITE = 'persistence-divergence-realign';
   const MANAGED_ARTIFACT_RECONCILE_SITE = 'managed-artifact-reconcile';
 
-  /**
-   * Last floor-checkpoint payload minted per document. Some documents diverge
-   * at this boundary on EVERY write-back — a construct whose fragment view is
-   * lossy against its own Y.Text bytes re-trips the check for as long as the
-   * doc exists — and an un-deduped mint would let that one doc evict every
-   * other recovery anchor sharing its retention bucket. Retention caps bound
-   * the ref count but cannot stop a spammer from evicting its own useful
-   * anchor, so the dedup is the first line and the cap the second. Keyed by
-   * Y.Doc identity so the entry dies with the doc.
-   */
   const lastFloorCheckpointPayload = new WeakMap<Y.Doc, string>();
 
-  /**
-   * Breadcrumb for a tolerated divergence: the whole fragment/Y.Text delta is
-   * content the derive-timing guard is holding, so the fragment is left intact
-   * and the keystroke survives. Content-free — a byte length of the at-risk
-   * lines, never the lines.
-   */
   function recordDeferHold(documentName: string, pendingLines: readonly string[]): void {
     incrementPersistenceDeferHold();
     void options?.getLossRing?.()?.record({
@@ -1245,18 +787,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     });
   }
 
-  /**
-   * Checkpoint-before-repair for a divergence the derive-timing tolerance does
-   * NOT cover. `fragmentMarkdown` is the fragment-side view the imminent
-   * `reconcileFragmentNow` destroys, so it is the restore anchor; Y.Text goes
-   * to disk either way. Fire-and-forget, and the repair is never gated on it —
-   * the dedup suppresses the MINT, not the rebuild.
-   *
-   * `witnessAvailable: false` records a distinguishable trip class: observers
-   * detached, so the tolerance could not be evaluated at all and the arm fell
-   * back to rebuilding. Prior art (`reports/tolerated-divergence-hygiene-layers/REPORT.md`)
-   * puts the floor under exactly that fallback rather than skipping blind.
-   */
   function checkpointBeforeReconcile(
     document: Y.Doc,
     documentName: string,
@@ -1269,9 +799,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       incrementPersistenceReconcileLossDeduped();
       return;
     }
-    // Claimed before the write so two trips can never race into two anchors;
-    // released again if the write fails, so a transient shadow error still
-    // retries on the next trip instead of permanently suppressing the anchor.
     lastFloorCheckpointPayload.set(document, fragmentMarkdown);
     const atRisk = pendingContentLines(fragmentMarkdown, ytextMarkdown, '');
     const lostLen = atRisk.reduce((n, line) => n + line.length, 0);
@@ -1331,11 +858,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             { documentName, err: e },
             '[persistence] reconcile-loss checkpoint write failed',
           );
-          // The anchor failed but the rebuild still went ahead — emit the
-          // sha-less breadcrumb (mirroring the no-shadow branch) so the trip is
-          // never absent from the ring. Without it a shadow-repo outage reads as
-          // "this boundary never fired" at exactly the moment the destroyed
-          // fragment view has no restore anchor.
           void ring?.record({
             event: LOSS_EVENT_CHECKPOINT_WRITE,
             docName: documentName,
@@ -1351,16 +873,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const lastDuplicationCheckpointPayload = new WeakMap<Y.Doc, string>();
 
-  /**
-   * Checkpoint-before-repair for the structural-duplication tripwire reset.
-   *
-   * `liveMarkdown` is the document the reset is about to discard. The reset
-   * transacts under `FILE_WATCHER_ORIGIN`, which the server UndoManager
-   * excludes by contract and which reaches browsers as a remote update outside
-   * any local `trackedOrigins` set, so this anchor is the only way back to the
-   * pre-reset state. Fire-and-forget, and the reset is never gated on it — the
-   * dedup suppresses the MINT, not the repair.
-   */
   function checkpointBeforeDuplicationReset(
     document: Y.Doc,
     documentName: string,
@@ -1371,11 +883,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     incrementPersistenceDuplicationReset();
     const ring = options?.getLossRing?.();
     const shadow = shadowRef?.current;
-    // The shadow guard precedes the dedup claim deliberately. Claiming first
-    // would let a single no-shadow trip pin the payload forever, so every later
-    // trip with that same content would dedup into silence — no anchor, and no
-    // ring record either. The breadcrumb is the only signal a no-shadow run
-    // has; it must not be deduped away.
     if (!shadow) {
       void ring?.record({
         event: LOSS_EVENT_CHECKPOINT_WRITE,
@@ -1391,9 +898,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       incrementPersistenceDuplicationResetDeduped();
       return;
     }
-    // Claimed before the write so two trips can never race into two anchors;
-    // released again if the write fails, so a transient shadow error still
-    // retries on the next trip instead of permanently suppressing the anchor.
     lastDuplicationCheckpointPayload.set(document, liveMarkdown);
     const branch = getCurrentBranch?.() ?? 'main';
     queueMicrotask(() => {
@@ -1442,25 +946,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const lastRealignCheckpointPayload = new WeakMap<Y.Doc, string>();
 
-  /**
-   * Checkpoint-before-repair for the L3 store-time divergence realign.
-   *
-   * `liveMarkdown` is the document the realign is about to discard. Unlike the
-   * duplication tripwire this arm fires on a genuine external-writer conflict,
-   * so the disk-wins decision itself is correct and stays — but the realign
-   * transacts under `FILE_WATCHER_ORIGIN` all the same, which the server
-   * UndoManager excludes by contract and which reaches browsers as a remote
-   * update outside any local `trackedOrigins` set. The agent learns its write
-   * did not land; the human whose WYSIWYG edit merged alongside it learns
-   * nothing, and this anchor is their only way back.
-   *
-   * Fire-and-forget, and the realign is never gated on it — the dedup
-   * suppresses the MINT, not the repair.
-   *
-   * Takes the disk bytes rather than their length so the caller cannot pass a
-   * length that has drifted from the content it describes; the sibling
-   * managed-artifact helper takes the same shape.
-   */
   function checkpointBeforeDivergenceRealign(
     document: Y.Doc,
     documentName: string,
@@ -1470,11 +955,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     incrementPersistenceDivergenceRealign();
     const ring = options?.getLossRing?.();
     const shadow = shadowRef?.current;
-    // The shadow guard precedes the dedup claim deliberately. Claiming first
-    // would let a single no-shadow trip pin the payload forever, so every later
-    // trip with that same content would dedup into silence — no anchor, and no
-    // ring record either. The breadcrumb is the only signal a no-shadow run
-    // has; it must not be deduped away.
     if (!shadow) {
       void ring?.record({
         event: LOSS_EVENT_CHECKPOINT_WRITE,
@@ -1490,9 +970,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       incrementPersistenceDivergenceRealignDeduped();
       return;
     }
-    // Claimed before the write so two trips can never race into two anchors;
-    // released again if the write fails, so a transient shadow error still
-    // retries on the next trip instead of permanently suppressing the anchor.
     lastRealignCheckpointPayload.set(document, liveMarkdown);
     const branch = getCurrentBranch?.() ?? 'main';
     queueMicrotask(() => {
@@ -1541,46 +1018,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const lastManagedReconcileCheckpointPayload = new WeakMap<Y.Doc, string>();
 
-  /**
-   * Checkpoint-before-repair for the managed-artifact concurrent-writer
-   * reconcile, plus the paired-intake detector for the import that follows.
-   *
-   * Reached only through `ManagedArtifactCtx.beforeReconcileDivergence`, which
-   * exists because the shadow repo, the loss ring, and the branch resolver all
-   * live in this closure and importing them into the artifact module would
-   * close a cycle.
-   *
-   * The anchor is filed under the artifact's TIMELINE key (`.ok/skills/<name>`),
-   * not the synthetic `__skill__` doc name, so it addresses the same path the
-   * history surface reads. Global skills live outside any project shadow repo
-   * and are unversioned by construction — they get the ring breadcrumb and the
-   * detector, but no anchor, because there is nowhere to file one.
-   *
-   * The anchored (versioned) branch below — the one that writes an actual
-   * `managed-artifact-reconcile` checkpoint — is currently UNREACHABLE: the only
-   * artifacts that reach this hook are global + external skills, both
-   * unversioned, so the `!paths.versioned` early return always wins. Templates
-   * were the last versioned artifact routed here; they are ordinary content docs
-   * now, reconciled on the content path. Re-add an anchor-writing regression test
-   * if a new versioned managed-artifact class is ever introduced.
-   */
   function checkpointBeforeManagedArtifactReconcile(
     document: Y.Doc,
     documentName: string,
     liveContent: string,
     diskContent: string,
   ): DeriveLossDetectOptions | undefined {
-    // No fire counter here, unlike the two sibling helpers: the reconcile's
-    // `incrementManagedArtifactReconcile()` fires at the call site in
-    // `managed-artifact-persistence.ts`, so a ctx built without this hook still
-    // records that live content was replaced.
     const ring = options?.getLossRing?.();
     const detect: DeriveLossDetectOptions = {
       baselineFullMd: diskContent,
       report: (obs) => {
-        // Never throws, per the reporter contract — this runs inside the
-        // reconcile transact, and the store's catch would report the whole
-        // write as failed on a purely diagnostic error.
         try {
           const dropped = detectPairedIntakeLoss(obs);
           if (dropped.length === 0) return;
@@ -1619,9 +1066,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       incrementManagedArtifactReconcileDeduped();
       return detect;
     }
-    // Claimed before the write so two trips can never race into two anchors;
-    // released again if the write fails, so a transient shadow error still
-    // retries on the next trip instead of permanently suppressing the anchor.
     lastManagedReconcileCheckpointPayload.set(document, liveContent);
     const branch = getCurrentBranch?.() ?? 'main';
     const anchorDocName = paths.docKey;
@@ -1670,8 +1114,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     return detect;
   }
 
-  // Lazy-init histograms; safe to call in every hook. Meter is a no-op when OTel
-  // SDK is disabled, so allocations are essentially free.
   let loadDurationHist: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null = null;
   let storeDurationHist: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null = null;
   let commitDurationHist: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null = null;
@@ -1703,69 +1145,24 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }): Promise<void> {
     ensureHistograms();
     const started = Date.now();
-    // Hoisted so the .finally below can clear the in-flight flush signal
-    // after the commit settles (success, L3 abort, or throw alike).
     let inFlightFlushValue: string | undefined;
     return withSpan(
       'persistence.onStoreDocument',
       { attributes: { 'doc.name': documentName } },
       async () => {
-        // Consume the L3 agent-write marker for this invocation: was this
-        // store forced by an agent write handler's awaited flush? Read-and-clear
-        // here so it can't leak to a later human-editor store of the same doc
-        // (e.g. if this store no-ops at the unchanged-base skip below).
         const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
 
-        // Lifecycle guard: when the file watcher saw an external delete or
-        // rename, the disk-event handler in standalone.ts sets the doc's
-        // lifecycle status to mark the Y.Doc as no-longer-tracking-disk.
-        // But `unloadDocument` does NOT cancel debounced stores already
-        // queued from prior transactions — and any in-flight rewrite that
-        // mutated the Y.Doc just before the rm/mv leaves a pending store.
-        // Without this short-circuit, that store fires, serializes the
-        // in-memory state, and writes it via `tracedWriteFileSync` —
-        // recreating the file at the OLD path. The CRDT-ghost behavior
-        // the agent sees ("rm couldn't kill them, the CRDT kept
-        // resurrecting them on disk") is exactly this race.
-        //
-        // Statuses guarded:
-        //   - 'deleted-upstream': file removed externally; Y.Doc must
-        //     not write to the now-empty path.
-        //   - 'renamed': file moved externally; the old docName must
-        //     not get rewritten — the new docName has its own Y.Doc.
-        //   - 'conflict': disk has merge markers from an upstream merge;
-        //     flushing Y.Text would overwrite the stages on disk, breaking
-        //     subsequent `git checkout --theirs/--ours` and the conflict
-        //     resolver UI's three-pane diff. User edits accumulated during
-        //     the conflict window stay in Y.Text; on resolution the
-        //     case 'update' reconcile in server-factory.ts runs against
-        //     them as `ours`.
         const lifecycleStatus = frozenDocLifecycleStatus(document);
         if (lifecycleStatus !== null) {
           log.info(
             { documentName, lifecycleStatus },
             `[persistence] Skipped store for ${documentName}: lifecycle=${lifecycleStatus}`,
           );
-          // Lifecycle short-circuits don't reflect transient quiescence
-          // state — drop the deferral counter so the next legitimate store
-          // for this docName starts from a clean slate. Also clear any
-          // tripwire-breaker entry so the entry doesn't persist for the
-          // process lifetime when a sticky tripwire-failure doc gets
-          // unloaded/renamed/deleted (covers the typical lifecycle path
-          // where one final persistence fire follows the lifecycle change).
           persistenceDeferCounts.delete(documentName);
           tripwireResetFailedDocs.delete(documentName);
           return;
         }
 
-        // Quiescence gate. Hocuspocus's `maxDebounce` can fire this hook
-        // mid-burst before `afterAllTransactions` has settled the user's
-        // last transaction. Under Y.Text-is-truth (precedent #38), the bytes
-        // we're about to read may still be transient. Skip this cycle and
-        // let the debounce retry — bounded by `QUIESCENCE_MAX_DEFER` so
-        // sustained typing can't leave material work undurable. Synthetic
-        // config / system docs already short-circuited above, so we know
-        // this is a real markdown doc.
         const quiescent = isDocQuiescent(document);
         if (!quiescent) {
           const deferCount = persistenceDeferCounts.get(documentName) ?? 0;
@@ -1783,15 +1180,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             persistenceDeferCounts.set(documentName, deferCount + 1);
             return;
           }
-          // Force-flush: defer cap hit. Bound staleness — the bridge
-          // invariant sanity check below + `reconcileFragmentNow` on
-          // mismatch ensure fragment converges on the next settlement.
-          // `wallClockMsSinceLastTransaction` mirrors the skip event and is
-          // primary diagnostic at force-flush time: knowing the typing burst
-          // duration (e.g., 16s vs 80s vs 5min) is what operators reach for
-          // first during triage. Without it, triage requires correlating with
-          // the preceding skip events, which may have rotated out of the log
-          // window.
           console.warn(
             JSON.stringify({
               event: 'persistence-force-flush-during-burst',
@@ -1803,67 +1191,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           incrementPersistenceForceFlushDuringBurst();
         }
 
-        // Atomic pre-write snapshot — `sv` MUST be captured at the same
-        // synchronous instant as `ytextSnapshot`. See
-        // `captureDocSnapshotForPersistence` for the timing contract;
-        // splitting the destructure across the upcoming `await` boundary
-        // would silently break the disk-ack watermark.
-        //
-        // Under the Y.Text-is-truth contract (precedent #38), `json` is no
-        // longer the body source — but we still capture it so the pre-write
-        // sanity check can compare ytext bytes against the canonical
-        // fragment view.
         const { sv: stateVectorAtRead, json } = captureDocSnapshotForPersistence(document);
         const ytextSnapshot = document.getText('source').toString();
 
-        // Y.Text holds the user's intended source-form bytes. The markdown
-        // that lands on disk is exactly those bytes (FM included), not
-        // `mdManager.serialize(fragment)`. The right-hand side of the
-        // bridge invariant — `serialize(fragment)` — is computed below as a
-        // sanity check; on mismatch we still write ytext bytes (Y.Text is
-        // truth) and queue a fragment reconciliation for the next settlement.
         const { frontmatter, body } = stripFrontmatter(ytextSnapshot);
         const markdown = prependFrontmatter(frontmatter, body);
 
-        // Pre-write sanity check. Under steady-state contract, the bridge
-        // invariant holds (modulo `normalizeBridge` tolerance). When it
-        // doesn't, Y.Text wins by definition — the divergence means
-        // fragment is out-of-sync and gets re-derived on the next
-        // settlement. We DO NOT skip the write; data-loss-via-skip-cascade
-        // is structurally avoided.
-        //
-        // Routing through `assertBridgeInvariant` (rather than open-coding
-        // the emission) gives this site the same rate-limiting per (site,
-        // doc) tuple, the same suppressed-counter accounting (so the
-        // documented metric identity
-        // `actual_rate = violations + suppressed` holds), and the same
-        // tolerance-class-applied event emissions when bytes differ pre-
-        // normalization but pass via the comparator. The watchdog's site
-        // union already includes 'persistence' for exactly this purpose.
-        //
-        // `suppressDevThrow: true` honors the persistence contract: log
-        // telemetry, write Y.Text bytes anyway, queue fragment-
-        // reconciliation. Persistence MUST always proceed to disk,
-        // including under NODE_ENV=test where Observer B's primary watchdog
-        // DOES throw. Recovery paths (provider-pool reconnect, mid-rescue
-        // persistence fires) exercise transient divergence that resolves on
-        // the next settlement — throwing would block the rescue.
-        //
-        // `mgr.serialize(json)` itself can throw — its body wraps
-        // `schema.nodeFromJSON(json)` and re-throws schema-rejection errors
-        // (malformed remote-peer CRDT update, schema drift across versions,
-        // exotic Y.XmlElement types). An unguarded throw here would bypass
-        // the disk write below and leave Y.Text bytes undurable — the exact
-        // data-loss-via-skip-cascade the contract prevents. Treat any
-        // serialize failure as definite divergence, queue fragment
-        // reconciliation, and proceed to write Y.Text bytes verbatim.
         let normalizeEqual: boolean;
-        // Hoisted out of the `try` because its ABSENCE is load-bearing. The
-        // divergence arms below both need the fragment-side view — one to
-        // evaluate the derive-timing tolerance against it, the other to
-        // checkpoint it — and a serialize throw leaves neither possible. Only
-        // `null` distinguishes "no divergence tolerance was evaluated because
-        // there was nothing to evaluate" from "the tolerance said no".
         let fragmentMarkdown: string | null = null;
         try {
           const fragmentBody = mgr.serialize(json);
@@ -1872,12 +1206,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             site: 'persistence',
             docName: documentName,
             suppressDevThrow: true,
-            // Parse-equivalence fallback: a doc resting on a serializer
-            // canonicalization (CommonMark lazy continuations et al.) is
-            // NOT a divergence — without this, every persist of such a doc
-            // would warn AND run the synchronous reconcileFragmentNow below
-            // for a fragment that already equals parse(ytext). Same `mgr` +
-            // parse surface as the fragment derivation, by construction.
             canonicalizeBody: createDocCanonicalizer(mgr, {
               resolveEmbed: options?.resolveEmbed,
               resolveSize: options?.resolveSize,
@@ -1885,14 +1213,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             }),
           });
         } catch (err) {
-          // Counter + structured event give the serialize-throw failure
-          // class its own operator-visible signal — distinct from
-          // `bridgeInvariantViolations` (assertion ran and detected
-          // divergence) and `persistenceReconciliationFailures` (queued
-          // repair failed). Without this, a sustained schema-rejection
-          // pattern produces only freeform log lines and zero counter
-          // signal in the success-recovery case (reconcile succeeds);
-          // the regression class would only surface via log-text search.
           incrementPersistenceSanityCheckSerializeFailures();
           console.warn(
             JSON.stringify({
@@ -1906,41 +1226,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             { err, documentName },
             `[persistence] Sanity-check serialize failed for ${documentName}; proceeding with ytext bytes`,
           );
-          // The assertion may have thrown AFTER the assignment above; a
-          // fragment view that could not be validated is not a view this
-          // function may act on.
           fragmentMarkdown = null;
           normalizeEqual = false;
         }
         if (!normalizeEqual) {
-          // Watchdog already emitted the rate-limited telemetry +
-          // incremented `bridgeInvariantViolations` (or its suppressed
-          // counterpart) — or, when serialize itself threw, the warn above
-          // is the single signal.
-          //
-          // Three arms, discriminated by what is knowable at this instant:
-          //
-          //  1. The whole divergence is content the derive-timing guard is
-          //     holding in the fragment (a WYSIWYG keystroke not yet in
-          //     Y.Text). Rebuilding would destroy it with no checkpoint and no
-          //     ring event, because both observers self-skip the
-          //     OBSERVER_SYNC_ORIGIN write. HOLD the fragment instead: Y.Text
-          //     still goes to disk below, so this defers the fragment's
-          //     convergence, never the durability of the user's bytes. The
-          //     predicate is the SAME pure call Observer B's guard makes, over
-          //     the witness the observer publishes — a tolerated divergence in
-          //     the shape prior art converges on, with no checker-side
-          //     freshness or age bound (the one shipped wall-clock bound on
-          //     this pattern was removed as unmaintainable). See
-          //     `reports/tolerated-divergence-hygiene-layers/REPORT.md`.
-          //  2. Any other divergence, including one whose tolerance could not
-          //     be evaluated because observers publish no witness: checkpoint
-          //     the fragment view FIRST, then repair. Checkpoint-before-repair
-          //     keeps the destroyed view restorable.
-          //  3. Serialize threw: no fragment view exists, so neither arm can
-          //     run. Left exactly as it was — the repair, and the
-          //     serialize-failure counter above as its only signal. A skip here
-          //     would silently swallow a serialize failure.
           const witness =
             fragmentMarkdown === null ? undefined : getConvergedFragmentWitness(document);
           if (
@@ -1959,54 +1248,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 witness !== undefined,
               );
             }
-            // Reconcile the fragment synchronously so it converges to ytext
-            // before the disk write below proceeds with ytext bytes (Y.Text is
-            // the contract's source-of-truth per precedent #38).
             reconcileFragmentNow(document, body, documentName);
           }
         }
 
-        // Skip the write when the serialized output matches the load-time
-        // baseline. Hocuspocus fires onStoreDocument after any Y.Doc mutation,
-        // including the first-pass observer sync that populates Y.Text from the
-        // freshly-loaded XmlFragment — that mutation is semantically a no-op
-        // but would otherwise rewrite the file in normalized form (padded
-        // tables, added backslash-escapes, etc.), polluting the user's git
-        // working tree on mere file open.
-        //
-        // normalizeBridge-tolerant compare: y-prosemirror's ySyncPlugin appends
-        // an empty <paragraph> to Y.XmlFragment on every editor mount. That
-        // serializes to extra trailing newlines — byte-unequal to currentBase
-        // but semantically identical. Reusing normalizeBridge (the canonical
-        // bridge-invariant normalization — trim per-line whitespace, collapse
-        // 3+ newlines to 2, strip trailing newlines) keeps comparison semantics
-        // consistent with server-observers.ts + the test-harness. Catching this
-        // class as a no-op skips both the disk write AND the principal
-        // safety-net below, preventing phantom commits attributed to the
-        // browser's principal when a later agent write triggers the L2 fan-out.
         const currentBase = durabilityState.getReconciledBase(documentName);
-        // Routed through the shared helper so this compare and the
-        // staleness watchdog's divergence predicate stay one derivation.
         const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
-        // The blank-line tolerance is symmetric, so blank lines a user just
-        // added normalize away and this compare would call the store a no-op —
-        // the edit would live in the CRDT and never reach the file. The
-        // opposite direction stays a no-op, since a candidate with FEWER blank
-        // lines than the base is the mount artifact / container-collapse class
-        // this gate exists to suppress.
         let markdownSemanticallyUnchanged =
           currentBase !== undefined &&
           normalizedMarkdown === normalizeBridge(currentBase) &&
           !addsBlankLines(currentBase, markdown);
-        // G8 (ephemeral single-file mode only): also treat the candidate as a
-        // no-op when it equals the CANONICAL serialization of the on-disk base.
-        // A round-trip-unstable file (`## H\nP`) load-canonicalizes on open —
-        // the editor's mount-init empty paragraph arrives as a connection-origin
-        // transaction indistinguishable from a keystroke (so an origin gate is
-        // unsound) — and the raw-bytes compare above misses it. Comparing
-        // against the as-loaded canonical baseline suppresses that file-open
-        // rewrite while still persisting genuine edits. The global write-spine
-        // (non-ephemeral) keeps today's raw-bytes-only behavior exactly.
         if (!markdownSemanticallyUnchanged && ephemeral && currentBase !== undefined) {
           const canonicalBase = canonicalizeForEphemeralBaseline(currentBase, documentName);
           if (canonicalBase !== null && normalizedMarkdown === canonicalBase) {
@@ -2015,36 +1266,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         }
         if (markdownSemanticallyUnchanged) {
           if (contributorCount() > 0) scheduleGitCommit();
-          // Cycle reached steady state — clear deferCount so future bursts
-          // start from a clean slate.
           persistenceDeferCounts.delete(documentName);
           return;
         }
 
-        // Phantom-doc guard: refuse to materialize a 0-byte file when the
-        // Y.Doc was never confirmed to exist on disk (no reconciled base
-        // from a successful onLoadDocument) AND the serialized content is
-        // empty. This blocks accidental orphan files from any code path
-        // that opens a Y.Doc for a non-existent docName: the browser race
-        // during a rename, GETs to `/api/document?docName=<missing>`, MCP
-        // queries on deleted docs, and any future caller of
-        // `openDirectConnection` that hits a missing path.
-        //
-        // Legitimate first-write flows are unaffected:
-        //   - `/api/create-page` writes the file synchronously before any
-        //     transaction, so the next onLoadDocument sets reconciledBase
-        //     to '' (defined) before this guard fires.
-        //   - `/api/agent-write-md` populates the XmlFragment with the
-        //     agent's content INSIDE the same transact that triggers the
-        //     debounced store, so by the time we get here `markdown` is
-        //     non-empty even when reconciledBase is still undefined.
-        //
-        // Mode-coupling note: the guard is asymmetric. It only blocks
-        // file *creation*. Once a file exists and reconciledBase is set,
-        // subsequent stores fall through to the normal write path,
-        // including legitimate transitions to empty content (user clears
-        // a doc) — those compare against the non-empty base above and
-        // proceed.
         if (currentBase === undefined && normalizeBridge(markdown) === '') {
           log.warn(
             { documentName },
@@ -2054,48 +1279,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           return;
         }
 
-        // Thread origin → contributor tracker. Safety-net for writes that
-        // bypass api-extension.ts handlers. Agent write handlers already
-        // call recordContributor explicitly; this handles human-browser
-        // connection writes and any other origin that doesn't go through a
-        // handler. Gated on `markdown !== currentBase` above — semantic
-        // no-op writes (y-prosemirror empty-paragraph init) do not record
-        // the principal, so the L2 fan-out no longer attributes phantom
-        // commits to the browser alongside a legitimate agent write.
         const writer = resolveWriterFromOrigin(lastTransactionOrigin, getPrincipal);
         if (writer && writer.id !== SERVICE_WRITER.id) {
-          // api-extension handlers register rich WriterIdentity BEFORE the Y.Doc
-          // transact fires; onStoreDocument runs on Hocuspocus's 2s debounce, so
-          // the handler-path entry is in the tracker by the time we get here.
-          // The safety-net only fills in for writes that never pass through an
-          // /api/* handler — specifically browser-principal writes via the
-          // `source: 'connection'` origin path. Skipping when the entry already
-          // exists guarantees the stub `Agent (<short>)` displayName can never
-          // overwrite the handler's rich identity under any ordering edge case.
           if (!hasContributor(writer.id)) {
             recordContributor(documentName, writer.id, writer.name, writer.id);
           }
-          // else: entry exists with rich handler-path identity; keep it untouched.
-          // The docs Set is still correct because the handler path recorded this
-          // docName already when it fired recordContributor for this write.
         }
 
-        // Structural-duplication tripwire. Refuses to overwrite the disk
-        // file when the candidate body is an integer concatenation (k≥2) of
-        // the bridge-normalized base body — the failure shape the stale
-        // browser-IDB merge causes. Resets the live Y.Doc to the disk
-        // canonical state so the in-memory duplicate doesn't keep
-        // re-triggering this hook on its 2s debounce. First writes (no
-        // currentBase) bypass — there's nothing to duplicate yet.
         if (currentBase !== undefined) {
           const classification = classifyDuplication(markdown, currentBase);
           if (classification.kind === 'block' && docsWithSettledWrite.has(documentName)) {
-            // This document already persisted cleanly this session, so the
-            // doubling is an incremental edit — a whole-document paste, the
-            // gesture the classifier cannot tell apart from a stale-cache
-            // merge. Fall through to the normal write path rather than
-            // refusing the store and recycling the live document out from
-            // under the user.
             incrementPersistenceDuplicationSpared();
             console.warn(
               JSON.stringify({
@@ -2130,16 +1323,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             );
             try {
               const requestedDiskPath = safeContentPath(documentName, contentDir);
-              // Realpath-gate the read to match the symlink-escape protection
-              // applied by the write path (below) and `onLoadDocument` (above).
-              // `safeContentPath` is a lexical containment check only; without
-              // realpath here, a symlink at `<contentDir>/<docName>.md`
-              // pointing outside the content root would be followed by
-              // `readFileSync`, leaking the target's bytes into the live
-              // Y.Doc (and from there to every connected CRDT client) on
-              // the next duplication-tripwire fire. When realpath fails or
-              // escapes, fall back to the in-memory `currentBase` — the
-              // bridge-base we already trust.
               let diskContent: string;
               if (existsSync(requestedDiskPath)) {
                 let canonical: string | null = null;
@@ -2152,11 +1335,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                   );
                 }
                 if (canonical && isWithinContentDir(canonical, contentDir)) {
-                  // Read failure (transient EMFILE / EIO / EISDIR / etc.) must
-                  // not latch the per-doc tripwire breaker, since the realpath
-                  // gate has already cleared the symlink-escape concern. Fall
-                  // back to in-memory `currentBase` and let the success path
-                  // clear the breaker; the next persistence fire will retry.
                   try {
                     diskContent = readFileSync(canonical, 'utf-8');
                   } catch (readErr) {
@@ -2183,8 +1361,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               } else {
                 diskContent = currentBase;
               }
-              // The reset discards the live document under an origin neither
-              // undo stack can reach, so it owes a restore anchor first.
               checkpointBeforeDuplicationReset(
                 document,
                 documentName,
@@ -2192,22 +1368,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 classification.copies,
                 fragmentChildren,
               );
-              // The disk bytes are the shared ancestor the duplicate grew from,
-              // so fragment content absent from them is exactly what this reset
-              // destroys. That baseline is what makes the paired-intake
-              // detector report the discarded copy instead of staying silent —
-              // the precondition that lets the other persistence callers omit
-              // `detect` (they re-apply bytes the fragment already derives
-              // from) is false here by construction.
               const lossRing = options?.getLossRing?.();
               const detect: DeriveLossDetectOptions = {
                 baselineFullMd: diskContent,
                 report: (obs) => {
-                  // Never throws, per the reporter contract. This runs INSIDE
-                  // the reset transact, whose catch latches the per-doc tripwire
-                  // breaker — a diagnostic failure escaping here would strand
-                  // the doc on the breaker and log a reset failure for a reset
-                  // that actually succeeded.
                   try {
                     const dropped = detectPairedIntakeLoss(obs);
                     if (dropped.length === 0) return;
@@ -2228,8 +1392,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                   }
                 },
               };
-              // Caller wraps for atomicity + paired-write origin identity
-              // (precedent #24).
               document.transact(() => {
                 applyDiskContent(document, diskContent, undefined, undefined, undefined, detect);
               }, FILE_WATCHER_ORIGIN);
@@ -2246,21 +1408,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           }
         }
 
-        // Mark this doc's flush as in flight before the commit sequence's
-        // first await. The rename below lands on disk before
-        // `setReconciledBase` advances the base, so a concurrent
-        // reconcileDiskBeforeAgentWrite reading disk inside that gap would
-        // see our own bytes against a stale base and misclassify them as
-        // foreign divergence. `peekInFlightFlush` lets that guard recognize
-        // the bytes as ours. Cleared in the .finally on the outer promise
-        // (after the base advance), only if the entry is still ours.
-        // Setting before (not after) the L3 divergence backstop means an L3
-        // abort leaves the snapshot advertising bytes that never reached
-        // disk until the .finally clears it — benign residue: disk then
-        // holds non-matching foreign content, so the snapshot can't produce
-        // a false own-write match. The early set keeps the signal's
-        // lifecycle synchronous from the hook's entry, which the overlap
-        // test relies on to deterministically pin clear-only-if-still-ours.
         inFlightFlushValue = normalizeBridge(markdown);
         durabilityState.beginInFlightFlush(documentName, inFlightFlushValue);
 
@@ -2316,14 +1463,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           throw new Error(msg);
         }
 
-        // Test-only seam (NODE_ENV === 'test', matched by exact docName like
-        // OK_TEST_STORE_FAULT). Simulates a native out-of-band edit landing in
-        // the residual TOCTOU window — after L1's check, before this store's
-        // write — so the L3 backstop fires deterministically. A real native edit
-        // can't be timed deterministically: the file-watcher races it (and can
-        // flip `lastTransactionOrigin` to file-watcher, gating L3 out). Raw,
-        // unregistered write, exactly like a native edit. Production builds with
-        // NODE_ENV !== 'test' elide the branch.
         if (
           process.env.NODE_ENV === 'test' &&
           process.env.OK_TEST_STORE_DIVERGENCE === documentName
@@ -2331,28 +1470,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           await tracedWriteFile(canonicalPath, '# NATIVE\n\nnative-divergence-injected\n', 'utf-8');
         }
 
-        // L3 store-time divergence backstop, gated to
-        // agent-triggered stores (never human-editor `connection` stores).
-        // The residual few-ms TOCTOU after L1's reconcile: disk may have been
-        // edited out-of-band between L1's check and this store. Re-read disk and
-        // compare to the reconciled base we're about to overwrite from
-        // (`currentBase`), using the same `normalizeBridge` comparator as L1 and
-        // the no-op skip above so the layers agree on "diverged". On divergence:
-        // ABORT the overwrite (writing the in-memory bytes would clobber the
-        // newer disk content), ingest disk (disk-wins; discards the agent edit
-        // from the CRDT — a retry then re-applies exactly once via L1), advance
-        // the base, and record the revert out-of-band so the awaiting handler
-        // returns `urn:ok:error:disk-divergence`. Detection + disk-wins ingest
-        // only — no in-hook merge, no second `BridgeMergeContentLossError` catch
-        // site (STOP rule). Mirrors the tripwire-reset ingest below.
         if (agentTriggeredStore && currentBase !== undefined) {
           let diskNow: string | null = null;
           try {
             if (existsSync(canonicalPath)) diskNow = readFileSync(canonicalPath, 'utf-8');
           } catch (err) {
-            // L3 is the terminal disk-authority guard: a read fault here silently
-            // falls through to the overwrite (potential clobber of a newer disk
-            // edit), so surface it rather than failing open quietly.
             diskNow = null;
             log.warn(
               { err, documentName },
@@ -2360,7 +1482,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             );
           }
           if (diskNow !== null && normalizeBridge(diskNow) !== normalizeBridge(currentBase)) {
-            const diskContent = diskNow; // const so the closure keeps the non-null narrowing
+            const diskContent = diskNow;
             console.warn(
               JSON.stringify({
                 event: 'agent-write-content-divergence',
@@ -2371,26 +1493,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 candidateBytes: markdown.length,
               }),
             );
-            // The realign discards the live document under an origin neither
-            // undo stack can reach, so it owes a restore anchor first. Minted
-            // before the transact and never gated on — a shadow failure degrades
-            // observability, never the disk-authority repair.
             checkpointBeforeDivergenceRealign(document, documentName, markdown, diskContent);
-            // The disk bytes are the state the live document is being realigned
-            // ONTO, so fragment content absent from them is exactly what this
-            // realign destroys. That baseline is what makes the paired-intake
-            // detector report the discarded content instead of staying silent —
-            // the precondition that lets the other persistence callers omit
-            // `detect` (they re-apply bytes the fragment already derives from)
-            // is false here by construction.
             const lossRing = options?.getLossRing?.();
             const detect: DeriveLossDetectOptions = {
               baselineFullMd: diskContent,
               report: (obs) => {
-                // Never throws, per the reporter contract. This runs INSIDE the
-                // realign transact, whose catch records a store failure and
-                // rethrows — a diagnostic failure escaping here would report the
-                // disk-authority repair as failed when it actually succeeded.
                 try {
                   const dropped = detectPairedIntakeLoss(obs);
                   if (dropped.length === 0) return;
@@ -2411,17 +1518,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 }
               },
             };
-            // Caller-wrapped FILE_WATCHER_ORIGIN transact (paired-write +
-            // skipStoreHooks), matching the tripwire-reset ingest — so the
-            // realign fires no nested store and stays out of the agent's
-            // UndoManager. Guarded like the identical applyDiskContent call in
-            // the tripwire-reset block above and the atomic write below: if the
-            // disk-wins ingest throws, the clobber is already aborted (disk
-            // preserved), but the agent bytes never reached disk and the CRDT
-            // still holds the stale edit — record a store failure and rethrow so
-            // the awaiting handler surfaces an error via takeStoreFailure instead
-            // of a false success. The base deliberately stays at currentBase (no
-            // setReconciledBase) so a retry re-reads disk and reconciles again.
             try {
               document.transact(() => {
                 applyDiskContent(document, diskContent, undefined, undefined, undefined, detect);
@@ -2450,13 +1546,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         const tmpPath = `${canonicalPath}.tmp.${crypto.randomUUID()}`;
         try {
-          // Test-only fault-injection seam. Production builds with
-          // NODE_ENV !== 'test' AND OK_TEST_STORE_FAULT unset elide the branch.
-          // Matched by exact docName (not a wildcard) so concurrent tests in
-          // the same process only fault the doc under test. Throws a synthetic
-          // ENOSPC so the store-failure-surfacing path (record → rethrow →
-          // Hocuspocus swallow → handler reads `takeStoreFailure`) runs without
-          // a real out-of-space / read-only condition.
           if (process.env.NODE_ENV === 'test' && process.env.OK_TEST_STORE_FAULT === documentName) {
             const faultErr = new Error(
               `OK_TEST_STORE_FAULT: simulated disk failure for ${documentName}`,
@@ -2467,27 +1556,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           await tracedWriteFile(tmpPath, markdown, 'utf-8');
           await tracedRename(tmpPath, canonicalPath);
           registerWrite(canonicalPath, contentHash(markdown));
-          // The bytes reached disk — clear any prior recorded failure so a
-          // later force-flush + `takeStoreFailure` reflects the success.
           durabilityState.clearStoreFailure(documentName);
-          // Increment disk-write counter after the atomic rename succeeds.
-          // Regression gate: if OBSERVER_SYNC_ORIGIN drops skipStoreHooks,
-          // observer writes trigger onStoreDocument and produce amplified
-          // disk writes per user/agent edit. The counter is asserted in
-          // tests to pin the no-amplification invariant.
           incrementPersistenceDiskWrite();
-          // Notify clients that disk durability has been achieved up to the
-          // pre-write state vector. Fired AFTER `tracedRename` succeeds so
-          // a write failure (caught below) skips the watermark advance.
-          //
-          // Isolated try/catch: a thrown callback would otherwise enter
-          // the disk-write catch block below despite the disk write having
-          // succeeded — bypassing the success-path bookkeeping
-          // (setReconciledBase, tripwireResetFailedDocs.delete, backlinks
-          // update) and producing misleading "Failed to save" logs. The
-          // production callback (`cc1Broadcaster.emitDiskAck`) catches its
-          // own errors today, but the contract here is that the success
-          // path is independent of callback behavior.
           try {
             onDiskFlush?.(documentName, stateVectorAtRead, markdown, currentBase ?? null);
           } catch (flushErr) {
@@ -2499,26 +1569,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         } catch (e) {
           try {
             tracedUnlinkSync(tmpPath);
-          } catch {
-            /* cleanup best-effort */
-          }
-          // The disk-write throw bypasses the success-path delete at the
-          // bottom of this hook, so deferCount stays at QUIESCENCE_MAX_DEFER
-          // when the force-flush path lands here. Without this clear, every
-          // subsequent debounce cycle force-flushes again (emitting
-          // `persistence-force-flush-during-burst` on each fire) instead of
-          // resuming the normal skip-and-defer cadence — making it hard to
-          // distinguish "user typing continuously" from "stuck retry loop"
-          // in telemetry. Clearing here ensures the next cycle re-enters the
-          // gate fresh.
+          } catch {}
           persistenceDeferCounts.delete(documentName);
-          // Record the failure BEFORE rethrowing. Hocuspocus's
-          // `storeDocumentHooks` catches the rethrow and keeps the doc in
-          // memory without signaling the caller, so this map is the only
-          // channel a write handler has to learn the bytes never landed.
-          // `toStoreFailure` reads `e` defensively so a throwing-getter error
-          // shape can't replace `e` here and rob the deferred-store classifier
-          // downstream of the original throw.
           durabilityState.recordStoreFailure(documentName, toStoreFailure(e));
           log.error({ err: e, documentName }, `[persistence] Failed to save ${documentName}`);
           throw e;
@@ -2528,10 +1580,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           `[persistence] Wrote ${canonicalPath} (${markdown.length} bytes)`,
         );
 
-        // Update reconciled base after successful store
         durabilityState.setReconciledBase(documentName, markdown);
-        // A settled write is what licences the duplication tripwire to stop
-        // treating a later doubling as a load-time materialization.
         docsWithSettledWrite.add(documentName);
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
@@ -2549,16 +1598,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         scheduleGitCommit();
       },
     ).finally(() => {
-      // Clear the in-flight flush signal only if it is still ours: a later
-      // overlapping flush for the same doc overwrites the entry, and this
-      // (possibly failed) flush must not delete that newer signal. On a
-      // commit throw the entry clears here too, so the signal can never
-      // stay stuck set past the flush that owns it.
       if (inFlightFlushValue !== undefined) {
         durabilityState.finishInFlightFlush(documentName, inFlightFlushValue);
       }
-      // doc.name deliberately NOT recorded on the histogram — per-doc cardinality
-      // would blow up Prometheus label storage at scale. The span carries it.
       storeDurationHist?.record((Date.now() - started) / 1000);
     });
   }
@@ -2604,26 +1646,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 lastTransactionOrigin: entry.lastTransactionOrigin,
               });
             } catch (err) {
-              // Structured-event observability for deferred-drain failures.
-              // Default-redacted (FNV-1a hash of the raw message;
-              // `OK_TELEMETRY_VERBOSE=1` opt-in for the verbatim string,
-              // matching the bridge-invariant-violation pattern). No rate-
-              // limit gate: tens-per-day worst-case frequency means a 30s
-              // gate would suppress real signal during disk outages. The
-              // classifier is wrapped because the outer catch is the
-              // observability boundary — a malformed-error throw inside the
-              // classifier would otherwise erase the failure signal entirely.
-              // The classifier-failure event preserves the original error
-              // context so triage can recover.
               const verbose = process.env.OK_TELEMETRY_VERBOSE === '1';
-              // The classifier's outer try/catch (see classifyDeferredStoreError
-              // JSDoc) is the observability boundary for exotic error shapes.
-              // The .message extraction must sit inside an equivalent guard for
-              // the same reason: a Proxy/non-Error throw with a throwing
-              // .message getter would propagate up here, bypassing the
-              // deferred-store-failed emission entirely — the same silent-loss
-              // class this defense exists to prevent. Symmetric with the
-              // .code-throws path the classifier itself defends against.
               let rawMessage = '';
               try {
                 rawMessage = String((err as { message?: unknown } | null)?.message ?? '');
@@ -2635,10 +1658,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               try {
                 errorClass = classifyDeferredStoreError(err);
               } catch (classifyErr) {
-                // Mirror the outer event's redaction shape: hash always +
-                // raw classifyErrorMessage when OK_TELEMETRY_VERBOSE=1.
-                // Carry errorMessageHash so triage can correlate this event
-                // with the subsequent deferred-store-failed emission.
                 const rawClassifyMessage = String(
                   (classifyErr as { message?: unknown } | null)?.message ?? '',
                 );
@@ -2687,10 +1706,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const extension: Extension = {
     async onLoadDocument({ document, documentName, context: _context }) {
-      // A load opens a fresh provider-sync window, which is exactly when the
-      // stale-cache duplication the tripwire guards against materializes. Drop
-      // any settled-write licence carried over from a previous session so the
-      // guard is armed again.
       docsWithSettledWrite.delete(documentName);
       if (isSystemDoc(documentName)) return;
       if (isConfigDoc(documentName)) {
@@ -2706,11 +1721,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         isExcalidrawDoc(documentName) ||
         isEditableTextDoc(documentName)
       ) {
-        // Editable-text and Excalidraw docs share the Mermaid verbatim Y.Text
-        // load/store — the path resolver is extension-agnostic (docName
-        // retains its ext) and the on-wire body is opaque bytes to the
-        // server regardless of whether it's Mermaid source, TS/JSON source,
-        // or an Excalidraw JSON snapshot.
         loadMermaidDoc(document, documentName, mermaidPersistenceCtx);
         return;
       }
@@ -2747,7 +1757,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               );
               return;
             }
-            // Preserve the historical fallback: stat/read the requested path when realpath fails.
           }
 
           const fileSize = statSync(canonical).size;
@@ -2768,28 +1777,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           );
 
           if (xmlFragment.length === 0) {
-            // Load XmlFragment + Y.Text atomically under FILE_WATCHER_ORIGIN
-            // (paired-write). Y.Text receives the FULL file content verbatim
-            // (FM + body) so the YAML region of Y.Text — the FM source of
-            // truth — preserves whatever scalar style + indentation was on
-            // disk. A separate non-paired transact would let observers fire
-            // mid-load and re-canonicalize Y.Text via yaml@2's serializer,
-            // re-flowing list items (e.g. `  - characters` → `- characters`).
-            // The paired-write origin's structural short-circuit in Observer
-            // A/B refreshes the baseline without dispatching a sync.
-            //
-            // Threads the optional `resolveEmbed` so post-load PM image/link
-            // nodes carry resolved src/href for `![[file.ext]]` embeds.
-            //
-            // Calls the imported `applyDiskContentToDoc` directly (not the
-            // `applyDiskContent` option-aware variable). The option override
-            // exists for the tripwire reset path so tests can inject a
-            // throwing stub that exercises the breaker — onLoadDocument is
-            // a different concern and shouldn't be intercepted by that
-            // testability seam.
-            //
-            // Caller wraps for atomicity + paired-write origin identity
-            // (precedent #24).
             document.transact(() => {
               applyDiskContentToDoc(
                 document,
@@ -2798,27 +1785,12 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 documentName,
                 options?.resolveSize,
               );
-              // Mint the doc's lineage epoch atomically with the content it
-              // identifies. Every seed-from-disk is a NEW Yjs lineage (no
-              // Y-binary survives an unload), so client-persisted state from
-              // a prior load must not rejoin this doc. The epoch replicates
-              // in-band via the lifecycle map and lands in client IDB
-              // automatically; clients claim it on reconnect and
-              // `doc-lineage-guard.ts` rejects stale claims before sync.
-              //
-              // The `lifecycle` Y.Map is a shared namespace — key ownership:
-              // `status`/`reason` belong to the conflict subsystem
-              // (`conflict-lifecycle-seed.ts`, boot restore; read via
-              // `isDocInConflict` in `conflict-errors.ts`); `epoch` belongs
-              // to this seed-from-disk mint. Don't `clear()` the map and
-              // route new keys through one owning subsystem.
               document.getMap('lifecycle').set(LINEAGE_EPOCH_KEY, crypto.randomUUID());
             }, FILE_WATCHER_ORIGIN);
             log.info(
               { filePath, children: xmlFragment.length },
               `[persistence] Loaded ${filePath} into Y.Doc (${xmlFragment.length} children)`,
             );
-            // Watch for unexpected mutations
             xmlFragment.observeDeep(() => {
               log.info(
                 { documentName, fragmentLength: xmlFragment.length },
@@ -2832,44 +1804,26 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             );
           }
 
-          // The reconciled base is the RAW disk bytes verbatim, not a
-          // fragment-derived re-serialization. This unifies cold-load with
-          // the file-watcher path in `external-change.ts` — both store the
-          // bytes that were observed on disk. Persistence reads ytext for
-          // body and writes ytext bytes back; round-trip across save+reload
-          // preserves user form. The earlier `mdManager.serialize(fragment)`
-          // canonicalization here pre-dated the Y.Text-is-truth contract
-          // (precedent #38) — it normalized away source-form attrs (inline-
-          // code fence form, blockquote spacing, setext underline length,
-          // etc.) on every load, defeating the per-attr fidelity work for
-          // already-saved files.
-          //
-          // The first onStoreDocument after load tolerates the "fragment is
-          // canonical, ytext is raw" gap via `normalizeBridge` —
-          // markdownSemanticallyUnchanged compares with `normalizeBridge`,
-          // and the bridge invariant comparator (`assertBridgeInvariant`
-          // and `attachBridgeInvariantWatcher`) tolerates the same classes,
-          // so no false-positive write fires on mere file open.
           durabilityState.setReconciledBase(documentName, raw);
         },
       ).finally(() => {
-        // doc.name deliberately NOT recorded on the histogram — per-doc cardinality
-        // would blow up Prometheus label storage at scale. The span carries it.
         loadDurationHist?.record((Date.now() - started) / 1000);
       });
     },
 
-    // STOP: Do NOT add additional `Y.encodeStateVector(document)` calls
-    // anywhere in this function. The only sanctioned capture is via
-    // `captureDocSnapshotForPersistence` at the top of the body — its
-    // co-capture of `{sv, json}` is what guarantees the disk-ack
-    // watermark reflects the exact doc state that lands on disk. A
-    // second SV captured later (e.g., after `await tracedRename`) would
-    // include updates from the async write window, falsely advancing the
-    // watermark past content that's NOT durably persisted, and
-    // clients would drop those bytes from the recycle buffer →
-    // unsynced-edit loss on server-restart. See the helper's docstring
-    // for the full timing contract.
+    /*
+     * STOP: Do NOT add additional `Y.encodeStateVector(document)` calls
+     * anywhere in this function. The only sanctioned capture is via
+     * `captureDocSnapshotForPersistence` at the top of the body — its
+     * co-capture of `{sv, json}` is what guarantees the disk-ack
+     * watermark reflects the exact doc state that lands on disk. A
+     * second SV captured later (e.g., after `await tracedRename`) would
+     * include updates from the async write window, falsely advancing the
+     * watermark past content that's NOT durably persisted, and
+     * clients would drop those bytes from the recycle buffer →
+     * unsynced-edit loss on server-restart. See the helper's docstring
+     * for the full timing contract.
+     */
     async onStoreDocument({
       document,
       documentName,
@@ -2884,13 +1838,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           lastTransactionOrigin,
           configPersistenceCtx,
         );
-        // A validated config value just reached durable state — either written
-        // by this persist (`'persisted'`) or imported from a winning external
-        // writer on reconcile (`'reconciled'`). Notify live in-process consumers
-        // directly; the chokidar echo is a non-guaranteed, OS-mediated
-        // filesystem-event channel that can drop this event (permanent
-        // divergence until restart). The persist already succeeded, so a
-        // consumer-notify throw must not surface as a store failure.
         if (outcome === 'persisted' || outcome === 'reconciled') {
           try {
             onConfigPersisted?.(documentName);
@@ -2907,18 +1854,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           lastTransactionOrigin,
           managedArtifactCtx,
         );
-        // Version editor-driven CRDT edits exactly like a regular doc: an
-        // attributed shadow commit per edit, recorded under the `.ok/` artifact
-        // key + `skill-` subject the timeline filters on (so the edit surfaces
-        // in skill history). Templates are content docs and never reach this
-        // managed branch. This is the SAME
-        // safety-net `storeDocumentNow` uses for browser writes: MCP `write`/
-        // `edit` go through agent sessions and are attributed by the
-        // api-extension handler (rich actor + summary), so the store skips agent
-        // origins to avoid double-attribution and only versions the connection-
-        // origin (editor/principal) writes that never pass through a handler.
-        // Only a real write (`persisted`) versions; no-op / reconcile / write-
-        // failed do not, and global skills are unversioned (attribution null).
         if (outcome === 'persisted') {
           const writer = resolveWriterFromOrigin(lastTransactionOrigin, getPrincipal);
           if (writer && writer.id !== SERVICE_WRITER.id && !writer.id.startsWith('agent-')) {
@@ -2934,8 +1869,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               scheduleGitCommit();
             }
           }
-          // The persist succeeded; a copy-resync failure must not surface as a
-          // store failure (same contract as onConfigPersisted above).
           try {
             onManagedSkillPersisted?.(documentName);
           } catch (err) {
@@ -2971,30 +1904,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     if (commitInFlight) await commitInFlight;
   }
 
-  /**
-   * Force a single drain of the in-memory contributor map even when no Y.Doc
-   * mutation has scheduled the debounced timer. The rewrite spine relies on
-   * this for renames: a pure rename touches disk and `pendingContributors`
-   * but not any Y.Doc, so the normal `scheduleGitCommit` path never fires —
-   * the rename's contributor entry plus the matching `renames.jsonl` entry
-   * (with `commitSha: ''`) would sit in memory until something else triggers
-   * a Y.Doc transact, at which point the rename's commit timestamp would
-   * be wallclock-now (drain time), not rename time.
-   *
-   * No-op when nothing is pending (`contributorCount() === 0`) — calling
-   * this on every rename even with no contributors would waste a service-
-   * writer commit.
-   *
-   * Serialized via `commitInFlight`: a concurrent caller awaits the in-flight
-   * drain rather than racing with `scheduleGitCommit` or another flush.
-   */
   async function flushContributors(): Promise<void> {
-    // Loop rather than await-and-return: an in-flight run snapshotted the
-    // contributor map when IT started, so a contributor recorded after that
-    // (write handlers flush fire-and-forget now — two back-to-back writes
-    // race exactly this way) is NOT in it. Returning here stranded that
-    // second write's commit until some unrelated flush, which read as a
-    // missing version on an immediate history read.
     while (commitInFlight) {
       await commitInFlight;
     }
@@ -3021,14 +1931,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       return;
     }
     if (durabilityState.isBatchInProgress()) {
-      // Same parking the debounced hook applies; the batch's own
-      // `flushDeferredStores` replays it when the coordinated operation ends.
       deferStore({ document, documentName, lastTransactionOrigin: null });
       return;
     }
-    // Origin null: the triggering write's contributor entry (if any) was
-    // recorded when the edit happened; a forced re-flush must not invent a
-    // new writer identity.
     return storeDocumentNow({ document, documentName, lastTransactionOrigin: null });
   }
 

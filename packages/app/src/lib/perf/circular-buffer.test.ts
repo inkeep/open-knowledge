@@ -36,14 +36,12 @@ describe('CircularBuffer', () => {
     buf.push(3);
     expect(buf.toArray()).toEqual([1, 2, 3]);
 
-    // Eviction: 1 is oldest, gets overwritten next.
     buf.push(4);
     expect(buf.toArray()).toEqual([2, 3, 4]);
 
     buf.push(5);
     expect(buf.toArray()).toEqual([3, 4, 5]);
 
-    // Wrap around — verify chronological order persists.
     buf.push(6);
     buf.push(7);
     expect(buf.toArray()).toEqual([5, 6, 7]);
@@ -54,12 +52,11 @@ describe('CircularBuffer', () => {
     buf.push(1);
     buf.push(2);
     buf.push(3);
-    buf.push(4); // overwrite
+    buf.push(4);
     expect(buf.length).toBe(3);
     buf.clear();
     expect(buf.length).toBe(0);
     expect(buf.toArray()).toEqual([]);
-    // After clear, push behaves as fresh
     buf.push(99);
     expect(buf.toArray()).toEqual([99]);
   });

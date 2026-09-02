@@ -1,9 +1,3 @@
-/**
- * Unit tests for the pure diagnostic mapping (0-based LSP ranges → absolute CM
- * offsets). Uses an `EditorState`-derived `Text` so it runs headless (no DOM),
- * matching the source-polish convention of testing the pure builder directly.
- */
-
 import { lintGutter } from '@codemirror/lint';
 import { EditorState } from '@codemirror/state';
 import {
@@ -105,10 +99,8 @@ describe('createMarkdownLintExtension', () => {
 
   test('returns lint extensions when enabled', () => {
     const ext = createMarkdownLintExtension({ ...DEFAULT_LINTER_CONFIG, enabled: true });
-    // [lintGutter(), linter(...)] — a non-empty extension array.
     expect(Array.isArray(ext)).toBe(true);
     expect((ext as unknown[]).length).toBeGreaterThan(0);
-    // Smoke: lintGutter is constructible in this environment.
     expect(lintGutter()).toBeDefined();
   });
 });

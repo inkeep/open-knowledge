@@ -24,40 +24,17 @@
 import type { SkillScope } from '../schemas/api/tags-search.ts';
 import type { SkillProvenance } from './schema.ts';
 
-/** Claude's raw scope values that denote a project-bound (not user-global) install. */
 const PROJECT_RAW_SCOPES = new Set(['project', 'local']);
 
-/**
- * Map a harness's RAW scope string (Claude's `project`/`local`/`user`, or
- * absent for a bare skill-dir) onto OK's `project | global` enum. Project-bound
- * → `project`; everything else (user-global, or no recorded scope) → `global`.
- */
 export function catalogRawScopeToOkScope(rawScope: string | undefined): SkillScope {
   return rawScope !== undefined && PROJECT_RAW_SCOPES.has(rawScope) ? 'project' : 'global';
 }
 
-/**
- * Trailing-slash-insensitive path equality. Both operands are already-absolute
- * directories (Claude records the launch cwd; OK's `projectDir` is resolved at
- * boot), so a string compare suffices.
- * ponytail: string compare, no `..`/symlink normalization — if a symlinked
- * project root ever needs to match its realpath, realpath both at the server
- * boundary before calling in.
- */
 function samePath(a: string, b: string): boolean {
   const norm = (p: string) => p.replace(/\/+$/, '');
   return norm(a) === norm(b);
 }
 
-/**
- * Does this detected skill belong to the open project? User-global installs
- * (and bare skill-dirs with no recorded scope) always do — they apply to every
- * project. A *project-scoped* plugin install belongs only to the project it was
- * installed for: keep it iff its `projectPath` matches `projectDir`. A
- * project-scoped install with no recorded `projectPath` (or when the project
- * dir is unknown) can't be attributed, so it's kept rather than risk hiding a
- * genuine local skill.
- */
 export function isDetectedSkillInProject(
   provenance: SkillProvenance,
   projectDir: string | undefined,
@@ -68,29 +45,6 @@ export function isDetectedSkillInProject(
   return samePath(owner, projectDir);
 }
 
-/**
- * Does this skill belong to the open project but live OUTSIDE its tree?
- *
- * Enumeration resolves a linked worktree to its parent checkout so the parent's
- * project-scoped installs still match (see `isDetectedSkillInProject`). The
- * cost is that a skill can pass that test while none of its files exist in the
- * tree the user has open — editing it in place then writes to a different
- * checkout, on a different branch. `contentDir` is the OPEN tree, never the
- * resolved identity; passing the identity makes this vacuously false.
- *
- * PROJECT-bound only. A global skill sits at `~/.claude/skills/…`, outside
- * `contentDir` by definition, and loads from every project — testing locality
- * alone would condemn every global row.
- *
- * ponytail: string prefix, matching `samePath` above — both operands are
- * already-absolute dirs. Realpath both at the server boundary if a symlinked
- * project root ever needs to match.
- *
- * The `h !== c` conjunct is unreachable for today's callers (a skill `home` is
- * always a directory NESTED under a harness root, never the project root
- * itself) but is kept so the predicate answers "outside" correctly for any
- * input rather than only for well-formed ones.
- */
 export function isSkillOutsideOpenProject(
   provenance: SkillProvenance,
   home: string,

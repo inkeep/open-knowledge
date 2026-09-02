@@ -18,18 +18,12 @@ const catalogOf = (entries) => new Map(Object.entries(entries));
 describe('picker enumeration', () => {
   const picker = readPickerLocales(readFileSync(LOCALES_TS, 'utf8'));
 
-  // Membership belongs to `packages/core/src/i18n/locales.test.ts`, which pins
-  // it against the enumerated set. Restating it here would only mean two places
-  // to edit for one promotion, and a stale copy that fails on the wrong file.
   test('reads the offered set out of core rather than restating it', () => {
     expect(picker.length).toBeGreaterThan(0);
     expect(picker).toContain('en');
     expect(picker.filter((tag) => Intl.getCanonicalLocales(tag)[0] !== tag)).toEqual([]);
   });
 
-  // The tuple is long enough that Biome wraps it one tag per line. A parse that
-  // only handled the single-line spelling would read it as empty and gate
-  // nothing, which is the one failure mode this reader cannot afford.
   test('reads a tuple spread across lines, which is how core writes it', () => {
     expect(
       readPickerLocales(
@@ -85,8 +79,6 @@ describe('coverage measurement', () => {
     expect(result).toMatchObject({ missingCatalog: true, translated: 0 });
   });
 
-  // The source locale's msgstr is the English text itself, so it is complete by
-  // construction; measuring it against itself would be circular.
   test('the source locale is complete without inspecting its msgstr', () => {
     const result = measureCoverage({
       locale: 'en',
@@ -115,8 +107,6 @@ describe('plural completeness', () => {
     expect(result.pluralGaps).toEqual([]);
   });
 
-  // Spanish needs `many` where English has only `one`/`other`, so copying the
-  // English shape across is complete on paper and broken in the UI.
   test('flags a translation that reuses the English category set', () => {
     const result = measureCoverage({
       locale: 'es',
@@ -179,9 +169,6 @@ describe('reporting', () => {
 });
 
 describe('the gate against the real catalogs', () => {
-  // The point of this story: es and zh-Hans are complete, so the gate passes on
-  // this tree. It is an absolute assertion, not a delta — a picker locale that
-  // regresses fails here even if the regression arrived from main.
   test('passes on the committed catalogs', () => {
     const result = spawnSync('node', ['scripts/check-i18n-picker-completeness.mjs'], {
       cwd: OK_ROOT,

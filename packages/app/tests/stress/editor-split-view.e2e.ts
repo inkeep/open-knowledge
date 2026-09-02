@@ -36,14 +36,6 @@ async function paneWidths(page: Page): Promise<number[]> {
   );
 }
 
-/**
- * Full geometry behind the alignment check. The assertion below reports a
- * single worst-case number, and a bare "91.71875" on a CI machine nobody can
- * attach to says nothing about which pane drifted, in which direction, or
- * whether the two canvases were even the same width. Sampling the whole picture
- * and printing it on failure is what makes a headless-only misalignment
- * diagnosable from the log alone.
- */
 interface HeaderAlignmentSample {
   worst: number;
   worstLabel: string;
@@ -111,9 +103,6 @@ async function sampleHeaderAlignment(page: Page): Promise<HeaderAlignmentSample>
     const tops = groups.map((group) => group.getBoundingClientRect().top);
     const topDelta = tops.length > 0 ? Math.max(...tops) - Math.min(...tops) : 0;
 
-    // No groups at all is a regression, not alignment: every delta below is
-    // missing, so `worst` would otherwise bottom out at 0 and report perfect
-    // alignment on a header that stopped rendering or an attribute rename.
     let worst = groups.length === 0 ? Number.POSITIVE_INFINITY : round(topDelta);
     let worstLabel = groups.length === 0 ? 'noGroups' : 'topDelta';
     for (const row of rows) {
@@ -154,21 +143,11 @@ async function sampleHeaderAlignment(page: Page): Promise<HeaderAlignmentSample>
   });
 }
 
-/**
- * `JSON.stringify` renders every non-finite number as `null`, which is how the
- * sample's own sentinels get erased: a group with no pane at all and a
- * measurement that was simply unavailable print identically, and a header
- * canvas that never mounted logs as one carrying defaults — the exact failure
- * this assertion exists to catch, disguised as a healthy one.
- */
 function jsonSafe(_key: string, value: unknown): unknown {
   return typeof value === 'number' && !Number.isFinite(value) ? String(value) : value;
 }
 
 async function expectHeaderGroupsAlignedWithPanes(page: Page): Promise<void> {
-  // Collected rather than reassigned: a sample that never completed has to be
-  // distinguishable from one that did, and a `const` array also keeps the reads
-  // below out of the narrowing hole a `let` assigned inside a callback falls in.
   const seen: HeaderAlignmentSample[] = [];
   try {
     await expect
@@ -427,11 +406,6 @@ test.describe('vertical editor splits', () => {
     expect(Math.abs(widthsAfterReload[0] - widthsAfterResize[0])).toBeLessThan(40);
     await expect.poll(() => windowHash(page)).toContain(editedDoc.name);
     for (const doc of docs) {
-      // Polled, unlike the pre-reload generation-stability reads: the four
-      // portals remount asynchronously after a reload, and pane-tab count
-      // reaching 4 only means the tab strip restored, not that every pane's
-      // editor portal is in the DOM. A one-shot read here races the slowest
-      // remount.
       await expect.poll(() => portalGeneration(page, doc.name)).not.toBe('absent');
     }
 
@@ -722,10 +696,6 @@ test.describe('vertical editor splits', () => {
       .locator(`[data-editor-pane-tabs="${onlyPaneId}"]`)
       .getByTestId('editor-tab-close-button')
       .click();
-    // The last close collapses to a single pane holding no tabs at all. It used
-    // to synthesize a blank "home" tab here; that placeholder renders exactly
-    // what the empty state renders, so closing the last tab looked like it
-    // reopened one.
     await expect(paneTabs(page)).toHaveCount(1);
     const remainingTabs = page.locator(
       `[data-editor-pane-tabs="${onlyPaneId}"] [data-editor-tab-sortable]`,
@@ -734,13 +704,6 @@ test.describe('vertical editor splits', () => {
     await expect(page.getByTestId('empty-editor-state')).toBeVisible();
   });
 
-  // A restored session can carry pane percentages that the pane minimum
-  // overrides: the panel group raises every undersized pane to
-  // MIN_EDITOR_PANE_WIDTH and reclaims the shortfall from the panes in index
-  // order, so the geometry it renders is not the geometry the percentages
-  // describe. The header tab groups mirror the same workspace and have no
-  // minimum of their own, so they only stay aligned if they are driven by the
-  // layout the panel group resolved rather than by the persisted percentages.
   test('restored pane sizes below the pane minimum keep header groups aligned', async ({
     page,
     api,
@@ -777,9 +740,6 @@ test.describe('vertical editor splits', () => {
     }
     await expect(paneTabs(page)).toHaveCount(4);
 
-    // Percentages a real drag can persist, and which the pane minimum then
-    // overrides on the next restore: the last two panes resolve well under
-    // MIN_EDITOR_PANE_WIDTH at this viewport.
     const skewed = [55, 20, 12.5, 12.5];
     await page.evaluate((sizes) => {
       const key = `ok-editor-tabs-v1:${window.location.origin}`;
@@ -800,17 +760,10 @@ test.describe('vertical editor splits', () => {
     await expect(paneTabs(page)).toHaveCount(4);
     await expectHeaderGroupsAlignedWithPanes(page);
 
-    // The clamp really did engage. A lower bound alone cannot show that: it
-    // holds just as well when every pane was already above the minimum and
-    // there was never anything to diverge from. Pinning the smallest pane AT
-    // the minimum is what proves the resolved layout left the persisted one,
-    // so the day a wider viewport or a retuned fixture stops reproducing the
-    // clamp this fails instead of passing vacuously.
     const widths = await paneWidths(page);
     const smallest = Math.min(...widths);
     expect(smallest).toBeGreaterThanOrEqual(MIN_EDITOR_PANE_WIDTH - 1);
     expect(smallest).toBeLessThanOrEqual(MIN_EDITOR_PANE_WIDTH + 1);
-    // ...and the persisted share it was raised from really was smaller.
     const totalWidth = widths.reduce((sum, width) => sum + width, 0);
     expect(smallest).toBeGreaterThan((Math.min(...skewed) / 100) * totalWidth + 1);
   });

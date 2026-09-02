@@ -97,9 +97,6 @@ describe('runSingleFileOpen', () => {
     expect(rec.openTargets).toEqual([
       `openknowledge://open?file=${encodeURIComponent('/Users/me/notes/todo.md')}`,
     ]);
-    // The dispatcher (open-target.ts) names this exact bundle directly on
-    // darwin instead of resolving the openknowledge:// scheme through Launch
-    // Services — verified path threaded through, not re-derived.
     expect(rec.openTargetOptions).toEqual([
       { desktopBundlePath: '/Applications/OpenKnowledge.app' },
     ]);

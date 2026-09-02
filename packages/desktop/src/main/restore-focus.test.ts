@@ -7,7 +7,6 @@ import {
   whenWindowRevealed,
 } from './restore-focus.ts';
 
-/** Captured-timer harness so tests fire the safety timeout deterministically. */
 function makeTimers(timeoutMs = 8_000): {
   deps: RestoreFocusDeps;
   fireAll: () => void;
@@ -66,9 +65,6 @@ function makeWindow(opts: { visible?: boolean; destroyed?: boolean } = {}): Fake
 const flush = () => Promise.resolve();
 
 describe('shouldRevealInactiveNow', () => {
-  // Full truth table. All three terms are load-bearing, and only one row is
-  // true — pinning every combination is what makes a dropped term fail here
-  // rather than in a user's window stack.
   test.each([
     { restoreInProgress: false, appHasEverBeenActive: false, appIsActive: false, expected: false },
     { restoreInProgress: false, appHasEverBeenActive: false, appIsActive: true, expected: false },
@@ -86,12 +82,6 @@ describe('shouldRevealInactiveNow', () => {
   });
 
   test('a restore that has never been frontmost reveals normally, not quietly', () => {
-    // The anti-self-suppression row, called out because it is the one that
-    // reads redundant. `showInactive()` never activates the app, so if the
-    // first restored window also revealed quietly the app would never become
-    // active, never observe a departure, and never come forward — a user who
-    // clicked Relaunch and waited would get their session back behind whatever
-    // macOS promoted when OpenKnowledge quit.
     expect(
       shouldRevealInactiveNow({
         restoreInProgress: true,
@@ -106,7 +96,6 @@ describe('whenWindowRevealed', () => {
   test('resolves immediately when already visible', async () => {
     const { deps, pending } = makeTimers();
     await whenWindowRevealed(makeWindow({ visible: true }), deps);
-    // No safety timer should linger for an already-visible window.
     expect(pending()).toBe(0);
   });
 
@@ -161,12 +150,10 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
     });
 
     await flush();
-    // The target (/b) shows first, but /a is still gated — no raise yet.
     winB.emitShow();
     await flush();
     expect(raised).toEqual([]);
 
-    // The last sibling reveals; now the target must win the final show().
     winA.emitShow();
     await p;
     expect(raised).toEqual(['/b']);
@@ -220,8 +207,8 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
 
   test('still raises the target when a sibling only reveals via the safety timeout', async () => {
     const { deps, fireAll } = makeTimers();
-    const winA = makeWindow(); // never emits show — must time out
-    const winB = makeWindow({ visible: true }); // target already visible
+    const winA = makeWindow();
+    const winB = makeWindow({ visible: true });
     const wins: Record<string, FakeWindow> = { '/a': winA, '/b': winB };
     const raised: string[] = [];
 
@@ -240,8 +227,6 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
   });
 
   test('raises across kinds — a loose-file key can be the raise target', async () => {
-    // Keys are opaque (a project path OR a canonical file path); the loose-file
-    // window is focused last, so it is the one raised after every window reveals.
     const { deps } = makeTimers();
     const projWin = makeWindow({ visible: true });
     const fileWin = makeWindow();
@@ -263,7 +248,6 @@ describe('raiseMostRecentlyFocusedAfterRestore', () => {
 });
 
 describe('raiseMostRecentlyFocusedAfterRestore — foreground decision', () => {
-  /** Run a two-window restore to completion, returning the raise's opts. */
   async function runRestore(
     shouldActivate?: () => boolean,
   ): Promise<Array<{ key: string; activate: boolean }>> {
@@ -293,8 +277,6 @@ describe('raiseMostRecentlyFocusedAfterRestore — foreground decision', () => {
   });
 
   test('declines to activate when the user has moved to another app', async () => {
-    // The reported bug: a restore that finishes after the user gave up waiting
-    // must not drag them back out of whatever they switched to.
     expect(await runRestore(() => false)).toEqual([{ key: '/b', activate: false }]);
   });
 
@@ -303,9 +285,6 @@ describe('raiseMostRecentlyFocusedAfterRestore — foreground decision', () => {
   });
 
   test('reads the predicate after every reveal settles, not when the restore starts', async () => {
-    // This ordering is the whole point: a restore can run for many seconds, and
-    // the user leaving DURING it is exactly the case being fixed. Sampling the
-    // answer up front would activate anyway and reproduce the bug.
     const { deps } = makeTimers();
     const a = makeWindow();
     const b = makeWindow();
@@ -323,7 +302,6 @@ describe('raiseMostRecentlyFocusedAfterRestore — foreground decision', () => {
 
     await flush();
     a.emitShow();
-    // The user walks away while the last window is still coming up.
     userPresent = false;
     b.emitShow();
     await p;

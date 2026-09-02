@@ -1,8 +1,3 @@
-/**
- * `methodRouter(...)` dispatch + the preserved 405 wire shape (RFC 9457
- * problem+json, `Allow` header in declaration order, handler tag).
- */
-
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { methodRouter } from './method-router.ts';

@@ -7,18 +7,6 @@ import { buildAgentPluginArtifact, buildSkillBundles } from '../scripts/build-sk
 import { expectConformantManifest, readManifest } from './agent-plugin-manifest.test-helper.ts';
 import { BUNDLE_IDS, BUNDLE_SKILL_NAME } from './skill-bundles.ts';
 
-/**
- * Conformance guard for everything OK ships as an Agent Plugin
- * (agent-plugins.org v1.0.0). Compliance stays true by CI, not by intention:
- * every shipped manifest declares the standard's `$schema`, carries a name
- * passing the constraint grammar, and its `skills/` children (when the spec
- * layout is used) each hold a `SKILL.md`.
- *
- * Every subject must be present in every tree this file executes in — its own
- * package, a sibling workspace package, or an artifact built here. One that is
- * not will ENOENT wherever that tree lacks it.
- */
-
 const PKG_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_OK_ROOT = join(PKG_ROOT, '..', '..');
 
@@ -30,9 +18,6 @@ describe('shipped Agent Plugins conformance', () => {
     for (const pack of packs) {
       const dir = join(packsDir, pack.name);
       expectConformantManifest(dir);
-      // The manifest name and the pack id must agree — the reimport/update
-      // path keys on the pack marker, and a divergent plugin name would split
-      // one pack into two identities.
       expect(readManifest(dir).name, `${pack.name} name`).toBe(pack.name);
     }
   });
@@ -47,10 +32,7 @@ describe('shipped Agent Plugins conformance', () => {
     expect(mcp.$schema).toBe('https://agent-plugins.org/schemas/1.0.0/mcp.schema.json');
     const server = mcp.mcpServers?.['open-knowledge'];
     expect(server?.type).toBe('stdio');
-    // Placeholders are not allowed in `command` (spec: expansion applies to
-    // args/env/cwd only) — the runner is the command, the package an arg.
     expect(server?.command).toBe('npx');
-    // The Claude manifest stays — the two coexist.
     expect(existsSync(join(dir, '.claude-plugin', 'plugin.json'))).toBe(true);
   });
 

@@ -1,28 +1,3 @@
-/**
- * The outline pane's ACTIVE-heading indication — position marker, row
- * highlight, and `aria-current="location"` — must track the reader's scroll
- * position in BOTH editor modes. All three affordances render off one value, so
- * they are asserted together at every sample.
- *
- * STOP: do not "fix" source-mode tracking by reading heading rects out of the
- * DOM. In source mode every heading slug still resolves via
- * `document.getElementById` — to the HIDDEN WYSIWYG pane, which stays mounted
- * under `content-visibility: hidden` (painting is skipped but descendant layout
- * is preserved, so its rects are real, non-zero, and move as you scroll) and is
- * `position: absolute` (so it contributes nothing to the shared scrollport's
- * scrollHeight). Measuring it while the source pane scrolls yields confidently
- * WRONG tracking, not working tracking: the hidden pane is taller than the
- * scrollable range, so the last headings can never activate and mid-document
- * picks skew by the pane-height ratio. That is exactly why the two source-mode
- * assertions below are pinned to an EXACT expected heading at the bottom of the
- * document and at a clicked mid-document target, rather than to "something
- * became active".
- *
- * Both modes run through the same `expectTracksScroll` contract. The WYSIWYG
- * case is a protective pin (it passes today; nothing else in the suite asserts
- * the outline's active state), the source case is the target behavior.
- */
-
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import {
@@ -42,23 +17,10 @@ const label = (ordinal: number) => `Heading ${String(ordinal).padStart(2, '0')}`
 const FIRST_LABEL = label(1);
 const LAST_LABEL = label(HEADING_COUNT);
 
-/**
- * Mid-document target for the click oracle. Deep enough that the hidden-pane
- * skew lands several headings short of it, shallow enough to stay clear of the
- * document's last section.
- */
 const CLICK_TARGET_ORDINAL = 9;
 
 const SWEEP_FRACTIONS = [0, 0.2, 0.4, 0.6, 0.8, 1] as const;
 
-/**
- * Uniform section heights are load-bearing, not incidental. The hidden WYSIWYG
- * pane renders this document taller than the source pane, so with equal
- * sections a hidden-pane read tops out several headings short of the end. A
- * deliberately tall FINAL section would let that wrong read reach the last
- * heading anyway and silently drain the bottom-of-document assertion of its
- * discriminating power.
- */
 const FILLER = 'Filler paragraph to force scrollable content. '.repeat(12);
 
 const DOC = [
@@ -78,7 +40,6 @@ const headingLineText = (ordinal: number) => {
   return `${level} ${label(ordinal)}`;
 };
 
-/** Await two animation frames: one for the hook's rAF-coalesced recompute, one for React's commit. */
 const nextFrame = (page: Page) =>
   page.evaluate(
     () =>
@@ -88,13 +49,9 @@ const nextFrame = (page: Page) =>
   );
 
 interface OutlineSample {
-  /** Text of the row carrying `aria-current="location"`, or null when none does. */
   activeLabel: string | null;
-  /** Must be exactly 1 — a set of navigation items has one current item. */
   ariaCurrentCount: number;
-  /** The position marker, rendered only when an active row was resolved. */
   markerPresent: boolean;
-  /** Rendered colour of the active row and of a non-active row: the visual highlight. */
   activeColor: string | null;
   inactiveColor: string | null;
   rowCount: number;
@@ -121,12 +78,6 @@ async function readOutline(page: Page): Promise<OutlineSample> {
   }, SCROLLPORT);
 }
 
-/**
- * Read the outline until two consecutive frames agree on both the active row
- * and the scroll offset. CodeMirror swaps estimated line heights for measured
- * ones as content enters the viewport and re-anchors `scrollTop` when it does,
- * so a single read can catch the pane mid-adjustment.
- */
 async function readSettledOutline(page: Page): Promise<OutlineSample> {
   let last = await readOutline(page);
   await expect
@@ -144,11 +95,6 @@ async function readSettledOutline(page: Page): Promise<OutlineSample> {
   return last;
 }
 
-/**
- * Park the scrollport at a fraction of its range, re-applying until the offset
- * stops moving — the same CodeMirror height re-measurement that `scrollTop` is
- * re-anchored by also changes `scrollHeight` underneath the target.
- */
 async function scrollToFraction(page: Page, fraction: number): Promise<void> {
   await expect
     .poll(
@@ -195,18 +141,12 @@ const ordinalOf = (activeLabel: string | null) => {
   return match ? Number(match[1]) : Number.NaN;
 };
 
-/**
- * The mode-independent contract. Both editor modes owe the reader the same
- * behaviour, so both run these assertions verbatim.
- */
 function expectTracksScroll(
   samples: Array<{ f: number; sample: OutlineSample }>,
   mode: 'WYSIWYG' | 'source',
 ) {
   const table = `\n${mode} sweep:\n${formatSweep(samples)}\n`;
 
-  // The sweep must actually have moved the reader through the document,
-  // otherwise everything below is vacuous.
   expect(
     samples.at(-1)?.sample.scrollTop,
     `${mode}: the scrollport did not scroll — the assertions below would be vacuous.${table}`,
@@ -230,8 +170,6 @@ function expectTracksScroll(
     ).not.toBe(sample.inactiveColor);
   }
 
-  // Bottom of the document is THE discriminating position: a hidden-pane read
-  // tops out short of the end and can never reach the last heading.
   expect(
     samples.at(-1)?.sample.activeLabel,
     `${mode}: at maximum scroll the LAST heading must be active.${table}`,
@@ -248,8 +186,6 @@ function expectTracksScroll(
     `${mode}: the active heading must not move backwards while scrolling down.${table}`,
   ).toEqual([...ordinals].sort((a, b) => a - b));
 
-  // Kills an implementation that reports a constant (or near-constant) heading
-  // while still satisfying the two endpoint assertions by accident.
   expect(
     new Set(ordinals).size,
     `${mode}: the active heading must advance through the document, not sit on one row.${table}`,
@@ -290,7 +226,6 @@ async function seed(api: ApiHelpers, page: Page, baseURL: string): Promise<strin
   return docName;
 }
 
-/** Switch to CodeMirror and re-prime: the source pane has its own layout. */
 async function enterSourceMode(page: Page): Promise<void> {
   await sourceToggle(page).click();
   await page.waitForSelector('.cm-content');
@@ -317,9 +252,6 @@ test.describe('outline active-heading tracking', () => {
     const target = label(CLICK_TARGET_ORDINAL);
     await page.locator('#panel-outline nav button', { hasText: target }).click();
 
-    // Outline navigation scrolls the heading's source line to the top of the
-    // viewport, which is the independent oracle for this assertion: wait for
-    // the line to actually be parked there before sampling.
     const lineText = headingLineText(CLICK_TARGET_ORDINAL);
     await expect
       .poll(

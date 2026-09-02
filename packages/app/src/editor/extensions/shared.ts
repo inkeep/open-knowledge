@@ -1,8 +1,3 @@
-/**
- * App-specific shared extensions — uses core's sharedExtensions but swaps
- * JsxComponent for the React-enabled version with NodeView, and adds
- * app-only extensions (slash command menu, etc.).
- */
 import { sharedExtensions as coreExtensions } from '@inkeep/open-knowledge-core';
 import { Extension } from '@tiptap/core';
 import FileHandler from '@tiptap/extension-file-handler';
@@ -19,12 +14,6 @@ import { getSlashCommandItems } from '../slash-command/items';
 import { getSkillReferenceItems } from '../slash-command/skill-reference-items';
 
 import { BlockMover } from './block-mover';
-// BridgeIdPlugin — SelectionStatePlugin consumes it to resolve stable
-// ancestor-chain IDs across PM re-renders (see Precedent "Selection state
-// as typed PM PluginState"). Plugin falls back to pos-derived synthetic
-// IDs if absent (unit-test path); production wants the real
-// Y.XmlElement-keyed IDs. bridge-id-plugin lives on as a standalone
-// stable-identity primitive.
 import { BridgeIdPlugin } from './bridge-id-plugin';
 import { CellInsertionGate } from './cell-insertion-gate';
 import { chunkWrapperDecorationPlugin } from './chunk-wrapper-decoration';
@@ -51,39 +40,17 @@ import { Tag } from './tag-view';
 import { WikiLink } from './wiki-link';
 import { WikiLinkEmbed } from './wiki-link-embed';
 
-/**
- * The slash menu's wired item sources — the single production list. Coverage
- * tests import this instead of re-declaring it so a source added here is
- * automatically inside the "no block component offered in a cell" net.
- */
 export const SLASH_ITEM_SOURCES = [
   getSlashCommandItems,
   getComponentItems,
-  // Themed `html preview` embed starters (chart, stat cards, custom SVG,
-  // interactive control) — the human on-ramp for the embed palette.
   getEmbedStarterItems,
-  // Inline-atom slash entries (Tag — placeholder pill with inline
-  // input; future inline atoms like mathInline can extend this
-  // list). Kept separate from `getComponentItems` because inline
-  // atoms aren't in the descriptor registry — they map to direct
-  // PM nodes via the `mdxJsxTextElement` short-circuit in
-  // `markdown/index.ts`.
   getInlineComponentItems,
 ] as const;
 
-// Replace core extensions that have app-side NodeViews or mark views.
 export const sharedExtensions = [
   ...coreExtensions.map((ext) => {
     if (ext.name === 'jsxComponent') return JsxComponent;
     if (ext.name === 'jsxInline') return JsxInline;
-    // Spread core's options so any future `ImageSrcFidelity.configure({
-    // ... })` addition in `core/src/extensions/shared.ts` flows through
-    // the `.extend()` boundary unchanged. The explicit `inline: true`
-    // re-assert is defensive — `.extend()` already drops core's
-    // instance-scoped configure(), and the PM image group depends on
-    // it. Casting `ext.options` to `Record<string, unknown>` because the
-    // narrowed `coreExtensions` element type is the union of every
-    // extension's options, which `.configure()` doesn't usefully type.
     if (ext.name === 'image') {
       const coreOptions = (ext as unknown as { options?: Record<string, unknown> }).options ?? {};
       return ImageInlineZoom.configure({ ...coreOptions, inline: true });
@@ -98,15 +65,10 @@ export const sharedExtensions = [
     if (ext.name === 'codeBlock') return CodeBlockFidelity;
     return ext;
   }),
-  // Refuse a block jsxComponent inside a table cell at the owned insertion
-  // routes — a component there serializes to zero bytes (GFM cells are
-  // phrasing-only). Client producer-input gate; never in core sharedExtensions.
   CellInsertionGate,
   SlashCommand.configure({
     itemsSources: [...SLASH_ITEM_SOURCES, getSkillReferenceItems],
     categoryLabels: {
-      // First key = top group: in a skill doc, `/` surfaces skill references
-      // before the block/component items.
       skills: 'Skills',
       content: 'Components',
       layout: 'Layout',
@@ -116,18 +78,7 @@ export const sharedExtensions = [
     },
   }),
   FormattingShortcuts,
-  // TabFocusTrap — fall-through Tab / Shift-Tab handler. Runs LAST in the
-  // keymap chain (priority 1) so ListItem (100, sink/lift), Table (60, next
-  // cell), and the suggestion plugins all get first crack. Without this,
-  // Tab inside plain text falls through to browser-default focus traversal,
-  // moving keyboard focus OUT of the editor. Pair with KeyboardNav's Escape
-  // handler for the keyboard exit (WCAG 2.1.2 "No Keyboard Trap").
   TabFocusTrap,
-  // Omit `allowedMimeTypes` so the FileHandler accepts every browser-
-  // readable file type. The server is the single policy point — there's
-  // no user-facing cap either; disk fullness (`storage-full` → 507) is
-  // the only rejection axis, and the SVG `<img>`-only routing happens
-  // server-side.
   FileHandler.configure({
     onDrop(editor, files, pos) {
       for (const file of files) {
@@ -142,67 +93,20 @@ export const sharedExtensions = [
   }),
   HeadingAnchors,
   TiptapFindReplace,
-  // TagClickPlugin — intercepts clicks on `<a class="tag">` chips and
-  // dispatches a custom DOM event so the host app can mount a TagDialog
-  // listener at app scope. Independent of `link` / `wikiLink` chip plugins
-  // because tags don't share their PropPanel surface or PM mark identity.
   TagClickPlugin,
-  // FootnoteAnchorScroll — intercept clicks on `<a href="#fn-{id}">` inside
-  // the editor and scroll to the matching `<aside id="fn-{id}">` instead
-  // of letting the browser set `location.hash` (which collides with the
-  // SPA's `#/<docName>` routing).
   FootnoteAnchorScroll,
-  // BlockDragHandle — drag grip + "+" button in the left margin on block hover.
-  // Registers DragHandlePlugin imperatively (bare DOM container, NOT a React
-  // component) so Activity mode flips don't trigger React's removeChild
-  // reconciliation error. The `lockDragHandle` / `unlockDragHandle` commands
-  // that other surfaces (PropPanel, slash menu) used to get from the stock
-  // `DragHandle.extend({...})` are still available — `DragHandlePlugin`
-  // registers them as part of the plugin.
   BlockDragHandle,
   BlockMover,
-  // TableInsertControls — Notion-style "+" bars on the right/bottom table
-  // edges (hover-reveal, append column/row). Imperative DOM mounted on
-  // `view.dom.parentElement` for the same Activity-flip reason as
-  // BlockDragHandle; keyboard parity lives in the TableCellHandles dropdowns.
   TableInsertControls,
-  // TableRowEnter — spreadsheet-style Enter in tables: always moves the caret
-  // to the same column of the row below (appending a row from the last row),
-  // never splitting the cell; Shift+Enter stays the in-cell line break.
   TableRowEnter,
   SourceDirtyObserver,
-  // Typed-URL autolink. Origin-guarded (never converts CRDT-sync-tagged
-  // peer/agent/disk edits) and active-editor-gated (never converts in a pooled
-  // hidden editor), so it stays a client-side behavior of the foreground doc.
   GfmAutolink,
-  // Typed `[text](url)` shorthand → inline link on the closing paren. Same
-  // client-side, foreground-only surface as GfmAutolink; keeps its own undo
-  // step so one Cmd+Z restores the literal.
   InlineLinkInputRule,
-  // Typed `$$…$$` / `$…$` → mathInline atom on the closing delimiter. Same
-  // client-side, foreground-only, own-undo-step contract as
-  // InlineLinkInputRule; single-dollar rule is currency-safe.
   MathInputRule,
   KeyboardNav,
-  // Selection layer — must come after BridgeIdPlugin so ancestor-chain
-  // lookups resolve stable IDs. Order is load-bearing only wrt BridgeId;
-  // KeyboardNav is orthogonal.
-  // Placeholder moved to TiptapEditor.tsx (new-doc affordances)
-  // so it can be configured per-editor-instance with context-aware text.
   BridgeIdPlugin,
   SelectionStatePlugin,
-  // LandingFlash — transient inline highlight on the range a mode-switch jump
-  // lands on, the WYSIWYG counterpart of the source landing flash. Decoration-
-  // only, no documentName keying, no write path. Registered on every WYSIWYG
-  // editor for symmetry but dormant today: the in-scope jump lands in source and
-  // the plain toggle is scroll-only, so nothing dispatches it until a "view in
-  // WYSIWYG" jump exists to drive it.
   LandingFlash,
-  // Block-chunked content-visibility:auto. Applies the
-  // `ok-chunk-wrapper` class to every top-level direct child of the doc
-  // via PM Decoration.node. Off-viewport blocks skip layout/paint per the
-  // CSS rule at `globals.css:.ProseMirror .ok-chunk-wrapper`. No state,
-  // no documentName keying — safe to register universally.
   Extension.create({
     name: 'chunkWrapperDecoration',
     addProseMirrorPlugins() {

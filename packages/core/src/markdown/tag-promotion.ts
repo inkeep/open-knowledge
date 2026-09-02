@@ -45,9 +45,9 @@ export function promoteTagsInParent(parent: Parent, source: string = ''): void {
     for (;;) {
       const match = TAG_IN_TEXT_RE.exec(text);
       if (match === null) break;
-      const boundary = match[1] ?? ''; // the `^` empty match or one char
+      const boundary = match[1] ?? '';
       const tagValue = match[2] ?? '';
-      const tagStart = match.index + boundary.length; // position of `#` in value
+      const tagStart = match.index + boundary.length;
 
       if (source && childTextStart >= 0) {
         let sourceCursor = childTextStart;
@@ -88,7 +88,7 @@ export function promoteTagsInParent(parent: Parent, source: string = ''): void {
       if (tagPos) tagNode.position = tagPos;
       segments.push(tagNode as unknown as Parent['children'][number]);
 
-      lastIndex = tagStart + 1 + tagValue.length; // 1 for `#`
+      lastIndex = tagStart + 1 + tagValue.length;
       changed = true;
     }
 

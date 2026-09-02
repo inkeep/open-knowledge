@@ -7,13 +7,6 @@ import { UninstallPickerScreen } from './UninstallPickerScreen';
 import { UninstallProgressScreen } from './UninstallProgressScreen';
 import { UninstallSurveyScreen } from './UninstallSurveyScreen';
 
-/**
- * Root of the uninstall renderer.
- *
- * Main decides which screen this window is and answers the `ready` pull with
- * it; the window itself carries no flow state. The fallback below is the gap
- * between first paint and main's answer, not a screen of its own.
- */
 export function UninstallApp() {
   const [screen, setScreen] = useState<UninstallScreenSpec | null>(null);
 
@@ -58,8 +51,6 @@ export function UninstallApp() {
           />
         );
       default: {
-        // A new UninstallScreenSpec kind must add a case above rather than
-        // silently falling through to the loading placeholder below.
         const _exhaustive: never = screen;
         return _exhaustive;
       }

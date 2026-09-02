@@ -1,13 +1,3 @@
-/**
- * Real-browser composition coverage for the local-target audit plane.
- *
- * The lower tiers exercise classification and each UI projection independently.
- * This file proves the production wiring they cannot: real disk events feed the
- * server's watcher-backed inventory, the derived index projects one assessment
- * through HTTP + CC1, and the browser renders the same result in WYSIWYG,
- * source mode, Links, and Problems.
- */
-
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -99,8 +89,6 @@ test.describe('local-target audit composition', () => {
     await expect(
       page.getByRole('button', { name: `Missing file ${missingFile}. Go to reference.` }),
     ).toBeVisible();
-    // An existing extensionless file must never leak into the document graph's
-    // recovery path, while the genuinely missing document still may be created.
     await expect(page.getByRole('button', { name: /Missing page: existing file/i })).toHaveCount(0);
     await expect(
       page.getByRole('button', {
@@ -114,7 +102,6 @@ test.describe('local-target audit composition', () => {
     await expect(
       problems.getByTestId('problems-source-tag').filter({ hasText: 'links' }),
     ).toHaveCount(2);
-    // The file failure reports, but only the document finding offers Create.
     await expect(problems.getByTestId('problems-create-page')).toHaveCount(1);
     await expect(
       problems.getByRole('button', { name: `Create missing page ${folder}/missing` }),
@@ -147,8 +134,6 @@ test.describe('local-target audit composition', () => {
 
     writeFileSync(targetPath, '%PDF-1.4 real watcher target\n', 'utf-8');
 
-    // Real watcher → local-target index → CC1 local-targets → scoped audit
-    // refresh. No page reload or test-only event injection participates.
     await expect(diagnostic).toHaveCount(0, { timeout: 25_000 });
 
     await page.getByRole('radio', { name: 'Visual editor' }).click();
@@ -181,9 +166,6 @@ test.describe('local-target audit composition', () => {
 
     unlinkSync(targetPath);
 
-    // The unlink direction of the same wiring the heal test drives: real
-    // watcher delete → local-target index → CC1 local-targets → scoped audit
-    // refresh surfaces the now-missing target.
     await expect(diagnostic).toHaveCount(1, { timeout: 25_000 });
 
     await page.getByRole('radio', { name: 'Visual editor' }).click();

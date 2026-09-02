@@ -49,9 +49,7 @@ function readPluginManifest(
           ...(typeof parsed.version === 'string' ? { version: parsed.version } : {}),
         };
       }
-    } catch {
-      // Keep walking toward the marketplace root.
-    }
+    } catch {}
     if (current === stop) break;
     current = dirname(current);
   }
@@ -108,11 +106,6 @@ function resolveUpdateSource(source: string): string {
   return existsSync(candidate) ? candidate : source;
 }
 
-/**
- * Read a manifest's `{name, version, description}` from the first path that
- * parses. Shared by the plugin.json-lineage providers (Claude/Codex/Copilot);
- * their only difference is WHERE the manifest lives, passed as `relPaths`.
- */
 export function readManifestIdentity(
   dir: string,
   relPaths: readonly string[],
@@ -131,23 +124,14 @@ export function readManifestIdentity(
           ...(typeof parsed.description === 'string' ? { description: parsed.description } : {}),
         };
       }
-    } catch {
-      // Try the next candidate path.
-    }
+    } catch {}
   }
   return null;
 }
 
-/**
- * A cloned repo is a Claude plugin when it carries `.claude-plugin/plugin.json`
- * OR a `.claude-plugin/marketplace.json` (single-plugin marketplace at `./`).
- * Setup IS supported — OK owns the Claude plugin install lifecycle.
- */
 function detectDir(dir: string): ReturnType<PluginProviderAdapter['detectDir']> {
   const plugin = readManifestIdentity(dir, ['.claude-plugin/plugin.json']);
   if (plugin) return { ...plugin, setupSupported: true };
-  // marketplace.json lists plugins; a single `./`-sourced plugin is the common
-  // repo-is-one-plugin case (e.g. ponytail). Read its name/description.
   try {
     const mkt = JSON.parse(
       readFileSync(join(dir, '.claude-plugin', 'marketplace.json'), 'utf-8'),
@@ -164,9 +148,7 @@ function detectDir(dir: string): ReturnType<PluginProviderAdapter['detectDir']> 
         setupSupported: true,
       };
     }
-  } catch {
-    // Not a Claude plugin repo.
-  }
+  } catch {}
   return null;
 }
 

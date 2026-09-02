@@ -51,10 +51,7 @@ describe('computeBodyStats', () => {
   });
 
   test('CJK without whitespace counts word-like segments via Intl.Segmenter', () => {
-    // 这是一个测试文档 — each character is a word-like segment in Chinese.
     const stats = computeBodyStats('这是一个测试文档');
-    // Segmenter behavior is locale-dependent, but each CJK ideograph is
-    // word-like; we only assert "more than one" to avoid over-specifying.
     expect(stats.words).toBeGreaterThan(1);
   });
 
@@ -119,8 +116,6 @@ describe('computeBodyStats', () => {
   });
 
   test('arbitrary MDX components contribute zero when empty', () => {
-    // Generalizes beyond Callout — Note, Tabs, Card, custom components etc.
-    // all share the mdxJsxFlowElement shape and must drop tag/attr names.
     const md = [
       'hi',
       '',
@@ -192,8 +187,6 @@ describe('computeSelectionStats', () => {
   });
 
   test('WYSIWYG selection does not strip syntax — PM text is already visible', () => {
-    // ProseMirror never emits markdown syntax; this pins that the false branch
-    // counts the bytes as-seen ("##" is not word-like; the chars still count).
     expect(computeSelectionStats('## Hello', { isMarkdown: false })).toEqual({
       words: 1,
       chars: 8,
@@ -215,7 +208,6 @@ describe('computeSelectionStats', () => {
   });
 
   test('same passage counts identically in both modes (visible-text parity)', () => {
-    // Selecting the heading text "Hello" in WYSIWYG vs "## Hello" in source.
     expect(computeSelectionStats('## Hello', { isMarkdown: true })).toEqual(
       computeSelectionStats('Hello', { isMarkdown: false }),
     );

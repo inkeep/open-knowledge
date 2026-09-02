@@ -1,17 +1,3 @@
-/**
- * InteractionLayer — unit tests for the pure-logic surfaces:
- *   - `InteractionLayerStore` (register/deregister/setActiveNode + subscribe)
- *   - `resolveClickTargetNodeId` (event delegation walk)
- *   - Handle-level invariants that don't require a live DOM
- *     (idempotent destroy, register/deregister round-trip, etc.)
- *
- * Repo convention (see EditorActivityPool.test.ts header): happy-dom is
- * ruled out. The React rendering + actual event-listener dispatch are
- * covered by the Playwright E2E suite. Here we verify the substance of the
- * layer that a DOM-based test couldn't show more clearly — store state
- * transitions + event resolver walk semantics.
- */
-
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   createInteractionLayer,
@@ -20,10 +6,6 @@ import {
   type RegisterParams,
   resolveClickTargetNodeId,
 } from './interaction-layer';
-
-// ---------------------------------------------------------------------------
-// Minimal ResolverNode fake — mirrors the walk contract (getAttribute + parentElement)
-// ---------------------------------------------------------------------------
 
 interface FakeElement {
   attrs: Record<string, string>;
@@ -50,10 +32,6 @@ function makeControls(): InteractionControls {
 function makeReg(nodeId: string, type = 'internalLink'): RegisterParams {
   return { nodeId, type, controls: makeControls() };
 }
-
-// ---------------------------------------------------------------------------
-// InteractionLayerStore
-// ---------------------------------------------------------------------------
 
 describe('InteractionLayerStore — register / deregister round-trip', () => {
   test('fresh store has no active and no registrations', () => {
@@ -104,8 +82,6 @@ describe('InteractionLayerStore — setActiveNode transitions', () => {
   });
 
   test('setActiveNode to an UNREGISTERED id is a no-op', () => {
-    // "active nodeId changes" only fire valid transitions. A click on
-    // a stale/orphan chip should NOT leak an invalid active state.
     const s = new InteractionLayerStore();
     s.setActiveNode('never-registered');
     expect(s.getActiveNode()).toBeNull();
@@ -198,7 +174,7 @@ describe('InteractionLayerStore — subscribe / getSnapshot', () => {
     s.subscribe(() => {
       fires++;
     });
-    s.setActiveNode(null); // already null
+    s.setActiveNode(null);
     expect(fires).toBe(0);
   });
 });
@@ -220,10 +196,6 @@ describe('InteractionLayerStore — clear()', () => {
     expect(fires).toBe(1);
   });
 });
-
-// ---------------------------------------------------------------------------
-// resolveClickTargetNodeId — DOM walk semantics (pure)
-// ---------------------------------------------------------------------------
 
 describe('resolveClickTargetNodeId — event-delegation walk', () => {
   test('returns null when target is null', () => {
@@ -265,7 +237,6 @@ describe('resolveClickTargetNodeId — event-delegation walk', () => {
 
   test('returns null for data-*-id values that are NOT registered (stale chip)', () => {
     const s = new InteractionLayerStore();
-    // 'orphan' is not registered.
     const chip = makeElement({ 'data-mark-id': 'orphan' });
     expect(resolveClickTargetNodeId(chip as unknown as EventTarget, s)).toBeNull();
   });
@@ -288,20 +259,12 @@ describe('resolveClickTargetNodeId — event-delegation walk', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// createInteractionLayer — imperative handle (DOM-free subset)
-// ---------------------------------------------------------------------------
-
 describe('createInteractionLayer — handle API without DOM', () => {
-  beforeEach(() => {
-    // Nothing to do — each test makes a fresh handle.
-  });
-  afterEach(() => {
-    // Destroy is idempotent; caller-level cleanup happens per-test.
-  });
+  beforeEach(() => {});
+  afterEach(() => {});
 
   test('handle exposes register / deregister / setActiveNode / destroy', () => {
-    const editor = { editorView: { dom: null as unknown as HTMLElement } }; // DOM unavailable
+    const editor = { editorView: { dom: null as unknown as HTMLElement } };
     const layer = createInteractionLayer({ editor });
     expect(typeof layer.register).toBe('function');
     expect(typeof layer.deregister).toBe('function');
@@ -359,11 +322,6 @@ describe('createInteractionLayer — handle API without DOM', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Controls extensibility — propPanel is wired; toolbar + breadcrumb are
-// shape-compatible extension points.
-// ---------------------------------------------------------------------------
-
 describe('InteractionControls — extension-point shape', () => {
   test('register accepts a controls bag with just propPanel (V2 default)', () => {
     const s = new InteractionLayerStore();
@@ -390,12 +348,6 @@ describe('InteractionControls — extension-point shape', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Keyboard activation + handlePrimary hook semantics on the store. The
-// event-listener wiring itself is only exercised end-to-end via Playwright
-// (requires a DOM); here we verify the store-level shape that
-// pointerdown/keydown both dispatch through.
-// ---------------------------------------------------------------------------
 describe('RegisterParams.handlePrimary (review Critical #3 / Major #4)', () => {
   test('store persists a handlePrimary hook alongside controls', () => {
     const s = new InteractionLayerStore();
@@ -411,17 +363,12 @@ describe('RegisterParams.handlePrimary (review Critical #3 / Major #4)', () => {
     });
     const reg = s.getRegistration('m1');
     expect(reg?.handlePrimary).toBeDefined();
-    // Simulate event-loop behavior: layer calls the hook with newTab=true
-    // on Cmd/Ctrl/middle-click, newTab=false on bare click / Enter / Space.
     const handled = reg?.handlePrimary?.({ nodeId: 'm1', type: 'internalLink', newTab: true });
     expect(handled).toBe(true);
     expect(calls).toEqual([{ nodeId: 'm1', type: 'internalLink', newTab: true }]);
   });
 
   test('returning false/void from handlePrimary lets caller fall through', () => {
-    // Link chips return false when there's nothing to navigate to (unresolved
-    // page, folder without index) so the layer still opens the PropPanel
-    // — that's where "Create page" / "Create index" live.
     const s = new InteractionLayerStore();
     s.register({
       nodeId: 'm2',

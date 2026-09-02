@@ -39,7 +39,6 @@ describe('isLoopbackBindAddress', () => {
   test('rejects 127.x addresses with out-of-range octets (fail-closed toward requiring consent)', () => {
     expect(isLoopbackBindAddress('127.999.0.1')).toBe(false);
     expect(isLoopbackBindAddress('127.0.0.256')).toBe(false);
-    // Boundary: 255 is valid, 256 is not.
     expect(isLoopbackBindAddress('127.255.255.255')).toBe(true);
   });
 });
@@ -60,7 +59,6 @@ describe('resolveServerRuntimeConfig — defaults', () => {
     expect(resolved.port).toBeUndefined();
     expect(resolved.externalUrl).toBeUndefined();
     expect(resolved.allowExternal).toBe(false);
-    // Loopback-only derivations: a laptop start pops the UI and idles out.
     expect(resolved.openBrowser).toBe(true);
     expect(resolved.idleShutdown).toBe(DEFAULT_LOOPBACK_IDLE_SHUTDOWN);
   });
@@ -94,9 +92,6 @@ describe('resolveServerRuntimeConfig — defaults', () => {
   });
 
   test('an exposed loopback deployment (allowExternal + externalUrl) does NOT idle-die', () => {
-    // The tunnel-to-loopback remote recipe: bound to 127.0.0.1 but declared
-    // reachable. The idle timer is blind to the `/mcp` agent keeping it busy, so
-    // exposure must derive `off` (like a 0.0.0.0 bind already does).
     const resolved = resolveServerRuntimeConfig(
       parse({ server: { externalUrl: 'https://kb.example.ts.net', allowExternal: true } }),
     );
@@ -105,7 +100,6 @@ describe('resolveServerRuntimeConfig — defaults', () => {
   });
 
   test('an unexposed loopback deployment still idles out', () => {
-    // allowExternal without an externalUrl is not "exposed" — keep the default.
     const resolved = resolveServerRuntimeConfig(parse({ server: { allowExternal: true } }));
     expect(resolved.loopbackOnly).toBe(true);
     expect(resolved.idleShutdown).toBe(DEFAULT_LOOPBACK_IDLE_SHUTDOWN);
@@ -158,20 +152,12 @@ describe('requiresExternalConsent', () => {
   });
 
   test('a committed externalUrl under a loopback bind is inert — does NOT trip the interlock', () => {
-    // externalUrl is project-scoped (committed, shared): a team deploying to a
-    // VPS commits it. Under a loopback bind it is inert metadata — nothing
-    // external reaches the server directly, and a same-box proxy's forwarded
-    // requests are still gated at request time. Tripping the boot interlock on
-    // externalUrl alone would lock out every teammate who clones the repo and
-    // opens it locally (loopback), especially in desktop where config-derived
-    // consent is forced off. Only a non-loopback bind is a boot-time question.
     const explicit = resolveServerRuntimeConfig(
       parse({ server: { externalUrl: 'https://kb.example.com' } }),
     );
     expect(explicit.loopbackOnly).toBe(true);
     expect(requiresExternalConsent(explicit)).toBe(false);
 
-    // A non-loopback bind WITH a externalUrl still trips it (the bind exposes).
     const exposedWithUrl = resolveServerRuntimeConfig(
       parse({ server: { bind: ['0.0.0.0'], externalUrl: 'https://kb.example.com' } }),
     );

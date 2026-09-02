@@ -10,31 +10,10 @@ import fixture from '../../../../../test-support/fixtures/codex-legacy-warning-e
 };
 import { AgentThreadClient, ThreadChannelUnavailableError } from './thread-client';
 
-/**
- * Regression coverage for the agent-thread store hooks.
- *
- * These hooks feed `useSyncExternalStore`, and the app builds with React
- * Compiler enabled. A hook that CALLS `useSyncExternalStore(...)` for its
- * subscription but then returns a *separate* `client.getX()` (discarding the
- * subscription result) has no reactive input the compiler can see, so the
- * compiler memoizes the hook's return value to the first — empty — snapshot and
- * the UI never updates. That exact shape once shipped and made the agent-thread
- * dock never display created threads.
- *
- * The compiler runs at BUILD time, not under `bun test`, so a render test can't
- * catch it — a broken hook still "works" in the test env. Hence the two guards
- * below: a runtime check that the store getter is a stable snapshot (the
- * property the fix relies on) and a source check that each hook returns the
- * `useSyncExternalStore` value directly.
- */
-
 describe('AgentThreadClient store snapshots', () => {
   test('getThreads returns a referentially stable snapshot until the store changes', () => {
     const client = new AgentThreadClient();
     const first = client.getThreads();
-    // A fresh `[...].map()` on every call would loop useSyncExternalStore and, with
-    // React Compiler on, let the hook memoize the first snapshot forever. The
-    // getter must return the same reference while the store version is unchanged.
     expect(client.getThreads()).toBe(first);
     expect(client.getThreads()).toBe(first);
   });
@@ -80,11 +59,9 @@ describe('batched event delivery', () => {
   test('replay overlap dedups by seq: only genuinely new events append', () => {
     const { client, frame } = makeClient();
     frame({ op: 'events', threadId: 't1', fromSeq: 0, events: [ev(0), ev(1), ev(2)] });
-    // Overlapping window (a flush racing a replay) — only seq 3 is new.
     frame({ op: 'events', threadId: 't1', fromSeq: 1, events: [ev(1), ev(2), ev(3)] });
     expect(client.getThread('t1')?.events).toHaveLength(4);
     expect(client.getThread('t1')?.lastSeq).toBe(3);
-    // A fully-stale frame is a no-op — no bump, no growth.
     let notifications = 0;
     client.subscribe(() => {
       notifications += 1;
@@ -113,7 +90,6 @@ describe('queue edit settlement', () => {
     lastSeq: -1,
   };
 
-  /** Client with a stub socket, so sent frames are observable. */
   function makeWiredClient(): {
     client: AgentThreadClient;
     sent: Array<Record<string, unknown>>;
@@ -138,7 +114,6 @@ describe('queue edit settlement', () => {
     const { client, sent, frame } = makeWiredClient();
     const pending = client.editQueued('t1', 'q1', '  sharper text  ');
     const edit = sent.find((f) => f.op === 'queue_edit');
-    // The reqId is what makes both the ack and a refusal answerable at all.
     expect(edit).toMatchObject({ threadId: 't1', id: 'q1', content: 'sharper text' });
     expect(typeof edit?.reqId).toBe('string');
 
@@ -152,9 +127,6 @@ describe('queue edit settlement', () => {
     const reqId = sent.find((f) => f.op === 'queue_edit')?.reqId;
     expect(typeof reqId).toBe('string');
 
-    // The regression: a batched `info` (a turn ending, a status flip) reaches
-    // the client before the server's refusal. Settling on it would report the
-    // edit as applied and leave the error with nowhere to go.
     frame({ op: 'info', info: { ...info, lastActivityAt: 2 } });
     frame({
       op: 'error',
@@ -175,7 +147,6 @@ describe('queue edit settlement', () => {
     });
     frame({ op: 'info', info: { ...info, threadId: 'other' } });
     frame({ op: 'info', info });
-    // An ack for a different edit is just as inert.
     frame({ op: 'queue_edited', reqId: 'queue-edit-not-mine', threadId: 't1' });
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -216,7 +187,6 @@ describe('retry and sign-in lifecycle', () => {
     lastSeq: -1,
   };
 
-  /** Client with a stub socket, so sent frames are observable. */
   function makeWiredClient(): {
     client: AgentThreadClient;
     sent: Array<Record<string, unknown>>;
@@ -237,7 +207,6 @@ describe('retry and sign-in lifecycle', () => {
     return { client, sent, frame };
   }
 
-  /** Both ops await `waitForOpen` before sending, so the frame lands a tick later. */
   const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
   test('retryThread sends the op and resolves with the retried thread info', async () => {
@@ -275,8 +244,6 @@ describe('retry and sign-in lifecycle', () => {
     await flush();
     const auth = sent.find((f) => f.op === 'authenticate');
     expect(auth).toMatchObject({ op: 'authenticate', threadId: 't1', methodId: 'test_login' });
-    // The prefix is what an error frame is correlated by — it must not collide
-    // with another op's namespace.
     expect(String(auth?.reqId)).toMatch(/^authenticate-/);
 
     const ready: ThreadInfo = { ...info, status: 'ready' };
@@ -298,8 +265,6 @@ describe('retry and sign-in lifecycle', () => {
 describe('createThread channel wait', () => {
   test('rejects with ThreadChannelUnavailableError when no URL is ever bound', async () => {
     const client = new AgentThreadClient();
-    // Private-field poke: shrink the wait so the test doesn't sit out the
-    // full production timeout. The wait path itself is what's under test.
     const waitFor = (
       client as unknown as { waitForOpen: (ms: number) => Promise<void> }
     ).waitForOpen.bind(client);
@@ -314,8 +279,6 @@ describe('createThread channel wait', () => {
       bump: () => void;
     };
     const pending = internals.waitForOpen.call(client, 1_000);
-    // Simulate the socket transitioning to OPEN, then any store bump (the
-    // real client bumps via setStatus('open')).
     internals.ws = { readyState: WebSocket.OPEN };
     internals.bump.call(client);
     await expect(pending).resolves.toBeUndefined();
@@ -349,10 +312,7 @@ describe('store hooks return the useSyncExternalStore subscription value (React 
   ]) {
     test(`${hook} returns useSyncExternalStore(...) rather than discarding it`, () => {
       const body = hookBody(hook);
-      // Must return the subscription result…
       expect(body).toContain('return useSyncExternalStore(');
-      // …and must NOT call it as a bare statement and then return a separate
-      // store read (the shape the React Compiler memoizes into staleness).
       expect(body).not.toMatch(/useSyncExternalStore\([^;]*\);\s*return\s+client\.get/);
     });
   }
@@ -395,23 +355,15 @@ describe('unread affordance (PRD-8021)', () => {
   }
 
   test('a fresh subscription seeds the floor to lastActivityAt — no unread pulse on reload', () => {
-    // Contract: the pulse means "advanced while you were elsewhere in
-    // THIS window session", not "you just reloaded". The floor is seeded
-    // to whatever activity the thread already had when we first learned
-    // about it, so a renderer reload does not fabricate an unread state
-    // for every idle ready tab.
     const { client } = boot();
     expect(client.getThreadUnread(info.threadId)).toBe(false);
   });
 
   test('marks unread only after activity advances past the initial floor', () => {
     const { client, bump } = boot();
-    // Fresh state (floor seeded): no unread.
     expect(client.getThreadUnread(info.threadId)).toBe(false);
-    // Activity moves — unread turns on.
     bump({ ...info, lastActivityAt: 200 });
     expect(client.getThreadUnread(info.threadId)).toBe(true);
-    // Viewing clears it until the next bump.
     client.markThreadViewed(info.threadId);
     expect(client.getThreadUnread(info.threadId)).toBe(false);
     bump({ ...info, lastActivityAt: 300 });
@@ -430,7 +382,6 @@ describe('unread affordance (PRD-8021)', () => {
   test('unknown thread reports false and never throws', () => {
     const { client } = boot();
     expect(client.getThreadUnread('not-a-thread')).toBe(false);
-    // idempotent no-op on unknown ids
     client.markThreadViewed('not-a-thread');
     expect(client.getThreadUnread('not-a-thread')).toBe(false);
   });
@@ -447,43 +398,28 @@ describe('unread affordance (PRD-8021)', () => {
   });
 
   test('mark-viewed on ready flip with unchanged activityAt clears unread', () => {
-    // Reviewer regression: a `running → ready` transition may carry no
-    // fresh activityAt (an info frame that only flips status). The
-    // SessionsHost effect keys on status changes too, so markThreadViewed
-    // must still clear unread when the caller re-fires on that flip.
     const { client, bump } = boot();
     bump({ ...info, lastActivityAt: 200 });
     expect(client.getThreadUnread(info.threadId)).toBe(true);
-    // Running interlude — activityAt stays at 200.
     bump({ ...info, status: 'running', lastActivityAt: 200 });
-    client.markThreadViewed(info.threadId); // no-op under running
-    expect(client.getThreadUnread(info.threadId)).toBe(false); // running always reads false
-    // Flip back to ready with the SAME activityAt.
+    client.markThreadViewed(info.threadId);
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
     bump({ ...info, status: 'ready', lastActivityAt: 200 });
-    // Mark once more (what the effect's status-dep firing does).
     client.markThreadViewed(info.threadId);
     expect(client.getThreadUnread(info.threadId)).toBe(false);
   });
 
   test('markThreadViewed is a no-op while the thread is `running` — no bump storm during streaming', () => {
-    // The SessionsHost mark-viewed effect keys on lastActivityAt, which
-    // every streaming event bumps. If markThreadViewed also bumped for
-    // each of those, the version-keyed snapshot cache would invalidate
-    // once per event and every store subscriber would re-render. The
-    // guard collapses those to zero bumps until the turn settles.
     const { client, bump } = boot();
     bump({ ...info, status: 'running', lastActivityAt: 200 });
     let notifications = 0;
     client.subscribe(() => {
       notifications += 1;
     });
-    // Simulate five streaming batches, mark-viewed after each.
     for (let i = 1; i <= 5; i++) {
       bump({ ...info, status: 'running', lastActivityAt: 200 + i * 10 });
       client.markThreadViewed(info.threadId);
     }
-    // The bumps from `bump()` are the 5 activity-driven ones — no extras
-    // from markThreadViewed under `running`.
     expect(notifications).toBe(5);
   });
 });
@@ -511,20 +447,11 @@ describe('raw frame ingestion', () => {
     const client = new AgentThreadClient();
     client.receiveServerFrame(JSON.stringify({ op: 'info', info }));
 
-    // A peer in another process owns these bytes; one malformed frame must
-    // not take the channel — or the transcript already on screen — with it.
     expect(() => client.receiveServerFrame('{ not json')).not.toThrow();
     expect(client.getThread('raw-1')?.info.title).toBe('Raw');
   });
 });
 
-/**
- * The fold reads the producer's identity off the subscribed thread, so a
- * classification that works in a unit fold still shows nothing on screen if
- * the client never hands that identity over. These drive the socket boundary
- * — raw JSON into `receiveServerFrame`, exactly as `onmessage` delivers it —
- * and read the model the view would render.
- */
 describe('render-model agent identity', () => {
   const WARNING_TEXT = fixture.candidates[0].update.content.text;
 
@@ -588,12 +515,6 @@ describe('render-model agent identity', () => {
   });
 
   test('a replay that opens above seq 0 still stamps every notice with its wire seq', () => {
-    // A thread whose in-memory window has trimmed past the durable log's reach
-    // replays from the trim point, so the first batch a client sees can open
-    // above seq 0. Position in the store's array is what the fold reads the
-    // seq off, so a batch that lands without its predecessors must not shift
-    // every later event below its true seq — the announcer compares that
-    // number against the replay bound, and understating it is silent.
     const client = subscribed(fixture.agents.codexRegistry);
 
     client.receiveServerFrame(
@@ -609,7 +530,6 @@ describe('render-model agent identity', () => {
       (item) => item.kind === 'agent_notice',
     );
     expect(notices.map((item) => (item as { seq: number }).seq)).toEqual([4, 5]);
-    // The invariant the fold reads seqs off, stated directly.
     const stored = client.getThread('ident-1');
     expect(stored?.lastSeq).toBe(5);
     expect(stored?.events.length).toBe((stored?.lastSeq ?? -1) + 1);

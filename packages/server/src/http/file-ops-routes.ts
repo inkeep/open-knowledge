@@ -1,25 +1,3 @@
-/**
- * The file-ops family — `create-page`, `create-folder`, `duplicate-path`,
- * `rename-path`, `delete-path`, `trash/cleanup`, and multipart `upload` —
- * natively routed as one group. What the handlers share with the rest of the
- * extension (the FileOpsService/AssetService instances, the managed-rename
- * spine, attribution + telemetry helpers) arrives as
- * {@link FileOpsRouteDeps}.
- *
- * Every path in the family mutates, so the whole group rides the
- * loopback/workspace-Host mutating gate.
- *
- * `/api/upload` is multipart: its body never touches the shared JSON body
- * reader — busboy streams it to a tempfile via `readUploadBody`, and the
- * metadata fields validate post-assembly through `validateBody`.
- *
- * `rename-path` here is only the ROUTE + handler shell: the managed-rename
- * spine (`_performManagedRenameForDocs` and its two asset siblings) stays in
- * `api-extension.ts` because of its CRDT/sessionManager paired-write
- * coupling — routing is orthogonal to those internals, so the shell lives
- * here and the spine is injected.
- */
-
 import {
   createWriteStream,
   type Dirent,
@@ -96,7 +74,6 @@ import { getRequestId } from './request-id.ts';
 import { validateBody, withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
-/** Result-shape of the managed-rename spine, shared with `api-extension.ts`. */
 export interface RenamedDocMapping {
   fromDocName: string;
   toDocName: string;
@@ -112,12 +89,6 @@ export interface ManagedRenameRewrittenDoc {
   rewrites: number;
 }
 
-/**
- * True when `path` is one of the synthetic top-level folders (`__system__`,
- * `__config__`, `__user__`, `__local__`) or lives under one — the reserved
- * folder-name set that create/rename must refuse. Distinct from
- * `isReservedProjectStatePath`, which gates the `.ok`/`.git` state dirs.
- */
 function isReservedSyntheticFolderPath(path: string): boolean {
   return (
     path === '__system__' ||
@@ -173,35 +144,10 @@ interface UploadResult {
   byteLength: number;
 }
 
-/**
- * Stream multipart upload body to a tempfile while hashing on-the-fly.
- *
- * Replaces the buffer-to-memory pattern (chunks.push(chunk) +
- * Buffer.concat) with busboy's streaming 'file' event piped through a
- * HashingPassThrough Transform into createWriteStream(tempPath). Memory
- * becomes O(1); disk is the only bound.
- *
- * Error contract (typed via UploadWriteError.reason — URN-form ProblemType):
- *   - urn:ok:error:malformed-upload: busboy 'error' (unparseable multipart, etc.)
- *   - urn:ok:error:storage-full: ENOSPC / EDQUOT during the write stream
- *   - urn:ok:error:storage-readonly: EROFS / EACCES / EPERM during the write stream
- *   - urn:ok:error:storage-error: any other write-stream error
- *
- * On any error, the tempfile is best-effort unlinked before propagating.
- */
 function readUploadBody(req: IncomingMessage, projectDir: string): Promise<UploadResult> {
   return new Promise((resolveP, reject) => {
     let bb: MultipartParser;
     try {
-      // `files: 1` caps the file part; `fields` + `fieldSize` cap non-file
-      // surface so a flooded multipart can't buffer thousands of fields or a
-      // multi-MB string field in memory before the upload body resolves. The
-      // legitimate schema (agentId / docName / position / summary) is bounded
-      // — short identifiers, never approaching 2 KB or 10 entries. The
-      // ENAMETOOLONG-via-crafted-filename DoS path is closed by the 255-byte
-      // ceiling in `sanitizeFilename` (the filesystem-portability layer);
-      // busboy does not expose a header-section-size limit (only headerPairs
-      // count), so the parsed-value cap is the right place.
       bb = createMultipartParser(req, { files: 1, fields: 10, fieldSize: 2 * 1024 });
     } catch (err) {
       reject(new UploadWriteError('urn:ok:error:malformed-upload', err));
@@ -216,55 +162,24 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
     let tempPath: string | undefined;
     let writeStream: ReturnType<typeof createWriteStream> | undefined;
     let pipelineError: unknown;
-    // Track whether the 'file' event ever fired. busboy emits 'close' as
-    // soon as it finishes parsing the request body — but the file
-    // pipeline (createWriteStream + HashingPassThrough) is async and may
-    // still be running when 'close' fires. We must NOT resolve to an
-    // empty UploadResult on 'close' when a file IS being processed; the
-    // pipeline `.then()` is the legitimate resolver in that case. Only
-    // the no-file path needs the 'close' fallback.
     let fileEventFired = false;
-
-    // Mint the tempfile path lazily on the first 'file' event — busboy
-    // can fire 'error' before any file arrives (e.g. missing boundary)
-    // and we'd otherwise create a zero-byte tempfile for no reason.
 
     const fail = (reason: UploadWriteReason, cause: unknown) => {
       if (settled) return;
       settled = true;
-      // Destroy the write stream BEFORE the unlink: `unlink()` only removes
-      // the directory entry, so an fd left open by a mid-stream disconnect
-      // would pin the inode's disk blocks (and leak the fd) for the rest of
-      // the process's uptime — the boot-time orphan sweep readdirs the
-      // staging dir and cannot see an already-unlinked file. Destroying also
-      // settles the `pipeline()` promise; its `.catch` re-enters `fail()` as
-      // a no-op via the `settled` guard.
-      //
-      // `destroy()` schedules the fd close on a later tick, so the synchronous
-      // unlink below still runs against an open handle. On POSIX that is fine —
-      // the entry goes away and the inode is reclaimed when the deferred close
-      // lands. On platforms with mandatory locking (Windows) that unlink fails
-      // with the handle open, so also retry once the stream has actually
-      // closed; there, the close-ordered retry (not the sync call) is what
-      // drains the staging dir.
       if (writeStream && tempPath) {
         const staged = tempPath;
         writeStream.once('close', () => {
           try {
             unlinkSync(staged);
-          } catch {
-            // already gone — the synchronous unlink won (the POSIX path)
-          }
+          } catch {}
         });
       }
       writeStream?.destroy();
       if (tempPath) {
         try {
           unlinkSync(tempPath);
-        } catch {
-          // best-effort; the close-ordered retry above covers open-handle
-          // platforms, and the orphan sweep catches any remaining stragglers
-        }
+        } catch {}
       }
       reject(cause instanceof UploadWriteError ? cause : new UploadWriteError(reason, cause));
     };
@@ -281,14 +196,6 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
       filename = info.filename || 'upload';
       mimeType = info.mimeType || '';
 
-      // `mintTempUploadPath` does `tracedMkdirSync(.., { recursive: true })`
-      // which can throw ENOSPC / EDQUOT / EROFS / EACCES / EPERM / EIO. An
-      // uncaught throw here bubbles back through busboy's `_write` and
-      // re-emits as `'error'`, which the listener below classifies as
-      // `'urn:ok:error:malformed-upload'` (HTTP 400). That misleads operators triaging
-      // a full disk into chasing a phantom client bug. Catch the sync
-      // throw, classify via the same table the pipeline rejection uses,
-      // and drain the file part so busboy can finish parsing the rest.
       let path: string;
       try {
         path = mintTempUploadPath(projectDir);
@@ -318,8 +225,6 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
         })
         .catch((err) => {
           pipelineError = err;
-          // Classify from the deepest write error if available; otherwise
-          // treat as a generic storage-error. The unlink happens inside fail().
           const nodeErr = err as NodeJS.ErrnoException;
           fail(classifyWriteError(nodeErr), err);
         });
@@ -329,21 +234,6 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
       fail('urn:ok:error:malformed-upload', err);
     });
 
-    // busboy's `close` (Writable, emitClose:true via @types/busboy@1.6.0)
-    // fires once busboy finishes parsing the request body. If by then
-    // no `file` event ever fired, the request was a well-formed
-    // multipart with fields-only (no file part) — resolve with a
-    // synthetic empty UploadResult so the route handler's
-    // `byteLength === 0` guard returns the standard 400 "No file
-    // received." Without this hook the Promise never settles on fields-
-    // only uploads and the connection hangs until Node's request
-    // timeout fires (DoS).
-    //
-    // CRUCIAL: gate on `!fileEventFired`. If a file part IS present,
-    // busboy emits 'close' as soon as it finishes parsing — but the
-    // async write/hash pipeline below may still be running. Resolving
-    // here would race the pipeline's legitimate resolveP and produce a
-    // spurious empty result. Pipeline resolves win in that case.
     bb.on('close', () => {
       if (settled || pipelineError) return;
       if (fileEventFired) return;
@@ -359,9 +249,6 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
       });
     });
 
-    // Guard the "client disconnected mid-stream" path. busboy never
-    // reaches `_final` if the request aborts before the closing boundary,
-    // so its `close` would not fire and the Promise would otherwise hang.
     req.on('close', () => {
       if (settled || pipelineError) return;
       if (!req.complete) {
@@ -373,11 +260,6 @@ function readUploadBody(req: IncomingMessage, projectDir: string): Promise<Uploa
   });
 }
 
-/**
- * Everything the seven handlers used to reach through the extension closure.
- * Function-shaped deps keep their extension-side names so the handler bodies
- * read unchanged.
- */
 export interface FileOpsRouteDeps {
   contentDir: string;
   projectDir: string | undefined;
@@ -490,29 +372,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     isValidRelativeContentPath,
   } = deps;
 
-  /**
-   * True when a request path — clean of `.ok`/`.git` segments lexically —
-   * CANONICALLY resolves into a reserved subtree, i.e. a symlinked directory
-   * routes it into `.ok`/`.git` without an escape (the realpath stays inside the
-   * content root, so `assertNoSymlinkEscape` admits it). Consumers: create-folder,
-   * duplicate-path, rename-path (source and destination), delete-path, and
-   * upload; create-page runs the same check through its own inline
-   * `canonicalRelPathForNewTarget` call, since it already holds a resolved
-   * `fullPath`. The guard is judged by where the operation ACTUALLY lands, not
-   * the lexical request string. Resolves the path verbatim (`kind: 'folder'`, no
-   * extension munging) purely to obtain the on-disk location. When resolution
-   * itself throws the canonical location is unknowable, so this returns `false`.
-   * That swallow is safe ONLY because every consumer runs
-   * `isValidRelativeContentPath` (and 400s) BEFORE this gate — upload validates
-   * and passes the parent directory component, since its basename is a raw
-   * filename it never resolves — so the paths that reach it cannot fail the
-   * lexical half of resolution; a
-   * genuinely non-lexical fault then re-raises in the route's own downstream
-   * resolution, where a containment rejection maps to 400 path-escape via each
-   * route's `isContainmentRejection` arm and a raw errno to the typed 500.
-   * Upload's downstream check is destination-side instead: `storeUpload`'s
-   * `reserved-destination` outcome on the resolved dest dir.
-   */
   const canonicalTargetIsReserved = (lexicalRelPath: string): boolean => {
     let fullPath: string;
     try {
@@ -525,17 +384,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     );
   };
 
-  /**
-   * Probe disk for the actual on-disk extension of a file's docName, registering
-   * it in the doc-extensions map if found. Closes a boot/watcher race where the
-   * rename handler runs before the file watcher has observed the source — without
-   * this, `getDocExtension()` returns the `.md` default, which silently defeats
-   * `.mdx`-specific exclusion patterns and routes existence checks to the wrong
-   * path. Iterating in `SUPPORTED_DOC_EXTENSIONS` precedence order ensures the
-   * `.mdx` precedence rule is preserved when both files exist on disk.
-   * Idempotent — `registerDocExtension` is a no-op when the higher-precedence
-   * extension is already registered.
-   */
   function probeAndRegisterSourceFileExtension(probeContentDir: string, fromPath: string): void {
     if (!isValidRelativeContentPath(fromPath)) return;
     const resolvedContentDir = resolve(probeContentDir);
@@ -582,8 +430,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     path: string;
     ambiguous: boolean;
   } {
-    // Filesystem-backed authority for extensionless asset targets; the client
-    // canonicalizer is only a UX aid for dialogs and shell-trash paths.
     if (extname(assetPath)) return { path: assetPath, ambiguous: false };
 
     const slash = assetPath.lastIndexOf('/');
@@ -616,10 +462,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     async (_req, res, body) => {
       try {
         const bodyObj = body as unknown as Record<string, unknown>;
-        // Identity boundary: only attribute when the caller explicitly supplies
-        // agentId. UI-driven creates fall through to the loaded principal (if
-        // any) or anonymous — never to a synthetic 'Claude' default. Mirrors
-        // handleRollback / handleRenamePath.
         const actor = extractActorIdentity(bodyObj, getPrincipal);
         if (actor.kind === 'invalid-summary') {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
@@ -651,23 +493,11 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           });
           return;
         }
-        // Same containment core as the five sibling routes: lexical prefix
-        // check PLUS the realpath symlink-escape refusal. A hand-rolled
-        // resolve + prefix pair here would admit a write through a symlinked
-        // directory pointing outside the content root.
         const resolvedContentDir = resolve(contentDir);
         let fullPath: string;
         try {
           fullPath = resolveContentEntryPath(contentDir, 'file', filePath);
         } catch (err) {
-          // `resolveContentEntryPath` throws a WIDER set than the old lexical
-          // check it replaced. `isContainmentRejection` is exactly the
-          // caller-fault set — the lexical `PathContainmentError` plus the
-          // realpath `SymlinkEscapeError` — which maps to a 400 path-escape.
-          // Everything else (notably the raw realpath errnos
-          // `assertNoSymlinkEscape` rethrows by contract — EPERM/EACCES/EIO/
-          // ESTALE) is an infrastructure fault and must reach the handler's
-          // outer catch as a typed 500, not a misleading client 400.
           if (isContainmentRejection(err)) {
             errorResponse(
               res,
@@ -691,24 +521,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           );
           return;
         }
-        // Reject managed-artifact + reserved-directory targets. Now that
-        // `.ok/skills/**` is indexed/served content, a raw create-page into
-        // `.ok/skills/<name>/SKILL.md` would write directly with ZERO skill-schema
-        // validation (no name/description checks, no XML-tag ban) and surface as a
-        // malformed phantom skill. Skills/templates must go through their own
-        // validating write/install spines; every other `.ok/` child is excluded
-        // from the content scope anyway. The reserved-path test catches raw
-        // filesystem paths with a `.ok`/`.git` segment at any depth;
-        // `isManagedArtifactDocName` catches the synthetic `__skill__/` /
-        // `__template__/` doc-name forms.
-        //
-        // `filePath` is the LEXICAL request string, but `resolveContentEntryPath`
-        // resolves with `path.resolve`, which does not follow symlinks — so a
-        // request like `sneaky/x.md`, where `sneaky` is a symlink to `.ok`, has
-        // no `.ok` segment lexically yet physically lands in the reserved
-        // subtree (and does NOT trip the symlink-escape guard, since `.ok` stays
-        // inside the content root). Run the reserved-path test on the CANONICAL
-        // relative path too, so the write is judged by where it actually lands.
         const canonicalRelPath = canonicalRelPathForNewTarget(fullPath, resolvedContentDir, log);
         if (
           isReservedProjectStatePath(filePath) ||
@@ -728,11 +540,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           );
           return;
         }
-        // Optional template parameter: when set, instantiate the new
-        // doc from the resolved template's body (with {{date}} / {{user}}
-        // substitution applied) instead of an empty file. Resolution walks
-        // the parent folder's templates_available[] — local + inherited,
-        // closest-wins.
         const templateName =
           typeof (body as Record<string, unknown>).template === 'string'
             ? ((body as Record<string, unknown>).template as string).trim()
@@ -769,13 +576,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             );
             return;
           }
-          // `matched` came from `resolveTemplatesAvailable`, which constrains
-          // every entry to a realpath inside BOTH its own `.ok/templates/`
-          // directory AND the project root (see its containment contract) — a
-          // template symlinked out of the project, or elsewhere inside it such
-          // as `.ok/local/` or `.git/`, is dropped from the menu and so never
-          // resolves here. The read below is therefore already contained; no
-          // per-consumer symlink guard needed.
           const templateAbs = resolve(resolvedContentDir, matched.path);
           let templateRaw: string;
           try {
@@ -790,13 +590,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             );
             return;
           }
-          // The new doc IS the template's starter content (doc-frontmatter +
-          // markdown) with the `template:` identity stripped. `instantiateDoc`
-          // normalizes single-block and legacy two-block templates the same way
-          // and preserves `{{date}}`/`{{user}}` tokens verbatim for substitution.
           const templateStarter = instantiateDoc(templateRaw);
-          // {{user}} substitutes the calling principal's display name; falls
-          // back to empty string when no principal is loaded.
           const userDisplayName =
             actor.kind === 'agent' || actor.kind === 'principal' ? (actor.displayName ?? '') : '';
           initialContent = applySubstitution(templateStarter, {
@@ -807,9 +601,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
         }
 
         const docName = stripDocExtension(filePath);
-        // Synchronous through recordContributor below: an async yield between
-        // the write and the contributor recording lets a pending shadow-commit
-        // timer drain the accumulator without this file's attribution.
         const createOutcome = fileOpsService.createPage({
           fullPath,
           docName,
@@ -835,7 +626,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             );
             break;
           case 'anonymous':
-            // UI-driven create with no loaded principal — no contributor recorded.
             break;
           default: {
             const _exhaustive: never = actor;
@@ -844,14 +634,9 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             );
           }
         }
-        // Best-effort for real (see the skill-put site): never hold a create
-        // response on the derived-index command queue.
         void recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
         signalChannel?.('files');
         if (templateScopeForLog !== undefined) {
-          // Cardinality-bounded structured event — `templateScope` is one of
-          // two values; `templateName` is bounded by the user's actual
-          // templates. Mirrors the structured-event style in activity-log.ts.
           console.warn(
             JSON.stringify({
               event: 'template-instantiate',
@@ -931,10 +716,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           { handler: 'create-folder' },
         );
       } catch (e) {
-        // The service resolves the path lexically-validated only, so a symlink
-        // out of the content root surfaces here as a containment rejection — a
-        // caller fault, mapped to the same 400 create-page and rename-path emit,
-        // never the generic 500 (which mis-logs it as a server fault).
         if (isContainmentRejection(e)) {
           errorResponse(
             res,
@@ -1166,14 +947,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           );
           return;
         }
-        // Reject paths with a `.ok` or `.git` segment at any depth — root
-        // `.ok/` holds OK config (`config.yml`, `frontmatter.yml`,
-        // `templates/`) plus the per-machine `local/` runtime subtree
-        // (server.lock, principal.json, cache, etc.), and nested
-        // `<folder>/.ok/` holds folder metadata + templates. Symmetric with
-        // the `__system__` carve-out. The `AGENTS.md` file inside `.ok/` is a
-        // tracked content file by design, but a rename TO or FROM these
-        // directories would clobber OK bookkeeping.
         if (
           isReservedProjectStatePath(fromPath) ||
           isReservedProjectStatePath(toPath) ||
@@ -1286,32 +1059,9 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           );
           return;
         }
-        // Register the source's actual on-disk extension before downstream
-        // checks so admission, conflict checks, and existsSync probes all see
-        // the right value when the file watcher hasn't yet observed the source
-        // (boot race).
         if (operationKind === 'file') {
           probeAndRegisterSourceFileExtension(contentDir, fromPath);
         }
-        // Conflict-aware refusal. Renaming a conflicted source doc would
-        // shift the file path while the merge stages still live at the
-        // old path — the disk-watcher → reconcile loop would then see two
-        // paths racing the same content. For a folder rename we ALSO
-        // refuse if any affected child carries 'conflict': the per-doc
-        // rewrite spine (`applyManagedRenameMapToLoadedDocument` →
-        // `composeAndWriteRawBody`) is a sibling primitive to
-        // `applyAgentMarkdownWrite` and does NOT inherit its gate.
-        // Mirrors handleDeletePath's affected-docs scan.
-        //
-        // Dual-source check: hocuspocus.documents.get() returns undefined
-        // for docs evicted from memory (e.g., after boot-time
-        // restoreLifecycleFromConflictsJson disconnects them). Falling back
-        // to ConflictStore via SyncEngine catches that eviction race —
-        // mirrors the dual-source pattern used in handleSyncConflictContent's
-        // 404 gate (in `sync-routes.ts`).
-        // Enumerate from disk (not the lagging file index) so the conflict
-        // pre-check sees every on-disk child of the folder — same root cause
-        // as the spine's `affectedDocNames`.
         const renameAffectedDocNames =
           operationKind === 'file'
             ? [docNameForFileOperationPath(contentDir, fromPath)]
@@ -1335,9 +1085,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
         }
 
         if (contentFilter) {
-          // Mirror `resolveContentEntryPath`'s explicit-extension detection so
-          // a destination like `bar.mdx` is checked verbatim instead of as
-          // `bar.mdx.md` (which would miss `*.mdx` exclusion patterns).
           const sourceExt = isSupportedDocFile(fromPath)
             ? extname(fromPath)
             : getDocExtension(fromPath);
@@ -1359,9 +1106,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           }
         }
 
-        // Thread the actor identity through to the rewrite spine so the
-        // rename log entry carries the right writerId. Anonymous → service
-        // writer fallback is handled inside the spine.
         const renameActor =
           actor.kind === 'agent' || actor.kind === 'principal'
             ? {
@@ -1385,12 +1129,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             renameActor ? { actor: renameActor } : {},
           );
         } catch (err) {
-          // The spine's own conflict assertions cover a WIDER set than the
-          // pre-check above: backlink-source and asset-referencing docs
-          // rewritten as a side effect of the rename. Mirror the asset
-          // branch so those surface as the documented 409 doc-in-conflict
-          // envelope instead of falling through `toManagedRenamePublicError`
-          // to a generic 500.
           if (err instanceof DocInConflictError) {
             respondDocInConflict(res, err, 'rename-path');
             return;
@@ -1449,13 +1187,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           attribution_kind: actor.kind,
         });
 
-        // Flush pending contributors so the rename-log entry's commitSha is
-        // backfilled by `commitToWipRefInner` BEFORE the API responds.
-        // Without this, a "pure rename without subsequent edit" leaves
-        // commitSha as '' until the next persistence drain (which may never
-        // happen) — the timeline rename-history mitigation depends on
-        // commitSha being a real 40-char SHA at read time. Mirrors the
-        // pattern at handleRollback (post-rollback flushContributors call).
         if (flushContributors) {
           try {
             await flushContributors();
@@ -1494,7 +1225,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     DeletePathRequestSchema,
     async (_req, res, body) => {
       try {
-        extractAgentIdentity(body as unknown as Record<string, unknown>); // attribution threading
+        extractAgentIdentity(body as unknown as Record<string, unknown>);
         const { kind, path } = body;
         if (!isValidRelativeContentPath(path)) {
           errorResponse(
@@ -1523,12 +1254,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
         if (operationKind === 'file') {
           probeAndRegisterSourceFileExtension(contentDir, operationPath);
         }
-        // The canonical arm is load-bearing HERE above all: delete resolves the
-        // target through a symlinked directory and runs `tracedRmSync(...,
-        // { recursive: true })`, so a lexically-clean `escape-hatch/local` that
-        // realpaths to `.ok/local` would recursively remove server.lock /
-        // principal.json / cache (or `.git/objects`). The lexical check cannot
-        // see through the link; the canonical one can.
         if (isReservedProjectStatePath(operationPath) || canonicalTargetIsReserved(operationPath)) {
           errorResponse(
             res,
@@ -1594,17 +1319,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     { handler: 'delete-path', method: 'POST' },
   );
 
-  // Two-step Trash flow: the renderer calls
-  // `bridge.shell.trashItem` (Step 1) which moves the file to ~/.Trash via
-  // `shell.trashItem`. On success, the renderer POSTs here (Step 2) to
-  // synchronously cleanup server-side state — close Hocuspocus docs, mark
-  // `recentlyRemovedDocs`, purge the file index, broadcast CC1 files.
-  // Does NOT touch disk (the file is already gone from contentDir).
-  //
-  // Idempotent: if the file-watcher already processed the OS-level deletion
-  // between Step 1 and Step 2, `listAffectedDocNames` returns an empty array
-  // and the handler returns 200 with `deletedDocNames: []` rather than 404 —
-  // the desired end state (gone) is still true.
   const handleTrashCleanup = withValidation(
     TrashCleanupRequestSchema,
     async (_req, res, body) => {
@@ -1643,14 +1357,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             if (operationKind === 'file') {
               probeAndRegisterSourceFileExtension(contentDir, path);
             }
-            // Defense in depth — synthetic docs never reach disk so cleanup
-            // against them is meaningless; mirrors the gate handleDeletePath
-            // implicitly enforces via `resolveContentEntryPath` + existsSync.
-            // Folder kind is checked separately: a `kind: 'folder', path:
-            // '__config__'` payload would otherwise reach listAffectedDocNames
-            // + captureAndCloseDocuments on the synthetic config docs inside
-            // that namespace before the per-doc guard at the recently-removed
-            // loop fires.
             const isReservedFolder =
               operationKind === 'folder' && isReservedSyntheticFolderPath(path);
             if (
@@ -1712,10 +1418,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     try {
       uploadResult = await readUploadBody(req, projectDir ?? contentDir);
     } catch (e) {
-      // All body-parse failures land as UploadWriteError with a URN-form
-      // reason. Tempfile cleanup is handled inside readUploadBody's error
-      // path. Anonymous emit (no extractAgentIdentity yet) is semantically
-      // OK — no Y.Doc mutation has been attempted.
       if (e instanceof UploadWriteError) {
         errorResponse(res, uploadStatusFor(e.reason), e.reason, uploadTitleFor(e.reason), {
           handler: 'upload-asset',
@@ -1739,25 +1441,14 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
       placement: rawPlacement,
     } = uploadResult;
 
-    // Belt-and-braces cleanup: if anything below this point errors or
-    // early-returns, the tempfile must go away. Every early-return path
-    // below that does NOT consume tempPath via linkTempToFinal* runs this.
     const cleanupTempfile = () => {
       if (existsSync(tempPath)) {
         try {
           unlinkSync(tempPath);
-        } catch {
-          // best-effort; orphan sweep reaps stragglers
-        }
+        } catch {}
       }
     };
 
-    // Validate metadata fields (parentDocName etc.) via the shared
-    // `validateBody` middleware. Body-shape failure emits 400
-    // `urn:ok:error:invalid-request` BEFORE `extractAgentIdentity` runs —
-    // an anonymous response is semantically correct here because no Y.Doc
-    // mutation is attempted. Mirrors `withValidation`'s policy for JSON
-    // handlers.
     const validated = validateBody(
       UploadRequestSchema,
       { parentDocName: rawParentDocName, placement: rawPlacement || undefined },
@@ -1772,19 +1463,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     }
     const { parentDocName, placement } = validated.value;
 
-    // Identity extracted from query params (multipart body precludes JSON).
-    // Capture agentId / agentName so structured upload logs carry
     // attribution — mirrors precedent #24/#25 and lets operators trace
-    // unexpected file-creation events back to the originating agent
-    // during incident investigation. Both fields follow bounded shapes
-    // (agentId matches AGENT_ID_RE; agentName is sanitized) so they
-    // remain cardinality-safe for log indexing.
-    //
-    // CRUCIAL: identity extraction must precede every SEMANTIC error
-    // emission below (path-escape, no-file-received, storage-error). Body-
-    // shape errors above (urn:ok:error:invalid-request, urn:ok:error:malformed-upload)
-    // are anonymous because no Y.Doc mutation is attempted. The
-    // attribution-sweep-coverage ordering check enforces this distinction
     // (precedent #24).
     const { agentId, agentName } = extractAgentIdentity(
       Object.fromEntries(new URL(req.url ?? '', 'http://localhost').searchParams.entries()),
@@ -1798,7 +1477,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
       return;
     }
 
-    // Reject path-escape attempts.
     if (
       parentDocName.includes('\x00') ||
       parentDocName.includes('..') ||
@@ -1810,17 +1488,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
       });
       return;
     }
-    // Same lexical precondition as the five sibling file-ops, scoped to the
-    // component the server actually resolves: only `dirname(parentDocName)`
-    // ever reaches `resolveUploadDestDir` — the basename is discarded on every
-    // branch — and on the sidebar external-file-drop path that basename is a
-    // raw OS filename (backslash is a legal filename character on macOS and
-    // Linux), so validating the whole string rejects ordinary drops. The check
-    // is load-bearing for the reserved gate below: `canonicalTargetIsReserved`
-    // swallows a failed resolution to `false`, and `resolveContentEntryPath`
-    // throws on any `.` or empty segment — so without it a `./`-prefixed
-    // parentDocName would skate past the canonical arm. `dirname('alpha')` is
-    // `'.'` (a root-level doc), which the predicate rejects but is fine here.
     const parentDirComponent = dirname(parentDocName);
     if (parentDirComponent !== '.' && !isValidRelativeContentPath(parentDirComponent)) {
       cleanupTempfile();
@@ -1829,18 +1496,6 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
       });
       return;
     }
-    // Reserved-subtree gate, same two arms as the sibling file-ops. `.ok`/
-    // `.git` sit INSIDE the content root, so the escape checks above and the
-    // ones in `storeUpload` all pass for `parentDocName: '.ok/skills/x'` — a
-    // literal path, no symlink needed — and the upload would land agent-loaded
-    // content in `.ok/skills/` with none of the skill-schema validation.
-    // Deliberately blanket: this also refuses upload into the two `.ok/`
-    // subtrees the content filter admits as editable docs (`.ok/skills/**` and
-    // `<folder>/.ok/templates/**`) — asset upload sits on the create side of
-    // the reserved boundary, like create-page. This is a fast fail on the
-    // request field; the authoritative check runs on the resolved destination
-    // inside `storeUpload` (kind `reserved-destination`), which also covers the
-    // configured `attachmentFolderPath` arm the request field never sees.
     if (
       isReservedProjectStatePath(parentDocName) ||
       (parentDirComponent !== '.' && canonicalTargetIsReserved(parentDirComponent))
@@ -1874,17 +1529,11 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           dedup: outcome.deduped,
           mime: outcome.mime,
           size: byteLength,
-          // `destPath` is the contentDir-relative asset path. High-
-          // cardinality by nature — fine as a log field consumed by text-
-          // search / by-incident filtering; NEVER promote it to a metric
-          // label (per-asset label explosion).
           destPath: outcome.path,
           httpStatus: 200,
         },
         outcome.deduped ? '[upload] dedup hit' : '[upload] write ok',
       );
-      // RFC 9457 §3 success path: drop the `ok: true` wrapper. Wire shape
-      // is `{ src, path, deduped }`; clients discriminate on HTTP status.
       successResponse(
         res,
         200,

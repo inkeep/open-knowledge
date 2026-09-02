@@ -8,7 +8,6 @@ import {
   MAX_IMAGE_BYTES,
 } from './image-attachment.ts';
 
-// jsdom's File requires bytes as `BlobPart`. A plain Uint8Array works fine.
 function makeFile(bytes: Uint8Array, name: string, type: string): File {
   return new File([bytes], name, { type });
 }
@@ -24,7 +23,6 @@ describe('fileToImageAttachment', () => {
       if (result.part.kind === 'image') {
         expect(result.part.mimeType).toBe('image/png');
         expect(result.part.name).toBe('shot.png');
-        // base64 of [1,2,3,4] = 'AQIDBA=='
         expect(result.part.data).toBe('AQIDBA==');
         expect(result.part.sizeBytes).toBe(4);
       }
@@ -68,7 +66,6 @@ describe('fileToImageAttachment', () => {
     expect(ALLOWED_IMAGE_MIMES.has('image/jpeg')).toBe(true);
     expect(ALLOWED_IMAGE_MIMES.has('image/gif')).toBe(true);
     expect(ALLOWED_IMAGE_MIMES.has('image/webp')).toBe(true);
-    // Deliberate omissions — see the module doc.
     expect(ALLOWED_IMAGE_MIMES.has('image/svg+xml')).toBe(false);
     expect(ALLOWED_IMAGE_MIMES.has('image/bmp')).toBe(false);
     expect(ALLOWED_IMAGE_MIMES.has('image/tiff')).toBe(false);
@@ -95,8 +92,6 @@ describe('describeImageError', () => {
 });
 
 describe('collectImageFiles', () => {
-  /** Build a minimal DataTransfer-shaped object; jsdom's constructor is
-   *  read-only, so a bespoke stub keeps this test dependency-free. */
   function dataTransfer(files: File[], asItems = false): DataTransfer {
     if (asItems) {
       return {
@@ -133,10 +128,6 @@ describe('collectImageFiles', () => {
     expect(out.map((f) => f.name)).toEqual(['a.png']);
   });
 
-  /** One payload exposed on both accessors, as a real host exposes it: a
-   *  SEPARATE `File` object per read. Returning the same instance twice (the
-   *  shape this test used to have) cannot fail — the reads are identical by
-   *  construction, so it pinned the stub rather than the browser. */
   function pastedOnBothAccessors(fromItems: File, fromFiles: File): DataTransfer {
     return {
       items: [{ kind: 'file' as const, type: fromItems.type, getAsFile: () => fromItems }],
@@ -158,13 +149,6 @@ describe('collectImageFiles', () => {
     expect(out[0]).toBe(fromItems);
   });
 
-  /** A clipboard image has no file on disk, so Chromium builds a fresh `File`
-   *  for each read of the DataTransfer and stamps `lastModified` with the clock
-   *  at construction — a clock reading, not a property of the payload. The two
-   *  reads therefore disagree whenever they straddle a millisecond (measured: 4
-   *  of 15 pastes, Chromium 151). Reading `items` alone is what makes that
-   *  disagreement unobservable; any traversal that also read `files` and tried
-   *  to match the two by value would attach the image twice. */
   test('one payload stays one file even when the two reads disagree on lastModified', () => {
     const at = (lastModified: number) =>
       new File([new Uint8Array([1])], 'image.png', { type: 'image/png', lastModified });
@@ -174,10 +158,6 @@ describe('collectImageFiles', () => {
     expect(out[0]).toBe(fromItems);
   });
 
-  /** The `files` fallback is the only reader of `dataTransfer.files`, and it is
-   *  what serves an older host that leaves `items` unpopulated — and the
-   *  clipboard-moved-on case, where `getAsFile()` returns null for every item
-   *  but the pre-race `files` snapshot is still good. */
   test('falls back to files when items yields nothing', () => {
     const png = makeFile(new Uint8Array([1]), 'a.png', 'image/png');
     expect(collectImageFiles(dataTransfer([png])).map((f) => f.name)).toEqual(['a.png']);
@@ -196,26 +176,9 @@ describe('collectImageFiles', () => {
     expect(collectImageFiles(dt).map((f) => f.name)).toEqual(['a.png']);
   });
 
-  /** A partial null among file-kind entries is not reachable in a conformant
-   *  host: `getAsFile()` returns null only for a non-file item — already
-   *  filtered by the `kind` check — or when the whole data store is in a
-   *  disallowed mode, which takes every entry down together. So this pins a
-   *  design decision rather than arbitrating a state that occurs: the
-   *  fallback stays all-or-nothing and is never reopened per entry.
-   *
-   *  The shape that invites reopening is indexing `files` by the `items`
-   *  index, and the fixture shows why it is wrong. `items` carries
-   *  `kind: 'string'` entries — a pasted image usually arrives beside a
-   *  text/html flavor — while `files` holds only the file-kind ones, so the
-   *  two shift out of step: `files[1]` below is `good`, the payload
-   *  `items[2]` already yielded, and topping up at the null `items[1]` would
-   *  attach it twice. That is the duplicate-attachment bug this traversal
-   *  exists to prevent. */
   test('does not top up from files when only some items entries yield null', () => {
     const good = makeFile(new Uint8Array([1]), 'good.png', 'image/png');
     const mirrored = makeFile(new Uint8Array([2]), 'mirrored.png', 'image/png');
-    // `files` is the file-kind subset in order, so the leading string item
-    // shifts it one place left of `items`.
     const dt = {
       items: [
         { kind: 'string' as const, type: 'text/html', getAsFile: () => null },
@@ -268,10 +231,6 @@ describe('fileToAttachment — workspace containment (security-critical)', () =>
   });
 
   test('POSIX: sibling-prefix path is REFUSED — /work/project-evil vs /work/project', async () => {
-    // This is the specific attack the sibling-guard defends against:
-    // naive `startsWith(root)` would let `/work/project-evil/…` pass because
-    // its prefix matches `/work/project`. The `startsWith(root + sep)` check
-    // is what saves us.
     const file = makeTxt('secrets.md');
     const outcome = await fileToAttachment(file, {
       absPathOf: () => '/work/project-evil/secrets.md',
@@ -313,7 +272,6 @@ describe('fileToAttachment — workspace containment (security-critical)', () =>
       workspaceContentDir: '/work/project',
       pathSeparator: '/',
     });
-    // Empty rel is a valid workspace-relative address for the root itself.
     expect(outcome.ok).toBe(true);
     if (outcome.ok && outcome.part.kind === 'file') {
       expect(outcome.part.path).toBe('');
@@ -321,8 +279,6 @@ describe('fileToAttachment — workspace containment (security-critical)', () =>
   });
 
   test('Windows: file inside root normalizes backslashes to forward slashes', async () => {
-    // Wire contract: workspace paths always POSIX-style on the wire even on
-    // Windows, so the server + agent see a single canonical shape.
     const outcome = await fileToAttachment(makeTxt('notes.md'), {
       absPathOf: () => 'C:\\Work\\Project\\docs\\notes.md',
       workspaceContentDir: 'C:\\Work\\Project',
@@ -376,12 +332,8 @@ describe('fileToAttachment — workspace containment (security-critical)', () =>
   });
 
   test('image files still short-circuit through the image path, ignoring workspace deps', async () => {
-    // Images can come from anywhere (OS clipboard, downloads), so the
-    // containment check MUST NOT gate them. This test pins that separation.
     const png = makeFile(new Uint8Array([1, 2, 3]), 'shot.png', 'image/png');
-    const outcome = await fileToAttachment(png, {
-      // Deliberately no absPathOf / contentDir — should not matter for images.
-    });
+    const outcome = await fileToAttachment(png, {});
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.part.kind).toBe('image');
   });

@@ -52,9 +52,6 @@ function writeStaleSkillFiles(destDir: string, marker: string): void {
   writeFileSync(join(destDir, 'leftover.md'), `to-be-orphaned-${marker}`);
 }
 
-// A `.mcp.json` carrying the `# ok-mcp-v1` chain sentinel — the wired signal
-// `editorWiredForOk` matches. Shared by every describe that exercises the
-// create-if-wired path.
 const OK_WIRED_MCP_JSON = JSON.stringify({
   mcpServers: {
     'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexec ok mcp'] },
@@ -66,15 +63,10 @@ function depsBuilder(opts: {
   discoveryBundleDir: string;
   bundledVersion: string;
   recordedVersion: string | null;
-  /** Spy: pushed-to whenever `writeRecordedVersion` is called. */
   writtenVersions: Array<{ home: string; version: string }>;
-  /** Spy: pushed-to whenever `recordEvent` is called. */
   recordedEvents?: SkillInstallEvent[];
-  /** When true, `writeRecordedVersion` throws. */
   failWrite?: boolean;
-  /** Per-bundle opt-in decision the sweep reads. Default consented. */
   bundleDecision?: boolean | null;
-  /** Spy: pushed-to whenever `removeBundleFromDisk` is called. */
   removals?: string[];
 }): RepairSkillsDeps {
   return {
@@ -89,8 +81,6 @@ function depsBuilder(opts: {
     recordEvent: async (event) => {
       opts.recordedEvents?.push(event);
     },
-    // Default consented so the user sweep proceeds (existing tests predate the
-    // opt-in gate). Gate-specific tests override these.
     readBundleDecision: async () => opts.bundleDecision ?? true,
     writeBundleDecision: async () => {},
     removeBundleFromDisk: (_home, bundleId) => {
@@ -131,7 +121,7 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
         projectBundleDir,
         discoveryBundleDir,
         bundledVersion: '9.9.9',
-        recordedVersion: '9.9.9', // user sweep version-skips
+        recordedVersion: '9.9.9',
         writtenVersions: written,
       }),
     });
@@ -143,8 +133,6 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
     const claudeEntry = result.project.entries.find((e) => e.editorId === 'claude');
     expect(claudeEntry?.outcome).toBe('present');
 
-    // Seed-if-absent: the existing copy (and its files) are preserved — updates
-    // flow through the manual skills.sh path, not this sweep.
     expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toBe('stale-A1');
     expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(true);
 
@@ -152,7 +140,6 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
   });
 
   it('AC-A2: greenfield host (no SKILL.md) reports no-token and creates nothing', async () => {
-    // No SKILL.md anywhere under scratch.project. Don't pre-create dirs.
     const written: Array<{ home: string; version: string }> = [];
     const result = await repairSkills({
       projectDir: scratch.project,
@@ -179,18 +166,12 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
   });
 
   it('AC-A3: per-host write failure does not stop the other hosts', async () => {
-    // Wire both .claude and .cursor with no SKILL.md on disk, so the create
-    // path runs for each (seed-if-absent only writes when absent). Claude's
-    // write is then broken so the sweep must still create cursor's.
     const claudeDest = join(scratch.project, '.claude', 'skills', PROJECT_SKILL_DIR_NAME);
     const cursorDest = join(scratch.project, '.cursor', 'skills', PROJECT_SKILL_DIR_NAME);
     writeFileSync(join(scratch.project, '.mcp.json'), OK_WIRED_MCP_JSON);
     mkdirSync(join(scratch.project, '.cursor'), { recursive: true });
     writeFileSync(join(scratch.project, '.cursor', 'mcp.json'), OK_WIRED_MCP_JSON);
 
-    // Break the project bundle source for one host only by injecting a deps
-    // override that throws on the SECOND resolve call. Easier: use a custom
-    // fs that throws when removing the claude dest specifically.
     const realFs = await import('node:fs');
     const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
@@ -236,7 +217,6 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
     const cursor = result.project.entries.find((e) => e.editorId === 'cursor');
     expect(claude?.outcome).toBe('failed');
     expect(claude?.error).toContain('simulated rm failure');
-    // Cursor's skill still gets created even though Claude's write failed.
     expect(cursor?.outcome).toBe('created');
     expect(readFileSync(join(cursorDest, 'SKILL.md'), 'utf-8')).toContain('bundled-9.9.9-content');
   });
@@ -249,8 +229,6 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
   let logEvents: RepairSkillsLogEvent[];
 
   const UNWIRED_MCP_JSON = JSON.stringify({ mcpServers: { other: { command: 'node' } } });
-  // The Windows chain sentinel counts as wired too — an `ok start` on
-  // Windows (or a shared repo initialized there) must still get skills.
   const OK_WIRED_MCP_JSON_WIN = JSON.stringify({
     mcpServers: {
       'open-knowledge': {
@@ -273,8 +251,6 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
   });
 
   it('creates a project SKILL.md for a host wired for OK MCP but missing the skill', async () => {
-    // Claude wired (`.mcp.json` carries the marker), no SKILL.md on disk —
-    // the MCP-but-no-skill cohort. cursor/codex unwired → no-token.
     writeFileSync(join(scratch.project, '.mcp.json'), OK_WIRED_MCP_JSON);
 
     const written: Array<{ home: string; version: string }> = [];
@@ -286,7 +262,7 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
         projectBundleDir,
         discoveryBundleDir,
         bundledVersion: '9.9.9',
-        recordedVersion: '9.9.9', // user sweep version-skips for isolation
+        recordedVersion: '9.9.9',
         writtenVersions: written,
       }),
     });
@@ -364,9 +340,6 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
   });
 
   it('creates a project SKILL.md for codex wired via .codex/config.toml (TOML, marker substring)', async () => {
-    // Codex's wired signal is TOML and its skill installs to
-    // `.codex/skills/open-knowledge/` — the config-path → skill-path mapping a
-    // typo could silently break. The marker is a substring of the TOML bytes.
     mkdirSync(join(scratch.project, '.codex'), { recursive: true });
     writeFileSync(
       join(scratch.project, '.codex', 'config.toml'),
@@ -442,14 +415,11 @@ describe('repairSkills — project sweep create-if-wired gate', () => {
     if (result.status !== 'done' || result.project.outcome !== 'done')
       throw new Error('unreachable');
     expect(result.project.entries.find((e) => e.editorId === 'claude')?.outcome).toBe('present');
-    // Seed-if-absent: existing content preserved (updates flow through skills.sh).
     expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toBe('stale-wired-refresh');
     expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(true);
   });
 
   it('refuses to create through a host dir symlink escaping the project (create path)', async () => {
-    // `.claude` symlinks outside the project; a wired `.mcp.json` makes the
-    // create path eligible. The escape guard must fire before any rm/copy.
     const realFs = await import('node:fs');
     const escapeRoot = resolve(
       tmpdir(),
@@ -509,9 +479,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
   });
 
   it('AC-B1: skips user sweep when recorded version equals bundled version', async () => {
-    // The version-current fast-path requires every ENABLED bundle already on
-    // disk (a missing bundle self-heals via reinstall — parity with
-    // installUserSkill). Seed both central dirs so the skip path is exercised.
     for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
       const dir = join(scratch.home, '.agents', 'skills', name);
       mkdirSync(dir, { recursive: true });
@@ -537,7 +504,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     expect(result.user.reason).toBe('version-current');
     expect(written).toHaveLength(0);
 
-    // The seeded central store is left byte-untouched by the skip.
     expect(
       readFileSync(
         join(scratch.home, '.agents', 'skills', USER_SKILL_DIR_NAME, 'SKILL.md'),
@@ -551,9 +517,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
   });
 
   it('D4/G2 cross-actor stomp: a declined bundle is removed and never re-installed by the sweep', async () => {
-    // Seed both bundles on disk, then decline them. The sweep must remove them
-    // and NOT re-install — the CLI half of the invariant that stops `ok start`
-    // from re-adding what the desktop dialog removed.
     for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
       const dir = join(scratch.home, '.agents', 'skills', name);
       mkdirSync(dir, { recursive: true });
@@ -569,7 +532,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
         projectBundleDir,
         discoveryBundleDir,
         bundledVersion: '9.9.9',
-        recordedVersion: '0.6.0', // version mismatch — sweep would install if enabled
+        recordedVersion: '0.6.0',
         writtenVersions: written,
         bundleDecision: false,
         removals,
@@ -579,15 +542,11 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     if (result.status !== 'done') throw new Error('unreachable');
     expect(result.user.outcome).toBe('skipped');
     if (result.user.outcome === 'skipped') expect(result.user.reason).toBe('all-bundles-declined');
-    // Both declined bundles were torn down; version not advanced.
     expect(removals.sort()).toEqual(['discovery', 'write-skill']);
     expect(written).toHaveLength(0);
   });
 
   it('mixed decision: the declined bundle is removed while the enabled bundle still installs', async () => {
-    // Seed ONLY write-skill (the declined one) on disk; leave discovery absent
-    // so seed-if-absent freshly writes it. discovery must install and write-skill
-    // must be torn down — the two gates run independently per bundle.
     {
       const dir = join(scratch.home, '.agents', 'skills', 'open-knowledge-write-skill');
       mkdirSync(dir, { recursive: true });
@@ -624,7 +583,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
   });
 
   it('AC-B2: refreshes central + per-host and advances skill-state when version mismatches', async () => {
-    // Seed the per-host roots so they aren't `skipped-host-absent`.
     mkdirSync(join(scratch.home, '.agents'), { recursive: true });
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     mkdirSync(join(scratch.home, '.cursor'), { recursive: true });
@@ -647,25 +605,20 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     if (result.status !== 'done' || result.user.outcome !== 'done') throw new Error('unreachable');
     expect(result.user.version).toBe('9.9.9');
 
-    // Central store written.
     const centralPath = join(scratch.home, '.agents', 'skills', USER_SKILL_DIR_NAME);
     expect(existsSync(join(centralPath, 'SKILL.md'))).toBe(true);
     expect(readFileSync(join(centralPath, 'SKILL.md'), 'utf-8')).toContain('bundled-9.9.9-content');
 
-    // .claude and .cursor per-host copies written.
     const claudeDest = join(scratch.home, '.claude', 'skills', USER_SKILL_DIR_NAME);
     const cursorDest = join(scratch.home, '.cursor', 'skills', USER_SKILL_DIR_NAME);
     expect(existsSync(join(claudeDest, 'SKILL.md'))).toBe(true);
     expect(existsSync(join(cursorDest, 'SKILL.md'))).toBe(true);
 
-    // Codex now writes its own per-host copy at `.codex` (no longer collapses
-    // with the `.agents` central store).
     const codexDest = join(scratch.home, '.codex', 'skills', USER_SKILL_DIR_NAME);
     expect(existsSync(join(codexDest, 'SKILL.md'))).toBe(true);
     const codexEntry = result.user.entries.find((e) => e.kind === 'host' && e.editorId === 'codex');
     expect(codexEntry?.outcome).toBe('written');
 
-    // State advanced.
     expect(written).toEqual([{ home: scratch.home, version: '9.9.9' }]);
   });
 
@@ -698,10 +651,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
   });
 
   it('does NOT advance the version when central write fails but a per-host write succeeds', async () => {
-    // Regression guard for a CLI-specific failure mode the Desktop doesn't
-    // have. Without central-only gating, a per-host success would advance
-    // skill-state.yml, and the next boot's version-current fast path would
-    // permanently skip the central retry until the next CLI release.
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     mkdirSync(join(scratch.home, '.agents'), { recursive: true });
     const realFs = await import('node:fs');
@@ -717,9 +666,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
       readdirSync: (p) => realFs.readdirSync(p),
       readFileSync: (p) => realFs.readFileSync(p),
       writeFileSync: (p, c) => {
-        // Fail only on writes whose path leads into the central store
-        // (`~/.agents/skills/open-knowledge-discovery/`). Host writes
-        // under `~/.claude/skills/...` succeed.
         if (p.includes('.agents/skills')) {
           throw new Error('synthetic: central path unwritable');
         }
@@ -756,15 +702,10 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
       (e) => e.kind === 'host' && e.editorId === 'claude',
     );
     expect(claudeHost?.outcome).toBe('written');
-    // Critical: state must NOT advance because central failed. Next boot
-    // re-runs the sweep and gets another chance to fix central.
     expect(written).toHaveLength(0);
   });
 
   it('treats readRecordedVersion throw (EACCES/EIO) as absent: proceeds with sweep, emits structured error event', async () => {
-    // `readTargetVersion` propagates non-ENOENT errors per readSkillStateFile's
-    // contract. Verify the catch logs a structured event AND falls through to
-    // null so the sweep self-heals instead of aborting.
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     const written: Array<{ home: string; version: string }> = [];
 
@@ -788,11 +729,9 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
 
     if (result.status !== 'done' || result.user.outcome !== 'done') throw new Error('unreachable');
 
-    // Structured event fired with the underlying error.
     const errEvent = logEvents.find((e) => e.event === 'user-skill-reclaim-version-read-error');
     expect(errEvent).toBeDefined();
     expect(errEvent?.error).toContain('EACCES');
-    // Sweep proceeded — state advanced and central was written.
     expect(written).toEqual([{ home: scratch.home, version: '9.9.9' }]);
   });
 
@@ -822,7 +761,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     expect(claudeEntry?.outcome).toBe('skipped-host-absent');
     expect(cursorEntry?.outcome).toBe('skipped-host-absent');
 
-    // The host roots stay absent — we don't author them.
     expect(existsSync(join(scratch.home, '.claude'))).toBe(false);
     expect(existsSync(join(scratch.home, '.cursor'))).toBe(false);
     expect(existsSync(join(scratch.home, '.agents'))).toBe(false);
@@ -905,8 +843,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
   });
 
   it('does NOT advance the version when every per-host AND central write failed', async () => {
-    // Bundle dir exists but every replaceDir call throws — verifies the
-    // anyWriteSucceeded gate doesn't advance state on a fully-failed sweep.
     const realFs = await import('node:fs');
     const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
@@ -952,7 +888,6 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
       throw new Error('expected done with all-failed entries');
     const failedEntries = result.user.entries.filter((e) => e.outcome === 'failed');
     expect(failedEntries.length).toBeGreaterThan(0);
-    // Critical assertion: state file write must NOT be triggered.
     expect(written).toHaveLength(0);
   });
 });
@@ -973,7 +908,6 @@ describe('repairSkills — OK_RECLAIM_DISABLE env gate (AC-C1)', () => {
     writeBundledSkill(projectBundleDir, '9.9.9');
     writeBundledSkill(discoveryBundleDir, '9.9.9');
 
-    // Seed a stale on-disk SKILL.md that WOULD be rewritten if the gate failed.
     const claudeDest = join(scratch.project, '.claude', 'skills', PROJECT_SKILL_DIR_NAME);
     writeStaleSkillFiles(claudeDest, 'C1-stale');
 
@@ -997,15 +931,11 @@ describe('repairSkills — OK_RECLAIM_DISABLE env gate (AC-C1)', () => {
     if (result.status !== 'skipped') throw new Error('unreachable');
     expect(result.reason).toBe('reclaim-disabled');
 
-    // Stale content untouched.
     expect(readFileSync(join(claudeDest, 'SKILL.md'), 'utf-8')).toBe('stale-C1-stale');
     expect(existsSync(join(claudeDest, 'leftover.md'))).toBe(true);
 
-    // Central store NOT created.
     expect(existsSync(join(scratch.home, '.agents', 'skills', USER_SKILL_DIR_NAME))).toBe(false);
 
-    // Single skip event, no fan-out events. Event name shares the
-    // `*-repair-skipped` prefix used by the sibling sweeps.
     expect(logEvents).toEqual([{ event: 'skill-repair-skipped', reason: 'reclaim-disabled' }]);
     expect(written).toHaveLength(0);
   });
@@ -1026,7 +956,7 @@ describe('repairSkills — OK_RECLAIM_DISABLE env gate (AC-C1)', () => {
           projectBundleDir,
           discoveryBundleDir,
           bundledVersion: '9.9.9',
-          recordedVersion: '9.9.9', // version-skip user sweep to keep this tight
+          recordedVersion: '9.9.9',
           writtenVersions: written,
         }),
       });
@@ -1037,9 +967,6 @@ describe('repairSkills — OK_RECLAIM_DISABLE env gate (AC-C1)', () => {
 
 describe('coverage meta-test (AC-D2): HOSTS_WITH_USER_SKILL_DIR ↔ EDITOR_TARGETS.projectSkillPath', () => {
   it('CLI host list matches the set of editor ids that declare a projectSkillPath', () => {
-    // Pi and Copilot are documented carve-outs: their project skill paths do
-    // not imply the `~/.<host>/skills` shape used by this user host-dir sweep.
-    // Both read the central `~/.agents/skills` hub natively.
     const hostsWithProjectSkillPath = Object.entries(EDITOR_TARGETS)
       .filter(
         ([id, target]) => target.projectSkillPath !== undefined && id !== 'pi' && id !== 'copilot',
@@ -1178,8 +1105,6 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
   });
 
   it('emits NO event on the version-current fast-path', async () => {
-    // Seed both enabled bundles on disk so the version-current fast-path fires
-    // (a missing bundle self-heals via reinstall, which would emit events).
     for (const name of ['open-knowledge-discovery', 'open-knowledge-write-skill']) {
       const dir = join(scratch.home, '.agents', 'skills', name);
       mkdirSync(dir, { recursive: true });
@@ -1205,9 +1130,6 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
   });
 
   it('emits no failure when no user-skill host exists', async () => {
-    // Strictly synthetic existsSync — only paths we name as "present" return
-    // true. Lets the test assert "no host dirs visible" deterministically
-    // without depending on what the central-write side effects leave on disk.
     const realFs = await import('node:fs');
     const presentPaths = new Set<string>();
     const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
@@ -1224,12 +1146,8 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       writeFileSync: () => {
         throw new Error('synthetic: every write fails');
       },
-      mkdirSync: () => {
-        /* no-op — we don't need real dirs because writeFileSync throws first */
-      },
-      rmSync: () => {
-        /* no-op */
-      },
+      mkdirSync: () => {},
+      rmSync: () => {},
     };
 
     const written: Array<{ home: string; version: string }> = [];
@@ -1249,9 +1167,7 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       }),
     });
 
-    // No host dirs are present, so every host is skipped. `.agents` is not an
-    // implicit destination, so no write is attempted and no failure is emitted.
-    expect(presentPaths.size).toBe(0); // sanity: no host dirs marked present
+    expect(presentPaths.size).toBe(0);
     expect(recordedEvents).toHaveLength(0);
   });
 
@@ -1298,7 +1214,6 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       }),
     });
 
-    // One event per bundle — every gated bundle failed, and each names itself.
     expect(recordedEvents).toHaveLength(2);
     expect(recordedEvents.map((e) => e.outcome)).toEqual(['failed', 'failed']);
     expect(recordedEvents.map((e) => e.reason)).toEqual(['all-writes-failed', 'all-writes-failed']);
@@ -1306,8 +1221,6 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
   });
 
   it('a bundle that lands nowhere reports failed even when a sibling bundle succeeds', async () => {
-    // `.agents` absent (no central destination) and exactly one host root, so
-    // each bundle has exactly one candidate destination: `~/.claude/skills/…`.
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     const realFs = await import('node:fs');
     const failingBundleDir = 'open-knowledge-write-skill';
@@ -1322,7 +1235,6 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       },
       readdirSync: (p) => realFs.readdirSync(p),
       readFileSync: (p) => realFs.readFileSync(p),
-      // Only the write-skill bundle's writes throw; discovery lands normally.
       writeFileSync: (p, c) => {
         if (p.includes(failingBundleDir)) throw new Error('synthetic: EACCES');
         realFs.writeFileSync(p, c);
@@ -1352,13 +1264,11 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       }),
     });
 
-    // The sibling landed, but this bundle reached no destination at all.
     const writeSkillEvents = recordedEvents.filter((e) => e.bundle === 'write-skill');
     expect(writeSkillEvents).toHaveLength(1);
     expect(writeSkillEvents[0]?.outcome).toBe('failed');
     expect(writeSkillEvents[0]?.reason).toBe('all-writes-failed');
     expect(recordedEvents.some((e) => e.outcome === 'skip-current')).toBe(false);
-    // Version stays unrecorded so the next boot retries the failed bundle.
     expect(written).toEqual([]);
   });
 
@@ -1384,7 +1294,6 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
       },
     });
 
-    // Outcome is unaffected by the swallowed telemetry exception.
     expect(result.status).toBe('done');
     if (result.status !== 'done') throw new Error('unreachable');
     expect(result.user.outcome).toBe('done');
@@ -1421,8 +1330,6 @@ describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
     expect(out).toContain(
       'Skipped 2 host(s) whose project config path is their user-global config',
     );
-    // Collisions must not be folded into a standard counter — a mutation that
-    // counted them as `no-token` would still print a plausible summary.
     expect(out).toContain('Project: 0 present, 0 created, 0 no-token, 0 failed.');
   });
 
@@ -1567,8 +1474,6 @@ describe('repairSkillsResultExitCode (PR feedback: standalone exit code mapping)
   });
 
   it('all-bundles-declined user-sweep skip exits 0 (intentional opt-out, not a failure)', () => {
-    // The real shape: runUserSweep returns it as result.user.reason with a
-    // top-level status of 'done' — NOT a top-level skip.
     const result = mkDone({ userSkipped: 'all-bundles-declined' });
     expect(result.status).toBe('done');
     expect(repairSkillsResultExitCode(result)).toBe(0);
@@ -1598,9 +1503,6 @@ describe('repairSkillsResultExitCode (PR feedback: standalone exit code mapping)
     expect(repairSkillsResultExitCode(mkDone({ userFailedHost: true }))).toBe(1);
   });
 
-  // A project-level skip is a real failure and must keep exiting 1. Collisions
-  // are per-host entries inside a `done` sweep, so they never take this branch
-  // — the two must not be conflated by a future edit.
   it('done-less project skip (bundle-missing) exits 1', () => {
     expect(
       repairSkillsResultExitCode({
@@ -1656,7 +1558,6 @@ describe('repairSkillsCommand — Commander action wiring (AC-D1, AC-D3)', () =>
   });
 
   it('AC-D1: command resolves projectDir from process.cwd() and writes a result summary to stdout', async () => {
-    // Empty project dir — every host hits no-token.
     const writes: string[] = [];
     const origWrite = process.stdout.write.bind(process.stdout);
     process.stdout.write = ((chunk: string | Uint8Array) => {
@@ -1667,7 +1568,6 @@ describe('repairSkillsCommand — Commander action wiring (AC-D1, AC-D3)', () =>
     const origCwd = process.cwd();
     try {
       process.chdir(scratch.project);
-      // Force OK_RECLAIM_DISABLE to skip the user-sweep IO path against real $HOME.
       process.env.OK_RECLAIM_DISABLE = '1';
       const cmd = repairSkillsCommand();
       await cmd.parseAsync(['node', 'repair-skills']);
@@ -1685,17 +1585,12 @@ describe('repairSkillsCommand — Commander action wiring (AC-D1, AC-D3)', () =>
     process.env.OK_RECLAIM_DISABLE = '1';
     const origCwd = process.cwd();
     try {
-      // Mirrors what the program-level `--cwd` preAction does: chdir before
-      // the subcommand action runs, then `process.cwd()` resolves the right
-      // projectDir. Single source of truth for cwd selection across the CLI.
       process.chdir(scratch.project);
       const cmd = repairSkillsCommand();
       await cmd.parseAsync(['node', 'repair-skills']);
     } finally {
       process.chdir(origCwd);
     }
-    // No exception, exit code clean. The substantive behavior is covered by
-    // the unit tests above — this asserts only the wiring seam.
     expect(process.exitCode ?? 0).toBe(0);
   });
 });
@@ -1712,8 +1607,6 @@ describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)'
     discoveryBundleDir = join(scratch.bundles, 'discovery');
     writeBundledSkill(projectBundleDir, '9.9.9');
     writeBundledSkill(discoveryBundleDir, '9.9.9');
-    // Distinct tmpdir that lives OUTSIDE the project so a symlink pointing
-    // at it triggers the escape guard.
     escapeRoot = resolve(
       tmpdir(),
       `repair-skills-escape-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1726,9 +1619,6 @@ describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)'
   });
 
   it('refuses to create through a host dir that is a symlink escaping the project root', async () => {
-    // Plant `.claude` as a symlink to a directory outside the project, wire the
-    // editor (so the create path runs — seed-if-absent leaves the skill ABSENT
-    // there), and confirm the symlink-escape guard fires before any write.
     const realFs = await import('node:fs');
     const escapeTarget = join(escapeRoot, 'evil-claude');
     mkdirSync(escapeTarget, { recursive: true });
@@ -1746,7 +1636,7 @@ describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)'
         projectBundleDir,
         discoveryBundleDir,
         bundledVersion: '9.9.9',
-        recordedVersion: '9.9.9', // user sweep version-skips for isolation
+        recordedVersion: '9.9.9',
         writtenVersions: written,
       }),
     });
@@ -1756,18 +1646,9 @@ describe('repairSkills — symlink-escape guard (parity with writeProjectSkill)'
     const claude = result.project.entries.find((e) => e.editorId === 'claude');
     expect(claude?.outcome).toBe('failed');
     expect(claude?.error).toMatch(/outside the project directory/i);
-    // The escape target's contents are untouched — guard fired BEFORE any rm.
     expect(existsSync(witnessFile)).toBe(true);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Pre-0.42 cleanup consent (issue #820)
-// ---------------------------------------------------------------------------
-//
-// The cleanup deletes from `$HOME`. Doing that without showing the user the
-// paths first would repeat the original mistake, so consent is a hard gate:
-// no confirmer, no deletion.
 
 describe('legacy fan-out cleanup — consent gate', () => {
   function plantLegacy(home: string): string {
@@ -1777,7 +1658,6 @@ describe('legacy fan-out cleanup — consent gate', () => {
     return dir;
   }
 
-  /** Version-skip deps: the user sweep is irrelevant to these tests. */
   function quietDeps(bundles: string): RepairSkillsDeps {
     return depsBuilder({
       projectBundleDir: bundles,
@@ -1915,9 +1795,6 @@ describe('confirmLegacyCleanup — prompt behaviour', () => {
 });
 
 describe('legacy cleanup — an internal failure is never reported as a decline', () => {
-  // Approving and then hitting a re-validation error is a bug on our side.
-  // Rendering it as "declined" would tell the user they chose this, which is
-  // the same dishonest reporting this PR exists to remove.
   it('renders a distinct failed line, not the decline line', () => {
     const base = formatRepairSkillsResult({
       status: 'done',
@@ -1945,15 +1822,6 @@ describe('legacy cleanup — an internal failure is never reported as a decline'
   });
 });
 
-/**
- * `cd ~ && ok repair-skills` created two PROJECT skill dirs in the home
- * directory. At `$HOME` an editor's project config path resolves onto its
- * USER-GLOBAL config, which is OK-wired, so the create-if-wired gate said yes
- * for the wrong reason. The gate is a per-host path comparison rather than a
- * `projectDir === home` check because `$HOME` is not the only colliding
- * directory: OpenCode's global lives at `$XDG_CONFIG_HOME/opencode`, and
- * `CODEX_HOME` relocates codex's global off `$HOME` entirely.
- */
 describe('repairSkills — project config that IS the global config is never swept', () => {
   let scratch: ReturnType<typeof mkScratch>;
   let projectBundleDir: string;
@@ -1997,7 +1865,6 @@ describe('repairSkills — project config that IS the global config is never swe
       }),
     });
 
-  /** Both hosts the bug report named, each written at its OWN global path. */
   function writeHomeGlobals(home: string): void {
     const cursorGlobal = EDITOR_TARGETS.cursor.configPath('', home);
     const codexGlobal = EDITOR_TARGETS.codex.configPath('', home);
@@ -2005,7 +1872,6 @@ describe('repairSkills — project config that IS the global config is never swe
     mkdirSync(dirname(codexGlobal), { recursive: true });
     writeFileSync(cursorGlobal, OK_WIRED_MCP_JSON);
     writeFileSync(codexGlobal, OK_WIRED_TOML);
-    // Each editor's PROJECT path at $HOME is that same file — the collision.
     expect(EDITOR_TARGETS.cursor.projectConfigPath?.(home)).toBe(cursorGlobal);
     expect(EDITOR_TARGETS.codex.projectConfigPath?.(home)).toBe(codexGlobal);
   }
@@ -2017,13 +1883,11 @@ describe('repairSkills — project config that IS the global config is never swe
 
     if (result.status !== 'done' || result.project.outcome !== 'done')
       throw new Error('unreachable');
-    // Both reported hosts skipped for the collision, not vacuously absent.
     for (const editorId of ['cursor', 'codex']) {
       expect(result.project.entries.find((e) => e.editorId === editorId)?.outcome).toBe(
         'skipped-global-collision',
       );
     }
-    // The regression itself: no project skill dir anywhere under home.
     for (const host of HOSTS_WITH_USER_SKILL_DIR) {
       expect(existsSync(join(scratch.home, host.hostDir, 'skills', PROJECT_SKILL_DIR_NAME))).toBe(
         false,
@@ -2041,9 +1905,6 @@ describe('repairSkills — project config that IS the global config is never swe
 
   it('a symlinked home still resolves to the same directory', async () => {
     writeHomeGlobals(scratch.home);
-    // Asymmetric on purpose: projectDir arrives via a symlink while `home` is
-    // the real path. A plain string compare passes both sides only when they
-    // are already identical, so this is what pins the canonicalization.
     const linkedHome = join(scratch.root, 'home-link');
     symlinkSync(scratch.home, linkedHome);
 
@@ -2058,15 +1919,9 @@ describe('repairSkills — project config that IS the global config is never swe
   });
 
   it('skips OpenCode at ~/.config/opencode, where the collision is NOT at $HOME', async () => {
-    // The case a `projectDir === home` guard misses entirely: OpenCode's global
-    // is `$XDG_CONFIG_HOME/opencode/opencode.json` and its project path is
-    // `<cwd>/opencode.json`, so they coincide inside the config dir.
     const openCodeGlobal = EDITOR_TARGETS.opencode.configPath('', scratch.home);
     const openCodeDir = dirname(openCodeGlobal);
     mkdirSync(openCodeDir, { recursive: true });
-    // OK-marked on purpose: without it `editorWiredForOk` returns false and the
-    // host is skipped as `no-token` anyway, so the test would pass without the
-    // guard doing anything. Wired content is what makes this prove prevention.
     writeFileSync(
       openCodeGlobal,
       JSON.stringify({

@@ -857,7 +857,7 @@ function escapeEntityAmpersands(s: string): string {
 }
 
 function isWhitespaceNumericCharRef(body: string): boolean {
-  if (body.charCodeAt(0) !== 0x23 /* '#' */) return false;
+  if (body.charCodeAt(0) !== 0x23) return false;
   const code =
     body[1] === 'x' || body[1] === 'X'
       ? Number.parseInt(body.slice(2), 16)

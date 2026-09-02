@@ -9,21 +9,11 @@ import { tabIdsForSkill } from '@/hooks/use-reconcile-skill-tabs';
 import { deleteSkill } from '@/lib/skills-api';
 
 interface Props {
-  /** The skills to delete; `null` keeps the dialog closed. */
   skills: readonly SkillsListEntry[] | null;
   onOpenChange: (open: boolean) => void;
-  /** Called after the run finishes (even partially) so the parent clears its selection. */
   onDeleted: () => void;
 }
 
-/**
- * One confirmation for a multi-selection delete. Deletes run sequentially —
- * each is a server-side delete + reverse-projection, and the shared placements
- * ledger is a read-modify-write that concurrent deletes would clobber (the
- * same reason bulk install projects sequentially). Failures don't stop the
- * run: each failed name gets its own toast, the successes are already gone
- * either way, and one aggregate toast closes the run.
- */
 export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props) {
   const { t } = useLingui();
   const { closeTabs, openTabs } = useDocumentContext();
@@ -43,8 +33,6 @@ export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props
         continue;
       }
       deleted += 1;
-      // Evict every tab backed by the deleted copy in one navigation update
-      // per skill (same eviction the single-skill dialog performs).
       closeTabs(tabIdsForSkill(openTabs, target.scope, target.name), { force: true });
     }
     setDeleting(false);
@@ -66,8 +54,6 @@ export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props
         <DeleteConfirmationDialog
           itemName={t`${count} skills`}
           isSubmitting={deleting}
-          // Sequential deletes over a big selection take real time; a bare
-          // "Deleting" spinner reads as hung ("it did not delete").
           customConfirmLabelBusy={t`Deleting ${progress} of ${count}`}
           onDelete={() => handleDelete(skills)}
           customDescription={t`This permanently removes ${names}. Agents that invoke these skills by name will fail until they're recreated.`}

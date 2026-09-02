@@ -1,13 +1,3 @@
-/**
- * Behavioral tests for the terminal-consent reader + writer hooks, exercised
- * through a real ConfigContext provider with a fake project-local binding.
- *
- * The boundary mocked is the system one — the CRDT-backed ConfigBinding. The
- * assertions pin what these hooks own: reading the tri-state from the
- * project-local layer, and routing grant/revoke to `terminal.enabled` via the
- * binding's `patch` (the human-only write path).
- */
-
 import type { Config, ConfigBinding, ConfigPatch } from '@inkeep/open-knowledge-core';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -20,9 +10,6 @@ vi.doMock('@/lib/terminal-telemetry', () => ({
   recordTerminalOpened: () => undefined,
 }));
 
-// Load the hooks AFTER the mock registers — `vi.doMock` is not hoisted, but a
-// static import is, so a static import of the subject would bind the real
-// telemetry module before the mock takes effect.
 let useTerminalConsentState: typeof import('./use-terminal-enabled').useTerminalConsentState;
 let useTerminalEnabledWriter: typeof import('./use-terminal-enabled').useTerminalEnabledWriter;
 beforeAll(async () => {

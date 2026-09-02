@@ -91,8 +91,6 @@ describe('buildStatusReport', () => {
   });
 
   test('single-listener default: server advertises `ui` → ui served by server', () => {
-    // Single-listener writes only server.lock (capabilities incl. `ui`); a
-    // "not running" ui row would be a false negative. Derive it from capability.
     const r = buildStatusReport(alive(100, 3001, 'host', ['http', 'ws', 'ui']));
     expect(r.ui.state).toBe('alive');
     expect(r.ui.alive).toBe(true);
@@ -102,7 +100,6 @@ describe('buildStatusReport', () => {
   });
 
   test('server without the `ui` capability leaves the ui row not-running', () => {
-    // `--only server`: no UI anywhere, so the ui row must stay honest.
     const r = buildStatusReport(alive(100, 3001, 'host', ['http', 'ws']));
     expect(r.ui.state).toBe('missing');
     expect(r.ui.servedByServer).toBeUndefined();
@@ -159,14 +156,10 @@ describe('runStatus', () => {
     const parsed = JSON.parse(logs[0] ?? '');
     expect(parsed.server.state).toBe('alive');
     expect(parsed.server.pid).toBe(100);
-    // server.lock EXPLICITLY omits `ui` (--only server) → the ui row stays not-running.
     expect(parsed.ui.state).toBe('missing');
   });
 
   test('pre-v2 server.lock without `capabilities` → ui row optimistically served-by-server', () => {
-    // A missing `capabilities` field is indeterminate; the shared
-    // `lockAdvertisesUi` predicate treats it as ui-capable, so status agrees
-    // with preview_url / the redirect rather than falsely reporting "not running".
     const report = buildStatusReport(alive(100, 3001));
     expect(report.ui.state).toBe('alive');
     expect(report.ui.servedByServer).toBe(true);

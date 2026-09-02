@@ -1,18 +1,3 @@
-/**
- * ACP agent options — the user's explicit shortlist plus live, machine-detected
- * harness suggestions. Picking an agent registers it once; the default remains
- * the most recently registered (last explicitly chosen) agent.
- *
- * Persisted in localStorage like the other launcher preferences (sticky
- * handoff target, terminal CLI sentinel). Name + icon are cached alongside the
- * id so menus can render rows without refetching the registry catalog.
- *
- * Store shape follows `thread-client.ts`: module-scope state, a listener set,
- * and bound snapshot getters that stay referentially stable between changes —
- * with React Compiler enabled, a `useSyncExternalStore` hook must return the
- * subscription value from stable getters or it memoizes to the first snapshot.
- */
-
 import { useSyncExternalStore } from 'react';
 
 export interface RegisteredAgent {
@@ -20,24 +5,8 @@ export interface RegisteredAgent {
   readonly id: string;
   readonly name: string;
   readonly iconUrl?: string;
-  /**
-   * Whether the registry ships a build this agent can launch on this host.
-   * Hydrated from the catalog (undefined until then). `false` force-hides the
-   * agent from every launcher and its Settings toggle, so the two always agree.
-   */
   readonly supported?: boolean;
-  /**
-   * When the user last explicitly picked this agent in a launcher. Absent for
-   * Settings-toggled and detected agents (and for entries persisted before the
-   * field existed) — those sort after every stamped agent.
-   */
   readonly lastUsedAt?: number;
-  /**
-   * The server marks the first-party shortlist (`FEATURED_AGENT_IDS`) in the
-   * catalog; hydrated like `supported`. Orders the never-picked tail —
-   * featured before the long tail — so a fresh install leads with the agents
-   * the team actually supports rather than an accident of insertion order.
-   */
   readonly featured?: boolean;
 }
 
@@ -73,7 +42,6 @@ function readFromStorage(): RegisteredAgentsState {
   try {
     raw = localStorage.getItem(STORAGE_KEY);
   } catch {
-    // No localStorage (non-browser env) — behave as empty, silently.
     return EMPTY_STATE;
   }
   if (raw === null) return EMPTY_STATE;
@@ -86,9 +54,6 @@ function readFromStorage(): RegisteredAgentsState {
         : null;
     return { agents, defaultKey };
   } catch (err) {
-    // A present-but-corrupt payload is a real storage failure, distinct from
-    // "never registered" — leave a signal for the disappearing-registration
-    // bug report before discarding.
     console.warn('[registered-agents] discarding corrupt localStorage payload', err);
     return EMPTY_STATE;
   }
@@ -98,8 +63,6 @@ function writeToStorage(state: RegisteredAgentsState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (err) {
-    // Quota / privacy mode — the in-memory state still serves this session,
-    // but the registration will NOT survive a reload; say so.
     console.warn('[registered-agents] failed to persist registration', err);
   }
 }
@@ -120,7 +83,6 @@ function setState(next: RegisteredAgentsState): void {
   for (const listener of listeners) listener();
 }
 
-/** Re-read persisted state (cross-tab `storage` events; tests). */
 export function reloadRegisteredAgentsFromStorage(): void {
   setState(readFromStorage());
 }
@@ -149,19 +111,6 @@ const getDefault = (): RegisteredAgent | null => {
   return agents.find((a) => agentKey(a) === defaultKey) ?? null;
 };
 
-/**
- * Register (or refresh) an agent.
- *
- * `makeDefault` (the default) is the explicit-pick path: the agent jumps to the
- * front and becomes the launch default — "the agent you chose last is your
- * agent". Every launcher pick uses it.
- *
- * `makeDefault: false` is the visibility-only path used by the Settings toggle:
- * it registers/refreshes the agent so it shows in the menus but leaves the
- * launch default untouched (and doesn't reorder an agent already present).
- * Enabling an agent in Settings must not silently repoint which agent the
- * primary button launches — only an explicit launcher pick does that.
- */
 export function registerAgent(
   agent: RegisteredAgent,
   options: { makeDefault?: boolean } = {},
@@ -171,7 +120,6 @@ export function registerAgent(
   const current = currentState();
   if (!makeDefault) {
     const exists = current.agents.some((a) => agentKey(a) === key);
-    // A visibility refresh must not erase pick recency — carry the stamp over.
     const agents = exists
       ? current.agents.map((a) =>
           agentKey(a) === key
@@ -193,13 +141,6 @@ export function registerAgent(
   setState(next);
 }
 
-/**
- * Recently used first (explicit picks stamp `lastUsedAt`), then the featured
- * shortlist, alphanumeric within each tier — one predictable order instead of
- * three concatenated insertion histories (picks, Settings toggles, detected
- * suggestions). Recency stays the top key on purpose: "the agent you chose
- * last is your agent" beats any editorial ranking.
- */
 function compareAgentsForDisplay(a: RegisteredAgent, b: RegisteredAgent): number {
   const aUsed = a.lastUsedAt ?? 0;
   const bUsed = b.lastUsedAt ?? 0;
@@ -210,12 +151,6 @@ function compareAgentsForDisplay(a: RegisteredAgent, b: RegisteredAgent): number
   return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-/**
- * Merge live, machine-detected suggestions into the explicit shortlist without
- * persisting them. An explicit registration with the same id always wins.
- * Output carries the display order (`compareAgentsForDisplay`) every picker
- * renders verbatim.
- */
 export function mergeRegisteredAgentSuggestions(
   registered: readonly RegisteredAgent[],
   suggestions: readonly RegisteredAgent[],
@@ -226,10 +161,6 @@ export function mergeRegisteredAgentSuggestions(
   );
 }
 
-/**
- * Replace live server-host suggestions without persisting them or changing the
- * explicit default. The app-level catalog detector owns this projection.
- */
 export function setDetectedRegisteredAgentSuggestions(
   suggestions: readonly RegisteredAgent[],
 ): void {
@@ -238,27 +169,14 @@ export function setDetectedRegisteredAgentSuggestions(
   for (const listener of listeners) listener();
 }
 
-/** Current explicit registrations plus live detected suggestions. */
 export function getRegisteredAgentOptions(): readonly RegisteredAgent[] {
   return getAgents();
 }
 
-/** The default agent for pickerless launches; null before first registration. */
 export function getDefaultRegisteredAgent(): RegisteredAgent | null {
   return getDefault();
 }
 
-/**
- * When the user disables the agent that is currently the launch default, move
- * the default off it — to the first still-enabled registered agent, or clear it
- * when none remain. Keeps the composer from showing a just-disabled agent as the
- * selected one. No-op when the disabled agent wasn't the default. Order is
- * preserved (only `defaultKey` moves).
- *
- * `disabledKey` is `<source>:<id>`; `stillEnabled` reports whether a given agent
- * is still enabled AFTER the disable (the disabled agent is excluded by key, so
- * the predicate can read a pre-disable overrides snapshot safely).
- */
 export function reassignDefaultIfDisabled(
   disabledKey: string,
   stillEnabled: (agent: RegisteredAgent) => boolean,
@@ -274,11 +192,6 @@ export function reassignDefaultIfDisabled(
   setState(nextState);
 }
 
-/**
- * The registered agent a primary launcher should lead with: the current default
- * when it is still in `enabled`, else the first enabled one (null if none). Lets
- * every launcher surface avoid leading with an agent the user disabled.
- */
 export function pickEffectiveDefaultAgent(
   enabled: readonly RegisteredAgent[],
   defaultAgent: RegisteredAgent | null,
@@ -292,13 +205,6 @@ export function pickEffectiveDefaultAgent(
   return enabled[0] ?? null;
 }
 
-/**
- * Update the cached name/icon/supported flag of already-registered agents in
- * place, WITHOUT changing the default or list order. Used to hydrate the seeded
- * defaults' placeholder metadata once the registry catalog resolves (the seed
- * ships names only; the catalog carries display names, icon URLs, and whether a
- * launchable build exists for this host).
- */
 export function hydrateRegisteredAgentMeta(
   patches: ReadonlyArray<Pick<RegisteredAgent, 'source' | 'id'> & Partial<RegisteredAgent>>,
 ): void {
@@ -334,12 +240,10 @@ export function hydrateRegisteredAgentMeta(
   setState(next);
 }
 
-/** Reactive explicit registrations followed by live detected suggestions. */
 export function useRegisteredAgents(): readonly RegisteredAgent[] {
   return useSyncExternalStore(subscribe, getAgents, getAgents);
 }
 
-/** Reactive default agent; null before the first catalog pick. */
 export function useDefaultRegisteredAgent(): RegisteredAgent | null {
   return useSyncExternalStore(subscribe, getDefault, getDefault);
 }

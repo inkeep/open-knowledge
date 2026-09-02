@@ -6,16 +6,8 @@ import { CellSelection, cellAround, TableMap } from '@tiptap/pm/tables';
 import { describe, expect, test } from 'vitest';
 import { tableEnterDown } from './table-row-enter';
 
-// Schema from core's shared extensions rather than `@tiptap/extension-*`
-// directly — those are only transitive deps here and importing them trips
-// knip (same setup as table-insert-commands.test.ts).
 const schema = getSchema(sharedExtensions);
 
-/**
- * Build a `rows × cols` table doc; row 0 is header cells, the rest body
- * cells. With `withText`, each cell holds `R{r}C{c}` so caret-offset
- * assertions can tell the end of a cell's text from its start.
- */
 function makeTableDoc(rows: number, cols: number, withText = false): PmNode {
   const cell = (r: number, c: number) =>
     (r === 0 ? schema.nodes.tableHeader : schema.nodes.tableCell).createChecked(
@@ -32,7 +24,6 @@ function makeTableDoc(rows: number, cols: number, withText = false): PmNode {
   return schema.nodes.doc.create(null, table);
 }
 
-/** State with the caret inside the cell at (row, col). The table sits at pos 0. */
 function stateWithCaretInCell(doc: PmNode, row: number, col: number): EditorState {
   const table = doc.nodeAt(0);
   if (!table) throw new Error('no table at pos 0');
@@ -45,7 +36,6 @@ function stateWithCaretInCell(doc: PmNode, row: number, col: number): EditorStat
   });
 }
 
-/** (row, col) of the cell the selection caret sits in. */
 function caretCellRect(state: EditorState) {
   const $cell = cellAround(state.selection.$from);
   if (!$cell) throw new Error('caret not in a cell');
@@ -66,12 +56,10 @@ describe('tableEnterDown', () => {
     expect(map.height).toBe(4);
     expect(map.width).toBe(3);
 
-    // caret landed in the new row, same column
     const rect = caretCellRect(next);
     expect(rect.top).toBe(3);
     expect(rect.left).toBe(1);
 
-    // the appended row is body cells, not header cells
     const lastRow = (table as PmNode).child(3);
     for (let c = 0; c < lastRow.childCount; c++) {
       expect(lastRow.child(c).type.name).toBe('tableCell');
@@ -98,13 +86,11 @@ describe('tableEnterDown', () => {
     expect(tr).not.toBeNull();
     const next = state.apply(tr as NonNullable<typeof tr>);
 
-    // pure navigation — same doc, no new rows, no split cell
     expect(next.doc.eq(state.doc)).toBe(true);
     const rect = caretCellRect(next);
     expect(rect.top).toBe(2);
     expect(rect.left).toBe(2);
 
-    // caret sits AFTER the existing text ("R2C2"), not before it
     expect(next.selection.empty).toBe(true);
     expect(next.selection.$from.parent.textContent).toBe('R2C2');
     expect(next.selection.$from.parentOffset).toBe('R2C2'.length);
@@ -132,7 +118,6 @@ describe('tableEnterDown', () => {
     const state = EditorState.create({
       schema,
       doc,
-      // empty cell: anchor at paragraph-open, focus at paragraph-close — a non-collapsed TextSelection
       selection: TextSelection.create(doc, cellPos + 1, cellPos + 2),
     });
 
@@ -153,8 +138,6 @@ describe('tableEnterDown', () => {
     const state = EditorState.create({
       schema,
       doc,
-      // CellSelection's $from resolves inside a cell, so only the
-      // instanceof TextSelection guard keeps this out of the down-navigation.
       selection: CellSelection.create(doc, cellPos),
     });
     expect(tableEnterDown(state)).toBeNull();

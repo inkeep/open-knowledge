@@ -46,9 +46,6 @@ describe('latestAgentWrite', () => {
   });
 
   test('presence sentinels never become follow targets', () => {
-    // The server publishes these to keep an idle agent visible in the presence
-    // bar — following them opens a phantom tab and, at turn end, drags the
-    // editor off the last real page.
     expect(
       latestAgentWrite(
         awarenessWith({ a: { currentDoc: '(agent thread)', ts: NOW, docTs: NOW } }),

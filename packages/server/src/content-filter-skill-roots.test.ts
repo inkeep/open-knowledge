@@ -4,12 +4,6 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 
-/**
- * A skill projected into several editor host dirs must reach the content index
- * ONCE — via its elected canonical bundle. The election is per SKILL, not per
- * root: one skill can be canonical in `.github` while the next is canonical in
- * `.claude`, so no root can be privileged or blanket-skipped.
- */
 describe('skill-root admission', () => {
   function withFixture<T>(fn: (contentDir: string) => T): T {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-skill-roots-'));
@@ -27,12 +21,10 @@ describe('skill-root admission', () => {
       const filter = createContentFilter({
         projectDir: contentDir,
         contentDir,
-        // Election picked `.claude` for this skill.
         inPlaceSkillDirs: new Set(['.claude/skills/knowledge-base']),
         skillRootPaths: new Set(['.claude/skills', '.github/skills']),
       });
       expect(filter.isExcluded('.claude/skills/knowledge-base/SKILL.md')).toBe(false);
-      // Same skill, second projection — already represented by the canonical.
       expect(filter.isExcluded('.github/skills/knowledge-base/SKILL.md')).toBe(true);
     });
   });
@@ -57,7 +49,6 @@ describe('skill-root admission', () => {
         inPlaceSkillDirs: new Set(['.claude/skills/knowledge-base']),
         skillRootPaths: new Set(['.claude/skills', '.github/skills']),
       });
-      // Segment-matching `.github` instead of `.github/skills` would bury this.
       expect(filter.isExcluded('.github/CI_RUNBOOK.md')).toBe(false);
     });
   });

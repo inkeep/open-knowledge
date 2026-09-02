@@ -32,8 +32,6 @@ describe('isNoteWindow', () => {
   });
 
   test('a partial bridge with no config resolves false instead of throwing', () => {
-    // Session-only E2E hosts expose a bridge without the full surface. This is
-    // read during render, so a throw takes the whole header down.
     (window as unknown as { okDesktop?: unknown }).okDesktop = {};
     expect(isNoteWindow()).toBe(false);
   });

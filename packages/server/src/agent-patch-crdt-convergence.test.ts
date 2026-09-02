@@ -1,33 +1,8 @@
-/**
- * `applyAgentMarkdownWrite(..., 'patch')` under CRDT-level convergence — the
- * INCREMENTAL counterpart to `agent-write-replace-crdt-convergence.test.ts`.
- *
- * `edit_document` (handleAgentPatch) computes a full recomposed body from a
- * find/replace and writes it via position `'patch'`, which routes to the
- * item-preserving primitive (`composeAndWriteRawBody` → `applyFastDiff`), NOT
- * the atomic `replaceRawBody`. The distinguishing observable: a concurrent peer
- * edit OUTSIDE the patched span survives IN PLACE — woven into the surrounding
- * content it was typed into — because the un-patched items keep their identity.
- * Under the atomic primitive (the pre-fix regression) the full delete tombstones
- * every item including the peer's region, and the peer's in-flight op re-anchors
- * at the tombstone seam: displaced, not woven.
- *
- * This is the mirror of the replace contract. Replace asserts the AGENT's
- * payload stays contiguous (atomic shape); patch asserts the PEER's concurrent
- * edit stays woven in its original context (incremental shape). One primitive
- * cannot satisfy both — which is exactly why `position: 'replace'` was
- * de-overloaded into `replace` (atomic) and `patch` (incremental).
- */
-
 import type { Document } from '@hocuspocus/server';
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, applyAgentMarkdownWrite } from './agent-sessions.ts';
 
-/**
- * Wrap a Y.Doc in the minimal `Document` shape `applyAgentMarkdownWrite`
- * expects (mirrors the sibling replace-convergence test's stub).
- */
 function asDocument(ydoc: Y.Doc, name = 'doc.md'): Document {
   return {
     name,
@@ -41,7 +16,6 @@ function asDocument(ydoc: Y.Doc, name = 'doc.md'): Document {
   } as unknown as Document;
 }
 
-/** Two-way CRDT exchange — both docs hold the merged state afterward. */
 function exchangeUpdates(a: Y.Doc, b: Y.Doc): void {
   const aState = Y.encodeStateVector(a);
   const bState = Y.encodeStateVector(b);
@@ -51,11 +25,6 @@ function exchangeUpdates(a: Y.Doc, b: Y.Doc): void {
   Y.applyUpdate(a, bDiff);
 }
 
-/**
- * What `handleAgentPatch` computes before the write: the full document with the
- * first occurrence of `find` replaced by `replace`. Routed through position
- * `'patch'` in the production handler.
- */
 function patchBody(current: string, find: string, replace: string): string {
   const pos = current.indexOf(find);
   if (pos === -1) throw new Error(`find not present: ${find}`);
@@ -96,17 +65,14 @@ describe('applyAgentMarkdownWrite(patch) — CRDT-level convergence (edit_docume
     Y.applyUpdate(peer, Y.encodeStateAsUpdate(server));
     expect(peer.getText('source').toString()).toBe(INITIAL);
 
-    // Peer types INTO the second paragraph (far from OLDWORD) — in-flight,
-    // not yet shipped to the server.
     const peerMarker = 'PEER_TYPING ';
-    const peerInsertOffset = INITIAL.indexOf('cares about'); // before "cares"
+    const peerInsertOffset = INITIAL.indexOf('cares about');
     for (let i = 0; i < peerMarker.length; i++) {
       peer.getText('source').insert(peerInsertOffset + i, peerMarker.charAt(i));
     }
     expect(peer.getText('source').toString()).toContain('peer PEER_TYPING cares about');
-    expect(server.getText('source').toString()).toBe(INITIAL); // server hasn't seen it
+    expect(server.getText('source').toString()).toBe(INITIAL);
 
-    // Agent patches a DIFFERENT region (OLDWORD -> NEWWORD) via 'patch'.
     const patched = patchBody(INITIAL, 'OLDWORD', 'NEWWORD');
     server.transact(() => {
       applyAgentMarkdownWrite(asDocument(server), patched, 'patch');
@@ -117,18 +83,10 @@ describe('applyAgentMarkdownWrite(patch) — CRDT-level convergence (edit_docume
     const serverFinal = server.getText('source').toString();
     const peerFinal = peer.getText('source').toString();
 
-    // Both peers converge.
     expect(serverFinal).toBe(peerFinal);
-    // The agent's change applied.
     expect(serverFinal).toContain('NEWWORD');
     expect(serverFinal).not.toContain('OLDWORD');
-    // The peer's concurrent edit survives...
     expect(serverFinal).toContain('PEER_TYPING');
-    // ...AND stays woven into its ORIGINAL context. THE DISCRIMINATOR: under the
-    // incremental primitive the second paragraph's items are untouched by the
-    // patch, so the peer's insert keeps its position. Under the atomic primitive
-    // (the regression) the full delete tombstones that region and the peer's op
-    // re-anchors at the seam — displaced — breaking this contiguous phrase.
     expect(serverFinal).toContain('peer PEER_TYPING cares about');
   });
 });

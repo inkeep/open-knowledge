@@ -24,10 +24,6 @@ const CONTAINER_TYPES = new Set([
   'heading',
 ]);
 
-/** Canonical marker for a hard line break, the join token every cell-flatten
- *  and void-`<br/>` degrade collapses toward so the three source spellings
- *  (a `hardBreak` node, a block boundary inside a cell, a literal `<br/>`
- *  text run) compare equal. */
 const BR_SENTINEL: PmStructuralNode = { type: '__br__' };
 
 const BR_LITERAL_RE = /^<br\s*\/?>$/i;
@@ -59,9 +55,6 @@ function flattenBlocksToInline(blocks: PmStructuralNode[]): PmStructuralNode[] {
   return out;
 }
 
-/** Inline leaves of a node in document order. Text and inline atoms return
- *  themselves; a block with block children flattens (boundaries → `<br/>`);
- *  a block with inline children returns those children. */
 function inlineLeavesOf(node: PmStructuralNode): PmStructuralNode[] {
   if (node.text !== undefined || node.type === 'hardBreak' || node.type === 'jsxInline') {
     return [node];
@@ -99,8 +92,6 @@ const STRUCTURAL_DEGRADE_REGISTRY = [
   },
 ] as const satisfies readonly DegradeEntry[];
 
-/** The degrade labels this module can report — derived from the registry, so a
- *  new tolerance is one registry entry, never a scattered string literal. */
 export type StructuralDegradeLabel = (typeof STRUCTURAL_DEGRADE_REGISTRY)[number]['label'];
 
 export type StructuralDivergenceReason =
@@ -128,8 +119,6 @@ export interface ComparePmStructuralOptions {
   rawSourceSide?: 'expected';
 }
 
-/** Rebuild a node with `fn` applied to each child; identity when childless.
- *  Shared by the degrade canonicalizers so none re-implements the walk. */
 function mapChildren(
   node: PmStructuralNode,
   fn: (child: PmStructuralNode) => PmStructuralNode,
@@ -138,10 +127,6 @@ function mapChildren(
   return { ...node, content: node.content.map(fn) };
 }
 
-/** Comparison-form of a node: volatile + empty attrs dropped, marks sorted,
- *  empty content elided. Two nodes are structurally equal iff their reduced
- *  forms stable-stringify identically. `ignoreAttrs` drops caller-nominated
- *  attr keys on top of the fixed volatile set (see ComparePmStructuralOptions). */
 function reduce(node: PmStructuralNode, ignoreAttrs?: (key: string) => boolean): unknown {
   const out: Record<string, unknown> = {};
   if (node.type !== undefined) out.type = node.type;
@@ -174,12 +159,6 @@ function reduceAttrs(
   return Object.keys(out).length > 0 ? out : null;
 }
 
-/** Recursively strip every object key the predicate matches, at any depth.
- *  Only invoked when a caller passes `ignoreAttrs`; a plain comparison leaves
- *  attr values untouched. Object keys only — a matched string that appears as a
- *  VALUE (e.g. an mdast attribute `{ name: 'src', value }` whose key is `name`)
- *  is preserved, so the raw authored attribute survives while its
- *  render-derived projection is dropped. */
 function deepDropKeys(value: unknown, ignoreAttrs: (key: string) => boolean): unknown {
   if (Array.isArray(value)) return value.map((entry) => deepDropKeys(entry, ignoreAttrs));
   if (value && typeof value === 'object') {
@@ -206,12 +185,6 @@ function stableStringify(value: unknown): string {
   });
 }
 
-/** Concatenated, whitespace-stripped text of a tree — the byte stream a
- *  faithful round-trip must not LOSE. Compared as a subsequence so a degrade
- *  that INSERTS tokens (a `<br/>` literal) never reads as loss.
- *
- *  `omitRawSource` skips `rawMdxFallback` subtrees. L1a decides when to pass it
- *  from the caller's `rawSourceSide`; that call site owns the rationale. */
 function textSkeleton(node: PmStructuralNode, omitRawSource = false): string {
   let acc = '';
   const walk = (n: PmStructuralNode): void => {
@@ -223,8 +196,6 @@ function textSkeleton(node: PmStructuralNode, omitRawSource = false): string {
   return acc.replace(/\s+/g, '');
 }
 
-/** Sorted multiset of container identities; `jsxComponent` carries its
- *  componentName so a same-count container substitution still diverges. */
 function containerSignature(node: PmStructuralNode): string[] {
   const sig: string[] = [];
   const walk = (n: PmStructuralNode): void => {
@@ -307,9 +278,6 @@ export function comparePmStructural(
   };
 }
 
-/** Best-effort locator naming the first structurally diverging node path — a
- *  red result should name the construct, not dump a tree. Falls back to a
- *  coarse message when the divergence is deep. */
 function firstStructuralDivergence(expected: unknown, actual: unknown, path = 'doc'): string {
   const ex = expected as Record<string, unknown> | undefined;
   const ac = actual as Record<string, unknown> | undefined;

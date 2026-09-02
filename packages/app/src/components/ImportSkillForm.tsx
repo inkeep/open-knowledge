@@ -23,21 +23,11 @@ import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 import { discoverSkillsInSource, importSkill, uploadSkill } from '@/lib/skills-api';
 import { cn } from '@/lib/utils';
 
-/** Remote = fetch by reference (importSkill); Zip/Folder = send bytes (uploadSkill). */
 type SkillSource = 'remote' | 'zip' | 'folder';
 
-// Source picker choice card — mirrors SharingModeField's card styling so the two
-// radio-card selectors read as one family. Checked state is applied per-card via
-// a `source === value` ternary (below), not a `has-data-checked` selector.
 const SOURCE_CARD_BASE =
   'flex items-start justify-between gap-3 rounded-md border p-3 text-sm font-normal transition-colors cursor-pointer';
 
-/**
- * The unified "bring a skill you already have" form — the Import pane of the
- * skill modal. One Source selector switches between a remote reference (GitHub
- * `owner/repo`, a git URL, or a local path) and a local `.zip` / folder upload.
- * The modal supplies its own DialogHeader, so this renders body + footer only.
- */
 export function ImportSkillForm({
   defaultScope,
   onOpenChange,
@@ -61,19 +51,10 @@ export function ImportSkillForm({
   const [skill, setSkill] = useState('');
   const [files, setFiles] = useState<FileList | null>(null);
   const [busy, setBusy] = useState(false);
-  // Skills found in the remote source (null = not yet looked). The picker only
-  // shows when a source bundles more than one, so a single-skill source imports
-  // with no extra step.
   const [discovered, setDiscovered] = useState<SkillDiscover['skills'] | null>(null);
   const [discovering, setDiscovering] = useState(false);
-  // A finished probe that turned up nothing (bad ref / 404 / clone fail). Kept
-  // distinct from `discovered === null` (not-yet-looked) so the hint shows only
-  // after a real miss, not before the first probe.
   const [discoverMiss, setDiscoverMiss] = useState(false);
 
-  // `webkitdirectory` is not typed on React inputs — toggle it on the DOM node
-  // per source. The input is keyed by source so it remounts (clearing a stale
-  // pick), and this effect re-applies the attribute on each remount.
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const el = inputRef.current;
@@ -89,15 +70,8 @@ export function ImportSkillForm({
 
   const trimmedReference = reference.trim();
   const isUpload = source === 'zip' || source === 'folder';
-  // Folder picks report each file's webkitRelativePath; the first segment is the
-  // chosen dir's name — the useful thing to echo back, not "500 files".
   const uploadFolderName = files?.[0]?.webkitRelativePath?.split('/')[0] ?? '';
 
-  // Peek at the remote source (debounced) so we can offer a picker of what to
-  // ingest instead of a blind "which skill" box. Discovery uses the same clone
-  // as import, so if it fails, import would fail identically — no free-text
-  // fallback needed. When several skills exist, preselect the first so Import
-  // always resolves; otherwise clear `skill` and let the server pick the sole one.
   useEffect(() => {
     if (isUpload || trimmedReference === '') {
       setDiscovered(null);
@@ -143,8 +117,6 @@ export function ImportSkillForm({
       if (source === 'zip') {
         fd.append('file', files[0]);
       } else {
-        // Preserve the folder structure via each file's webkitRelativePath so
-        // the server can reconstruct the skill dir.
         for (const f of Array.from(files)) {
           fd.append('files', f, f.webkitRelativePath || f.name);
         }
@@ -168,15 +140,9 @@ export function ImportSkillForm({
     });
     setBusy(false);
     if (!result.ok) {
-      // Pre-import discovery runs a separate clone that can fail while import's
-      // own clone succeeds — so the picker never rendered and this went in
-      // blind. Import saw the bundle and returned the names: recover into the
-      // picker instead of dead-ending on an un-actionable "pass skill" error.
       if (result.skills && result.skills.length > 1) {
         setDiscovered(result.skills.map((name) => ({ name, description: null })));
         setSkill(result.skills[0]);
-        // Not a failure — the picker just needs a selection. `info`, not `error`,
-        // so the recovery reads as a next step rather than a red alarm.
         toast.info(t`This source bundles several skills — choose one, then Import.`);
         return;
       }
@@ -212,9 +178,7 @@ export function ImportSkillForm({
           <Label id={sourceGroupId}>
             <Trans>Source</Trans>
           </Label>
-          {/* Choice cards: stacked on narrow dialogs, horizontal (3-up) on wider
-              screens. Each card carries a one-line description the bare toggle
-              couldn't. */}
+          {}
           <RadioGroup
             value={source}
             onValueChange={(v) => {
@@ -290,9 +254,7 @@ export function ImportSkillForm({
           </RadioGroup>
           {isUpload ? (
             <>
-              {/* Native file chrome ("Choose File / No file chosen") reads as an
-                  unstyled wart next to the shadcn controls — keep the input for
-                  its file/webkitdirectory behavior but drive it from a Button. */}
+              {}
               <Input
                 key={source}
                 ref={inputRef}
@@ -347,8 +309,7 @@ export function ImportSkillForm({
                 placeholder={t`owner/repo, a git URL, or a local path`}
                 className="font-mono"
               />
-              {/* Live feedback only — the "what a Remote source is" description
-                  lives in the radio card + placeholder, so idle shows nothing. */}
+              {}
               {discovering || discoverMiss || (discovered && discovered.length === 1) ? (
                 <p className="text-1sm text-muted-foreground">
                   {discovering ? (
@@ -392,8 +353,7 @@ export function ImportSkillForm({
             </p>
           </div>
         ) : null}
-        {/* Disclosure: a "what happens next" label over a plain bulleted list —
-            no card, no per-item icons. */}
+        {}
         <div role="note" className="space-y-3" data-testid="skill-import-disclosure">
           <p className="font-medium text-xs font-mono text-muted-foreground/80 uppercase tracking-wider">
             <Trans>What happens next</Trans>

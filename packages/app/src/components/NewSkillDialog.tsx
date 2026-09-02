@@ -15,14 +15,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { DEFAULT_NEW_SKILL_DESCRIPTION } from '@/hooks/use-create-blank-skill';
 
-/**
- * Name + description prompt for creating a skill. Before this, "New
- * skill" immediately created `new-skill` with an empty description — no chance
- * to name it, and the empty description then blocked Install. Both fields are
- * PRE-FILLED (first-free `new-skill[-N]` + a placeholder description) so the
- * fast path is still one click (open → Create), while anyone who wants to name
- * it up front can. The name grammar mirrors the skill slug (`[a-z0-9-]+`).
- */
 export function NewSkillDialog({
   open,
   onOpenChange,
@@ -34,7 +26,6 @@ export function NewSkillDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scope: SkillScope;
-  /** Names already taken in this scope, for the duplicate check + default suffix. */
   existingNames: ReadonlySet<string>;
   busy: boolean;
   onCreate: (input: { name: string; description: string }) => void;
@@ -73,8 +64,6 @@ export function NewSkillDialog({
       nameRef.current?.focus();
       return;
     }
-    // Empty description falls back to the placeholder so the skill stays
-    // installable — the same default the fast paths use.
     onCreate({ name: trimmed, description: description.trim() || DEFAULT_NEW_SKILL_DESCRIPTION });
   }
 

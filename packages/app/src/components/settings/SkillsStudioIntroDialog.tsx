@@ -1,21 +1,3 @@
-/**
- * First-visit intro for Skills Studio, shown once per machine.
- *
- * Two jobs, in this order: say what the page is (the tab's own label was the
- * thing that told nobody anything), then offer the optional skill that
- * first-launch setup no longer offers. Setup is when a person
- * has the least context for judging whether they want a skill-authoring
- * workflow; opening the skills page is when they have the most.
- *
- * The offer is a real consent surface, not a teaser: it names the skill, what
- * it does, which tools it reaches, what it costs in context, and every path it
- * writes. That is a full disclosure, which is why Install acts directly rather
- * than opening a second modal on top of this one.
- *
- * Dismissal is recorded on either exit — the row underneath carries the same
- * offer permanently, so "Not now" costs the user nothing.
- */
-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { SkillConsentRow } from '@/components/SkillConsentRow';
 import { SkillDestinationList } from '@/components/SkillDestinationList';
@@ -34,15 +16,9 @@ import { useBuiltinSkillBlurb } from './builtin-skill-copy';
 
 export interface SkillsStudioIntroDialogProps {
   open: boolean;
-  /** Fires on any dismissal (button, Escape, overlay) so the seen-flag write
-   *  cannot be dodged by closing the dialog a different way. */
   onDismiss: () => void;
-  /** The skill to offer, or null when everything is already installed — then
-   *  this is a plain explainer with a single acknowledging button. */
   offer: OkIntegrationsStatus['skills'][number] | null;
-  /** Install the offered skill. Dismissal is the caller's job either way. */
   onInstall: () => void;
-  /** Disables the primary while a write is in flight. */
   busy?: boolean;
 }
 

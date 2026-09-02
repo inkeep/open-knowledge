@@ -28,13 +28,6 @@ import {
   type SelectionOffsetNavigation,
 } from './source-editor-navigation';
 
-/**
- * Override slot for the cross-mode landing start. Whether a landing starts is
- * the branch the replay effect's consume decision turns on, and neither answer
- * is reachable in jsdom (a landing needs a mounted WYSIWYG doc and a scroller
- * with real client rects). Unset by default, so every other test in this file
- * runs the real implementation.
- */
 const landingOverride = vi.hoisted(() => ({
   start: null as (() => LandingHandle | null) | null,
 }));
@@ -61,7 +54,6 @@ Object.defineProperty(window.Range.prototype, 'getBoundingClientRect', {
 
 const mountedDocNames = new Set<string>();
 
-// Count open+focus requests reaching the BottomComposer subscriber path.
 let composerOpenRequests = 0;
 let unsubscribeComposer: (() => void) | null = null;
 
@@ -103,11 +95,6 @@ function makeProvider(
   return { provider, ytext };
 }
 
-// `isSourceModeActive` is pinned true rather than exposed as a knob: the only
-// behavior the false case drives is `applyRawMdxNavigation`'s stillInSourceMode
-// bail, and the "raw-MDX replay mode re-check" suite below exercises that
-// directly against the function — a component-level route to the same guard
-// would be a second, slower path to an assertion already made.
 function Harness({
   provider,
   ytext,
@@ -136,7 +123,6 @@ async function findCmContent(container: HTMLElement): Promise<HTMLElement> {
   return container.querySelector<HTMLElement>('.cm-content');
 }
 
-/** `@tiptap/core`'s `isMacOS()` reads `navigator.platform` at call time. */
 function setPlatform(platform: string): void {
   Object.defineProperty(globalThis.navigator, 'platform', {
     value: platform,
@@ -197,9 +183,6 @@ describe('SourceEditor word-wrap preference wiring', () => {
     expect(container.querySelector('.cm-editor')).toBe(cmEditor);
   });
 
-  // ⇧⌘I is retired. It was mac-only and source-mode-only, it duplicated ⇧⌘L,
-  // and despite being titled "Ask AI (from selection)" it never staged the
-  // selection — it only opened the composer. Selection→AI is ⌘L now.
   test('Cmd+Shift+I no longer opens the Ask AI composer', async () => {
     setPlatform('MacIntel');
     const { provider, ytext } = makeProvider('source-edit-with-ai-retired');
@@ -293,10 +276,6 @@ describe('SourceEditor outline navigation', () => {
   });
 
   test('skips a frontmatter region whose opening fence carries a trailing space', async () => {
-    // `--- ` is one in-tolerance keystroke away from `---`. The outline list
-    // comes from the server's extractHeadings (core fence contract — FM
-    // stripped), so the client-side jump scan must skip the same FM region or
-    // the YAML `#` comment is miscounted as the index-0 heading.
     const content = [
       '--- ',
       'title: Fence hazard',
@@ -373,9 +352,6 @@ describe('SourceEditor outline navigation', () => {
   });
 
   describe('breadcrumb', () => {
-    // Only one of the two outline consumers ever answers a given click, so a
-    // bundle that instruments the WYSIWYG side alone cannot separate "the user
-    // was in source mode" from "the event never fired".
     let infoSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -516,13 +492,6 @@ describe('SourceEditor raw-MDX replay mode re-check', () => {
   });
 });
 
-/**
- * The queued cross-mode jump is consume-once, so consuming it before knowing a
- * landing actually started throws it away: `startSourceLanding` declines when
- * the WYSIWYG doc it grades against was never mounted (the deferred-mount path
- * a large document takes), and the user's jump target would be gone even though
- * the entry's TTL still allows a later replay.
- */
 describe('SourceEditor cross-mode landing replay', () => {
   const NAVIGATION: SelectionOffsetNavigation = {
     kind: 'selection-offset',
@@ -544,14 +513,11 @@ describe('SourceEditor cross-mode landing replay', () => {
     globalThis.fetch = originalFetch;
   });
 
-  /** Mount source mode over a banked jump and let the deferred replay run. */
   async function mountWithQueuedJump(docName: string): Promise<void> {
     const { provider, ytext } = makeProvider(docName);
     rememberPendingSourceNavigation(docName, NAVIGATION);
     const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
     await findCmContent(container);
-    // The replay is deferred to a microtask so a StrictMode mount/unmount cycle
-    // finishes first; flush it before reading the store.
     await act(async () => {});
   }
 
@@ -572,13 +538,6 @@ describe('SourceEditor cross-mode landing replay', () => {
   });
 });
 
-/**
- * The Problems row banks its intent and then dispatches a live event, so
- * whichever editor is visible consumes the event and clears the bank. A click
- * the scroller refuses moved nothing, so clearing on it spends the intent on a
- * jump that never happened. The WYSIWYG half of this seam gates its clear on
- * the same answer.
- */
 describe('SourceEditor Problems-row navigation', () => {
   const detailFor = (docName: string): LintNavDetail => ({ docName, line: 3, column: 1 });
 
@@ -597,11 +556,6 @@ describe('SourceEditor Problems-row navigation', () => {
     globalThis.fetch = originalFetch;
   });
 
-  /**
-   * Mount source mode, then bank and click in the panel's own order. Banking
-   * before the mount would be replayed and consumed by the mount-time effect,
-   * which is a different path from the live click under test.
-   */
   async function clickProblemsRow(docName: string): Promise<void> {
     const { provider, ytext } = makeProvider(docName, '# heading\n\nbody\n\nmore body');
     const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
@@ -614,8 +568,6 @@ describe('SourceEditor Problems-row navigation', () => {
 
   test('keeps the banked intent when a landing refuses the scroller', async () => {
     const docName = 'source-problems-row-refused';
-    // A landing that is itself an explicit navigation keeps the scroller: it has
-    // already placed the caret, so this click stands down whole.
     registerLandingScrollOwner(docName, { yieldsToNavigation: false, supersede: () => {} });
 
     await clickProblemsRow(docName);

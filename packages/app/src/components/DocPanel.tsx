@@ -36,11 +36,9 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'graph', icon: Network },
   { id: 'timeline', icon: Clock },
   { id: 'problems', icon: AlertTriangle },
-  // One Comments tab, carrying its own This-doc / This-project scope toggle.
   { id: 'comments', icon: MessageSquare },
 ];
 
-/** What a `ok <file>` session keeps — see `tabs` below for why each one. */
 const SINGLE_FILE_TABS: readonly PanelTab[] = ['outline', 'problems', 'comments'];
 
 function countsOf(diagnostics: readonly { severity: string }[]): DocProblemCounts {
@@ -53,7 +51,6 @@ function countsOf(diagnostics: readonly { severity: string }[]): DocProblemCount
   return { errorCount, warningCount };
 }
 
-/** Localized display label for a doc-panel tab. */
 function tabLabel(id: PanelTab): string {
   if (id === 'outline') return t`Outline`;
   if (id === 'links') return t`Links`;
@@ -63,15 +60,6 @@ function tabLabel(id: PanelTab): string {
   return t`Timeline`;
 }
 
-/**
- * Top-level mode for the DocPanel container. Two values:
- *   - `'doc'`:   existing per-document info tabs (outline / links / …).
- *   - `'agent'`: Agent Activity view keyed to a `connectionId`.
- *
- * The mode is a drill-in, not a persistent toggle: agent avatar click enters
- * `'agent'` mode; the back arrow (shown only in `'agent'` mode) returns to
- * `'doc'` mode via `closeActivityPanel()`.
- */
 type DocPanelMode = 'doc' | 'agent';
 
 function loadGraphPanelModule() {
@@ -93,12 +81,7 @@ interface DocPanelProps {
   isSourceMode: boolean;
   activeTab: PanelTab;
   onActiveTabChange: (tab: PanelTab) => void;
-  /** Active mode — controlled by presence-bar avatar clicks + the back arrow. */
   mode: DocPanelMode;
-  /** Whether the right rail is collapsed. The panel stays MOUNTED at zero width
-   *  when it is, so this is the half of "on screen" the tree cannot see. Only
-   *  published outward (see `setCommentsPanelOnScreen`), never rendered — the
-   *  collapsed rail's own `inert` already handles focus and the a11y tree. */
   isCollapsed?: boolean;
 }
 
@@ -111,25 +94,13 @@ export function DocPanel({
   isCollapsed = false,
 }: DocPanelProps) {
   const { t } = useLingui();
-  // Live, mode-agnostic lint diagnostics for the active doc — drives both the
-  // Problems tab badge and the panel itself. Reads `Y.Text('source')`, so it
-  // works in WYSIWYG mode too. Gated to the matching provider during nav.
   const { activeProvider, activeDocName } = useDocumentContext();
   const { data: lintConfig } = useDocLintConfig(docName);
   const lintProvider = activeDocName === docName ? activeProvider : null;
   const lintDiagnostics = useDocDiagnostics(lintProvider, lintConfig?.effective ?? null);
-  // The doc's broken-link findings ride the SAME scoped audit predicate the
-  // project audit runs (one canonical determination); lint stays on the live
-  // CRDT read above, which is fresher than the audit's walk.
   const linkFindingsState = useDocLinkFindings(docName);
   const linkFindings = linkFindingsState.findings;
   const diagnostics = [...lintDiagnostics, ...linkFindings];
-  // Freshness trigger 2: the open doc's shared-store entry tracks its own live
-  // counts (lint off the CRDT debounce, links off the scoped audit fetch) so
-  // the file tree's tint follows edits without waiting for a project audit.
-  // The store no-ops on unchanged counts, so the identity-fresh arrays are
-  // cheap dependencies. Skipped while nav is settling (`lintProvider` null) —
-  // an empty transient list must not wipe the previous doc's real counts.
   useEffect(() => {
     if (lintProvider === null) return;
     patchDocValidationSource(docName, 'lint', countsOf(lintDiagnostics));
@@ -138,29 +109,16 @@ export function DocPanel({
     if (lintProvider === null || linkFindingsState.status !== 'loaded') return;
     patchDocValidationSource(docName, 'links', countsOf(linkFindings));
   }, [docName, lintProvider, linkFindings, linkFindingsState.status]);
-  // Apply a diagnostic's auto-fix to the source CRDT. `lintProvider` is the
-  // active provider only when it matches this doc, so a fix always targets the
-  // document the user is viewing.
   const handleFix = (diagnostic: DiagnosticLike) => {
     if (lintProvider !== null && diagnostic.fixes && diagnostic.fixes.length > 0) {
       applyLintFixes(lintProvider, diagnostic.fixes, docName);
     }
   };
-  // Auto-fix stays lint-only by construction: only the live lint diagnostics
-  // carry deterministic fixes (broken links need content edits).
   const handleAutoFix = () => {
     if (lintProvider !== null) {
       applyLintFixes(lintProvider, collectFixes(lintDiagnostics), docName);
     }
   };
-  // Hand one diagnostic to the user's preferred AI as a grounded fix prompt (the
-  // host resolves which AI, and reuses a live session or launches one). Desktop-
-  // only: on web nothing subscribes to the terminal-input event, so the button is
-  // withheld entirely by not passing `onAskAi`.
-  //
-  // `submit` because the composed text is a complete "fix this problem"
-  // instruction, not material the user is expected to finish writing — so a fresh
-  // session runs it, the same as a fresh CLI always has.
   const terminalLaunch = useTerminalLaunch();
   const handleAskAi = (diagnostic: DiagnosticLike) => {
     if (lintProvider === null) return;
@@ -170,9 +128,6 @@ export function DocPanel({
       submit: true,
     });
   };
-  // Bulk sibling of the per-row hand-off. Needs no `lintProvider`: the prompt
-  // names a scope and the agent reads its own problem list, so nothing is read
-  // out of the open doc's CRDT.
   const handleFixWithAi = (scope: PanelScope) => {
     requestActiveTerminalInput(
       composeFixAllProblemsTerminalPaste(scope === 'doc' ? docName : null),
@@ -181,36 +136,17 @@ export function DocPanel({
       },
     );
   };
-  // Single-file `ok <file>` drops Links, Graph and Timeline: the first two need
-  // a multi-doc knowledge base and the third is git history, all empty or inert
-  // for a lone git-off file. Linting applies to any single file, so Problems
-  // stays — and so does Comments: the queue spans documents, which is why that
-  // tab used to go too, but the panel is where a comment is READ, and a
-  // single-file session can carry comments like any other, so withholding it
-  // left them unreadable. What single-file drops there is the project SCOPE
-  // inside the tab, which `CommentsTab` handles. A persisted selection naming a
-  // dropped tab coerces back to Outline below, so the rail never renders a
-  // hidden panel.
   const singleFile = useSingleFileMode();
   const tabs = singleFile ? TABS.filter((tab) => SINGLE_FILE_TABS.includes(tab.id)) : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
-  // Published for surfaces that offer a route TO the queue — the selection
-  // composer withholds its "View comments" button while the reader is already
-  // looking at one. The effective tab rather than `activeTab`: a persisted
-  // selection can name a tab this mode does not offer (Links and Graph in
-  // single-file), and the button must stay on offer when the tab it points at
-  // is not the one showing.
   useEffect(() => {
     setCommentsPanelOnScreen(!isCollapsed && mode === 'doc' && effectiveTab === 'comments');
     return () => setCommentsPanelOnScreen(false);
   }, [isCollapsed, mode, effectiveTab]);
   return (
     <>
-      {/* In `'doc'` mode: the info sub-tabs render as the panel header.
-          In `'agent'` mode: no header row — `ActivityModeContent` owns its
-          own header (avatar + back-arrow), which eliminates the empty-row
-          footprint the standalone back-arrow used to have. */}
+      {}
       {showTabStrip ? (
         <div className="flex flex-row items-center justify-center gap-3 p-2">
           <ToggleGroup
@@ -258,9 +194,6 @@ export function DocPanel({
 
       {mode === 'doc' ? (
         <div
-          // Tabpanel semantics only apply when the tab strip (tablist) is shown.
-          // In single-file mode the strip is dropped, so the Outline renders as
-          // a plain region with no dangling `aria-labelledby` to a missing tab.
           {...(showTabStrip
             ? {
                 role: 'tabpanel' as const,

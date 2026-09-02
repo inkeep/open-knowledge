@@ -18,15 +18,12 @@ import { ORIGIN_TEXT_TO_TREE, ORIGIN_TREE_TO_TEXT, setupObservers } from './obse
 const mdManager = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
 
-/** Populate XmlFragment from markdown */
 function applyMarkdown(doc: Y.Doc, fragment: Y.XmlFragment, md: string) {
   const json = mdManager.parse(md);
   const pmNode = schema.nodeFromJSON(json);
   const meta = { mapping: new Map(), isOMark: new Map() };
   updateYFragment(doc, fragment, pmNode, meta);
 }
-
-// --- Shimmer Prevention ---
 
 describe('Shimmer prevention', () => {
   test('S01: single XmlFragment edit → bounded observer firings', async () => {

@@ -1,11 +1,3 @@
-/**
- * App-specific JsxInline extension — extends core with React NodeView.
- *
- * The core JsxInline handles schema + markdown. This version adds the
- * React NodeView renderer that dispatches to the descriptor registry so
- * registered inline components (`<Callout />`, etc.) render as widgets
- * instead of source text. Mirrors the shape of `./jsx-component.ts`.
- */
 import { JsxInline as BaseJsxInline } from '@inkeep/open-knowledge-core';
 import { NodeSelection, Plugin } from '@tiptap/pm/state';
 import { ReactNodeViewRenderer } from '@tiptap/react';
@@ -25,19 +17,8 @@ export const JsxInline = BaseJsxInline.extend<{ docName: string }>({
 
   addProseMirrorPlugins() {
     return [
-      // Click on a REGISTERED inline widget → NodeSelection (which opens the
-      // PropPanel popover via the view's selection-sync). PM-native
-      // handleClickOn because PM's own mousedown handling wins over React
-      // synthetic handlers on the node view DOM — a React onMouseDown never
-      // fires reliably here. Thin-shape nodes keep default text-caret
-      // behavior (their source text is editable prose).
       new Plugin({
         props: {
-          // DOM-anchored: clicks land on the widget's inner chrome and PM's
-          // click-position mapping skips the contentEditable=false subtree,
-          // so `handleClickOn` never surfaces the jsxInline node. Resolve
-          // the node from the clicked element instead and select it —
-          // mousedown (not click) so PM's own caret placement never runs.
           handleDOMEvents: {
             mousedown(view, event) {
               const target = event.target;

@@ -2820,6 +2820,7 @@ msgstr "{repoName} ক্লোন করা হচ্ছে…"
 msgid "Cloning..."
 msgstr "ক্লোন করা হচ্ছে…"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4775,7 +4776,6 @@ msgid "Disconnecting"
 msgstr "সংযোগ বিচ্ছিন্ন করা হচ্ছে"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
@@ -7313,6 +7313,10 @@ msgstr "শেয়ার URL সঠিক নয়।"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "অবৈধ YAML"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "এটি OpenKnowledge এবং এর সহায়ক প্রসেসগুলির জন্য macOS-এর রেকর্ড করা ক্র্যাশ রিপোর্টও যুক্ত করে, শুধু আমাদেরগুলি, কখনও অন্য কোনও অ্যাপের নয়।"
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

@@ -6,13 +6,6 @@ import { toPosix } from './path-utils.ts';
 export interface WatcherLocalTargetInventory {
   documentTargets: readonly string[];
   fileTargets: readonly string[];
-  /**
-   * Every non-excluded directory the watcher indexes — including empty and
-   * asset-only folders, which have no doc descendants to derive from. This is
-   * the folder-existence oracle's watcher half; consumers union it with the
-   * admitted docs' ancestors (covering CRDT-live docs not yet on disk), the
-   * same union the client's folder navigation uses.
-   */
   folderTargets: readonly string[];
 }
 
@@ -20,8 +13,6 @@ type LocalTargetWatcher = Pick<
   WatcherHandle,
   'getAllFilesIndex' | 'getFileIndexGeneration' | 'getFolderAliasIndex'
 > &
-  // Optional so narrow harness stubs keep working; a missing accessor just
-  // means "no injected folders" (the doc-ancestor half still applies).
   Partial<Pick<WatcherHandle, 'getFolderIndex'>>;
 
 interface CachedWatcherInventory {
@@ -61,13 +52,6 @@ function projectFolderAliases(
   }
 }
 
-/**
- * Build the canonical local-target existence snapshot from the seeded watcher.
- * Every admitted entry is represented by its indexed key, direct aliases,
- * canonical realpath identity, and directory-symlink projections. A missing
- * watcher is distinct from an authoritative empty inventory so callers can
- * fail closed during startup degradation.
- */
 export function localTargetInventoryFromWatcher(
   watcher: LocalTargetWatcher | null | undefined,
   contentDir: string,
@@ -90,7 +74,6 @@ export function localTargetInventoryFromWatcher(
   return inventory;
 }
 
-/** Pure index-boundary variant shared by startup and write-time assessment. */
 export function localTargetInventoryFromIndexes(
   allFiles: ReadonlyMap<string, FileIndexEntry>,
   folderAliases: ReadonlyMap<string, string>,

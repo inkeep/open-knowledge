@@ -97,7 +97,6 @@ describe('createDebugIpc', () => {
     expect(ipc.pendingSize()).toBe(2);
     expect(utility.posted.map((m) => m.correlationId)).toEqual(['corr-1', 'corr-2']);
 
-    // Reply to p2 first
     ipc.handleUtilityMessage({
       type: 'debug-keyring-smoke-result',
       correlationId: 'corr-2',
@@ -181,11 +180,6 @@ describe('createDebugIpc', () => {
       isDebugAllowed: () => true,
       generateCorrelationId: () => `id-${++counter}`,
     });
-    // Attach catch handlers eagerly — `cancelPendingForUtility` resolves the
-    // rejections synchronously, so bun's unhandled-rejection tripwire fires
-    // if we let the promises float without handlers even for one microtask.
-    // Real callers always have an await/catch in their flow (renderer's
-    // ipcRenderer.invoke); this test setup replicates that discipline.
     const p1 = ipc.requestKeyringSmoke({}).catch((e) => e);
     const p2 = ipc.requestKeyringSmoke({}).catch((e) => e);
     expect(ipc.pendingSize()).toBe(2);
@@ -207,8 +201,6 @@ describe('createDebugIpc', () => {
       isDebugAllowed: () => true,
       generateCorrelationId: () => `id-${++counter}`,
     });
-    // Same eager catch discipline as the cancel test above — the cancelled
-    // utilityA promise rejects synchronously from cancelPendingForUtility.
     const pA = ipc.requestKeyringSmoke(senders.a).catch((e) => e);
     const pB = ipc.requestKeyringSmoke(senders.b);
 

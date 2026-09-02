@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-// The facade dynamic-imports the impl on every highlight call; mocking it
-// keeps shiki (and its grammar payloads) out of the unit tier entirely.
 const tokenize = vi.fn();
 vi.mock('./code-highlighter-impl', () => ({ tokenize }));
 
@@ -49,7 +47,6 @@ describe('codeHighlighter facade', () => {
     expect(codeHighlighter.highlight(options, callback)).toBeNull();
     await flush();
     expect(callback).toHaveBeenCalledWith(RESULT);
-    // Cached now — a repeat call resolves synchronously without re-tokenizing.
     tokenize.mockClear();
     expect(codeHighlighter.highlight(options, vi.fn())).toEqual(RESULT);
     expect(tokenize).not.toHaveBeenCalled();
@@ -86,8 +83,6 @@ describe('codeHighlighter facade', () => {
     expect(codeHighlighter.highlight(options, first)).toBeNull();
     expect(codeHighlighter.highlight(options, second)).toBeNull();
     await flush();
-    // Both waiters hear the result; neither is double-delivered when the
-    // second in-flight tokenize also resolves (delivery dedupes, not tokenize).
     expect(first).toHaveBeenCalledTimes(1);
     expect(first).toHaveBeenCalledWith(RESULT);
     expect(second).toHaveBeenCalledTimes(1);
@@ -102,16 +97,13 @@ describe('codeHighlighter facade', () => {
       ({ code: `entry-${i}`, language: 'json', themes }) as Parameters<
         typeof codeHighlighter.highlight
       >[0];
-    // Fill past the 400-entry limit so one eviction pass runs.
     for (let i = 0; i < 401; i++) {
       codeHighlighter.highlight(opts(i), vi.fn());
       await flush();
     }
-    // The newest entry survives eviction and stays a synchronous cache hit…
     tokenize.mockClear();
     expect(codeHighlighter.highlight(opts(400), vi.fn())).toEqual(RESULT);
     expect(tokenize).not.toHaveBeenCalled();
-    // …while the oldest was evicted and misses again.
     expect(codeHighlighter.highlight(opts(0), vi.fn())).toBeNull();
   });
 });

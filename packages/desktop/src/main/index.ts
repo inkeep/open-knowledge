@@ -1,32 +1,3 @@
-/**
- * Main-process entry for `@inkeep/open-knowledge-desktop`.
- *
- * Boot sequence (the prefix of `app.whenReady()` is owned by `runBootstrap`
- * in `./bootstrap.ts`):
- *   1. app.whenReady()
- *   2. runBootstrap(deps)
- *      a. loadAppState + evaluateSchemaCompatibility
- *      b. installLocalhostCorsInjector
-      b'. installEmbedRefererRewriter (Referer fix for YouTube embeds under file://)
- *      c. registerIpcHandlers — must precede (d) so the renderer's
- *         `ok:theme:set-source` / `ok:theme:applied` channels are reachable
- *         when the renderer mounts
- *      d. nativeTheme.themeSource = 'system' — must precede any window
- *         construction so the cold-launch chrome correctness contract holds
- *      e. refreshApplicationMenu + installDockIcon
- *   3. armMcpWiring (first-launch MCP consent flow)
- *   4. If lastOpenedProject set AND not Option-held → open editor for that project
- *      Else → open Navigator window
- *   5. reclaimUserSkillsOnLaunch (seed-if-absent global skill install — never
- *      overwrites an existing copy; updates flow through the manual re-pull)
- *   6. bootAutoUpdater (wired last so update toasts find a real window)
- *   7. macOS Dock icon click → re-open Navigator
- *
- * Process model: one BrowserWindow ↔ one utilityProcess ↔ one Hocuspocus
- * server ↔ one contentDir. The window manager owns spawn/teardown; this
- * entry wires it into Electron lifecycle + IPC handlers.
- */
-
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -529,48 +500,10 @@ import {
   listWorktreeSelector,
 } from './worktree-service.ts';
 
-// Modern macOS chrome treatment. Three architectural facts the field set
-// encodes:
-//   - `show: false` defers OS-level visibility to the show-gate registry
-//     (`./show-gate.ts`), which AND-gates `BrowserWindow.show()` on both
-//     `ready-to-show` and the renderer's `ok:theme:applied` IPC event.
-//     Removing it lets the OS surface the window before chrome is theme-
-//     correct on cold launch.
-//   - `titleBarStyle: 'hiddenInset'` removes the OS-drawn title bar so
-//     `EditorHeader` is the chrome row directly. Traffic lights stay native
-//     and inset-positioned to match VS Code / Cursor / Linear.
-//   - `vibrancy: 'sidebar'` + `visualEffectState: 'followWindow'` paints an
-//     `NSVisualEffectView` material under the whole window. Electron auto-
-//     tracks `nativeTheme.themeSource`, so the chrome flips theme atomically
-//     with the renderer body — no `setBackgroundColor` fan-out is needed
-//     (under `transparent: true` it's a no-op anyway).
-//   - `transparent: true` lets the vibrancy material extend to window edges
-//     without an opaque sub-frame, eliminating trailing-edge artifacts during
-//     resize. First-paint pixel correctness lives in `packages/app/index.html`'s
-//     inline `<style>`, whose `__OK_CHROME_BG_*__` placeholders are
-//     build-substituted by `chrome-tokens-vite-plugin.ts` from the resolved
-//     `--sidebar` Tailwind token.
-// Default vibrancy material — `VibrancyMaterial` is the canonical narrow
-// union from `reduced-transparency-handler.ts`. Pinning here lets the
-// prefers-reduced-transparency restore path re-enable to the same material
-// without a wider cast.
 const VIBRANCY_DEFAULT: VibrancyMaterial = 'sidebar';
 
 const AGENTS_HUB_DIR = AGENTS_SKILLS_ROOT.split('/')[0] ?? '.agents';
 
-/**
- * The skills roots a confirmed install actually writes, `~`-relative and in
- * disclosure order. One walk feeds all three consumers - the destination list,
- * the install state, and the post-install verification - because those three
- * disagreeing is exactly the bug this replaced: `installed` probed only the
- * central store, while the reclaim writes that store solely when `~/.agents`
- * already exists (it never creates the hub). A user with a detected editor and
- * no hub installed successfully, failed verification, got
- * "Couldn't install <name>.", and kept a permanent Install button.
- *
- * Mapped by `skillsRoot`, not `hostDir + '/skills'` - Pi's user root is
- * `.pi/agent/skills`, which the naive shape renders wrong.
- */
 function installedSkillRoots(home: string): string[] {
   return [
     ...(existsSync(join(home, AGENTS_HUB_DIR)) ? [AGENTS_SKILLS_ROOT] : []),
@@ -578,26 +511,10 @@ function installedSkillRoots(home: string): string[] {
   ];
 }
 
-/** True when `name` occupies any root a confirmed install would have written. */
 function builtinSkillInstalled(home: string, name: string): boolean {
   return installedSkillRoots(home).some((root) => existsSync(join(home, root, name)));
 }
 
-/**
- * One derivation of a built-in skill's install disclosure — its own
- * description, three-tier cost, install state, and the exact destination paths
- * a confirmed install writes. Shared by the persistent Settings status and the
- * first-launch consent descriptor so both surfaces disclose the same skill the
- * same way and a destination-list drift between them is structurally impossible.
- *
- * `paths` mirrors the reclaim's own destination set and BOTH its gates: the hub
- * entry only when `~/.agents` already exists (the reclaim never creates it), and
- * `USER_SKILL_HOSTS` mapped by `skillsRoot` (not `hostDir + '/skills'` — Pi's
- * user root is `.pi/agent/skills`, which the naive shape renders wrong). Both
- * degrade fail-soft: a missing packaged asset gives an empty `sourceDir` (no
- * preview link, no cost), an unreadable bundle a null parse (no description, no
- * cost) — never a thrown group.
- */
 function computeBuiltinSkillDisclosure(home: string, id: (typeof USER_GLOBAL_BUNDLE_IDS)[number]) {
   const name = BUNDLE_SKILL_NAME[id];
   let sourceDir: string;
@@ -618,30 +535,8 @@ function computeBuiltinSkillDisclosure(home: string, id: (typeof USER_GLOBAL_BUN
   };
 }
 
-// Chrome stack is per-platform. Electron applies `titleBarStyle:
-// 'hiddenInset'` / `vibrancy` / `visualEffectState` / `transparent` /
-// `trafficLightPosition` on every platform that supports them — un-gated, a
-// Linux/Windows window would be a frameless transparent surface with no
-// usable chrome. The darwin spread keeps the mac vibrancy stack; non-darwin
-// gets `titleBarStyle: 'hidden'` + `titleBarOverlay` (OS-drawn min/max/close
-// over the renderer chrome row) + a solid theme-matched background from
-// `window-chrome.ts` (windows-linux-port chrome). `resizable`
-// stays at Electron's default true: the editor needs drag-resize, and the
-// transparent-windows-not-resizable note in Electron's
-// custom-window-styles tutorial has not surfaced on Electron 41.x macOS in
-// dogfooding (verified via the smoke matrix). If a future Electron upgrade
-// regresses this, the smoke job will catch it before users do.
-//
-// Non-darwin theme note: `nativeTheme.shouldUseDarkColors` is read at
-// module load for the initial chrome; a `nativeTheme.on('updated')`
-// listener (registered in bootstrap below) re-applies via
-// `applyThemeToWindow`, and covers windows created after a theme flip.
-// The active color theme's chrome colors, as last reported by a renderer over
-// `ok:theme:applied`. Undefined until the first renderer mounts, which is when
-// the default-theme snapshot in `window-chrome.ts` is the correct answer.
 let lastChromeColors: OkChromeColors | undefined;
 
-/** Repaint every live window's OS-drawn chrome from the active palette. */
 function fanOutChromeColors(): void {
   if (process.platform === 'darwin') return;
   for (const win of BrowserWindow.getAllWindows()) {
@@ -671,12 +566,6 @@ const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   },
 };
 
-// Editor windows in creation order, for cascade placement. `DEFAULT_WIN_OPTS`
-// carries no x/y, so Electron centers every window — N windows opened in a
-// burst (the post-update relaunch restore) land in one indistinguishable
-// stack. Each new editor window instead offsets down-right from the focused
-// window (or, while restored windows are still hidden behind the show gate
-// and nothing is focused, the most recently created one).
 const cascadeOrder: BrowserWindow[] = [];
 
 function pickCascadeAnchor(): BrowserWindow | null {
@@ -696,11 +585,6 @@ function pickCascadeAnchor(): BrowserWindow | null {
   return null;
 }
 
-/**
- * Register a window as a future cascade anchor and wire its removal. Split
- * from `applyCascadePosition` so windows restored to remembered bounds still
- * anchor later cascades without being repositioned themselves.
- */
 function registerCascadeAnchor(win: BrowserWindow): void {
   cascadeOrder.push(win);
   win.on('closed', () => {
@@ -724,14 +608,6 @@ function applyCascadePosition(win: BrowserWindow): void {
   registerCascadeAnchor(win);
 }
 
-/**
- * Position a new editor window: the project's remembered frame when one is
- * persisted and still usable on the current display set, else the cascade
- * default. Maximize / full-screen re-entry is deferred to the window's
- * `'show'` — both `maximize()` and macOS full-screen force the native window
- * visible, which would bypass the dual-signal show gate and resurface the
- * un-themed first-paint flash the gate exists to prevent.
- */
 function applyProjectWindowPlacement(win: BrowserWindow, projectPath: string | undefined): void {
   const saved = projectPath !== undefined ? appState.projectWindowBounds[projectPath] : undefined;
   const placement = resolveRestoredPlacement({
@@ -754,24 +630,11 @@ function applyProjectWindowPlacement(win: BrowserWindow, projectPath: string | u
   registerCascadeAnchor(win);
 }
 
-/**
- * Place a note window at its project's remembered frame, or cascade.
- *
- * Cascades rather than reusing the frame when another note window for the same
- * project is already sitting there — stacking a second pop-out exactly on top of
- * the first reads as nothing having happened. The remembered frame also goes
- * through the same display-intersection gate as project windows, so a frame
- * saved on a monitor that is no longer connected falls back to cascade instead
- * of opening off-screen.
- */
 function applyNoteWindowPlacement(
   win: BrowserWindow,
   projectRoot: string,
   restoredBounds?: PersistedWindowBounds,
 ): void {
-  // A restored window owns its recorded frame outright: it was positioned
-  // individually, and the collision check below is about NEW pop-outs stacking,
-  // which does not apply to putting a saved layout back.
   const saved = restoredBounds ?? appState.noteWindowBounds[projectRoot];
   const occupied =
     restoredBounds === undefined &&
@@ -794,15 +657,6 @@ function applyNoteWindowPlacement(
   registerCascadeAnchor(win);
 }
 
-/**
- * Track a note window's focus, for two consumers that both need "most recently
- * used": the restore snapshot's ordering, and the registry's tiebreak when
- * in-place navigation lands two windows on one (project, document) identity.
- *
- * Keyed on the window's CURRENT document, read at focus time rather than
- * captured at creation, so a window that navigated is ordered under the
- * identity it actually has.
- */
 function trackNoteWindowFocus(win: BrowserWindow): void {
   win.on('focus', () => {
     if (win.isDestroyed()) return;
@@ -821,7 +675,6 @@ function trackNoteWindowFocus(win: BrowserWindow): void {
   });
 }
 
-/** Persist a note window's frame as its project's remembered pop-out slot. */
 function trackNoteWindowBounds(win: BrowserWindow, projectRoot: string): void {
   const persist = () => {
     if (win.isDestroyed()) return;
@@ -837,14 +690,6 @@ function trackNoteWindowBounds(win: BrowserWindow, projectRoot: string): void {
   win.on('close', persist);
 }
 
-/**
- * Persist a project window's frame so the next open of the same project
- * restores it. macOS emits `'moved'` / `'resized'` once per completed drag
- * (not continuously), and the mode events + `'close'` are one-shot, so each
- * event persists synchronously — no debounce timer whose flush could be lost
- * to a quit. `getNormalBounds()` keeps the persisted rect at the
- * un-maximized / un-fullscreened frame while the flags remember the mode.
- */
 function trackProjectWindowBounds(win: BrowserWindow, projectPath: string): void {
   const persist = () => {
     if (win.isDestroyed()) return;
@@ -865,16 +710,6 @@ function trackProjectWindowBounds(win: BrowserWindow, projectPath: string): void
   win.on('close', persist);
 }
 
-// Focus-recency tracking for project windows. The sequence map orders the
-// relaunch-restore snapshot (least → most recently focused) and
-// `lastOpenedProject` follows focus so a cold boot reopens the project the
-// user was last IN, not the one they happened to open last. Frozen from the
-// first shutdown signal onward: teardown closes windows one by one and macOS
-// re-focuses a surviving window after each close, so tracking those events
-// would record "whichever window closed last" as the user's last-active
-// project, overwriting the truth captured before teardown began. A cancelled
-// quit leaves tracking frozen — degrading to the pre-tracking behavior
-// (`lastOpenedProject` still advances on every project OPEN), never worse.
 let projectFocusSeqCounter = 0;
 const projectFocusSeq = new Map<string, number>();
 let focusTrackingFrozen = false;
@@ -885,9 +720,6 @@ function freezeFocusTracking(reason: string): void {
   getLogger('lifecycle').info({ reason }, 'project focus tracking frozen for shutdown');
 }
 
-// Advance the focus-recency sequence for a window key (a project path, or a
-// loose-file window's canonical file path). Ordering only — never writes
-// `lastOpenedProject`.
 function recordWindowFocusSeq(key: string): void {
   projectFocusSeqCounter += 1;
   projectFocusSeq.set(key, projectFocusSeqCounter);
@@ -906,11 +738,11 @@ function trackProjectWindowFocus(win: BrowserWindow, projectPath: string): void 
   });
 }
 
-// Focus-recency for a loose single-file (ephemeral) window, keyed by its
-// canonical file path so it joins the restore ordering + post-restore raise.
-// MUST NOT write `lastOpenedProject`: an ephemeral window's "projectPath" is the
-// file's PARENT directory, which would poison the single-project restore
-// fallback (open `~/notes` as a project) and collide two loose files in one dir.
+/*
+ * STOP: never write `lastOpenedProject` from an ephemeral window. Its
+ * "projectPath" is the file's PARENT directory, which poisons the
+ * single-project restore fallback and collides two loose files in one dir.
+ */
 function trackEphemeralWindowFocus(win: BrowserWindow, fileKey: string): void {
   win.on('focus', () => {
     if (focusTrackingFrozen) return;
@@ -920,28 +752,11 @@ function trackEphemeralWindowFocus(win: BrowserWindow, fileKey: string): void {
   });
 }
 
-// Write-once guard so the richest pre-teardown snapshot wins. On the "Relaunch
-// now" path `prepareForRelaunch` snapshots first, then `quitAndInstall`
-// internally re-enters `before-quit`; on the silent install-on-quit path
-// `before-quit-for-update` snapshots before it stops servers, ahead of the
-// plain `before-quit`. Whichever hook fires first wins; later re-fires no-op.
 let windowRestoreSnapshotWritten = false;
 
-// Capture the full open-window set (projects + loose files) into
-// `pendingWindowRestore`, ordered least → most recently focused, so the next
-// boot restores everything and raises the window the user was last in. Called
-// at the earliest teardown-preceding hook of every clean-exit path (write-once).
-// Callers MUST `freezeFocusTracking` first so the close cascade can't corrupt
-// the order.
 function captureWindowRestoreSnapshot(reason: string): void {
   if (windowRestoreSnapshotWritten) return;
   windowRestoreSnapshotWritten = true;
-  // Note windows live outside `windowsByPath`, so `getOpenWindows()` cannot see
-  // them — they come from their own registry. Each carries the document it is
-  // showing NOW (in-place navigation may have moved it off the one it opened
-  // with) and its own frame. Both sets sort together, so focus recency is
-  // global; the boot filter re-groups projects ahead of pop-outs at open time
-  // while preserving that order within each group.
   const noteWindows: RestoredWindow[] = listNoteWindows().flatMap(({ windowId, context }) => {
     const win = BrowserWindow.fromId(windowId);
     if (!win || win.isDestroyed()) return [];
@@ -964,7 +779,6 @@ function captureWindowRestoreSnapshot(reason: string): void {
   );
   appState = { ...appState, pendingWindowRestore: windows };
   if (!saveAppState(appState)) {
-    // Persist failed — the next boot may not reopen everything that was open.
     console.warn('[main] failed to persist window-restore snapshot', {
       reason,
       windowCount: windows.length,
@@ -972,14 +786,6 @@ function captureWindowRestoreSnapshot(reason: string): void {
   }
 }
 
-/**
- * Production WS-upgrade probe — opens a fresh `WebSocket(url)`, resolves
- * `true` on `open`, `false` on `close` / `error` / timeout. Used by the
- * window-manager attach gate to refuse servers that lie about WS readiness
- * (HTTP responding but `/collab` upgrade hung). The deadline must comfortably
- * exceed loopback handshake latency (sub-millisecond on healthy local stacks)
- * but stay well under the 30 s `SyncTimeoutError` we're defending against.
- */
 function probeWsUpgrade(url: string, timeoutMs: number): Promise<boolean> {
   return new Promise<boolean>((resolveProbe) => {
     let settled = false;
@@ -988,10 +794,7 @@ function probeWsUpgrade(url: string, timeoutMs: number): Promise<boolean> {
       settled = true;
       try {
         ws.close();
-      } catch {
-        // Best-effort — close on a not-yet-connected socket throws on some
-        // platforms; we already have our verdict.
-      }
+      } catch {}
       resolveProbe(ok);
     };
     const ws = new WebSocket(url);
@@ -1002,14 +805,6 @@ function probeWsUpgrade(url: string, timeoutMs: number): Promise<boolean> {
   });
 }
 
-/**
- * Quarantine a corrupt `state.json` to a timestamped sibling and log so
- * operations can correlate "recents disappeared" reports to the corruption
- * event. Pure I/O — the return value is `emptyState()` either way; the
- * side effects are the log line and the `state.json.corrupt-<ts>` file.
- * Extracted so both the JSON-parse-failure branch and the schema-invalid
- * branch route through the same treatment.
- */
 function quarantineCorruptState(statePath: string, reason: string, err?: unknown): void {
   console.warn('[main] state.json corrupt — quarantining and starting fresh', {
     reason,
@@ -1036,15 +831,9 @@ function loadAppState(): AppState {
   try {
     raw = JSON.parse(readFileSync(statePath, 'utf-8'));
   } catch (err) {
-    // Unparseable JSON (truncated write, manual hand-edit gone wrong).
     quarantineCorruptState(statePath, 'unparseable-json', err);
     return emptyState();
   }
-  // Schema-invalid (parseable JSON but wrong root type / missing required
-  // fields): route through the same quarantine treatment as the unparseable
-  // branch so silent-fallback-on-corrupt-state doesn't lose recents + auto-
-  // update gates without a trace. Left unquarantined would re-arm Toast B on
-  // the next update for a version the user has been running for months.
   const parsed = parseAppState(raw);
   if (!parsed) {
     quarantineCorruptState(statePath, 'schema-invalid');
@@ -1053,58 +842,20 @@ function loadAppState(): AppState {
   return parsed;
 }
 
-/**
- * Persist app state atomically via the pure helper in `state-store.ts` —
- * separation so the atomic-write behavior can be unit-tested without
- * Electron's `app` module (`app.getPath('userData')` is the sole Electron
- * dependency). Returns the disk-persist success boolean so callers that
- * need rollback semantics can distinguish in-memory-only updates from
- * fully-persisted ones; callers that don't care get the same silent
- * behavior by ignoring the return.
- */
 function saveAppState(state: AppState): boolean {
   return saveAppStateToDir(app.getPath('userData'), state);
 }
 
 let appState: AppState = emptyState();
-/**
- * Set at boot when the persisted state's `schemaVersion` exceeds
- * `MAX_SUPPORTED_SCHEMA_VERSION` — the running build was rolled back to from
- * a future build (typically a beta) that wrote a state shape this build
- * cannot safely parse. Renderer surfaces (refuse-downgrade Toast / dialog)
- * read via `getPendingSchemaIncompatibility()` on mount.
- */
 let pendingSchemaIncompatibility: SchemaIncompatibilityDiagnostic | null = null;
 export function getPendingSchemaIncompatibility(): SchemaIncompatibilityDiagnostic | null {
   return pendingSchemaIncompatibility;
 }
-/**
- * True iff THIS launch is the first run after the app version changed — an
- * auto-update installed a new build. A per-session snapshot captured at
- * bootstrap from `appState.lastSeenVersion` BEFORE the auto-updater advances
- * that marker (boot step 6, after the first project window opens at step 4), so
- * it stays true for every project opened this run. The window-manager reads it
- * (via the `isFirstLaunchAfterUpgrade` dep) to auto-restart a pre-upgrade
- * survivor server instead of prompting. `lastSeenVersion === null` is a fresh
- * install, not an upgrade → false.
- */
 let firstLaunchAfterUpgrade = false;
-/**
- * Drop the pending diagnostic so subsequent `ok:state:query` calls return
- * `null` for `schemaIncompatibility`. Called from the refuse-downgrade UX's
- * explicit reset (`ok:state:reset-incompatible`). Silent no-op if no
- * diagnostic was set.
- */
 export function clearPendingSchemaIncompatibility(): void {
   pendingSchemaIncompatibility = null;
 }
 
-/**
- * Toggle app-wide spell checking from either surface (the in-editor context
- * menu or the Edit-menu checkbox). Updates the live session, persists the flag,
- * and rebuilds the application menu so the menu-bar checkmark tracks the new
- * state. Single source so both surfaces stay consistent.
- */
 function setSpellCheckEnabledAppWide(enabled: boolean): void {
   session.defaultSession.setSpellCheckerEnabled(enabled);
   appState = setSpellCheckEnabledState(appState, enabled);
@@ -1112,12 +863,6 @@ function setSpellCheckEnabledAppWide(enabled: boolean): void {
   refreshApplicationMenu();
 }
 
-/**
- * Apply the persisted spell-check flag to the shared session and attach the
- * native editor context menu to a window. Called at each window-creation site.
- * The flag is read fresh per right-click via the `appState` closure. Why one
- * app-wide flag: see `AppState.spellCheckEnabled` in state-store.ts.
- */
 function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   session.defaultSession.setSpellCheckerEnabled(appState.spellCheckEnabled);
   const openExternalSafely = handleShellOpenExternal({
@@ -1125,9 +870,6 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   });
   attachSpellcheckContextMenu(win.webContents, {
     isSpellCheckEnabled: () => appState.spellCheckEnabled,
-    // The native menu attaches to every editable field in the window, so the
-    // view-in-source row needs the renderer's answer for whether the jump is
-    // live. Read per right-click, like the spell-check flag above.
     canViewInSource: () => editorViewMenuStates.get(win.id).canViewInSource === true,
     setSpellCheckEnabled: setSpellCheckEnabledAppWide,
     addToDictionary: (word) => {
@@ -1139,13 +881,7 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
       });
     },
     viewInSource: () => {
-      // Route to the window that was right-clicked. Guard the click→close race:
-      // the menu click fires async, and a send on a destroyed webContents throws
-      // and crashes main (no userland uncaughtException handler).
       if (win.isDestroyed()) return;
-      // Launcher-free even though a menu is open: this one is a native
-      // `Menu.popup()`, so it is OS chrome rather than a DOM layer — nothing a
-      // renderer-side capture could see, and nothing worth waiting on.
       sendToRenderer(win.webContents, 'ok:menu-action', {
         action: 'toggle-source',
         origin: { launcherBorne: false },
@@ -1158,14 +894,6 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
 }
 let navigatorWindow: BrowserWindowLike | null = null;
 let wm: WindowManager;
-/**
- * Module-scoped reap surface of the docked-terminal PTY mediator, published by
- * `registerIpcHandlers` (which runs before any window is created). Lifted out
- * of that function so the editor-window factory can wire each window's
- * `'closed'` → per-window reap and the `will-quit` handler can reap them all.
- * Null only before `registerIpcHandlers` runs, which precedes any window or
- * quit — callers guard with `?.` / a truthiness check.
- */
 let terminalReaper: TerminalReaper | null = null;
 
 function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
@@ -1178,36 +906,9 @@ function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
     },
   });
 }
-/**
- * Every open Slidev deck (server + its window), keyed by deck path. Module-scoped
- * so the `ok:slides:dispatch` `open` handler can focus-existing / open, each
- * window's close handler can reap its own server, and the `will-quit` handler can
- * reap them all — no Slidev process outlives the app. Dependency-free, so it is
- * created eagerly rather than published by `registerIpcHandlers`.
- */
 const slidesDeckRegistry = createSlidesDeckRegistry();
-/**
- * Per-window docked-terminal visibility, recorded from the renderer's view-menu
- * push so a reloaded renderer can restore an expanded dock. The durable
- * project-or-loose-file-keyed copy in AppState carries it across a full restart.
- */
 const dockVisibleForWindow = new Map<number, boolean>();
-/**
- * Per-window agents-panel visibility, the ACP twin of {@link dockVisibleForWindow}.
- * Separate map rather than a field on one record because the two panels are
- * independent surfaces whose renderer pushes arrive on their own edges.
- */
 const agentPanelVisibleForWindow = new Map<number, boolean>();
-/**
- * Per-window tab order + active key for each panel, recorded from the renderer's
- * `ok:terminal:set-dock-state` push so a reloaded renderer restores each panel's
- * arrangement. Keyed by surface because the terminal dock and agents panel write
- * independently — one shared record would let each write erase the other's keys
- * and clobber the shared active tab. Same windowId-keyed lifetime as
- * {@link dockVisibleForWindow} — cleared on window-close and app-quit. Terminal
- * order also has a state-keyed restart snapshot because PTY ids cannot survive a
- * process exit; agent-thread ids remain server-owned and reload-only here.
- */
 type DockOrderRecord = { order: string[]; activeKey: string | null };
 const dockOrderForWindow = new Map<
   number,
@@ -1238,25 +939,10 @@ function persistTerminalDockForWindow(
   appState = committed.state;
   return committed.result;
 }
-/**
- * Singleton show-gate registry — coordinates window.show() against the
- * dual-signal contract (`ready-to-show` + `ok:theme:applied`). Module-level
- * so the IPC handler at registerIpcHandlers (registered before any window
- * exists) and the editor + Navigator factories all share the same instance.
- * Pure state + a setTimeout closure; no Electron import.
- */
-/**
- * Module-level launch-waterfall aggregator. Always on (cost is a Map of
- * numbers + one log line). `otelEnabled` is filled in at `app.whenReady()` once
- * `beginRoot()` reports whether the main-process OTel root stood up (Plan A) or
- * degraded (Plan B); until then it reads false. Only the FIRST project window
- * of the launch stamps `windowShown` + emits — see `firstWindowShown`.
- */
 const startupWaterfall = new StartupWaterfall({ otelEnabled: false });
 let firstWindowShown = false;
 let waterfallDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** Emit the timeline once (idempotent) and end the OTel root. */
 function emitStartupWaterfall(): void {
   if (waterfallDeadlineTimer !== undefined) {
     clearTimeout(waterfallDeadlineTimer);
@@ -1265,29 +951,16 @@ function emitStartupWaterfall(): void {
   const payload = startupWaterfall.emit({
     info: (obj, msg) => getLogger('startup').info(obj, msg),
   });
-  // `emit` returns a payload only on the first successful call, so this closes
-  // the trace exactly once.
   if (payload !== undefined) {
-    // Replay the main-process phases as child spans under the launch root, so
-    // the trace shows the main-side launch (app-ready → bootstrap → spawn →
-    // shown) and not just the server `ok.boot` child. No-op when Plan A
-    // degraded. Children first — `endRoot` clears the context they parent into.
     if (startupWaterfall.otelEnabled) {
       for (const phase of startupWaterfall.mainPhaseIntervals()) {
         childSpan(phase.name, {}, phase.startMs, phase.endMs);
       }
     }
-    // End the OTel root at the same logical point the timeline closes.
     endRoot();
   }
 }
 
-/**
- * Called from the show-gate the instant the first project window becomes
- * visible. Marks `windowShown`, then either emits now (best-effort inputs
- * already present) or arms a short deadline so a missing server-info fetch /
- * renderer report can't withhold the line indefinitely.
- */
 function onFirstWindowShown(): void {
   if (firstWindowShown) return;
   firstWindowShown = true;
@@ -1304,101 +977,40 @@ function onFirstWindowShown(): void {
 }
 
 let serverBootFetched = false;
-/**
- * Fetch `GET /api/server-info` once at launch and fold the server boot timings
- * into the waterfall. Best-effort: a fetch failure / missing `boot` (dev-server
- * path) just leaves the server fields absent. If the window is already shown
- * (deadline path or fast launch), re-check the emit so the line can fire as
- * soon as the boot data lands.
- */
 function maybeFetchServerBoot(apiOrigin: string): void {
   if (serverBootFetched) return;
   serverBootFetched = true;
   void (async () => {
     try {
-      // Bind the fetch lifetime to the waterfall flush deadline: if the server
-      // hangs after lock-ready but before responding, the deadline emits the
-      // line without server data anyway, and this releases the socket at the
-      // same wall-clock point rather than holding it open until process exit.
       const res = await fetch(`${apiOrigin}/api/server-info`, {
         signal: AbortSignal.timeout(startupWaterfall.flushDeadlineMs),
       });
       if (!res.ok) return;
       const parsed = ServerInfoSuccessSchema.safeParse(await res.json());
       if (!parsed.success || parsed.data.boot === undefined) return;
-      // No cast: `parsed.data.boot` (core's `ServerInfoBoot`) must stay
-      // structurally assignable to the waterfall's `ServerBootTimings`; if the
-      // two ever drift, tsc fails here rather than silently coercing.
       startupWaterfall.ingestServerBoot(parsed.data.boot);
       if (firstWindowShown && startupWaterfall.canEmit) emitStartupWaterfall();
-    } catch {
-      // Server-info fetch is best-effort instrumentation — never surface.
-    }
+    } catch {}
   })();
 }
 
-/** Fold renderer launch marks into the waterfall, re-checking emit. */
 function ingestRendererStartupMarks(marks: RendererMarks): void {
   startupWaterfall.ingestRendererMarks(marks);
   if (firstWindowShown && startupWaterfall.canEmit) emitStartupWaterfall();
 }
 
-/**
- * True while a boot-restore is opening its window set, cleared once the
- * post-restore raise has run. Feeds {@link shouldRevealInactiveNow} alongside
- * {@link appHasEverBeenActive} and {@link appIsActive} — all three terms are
- * load-bearing and that function documents why.
- *
- * Its own job is to scope the quiet reveal to a restore and defer the whole
- * foreground question to a single decision at the end: the raise in the restore
- * branch.
- */
 let restoreRevealInactive = false;
 
-/**
- * Whether OpenKnowledge is the foreground application right now, tracked from
- * the app-level activation events. Read at the end of a restore to decide
- * whether the raise may take foreground.
- */
 let appIsActive = false;
 
-/**
- * Whether the app has been frontmost at least once this run. The
- * anti-self-suppression term of {@link shouldRevealInactiveNow}; removing it
- * is a worse bug than the one it guards against, for the reasons documented
- * there.
- */
 let appHasEverBeenActive = false;
 
-/**
- * True when a deep link opened a window while a restore was still in flight.
- *
- * Suppresses the post-restore raise entirely. Without it the raise, which waits
- * for every reveal to settle, would land after the deep-link window and put the
- * previously-focused restore target on top of the thing the user just asked
- * for. Ordering only, not a reveal concern: the deep-link window is already
- * visible and frontmost by then.
- */
 let deepLinkClaimedWindowDuringRestore = false;
 
-/**
- * Stop suppressing activation for subsequent window reveals. Called once the
- * restore's own foreground decision has been made.
- */
 function endRestoreQuietReveal(): void {
   restoreRevealInactive = false;
 }
 
-/**
- * Hand the restore's foreground claim to a deep link that arrived mid-restore.
- *
- * Explicit user intent outranks restore politeness, in both directions: the
- * requested window reveals with a focusing `show()` rather than quietly, AND
- * the restore's trailing raise stands down instead of burying it. Every seam
- * that opens or surfaces a window on behalf of an `openknowledge://` URL calls
- * this — project opens, single-file opens, and shares that resolve to the
- * Navigator, which reaches the same show gate as any other window.
- */
 function yieldRestoreToDeepLink(): void {
   endRestoreQuietReveal();
   deepLinkClaimedWindowDuringRestore = true;
@@ -1412,7 +1024,6 @@ const showGate: ShowGateRegistry = createShowGateRegistry({
   },
   setTimeout: (cb, ms) => setTimeout(cb, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-  // Startup waterfall: first shown window stamps `windowShown` + emits.
   onShown: () => onFirstWindowShown(),
   shouldRevealInactive: () =>
     shouldRevealInactiveNow({
@@ -1422,18 +1033,6 @@ const showGate: ShowGateRegistry = createShowGateRegistry({
     }),
 });
 
-/**
- * Deps for the prefers-reduced-transparency runtime path. The renderer's
- * matchMedia listener pushes `reducedTransparency` via the existing
- * `ok:theme:applied` channel; the handler iterates BrowserWindow instances
- * and toggles vibrancy material — `null` to disable, the cold-launch
- * material (`VIBRANCY_DEFAULT`) to re-enable.
- *
- * `getAllWindows` casts through `unknown` so the structural
- * `BrowserWindowVibrancyTarget` shape doesn't depend on Electron's type;
- * tests inject a captured-array stub instead. Same precedent as the
- * `BrowserWindowLike` cast pattern in window-manager + show-gate.
- */
 const reducedTransparencyDeps: ReducedTransparencyDeps = {
   getAllWindows: () =>
     BrowserWindow.getAllWindows() as unknown as readonly BrowserWindowVibrancyTarget[],
@@ -1442,76 +1041,16 @@ const reducedTransparencyDeps: ReducedTransparencyDeps = {
     console.warn(line);
   },
 };
-/**
- * Auto-updater handle — single instance per app launch. Wired at the end of
- * `app.whenReady()` and torn down on `app.on('will-quit')` per the canonical
- * shutdown ordering. Null before whenReady and after destroy.
- */
 let autoUpdaterHandle: StartAutoUpdaterHandle | null = null;
-/**
- * Mid-session drag-replace detector. macOS-only (the bug is AppKit-specific).
- * Periodically compares the on-disk Info.plist version against
- * `app.getVersion()`; surfaces a "Restart to finish" prompt when they diverge.
- * Null in dev, on non-macOS, or before whenReady.
- */
 let bundleReplaceWatcherHandle: BundleReplaceWatcherHandle | null = null;
 let debugIpc: DebugIpcHandle | null = null;
-/**
- * First-launch MCP consent handle. Armed by `runMcpWiringOnFirstLaunch`
- * inside `app.whenReady()` when the user-scoped marker is absent; torn down
- * on `app.on('will-quit')` so IPC handlers don't outlive the app. Null
- * when the wiring no-ops (marker present, dev mode, non-macOS, etc.).
- */
 let mcpWiringHandle: RunMcpWiringHandle | null = null;
-/**
- * Permanent sink for the preload's fire-and-forget `*:renderer-ready`
- * mount-ack invokes. Every renderer fires them at module init, but the
- * consent flows that consume them are armed only transiently — without a
- * standing handler, every other packaged boot logs Electron's
- * "No handler registered for 'ok:…:renderer-ready'" error to stderr. Created
- * at the top of `bootPrimaryInstance` (before any window can mount a
- * renderer); the consent flows receive its facade instead of the raw
- * `ipcMain` so their one-shot register/removeHandler lifecycles arm and
- * disarm inside the sink. Null only in the duplicate-instance and
- * driver-smoke boot paths, where the flows never arm.
- */
 let rendererReadySink: RendererReadySink | null = null;
-/**
- * First-party crash detection (local-only crash reporter, process-gone
- * listeners, boot-time dirty-shutdown/minidump scan). Created at the top of
- * `bootPrimaryInstance`; null only in the duplicate-instance and driver-smoke
- * boot paths, which never prompt.
- */
 let crashDetection: CrashDetection | null = null;
-/**
- * Renderer crash recovery — the window-facing half of `render-process-gone`
- * (crashDetection owns the report-invitation half and stays window-blind).
- * Created alongside crashDetection at the top of `bootPrimaryInstance`; null
- * only in the duplicate-instance and driver-smoke boot paths, which never
- * own a window long enough to recover one.
- */
 let rendererRecovery: RendererRecovery | null = null;
-/** Sentinel liveness heartbeat; cleared on `will-quit` with the other teardowns. */
 let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
-/**
- * Whether this session already recorded the OS's `session-end` (win32). Every
- * open window is told separately about the one ending, and the handler runs
- * inside the few seconds Windows allows before it kills us, so the sentinel
- * write happens once instead of once per window. Never reset: a session that
- * has been told the OS is ending it does not get told otherwise.
- */
 let osShutdownNoted = false;
 
-/**
- * Records the server's last exit (timestamp, pid, code, killing signal, which
- * host observed it, and Electron's process-gone reason where one applies) to
- * `<lockDir>/last-server-exit.json` for bug-report diagnosis. Lazy singleton so
- * all three participants — the window-manager fork path, the `child-process-gone`
- * listener, and the detached-spawn observer wired at the spawn closure below —
- * share one correlator rather than each building its own. That sharing is what
- * `tests/integration/server-exit-wiring.test.ts` pins: a per-path recorder would
- * split the reason correlation the fork path depends on.
- */
 let serverExitRecorder: ServerExitRecorder | null = null;
 function getServerExitRecorder(): ServerExitRecorder {
   if (serverExitRecorder === null) {
@@ -1523,39 +1062,8 @@ function getServerExitRecorder(): ServerExitRecorder {
   return serverExitRecorder;
 }
 
-/**
- * Full-resolution PNG bytes of the app screenshot captured when a window's
- * report-a-bug dialog opened, keyed by the sender `webContents.id`. Held in
- * main (never handed to the renderer as a path) until the matching `create`
- * stages it into the bundle — mirrors the trust model of the crash minidump.
- * The renderer only ever receives a downscaled data-URL preview. Each entry
- * carries the PNG plus its `destroyed`-listener reaper (so re-capture can drop
- * the stale listener). A capture is kept (not dropped on consume) so a
- * re-create after "Back" reuses the same open-time screenshot the user
- * previewed; it is overwritten by the next open's capture and deleted when the
- * window's contents are destroyed, so at most one screenshot per live window
- * sits in memory.
- *
- * This slot answers "what did the window look like when its dialog opened?", so
- * it is the right source for `create`, which runs while that dialog is still up.
- * It is NOT a report identity — `send` uses the hold below instead.
- */
 const bugReportScreenshots = new Map<number, BugReportScreenshotEntry>();
 
-/**
- * Screenshots held per REPORT for the standalone Linear asset upload, filled by
- * `create` the moment a bundle (and therefore a report id) exists. Sends run in
- * the background and stay retryable, so by the time one is retried the sender
- * window's slot above may belong to a report composed afterwards; resolving the
- * asset by report id is what keeps a retry attaching its own picture.
- *
- * Entries are filed under the composing window and released when its contents are
- * destroyed, because the send toast that can retry a report lives in that
- * window's renderer: once it is gone nothing can ask for the bytes again, and a
- * picture of the user's whole screen should not sit in memory waiting for the
- * cap to evict it. `MAX_PENDING_REPORT_SCREENSHOTS` is the backstop behind that,
- * not the lifetime.
- */
 const bugReportSendScreenshots = createBugReportScreenshotHold({
   onEvict: (reportId) => {
     getLogger('bug-report').info(
@@ -1565,23 +1073,10 @@ const bugReportSendScreenshots = createBugReportScreenshotHold({
   },
 });
 
-/**
- * Windows that already carry a `destroyed` reaper for the hold above. One
- * listener per composing window however many reports it files — the sibling
- * capture store learned the same lesson about accumulating MaxListeners-worth of
- * reapers on a single `WebContents`.
- */
 const bugReportSendScreenshotReapers = new Set<number>();
 
-/** Max width (logical px) of the screenshot preview data-URL handed to the renderer. */
 const BUG_REPORT_SCREENSHOT_PREVIEW_WIDTH = 720;
 
-/**
- * Durable per-report sidecar record backing the history/retry list — owns the
- * write-on-generate, the send-state transitions, the retention sweep, and the
- * process-local in-flight lock, all scoped to `~/.ok/bug-reports/`. The logger
- * is a thin adapter so `getLogger` resolves at call time, not module load.
- */
 const bugReportSidecar = createBugReportSidecarStore({
   dir: okBugReportsDir(),
   logger: {
@@ -1589,63 +1084,20 @@ const bugReportSidecar = createBugReportSidecarStore({
   },
 });
 
-/**
- * Active-editor target snapshot pushed by the renderer via
- * `ok:editor:active-target-changed`. Drives the macOS File menu's state-aware
- * item-management section — when the renderer navigates to a new doc /
- * folder / asset / null state, main rebuilds the menu so Rename /
- * Duplicate / Move to Trash flip enabled/disabled per scope.
- *
- * Keyed per window even though the menu is a singleton
- * (`Menu.setApplicationMenu` replaces the global menu), because reads take the
- * FOCUSED window's target. One shared snapshot was survivable while every
- * editor window was its own project, but popped-out note windows put two
- * windows on one project: whichever pushed last would own the File menu's scope
- * regardless of which window the user was looking at.
- */
 const editorActiveTargets = new EditorActiveTargetRegistry();
 
-/** The active target the application menu should reflect right now. */
 function currentActiveTarget(): EditorActiveTargetSnapshot {
   return editorActiveTargets.current(BrowserWindow.getFocusedWindow()?.id ?? null);
 }
 
-/**
- * View-menu state pushed by the renderer via
- * `ok:editor:view-menu-state-changed`. Drives the View menu's checkbox
- * reflection for the visibility toggles and the smart-hide on Expand All /
- * Collapse All, plus the editor context menu's view-in-source row. The native
- * menu is a singleton, but its state belongs to the focused BrowserWindow.
- * Per-window snapshots prevent a background renderer push from changing the
- * focused window's checkmarks or terminal-placement label.
- */
 const editorViewMenuStates = new EditorViewMenuStateRegistry();
 
-/**
- * electron-vite dev-server URL. Set by `electron-vite dev` at launch time.
- * When present, `loadURL(rendererDevUrl)` → live HMR via the Vite dev server
- * (configured in `electron.vite.config.ts` to serve `packages/app/`). When
- * absent (packaged / prod), fall back to `loadFile(rendererEntryPath)`.
- */
 const rendererDevUrl = process.env.ELECTRON_RENDERER_URL ?? null;
 
-/**
- * Runtime gate for the debug keyring-smoke channel. Returns true when the
- * app is not packaged (dev mode) OR the opt-in env var is set.
- */
 function isDebugKeyringSmokeAllowed(): boolean {
   return !app.isPackaged || process.env.OK_DEBUG_KEYRING_SMOKE === '1';
 }
 
-/**
- * Derive the `cliArgs` for spawning the local-op CLI subprocess. Both
- * desktop spawn paths — the Navigator IPC handlers (`LocalOpDeps.resolveCliArgs`)
- * and the editor window's utility-process API server (threaded via
- * `UtilityInitMessage.opts.localOpCliArgs`) — call this so they stay in
- * lockstep. Packaged: bundled wrapper at
- * `<bundle>/Contents/Resources/cli/bin/ok.sh`. Dev: `open-knowledge` from
- * PATH, matching `createApiExtension`'s default.
- */
 function resolveLocalOpCliArgs(): string[] {
   if (app.isPackaged) {
     return [wrapperPathInBundle(app.getPath('exe'))];
@@ -1659,9 +1111,7 @@ function runDriverBootSmokeInProduction(): void {
     quit: () => {
       try {
         app.quit();
-      } catch {
-        // already quitting
-      }
+      } catch {}
     },
     setTimeout: (fn, ms) => {
       setTimeout(fn, ms);
@@ -1670,26 +1120,15 @@ function runDriverBootSmokeInProduction(): void {
   });
 }
 
-/** Add main-owned runtime facts to every editor-renderer window. */
 function withWindowRuntimeArgs(args: readonly string[]): string[] {
   const withDebug = isDebugKeyringSmokeAllowed()
     ? [...args, '--ok-debug-keyring-smoke=1']
     : [...args];
   const withTerminalCapability = withTerminalCapabilityArg(withDebug, isTerminalAvailable());
-  // Under the Electron smoke suite, force xterm's DOM renderer (not the WebGL
-  // canvas) via this flag — the canvas can't be read by the DOM-based smoke
-  // assertions and captures focus from synthetic keystrokes. Gating only xterm
-  // (vs a blanket --disable-gpu) keeps Electron GPU acceleration on, so the
-  // suite doesn't trigger whole-app software rendering that starves CPU on
-  // constrained CI runners. See TerminalPanel's WebGL gate.
   const withSmoke =
     process.env.OK_DESKTOP_E2E_SMOKE === '1'
       ? [...withTerminalCapability, '--ok-e2e-smoke=1']
       : withTerminalCapability;
-  // Cold-start assistive-tech signal for the preload's live mirror (see
-  // `ok:accessibility:changed` in ipc-events.ts): the terminal gates xterm's
-  // costly `screenReaderMode` on it. Read per window creation so a window
-  // opened after VoiceOver attaches starts with the right posture.
   return app.isAccessibilitySupportEnabled()
     ? [...withSmoke, '--ok-screen-reader-active=1']
     : withSmoke;
@@ -1709,17 +1148,6 @@ function ensureDebugIpc(): DebugIpcHandle {
   return debugIpc;
 }
 
-/**
- * Parse an env override that must be a positive whole number of milliseconds.
- * Anything else — unset, empty, non-numeric, zero, negative, fractional — is
- * `undefined` so the caller's default applies. A malformed override must not
- * become a `0` deadline that fails every spawn instantly.
- *
- * A REJECTED non-empty value is logged. These vars exist as an escape hatch
- * during an incident, and silently falling back would look identical to the
- * variable not being read at all — leaving whoever set `...=30s` to conclude
- * the override does not work rather than that they wrote the wrong units.
- */
 function readPositiveIntEnv(envVar: string): number | undefined {
   const raw = process.env[envVar];
   if (raw === undefined || raw.trim() === '') return undefined;
@@ -1736,30 +1164,11 @@ function readPositiveIntEnv(envVar: string): number | undefined {
 
 function ensureWindowManager() {
   if (wm) return;
-  // Renderer entry (prod path): electron-builder copies packages/cli/dist/public/ to
-  // <Resources>/app/, so the renderer is at process.resourcesPath/app/index.html.
-  // Dev path: we prefer rendererDevUrl (electron-vite's Vite dev server serving
-  // packages/app/), falling back to the local shell only when dev-server URL is
-  // unset (e.g., running out/main/index.js directly without `electron-vite dev`).
   const rendererEntryPath = app.isPackaged
     ? join(process.resourcesPath, 'app', 'index.html')
     : join(__dirname, '../renderer/index.html');
-  // Utility entry: electron-vite piggybacks the utility build into main's
-  // bundle (see electron.vite.config.ts main.build.rollupOptions comment),
-  // so it lands at `out/main/utility/server-entry.js` — same folder tree as
-  // `out/main/index.js`, nested one level deeper. Not `out/utility/...`.
   const utilityEntryPath = join(__dirname, 'utility/server-entry.js');
 
-  // Detached-spawn wiring — packaged builds only (dev keeps the
-  // utility-fork path for HMR / log-capture ergonomics). The bundled CLI
-  // lives at `<.app>/Contents/Resources/app.asar.unpacked/node_modules/
-  // @inkeep/open-knowledge/dist/cli.mjs`. We spawn it via the running
-  // Electron binary with `ELECTRON_RUN_AS_NODE=1` so the helper runs as
-  // pure Node — no separate Node binary to bundle. The child detaches
-  // from Electron's process group (`detached: true`, `stdio: 'ignore'`,
-  // `.unref()`) so it survives Electron parent exit; the invariant
-  // (closing windows / quitting the app does not affect the server) is
-  // produced by this single spawn shape.
   const bundleCliMjsPath = app.isPackaged
     ? join(
         process.resourcesPath,
@@ -1785,12 +1194,6 @@ function ensureWindowManager() {
           preload: join(__dirname, '../preload/index.js'),
         },
       });
-      // Electron defaults to updating the window title from the renderer's
-      // `<title>` tag after page load — that would clobber our per-project
-      // title with `packages/app/index.html`'s static "OpenKnowledge" on
-      // every navigation. `preventDefault()` in the event handler keeps our
-      // title, while still letting the renderer read `document.title` for
-      // its own purposes if it wants to.
       win.on('page-title-updated', (e) => {
         e.preventDefault();
       });
@@ -1799,27 +1202,13 @@ function ensureWindowManager() {
         trackProjectWindowBounds(win, opts.projectPath);
         trackProjectWindowFocus(win, opts.projectPath);
       } else if (opts.focusKey !== undefined) {
-        // Ephemeral loose-file window: focus-recency ordering only — no bounds
-        // memory, and no `lastOpenedProject` write (its key is a file path).
         trackEphemeralWindowFocus(win, opts.focusKey);
       }
       attachSpellcheckMenuToWindow(win);
       win.on('closed', () => {
         editorViewMenuStates.delete(win.id);
-        // Drop the window's active target too, so a closed window cannot keep
-        // supplying the menu's fallback scope after it is gone.
         editorActiveTargets.delete(win.id);
       });
-      // A project's popped-out note windows close with its main window: they
-      // never survive as independents. In dev the project's forked server dies
-      // with this window, so a surviving pop-out's argv-frozen collab URL could
-      // never reach a respawned server — an unrecoverable orphan.
-      //
-      // `windowRestoreSnapshotWritten` is the quit discriminator. Every clean-
-      // exit path captures the restore snapshot at its earliest teardown hook,
-      // which precedes this cascade, so on quit the note windows are already
-      // recorded and come back next launch. A mid-session project close finds
-      // the flag false and they are gone for good.
       if (opts.projectPath !== undefined) {
         const noteProjectRoot = opts.projectPath;
         win.on('closed', () => {
@@ -1834,10 +1223,6 @@ function ensureWindowManager() {
           });
         });
       }
-      // Per-window PTY reap: closing the window kills its shell (no orphan).
-      // Idempotent — the manager no-ops for a window that never opened one. The
-      // onReap clears the window's retained dock-visibility so it can't restore
-      // a stale "visible" for a future window that reuses the id.
       if (terminalReaper)
         wireWindowTerminalReap(win, terminalReaper, (windowId) => {
           dockVisibleForWindow.delete(windowId);
@@ -1847,21 +1232,15 @@ function ensureWindowManager() {
         });
       return win as unknown as BrowserWindowLike;
     },
-    // App-level foreground activation for the bring-to-front recipe. macOS
-    // separates window focus from app activation — a BrowserWindow.focus() on a
-    // backgrounded app reorders within the app but doesn't pull it to the front
-    // (electron/electron#19920). `app.focus({ steal: true })` is the macOS
-    // primitive that does; the platform guard keeps it inert elsewhere.
+    /*
+     * UPSTREAM(electron/electron#19920): a BrowserWindow.focus() on a
+     * backgrounded app reorders within the app without foregrounding it, so
+     * bring-to-front needs this app-level activation as well.
+     */
     activateApp: () => {
       if (process.platform === 'darwin') app.focus({ steal: true });
     },
     forkUtility: (entry, args, opts) => {
-      // Inject OK_ELECTRON_PROTOCOL_HOST=1 so the `preview-url.ts` helper
-      // running inside this utility emits `openknowledge://` URLs for MCP
-      // consumers instead of `http://localhost:...`. CLI / bunx invocations
-      // don't fork through here, so the flag never bleeds into those
-      // consumers. Also carry the startup traceparent (Plan A) + the shared
-      // OTLP endpoint so the spawned server joins the launch trace.
       startupWaterfall.mark('serverSpawned');
       const child = utilityProcess.fork(entry, args, {
         ...opts,
@@ -1873,10 +1252,6 @@ function ensureWindowManager() {
       return child as unknown as UtilityProcessLike;
     },
     utilityEntryPath,
-    // Production-only detached-spawn primitive. Omitted in dev (`null`)
-    // so the WindowManager falls back to `forkUtility`. The shell path is
-    // forwarded as `--react-shell-dist-dir` so the spawned CLI serves the
-    // bundled React shell on its own HTTP port.
     ...(bundleCliMjsPath !== null
       ? {
           spawnDetachedServer: async ({
@@ -1885,25 +1260,6 @@ function ensureWindowManager() {
             singleFile,
             projectDir,
           }) => {
-            // The lock + spawn-error log live under the PROJECT ROOT's `.ok/
-            // local`, which in ephemeral single-file mode is the throwaway temp
-            // `projectDir` (distinct from `contentDir`, the file's real parent),
-            // and otherwise is `contentDir` itself.
-            //
-            // Capture the detached child's stderr at the kernel level to
-            // `<projectRoot>/.ok/local/<SPAWN_ERROR_LOG>` so production
-            // failure modes (port-bind error, dependency load failure,
-            // bootServer init throw) are diagnosable. The MCP shim
-            // (`packages/cli/src/mcp/shim.ts`) writes to the same
-            // filename — one tail target for operators. `stdio: 'ignore'`
-            // would route everything to /dev/null and leave the user
-            // staring at a 15-second `spawn-lock-timeout` with no
-            // breadcrumb. The fd APPENDS behind a per-attempt header, because
-            // the retry after a failed spawn would otherwise erase the output
-            // explaining the failure it is retrying; it starts over only at
-            // `SPAWN_ERROR_LOG_MAX_BYTES`, so rotation is this policy's job
-            // and not the OS's. Both writers share the mode — see
-            // `spawnErrorLogOpenMode`.
             const projectRoot = projectDir ?? contentDir;
             const lockDir = getLocalDir(projectRoot);
             if (!existsSync(lockDir)) {
@@ -1942,13 +1298,6 @@ function ensureWindowManager() {
                 },
               );
             }
-            // Resolve the spawn shape via the pure helper so the file argument
-            // for the child stays out of the parent .app's MacOS dir on darwin
-            // packaged builds — see resolve-detached-spawn-args.ts. stdin +
-            // stdout route to /dev/null and stderr to the SPAWN_ERROR_LOG fd
-            // (matches the MCP shim convention). The child inherits
-            // the open fd; we close our copy once 'spawn' fires (in the
-            // finally below) so the parent doesn't keep the file open.
             const spawnArgs = resolveDetachedSpawnArgs({
               platform: process.platform,
               isPackaged: app.isPackaged,
@@ -1961,9 +1310,6 @@ function ensureWindowManager() {
                 startupTraceparent: injectTraceparent(),
                 otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
               }),
-              // Ephemeral single-file mode: append `--single-file <file>
-              // --project-dir <temp>` and run cwd at the temp project root.
-              // Absent fields collapse to the normal project-open spawn shape.
               ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
             });
             let childRef: ReturnType<typeof spawn>;
@@ -1974,16 +1320,9 @@ function ensureWindowManager() {
                 windowsHide: true,
               });
             } catch (spawnErr) {
-              // Synchronous spawn failure — close fd before rethrowing.
-              // Re-throw with the same `kind: 'spawn-error'` discriminant the
-              // async `'error'` handler below uses, so callers inspecting
-              // `err.kind` see a uniform error shape regardless of which
-              // failure path fired.
               try {
                 closeSync(spawnErrorLogFd);
-              } catch {
-                // Best-effort.
-              }
+              } catch {}
               throw Object.assign(
                 new Error(
                   `spawnDetachedServer: child_process.spawn threw synchronously: ${
@@ -1997,17 +1336,6 @@ function ensureWindowManager() {
                 },
               );
             }
-            // Race the async `'spawn'` / `'error'` events. With
-            // `stdio: ['ignore', 'ignore', spawnErrorLogFd]` an asynchronous
-            // fork failure (ENOENT for a missing CLI binary, EPERM, EMFILE)
-            // emits `'error'` after `child_process.spawn` returns —
-            // without a listener it either crashes Electron's main
-            // process or leaves a dead pid that stalls the caller's
-            // lock-poll for the full 15s. Node guarantees exactly one of
-            // `'spawn'` / `'error'` fires, so awaiting the race confirms
-            // the OS-level fork before any caller starts polling.
-            // `.unref()` is deferred until after `'spawn'` so an early
-            // teardown doesn't leak an orphan that the parent can't reap.
             try {
               await new Promise<void>((resolveSpawn, rejectSpawn) => {
                 const onSpawn = (): void => {
@@ -2033,39 +1361,14 @@ function ensureWindowManager() {
                 childRef.once('error', onError);
               });
             } finally {
-              // The child now owns the fd — close our parent copy so
-              // the parent process doesn't keep the log file open
-              // beyond the spawn handshake. macOS treats unclosed fds
-              // as leaks under FD pressure (`EMFILE` storms in dev).
               try {
                 closeSync(spawnErrorLogFd);
-              } catch {
-                // Best-effort.
-              }
+              } catch {}
             }
-            // Observe how the child dies. Exit code + signal are the only
-            // failure evidence always available to the parent: a child can die
-            // having written nothing to the capture log (killed by a signal,
-            // or reporting on stdout, which is not captured), and without this
-            // the caller cannot tell "still starting" from "died 200ms ago".
-            // Retaining a listener also keeps Node reaping the child rather
-            // than leaving it defunct in the process table.
-            //
-            // Order matters: registered before `unref()` so an exit in the
-            // handshake window is not missed. `unref()` releases the
-            // event-loop reference only; it does not detach listeners.
             let exitRecord: { code: number | null; signal: string | null } | null = null;
             childRef.on('exit', (code, signal) => {
               exitRecord = { code, signal };
             });
-            // `exitRecord` above only ever reaches the boot-time spawn-failure
-            // branches via `readExit()`; once a window has attached, nothing
-            // reads it again. A second listener on the same event persists the
-            // death for a later bug bundle instead, and in a packaged build it
-            // is the only observer of that death — `server-exit-observer.ts`
-            // holds the why, and owns the registration so that the shape of it
-            // is covered by a test rather than by review of this file.
-            // `tests/integration/server-exit-wiring.test.ts` pins the call.
             attachServerExitObserver(childRef, {
               lockDir,
               recordExit: (info) => getServerExitRecorder().recordExit(info),
@@ -2074,7 +1377,6 @@ function ensureWindowManager() {
             childRef.unref();
             const pid = childRef.pid;
             if (pid === undefined) {
-              // Defensive — Node guarantees `pid` is set after `'spawn'`.
               throw new Error(
                 'spawnDetachedServer: child_process.spawn did not return a pid after spawn-event resolution.',
               );
@@ -2083,70 +1385,28 @@ function ensureWindowManager() {
           },
         }
       : {}),
-    // Ephemeral single-file session deps (`ok <file>` no-project path). Wired
-    // unconditionally — `createEphemeralWindow` guards on all three being present
-    // and the dev utility-fork path simply never calls it. `createEphemeralProjectDir`
-    // synthesizes the throwaway temp projectDir; `removeDir` reaps it on teardown.
     createEphemeralProjectDir,
     removeDir: (dir: string) => fsPromises.rm(dir, { recursive: true, force: true }),
     rendererEntryPath,
     rendererDevUrl,
     appVersion: app.getVersion(),
-    // The desktop's own server identity — what its bundled server would write
-    // to a lock. Equal to `app.getVersion()` under the fixed-group lockstep,
-    // but sourced from the server package so the attach-path comparison is
-    // against the exact value a freshly-spawned server reports.
     selfProtocolVersion: PROTOCOL_VERSION,
     selfRuntimeVersion: RUNTIME_VERSION,
-    // Field escape hatch for the spawn wait. Boot cost scales with project
-    // state, so a working copy can always be found that outgrows whatever
-    // defaults ship — without these there is no way to get such a project open
-    // short of a new release, and no way to shorten the wait when diagnosing a
-    // genuinely stuck boot.
     spawnLockPollDeadlineMs: readPositiveIntEnv('OK_SPAWN_STARTUP_TIMEOUT_MS'),
     spawnLockProgressDeadlineMs: readPositiveIntEnv('OK_SPAWN_BIND_TIMEOUT_MS'),
-    // Dev-only: auto-reclaim a foreign server on the project's contentDir (a
-    // leftover from a prior packaged run / CLI / another instance) so this
-    // `electron-vite dev` session runs against its own working-tree build
-    // rather than silently attaching to the stale one. Off in packaged builds,
-    // where attaching to a live server is the intended shared-server behavior.
     reclaimForeignServerInDev: !app.isPackaged,
-    // Packaged upgrade reconcile: on the first launch after an app update,
-    // auto-restart a pre-upgrade survivor server the attach path would
-    // otherwise attach to (+ prompt). Reads the bootstrap snapshot, not live
-    // state, so it holds for the whole session. See `firstLaunchAfterUpgrade`.
     isFirstLaunchAfterUpgrade: () => firstLaunchAfterUpgrade,
     setTimeout: (cb, ms) => setTimeout(cb, ms),
-    // Repeating timer for the ephemeral single-file server-liveness watch —
-    // unref'd so it never keeps the event loop alive on its own.
     setInterval: (cb, ms) => setInterval(cb, ms).unref(),
     clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
     killProbe: (pid, signal) => {
       process.kill(pid, signal as NodeJS.Signals | 0);
     },
-    // Attach-mode wiring — when a same-host `ok start` CLI (or any other
-    // bootServer caller) is already holding the server.lock for this
-    // contentDir, window-manager reads the lock + verifies liveness and
-    // connects the renderer directly instead of trying to spawn a duplicate.
     readServerLock: (lockDir) => readServerLock(lockDir),
-    // Break a stale claim whose holder is both unkillable and not serving —
-    // see `removeServerLock` in WindowManagerDeps for when that is reached.
-    // Unlinked directly rather than through the server's refcounted
-    // `releaseServerLock`, which only releases a lock this process owns.
-    //
-    // Read-compare-unlink, mirroring `process-lock.ts`'s `registerExitUnlink`:
-    // the caller's verdict is about a specific holder and a health probe stands
-    // between that verdict and this call, so a successor that acquired the lock
-    // meanwhile must keep it. A missing or unparseable file is the desired end
-    // state either way.
     removeServerLock: (lockDir, expected) => breakServerLockHeldBy(lockDir, expected),
     isProcessAlive: (pid) => isProcessAlive(pid),
     hostname: () => osHostname(),
     probeWsUpgrade: (url, timeoutMs) => probeWsUpgrade(url, timeoutMs),
-    // Canonicalize `windowsByPath` keys via realpath so a deep-link URL
-    // carrying `realpathSync(contentDir)` (emitted by preview-url.ts) matches
-    // a window opened via a symlinked project path. See window-manager.ts's
-    // `canonicalizeKey` + `ProjectContext.canonicalKey` for the rationale.
     realpathSync: (p) => realpathSync(p),
     onUtilityMessage: (msg) => {
       ensureDebugIpc().handleUtilityMessage(msg);
@@ -2157,38 +1417,14 @@ function ensureWindowManager() {
     onUtilityExit: (utility) => {
       ensureDebugIpc().cancelPendingForUtility(utility);
     },
-    // The window-manager's `log` dep is optional; an unwired `this.deps.log`
-    // makes every `log?.info/warn` in window-manager.ts a silent no-op. Wire it
-    // to the 'window-manager' subsystem logger (same pattern keepalive /
-    // server-exit use) so its diagnostics — server spawn/attach, dev reclaim,
-    // the `desktop-upgrade-reconcile` upgrade signal, restart — reach
-    // `~/.ok/logs/`.
     log: getLogger('window-manager'),
-    // The adapter, not the dep, names the host: `WindowManagerDeps` stays
-    // narrow (it has no signal and no observer to give), and this is the site
-    // that knows which of the two spawn paths it is wiring.
     recordServerExit: (info) =>
       getServerExitRecorder().recordExit({ ...info, observer: 'utility-process' }),
-    // Presence-invisible keepalive WS — registers the desktop as an active
-    // `/collab*` upgrade for as long as a project window is open, so a brief
-    // MCP disconnect does not trip the server's idle-shutdown timer. The
-    // factory captures `readServerLock` (same one the attach-mode probe
-    // uses) so a server restart on a new port is picked up transparently
-    // on the next exponential-backoff retry.
     createKeepalive: createDesktopKeepaliveFactory({
       readServerLock: (lockDir) => readServerLock(lockDir),
-      // Route the keepalive's connect / disconnect / backoff lifecycle to the
-      // 'keepalive' logger. Previously omitted, which left the sole mechanism
-      // that keeps a detached server alive while a window is open completely
-      // silent — so an idle-shutdown that fired because the keepalive wasn't
-      // holding had no trace explaining why.
       logger: toKeepaliveLogger(getLogger('keepalive')),
     }),
     showGate,
-    // Startup-instrumentation hooks. The traceparent + mark callbacks are
-    // always wired; the waterfall's per-phase `mark` is first-write-wins, so
-    // only the launch's first project window populates the timeline. Later
-    // windows re-call these harmlessly (no-ops on an already-stamped phase).
     startup: {
       get traceparent() {
         return injectTraceparent();
@@ -2200,11 +1436,6 @@ function ensureWindowManager() {
       markWindowCreated: () => startupWaterfall.mark('windowCreated'),
       markLoadUrlResolved: () => startupWaterfall.mark('loadUrlResolved'),
     },
-    // External-link safety net, attached by the window factory to EVERY editor
-    // window (see WindowManager.attachSafetyNet). `openExternal` is
-    // window-independent; `openAsset` is parameterized by the window's project
-    // path so containment resolves against the right root. Grouped so the two
-    // delegates are wired together or not at all.
     safetyNet: {
       openExternal: handleShellOpenExternal({
         openExternal: (url) => shell.openExternal(url),
@@ -2226,15 +1457,6 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
   if (navigatorWindow) {
     getLogger('navigator').debug({}, 'already open, focusing');
     (navigatorWindow as unknown as { focus: () => void }).focus();
-    // Warm path — Navigator already mounted. Deliver the launcher-scoped
-    // share payload now: immediate send when the page has finished loading,
-    // gated on `did-finish-load` when a load is still in flight (the rare
-    // race where a second share fires while the Navigator is still in its
-    // cold-launch dom-ready window). The still-loading branch routes through
-    // `registerPendingDelivery` so the register-before-fire ordering matches
-    // the other readiness-gate sites; the immediate-send branch stays local
-    // because once the page is loaded there is no listener to register —
-    // a dom-ready/did-finish-load gate would hang (already past it).
     if (pendingPayload) {
       const wc = (navigatorWindow as unknown as { webContents: Electron.WebContents }).webContents;
       if (wc.isLoading()) {
@@ -2248,11 +1470,6 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
     return;
   }
   getLogger('navigator').info({}, 'opening window');
-  // Fixed-size launcher window at the 920×680 target. Sized so the first-run
-  // packs-forward view (header + full starter-pack grid + secondary row) fits
-  // without the grid scrolling. NavigatorApp.tsx vertically centers the visible
-  // content within this frame and leaves the top ~36 px chrome strip as the
-  // drag region for the macOS title-bar zone.
   navigatorWindow = createNavigatorWindow({
     createWindow: (opts) => {
       const win = new BrowserWindow({
@@ -2276,10 +1493,6 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       : join(__dirname, '../renderer/index.html'),
     rendererDevUrl,
     appVersion: app.getVersion(),
-    // Read here rather than cached: the launcher can be reopened long after
-    // boot, and the saved choice may have changed in an editor window since.
-    // Unresolved — 'system' has to reach the renderer as 'system' so it
-    // re-resolves against the browser's current list.
     languagePreference: readStoredLanguagePreference(osHomedir(), (message) =>
       getLogger('navigator-window').warn(
         { message },
@@ -2291,19 +1504,7 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
   });
 }
 
-/**
- * Surface non-success outcomes from `writeProjectAiIntegrations` to ops via
- * a structured `console.warn` event, and return the count of `failed`
- * outcomes for the OTel span. `'skipped-unsupported'` is the normal shape for
- * an (editor × integration) pair the editor has no surface for (e.g. Claude
- * Desktop has no project-local MCP config or skill path) — not a failure —
- * so it is excluded from the log payload alongside the success actions.
- */
 function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
-  // "Interesting" = anything that isn't a plain success: failures AND a
-  // non-destructive `declined` (a present config OK couldn't safely edit). Both
-  // are surfaced to ops; only `failed` is counted toward the span metric below.
-  // Success actions (written, overwritten, skipped-unsupported) are excluded.
   const interesting = result.integrations.filter(
     (o) =>
       o.action !== 'written' && o.action !== 'overwritten' && o.action !== 'skipped-unsupported',
@@ -2324,12 +1525,6 @@ function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
   return interesting.filter((o) => o.action === 'failed').length;
 }
 
-// Threshold above which an ancestor-promote target is considered too large to
-// boot inside the utility's 15s init budget (window-manager.ts),
-// and therefore must be confirmed before fork. Tuned ~5x the smallest
-// problematic ancestor seen in the field; well below the 92k+ entry trees
-// that actually trip the timeout. `walkExceedsCap` short-circuits as soon as
-// the cap is exceeded, so the probe stays cheap on typical vault-sized trees.
 const BOOT_BUDGET_FILE_CAP = 10_000;
 
 async function openProject(
@@ -2356,23 +1551,11 @@ async function openProject(
     'opening project',
   );
   ensureWindowManager();
-  // Before the first await: everything below is slow enough for the user to
-  // summon a Navigator mid-open, and that one is theirs to keep.
   const navigatorHandoff = beginNavigatorHandoff(navigatorWindow);
 
-  // Admission funnel. Resolve the pick BEFORE any window/utility spawn so we
-  // know whether to ancestor-promote, silent-onboard, dialog, or refuse.
   const validation = validateFolderPick(projectPath);
-  // Open-bracket: discoverProject is one await spanning several unbounded fs
-  // and subprocess steps, so without a mark here a stall inside it is
-  // indistinguishable from a stall anywhere else in the funnel.
   getLogger('project').info({ pickedName: basename(projectPath) }, 'resolving project admission');
   const discovery = await discoverProject(projectPath, {
-    // Probe consulted only when the ancestor walk strictly promotes — gates
-    // silent fork against an ancestor too large to boot in 15s (the dragon-wiki
-    // regression: a small pick under `~/Documents/.ok/` silently forked the
-    // utility against `~/Documents` and timed out). Failsafe to "show the
-    // dialog" on any throw so a probe failure can't reintroduce silent fork.
     dirSizeProbe: async (dir) => {
       getLogger('project').info(
         { projectName: basename(dir), pickedName: basename(projectPath) },
@@ -2382,8 +1565,6 @@ async function openProject(
         const exceedsCap = await walkExceedsCap(dir, BOOT_BUDGET_FILE_CAP);
         return { exceedsCap };
       } catch (err) {
-        // Pino, not console: this failsafe silently forces the confirmation
-        // dialog, so the branch would flip with no surviving record of why.
         getLogger('project').warn(
           { err },
           'project admission size probe failed, treating as over cap',
@@ -2391,18 +1572,7 @@ async function openProject(
         return { exceedsCap: true };
       }
     },
-    // The other arm of the same await, and the unbounded one: `git rev-parse`
-    // runs without a timeout, so a locked index or a network-mounted `.git`
-    // hangs here. Reached only when the ancestor walk promoted nothing.
-    // create-new's own pre-scaffold `discoverProject` call is deliberately not
-    // wrapped; the open that follows it lands in this funnel.
     gitTopLevel: async (cwd) => {
-      // Not `projectName`: `cwd` is the resolved pick, and on this arm the
-      // project dir is whatever the git root turns out to be, which is not
-      // known until the call returns. `pickedName` rides along because neither
-      // the `projectName` const nor `discovery` exists yet at this point in the
-      // function, so the pick is the only name in scope here, and a symlinked
-      // pick makes the two basenames differ.
       getLogger('project').info(
         { pickedName: basename(projectPath), resolvedPickedName: basename(cwd) },
         'resolving git root',
@@ -2411,30 +1581,17 @@ async function openProject(
     },
   });
 
-  // Payloads stay basenames and enums, matching the entry log above.
   getLogger('project').info(
     discovery.kind === 'rejected'
       ? {
-          // `rejected` carries no `projectDir`, so the pick is the only name
-          // this arm can correlate on.
           pickedName: basename(projectPath),
           discoveryKind: discovery.kind,
           reason: discovery.reason,
         }
       : {
-          // Not the `projectName` const below: this line precedes the `rejected`
-          // early return that narrows `discovery`, so the const does not exist yet.
           projectName: basename(discovery.projectDir),
-          // Ungated, unlike `resolvedPickedName` below: on a symlinked direct
-          // open that gate drops out and `projectName` is the realpath
-          // basename, while the entry logs carry the raw pick. On a managed
-          // direct hit neither bridging milestone fires, because the ancestor
-          // walk returns before the git-root lookup is reached, so this is the
-          // only line that can carry both.
           pickedName: basename(projectPath),
           discoveryKind: discovery.kind,
-          // The pair is what separates an ancestor / git-root promote from a
-          // direct open.
           ...(discovery.projectDir === discovery.pickedPath
             ? {}
             : { resolvedPickedName: basename(discovery.pickedPath) }),
@@ -2471,19 +1628,12 @@ async function openProject(
     cli: createProjectMcpReclaimCliSurface(),
     forceEnv: process.env.OK_M6B_FORCE ?? null,
     reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
-    // Route the reclaim's structured events into the pino file logger — the
-    // default console sink is discarded in the packaged main process.
     logger: { event: (payload) => getLogger('mcp-wiring').info(payload, payload.event) },
   }).catch((err) => {
     console.warn('[main] project-mcp reclaim failed', {
       err: err instanceof Error ? err.message : String(err),
     });
   });
-  // The project-skill reclaim is NOT in this unconditional cluster. It can now
-  // CREATE a skill (for OK-wired editors in a managed project), so it must fire
-  // only for committed managed opens — never for a non-OK folder the user opens
-  // then cancels, nor before a managed-requires-confirmation prompt is answered.
-  // It runs after the fresh/managed branch resolves.
   let didEnsureGit = false;
   let flowKind: OnboardingFlowKind;
   let contentDirChanged = false;
@@ -2496,19 +1646,7 @@ async function openProject(
     | null = null;
 
   if (discovery.kind === 'managed-requires-confirmation') {
-    // Ancestor `.ok/config.yml` resolved a tree too large for the utility's
-    // 15s init budget. Surface a native two-button confirmation dialog
-    // BEFORE the fork instead of silently routing into a timeout. Cancel
-    // returns to Navigator with no fs writes; Confirm falls through to the
-    // existing managed-promote silent flow. This is the only path that can
-    // reach this branch (cursor !== realPicked), so ancestorPromoted is
-    // guaranteed true.
     const resolvedPickedName = basename(discovery.pickedPath);
-    // Async dialog matches the codebase convention (every other dialog in
-    // packages/desktop/src/main/ uses await dialog.showMessageBox); sync would
-    // freeze IPC, the auto-updater pipeline, and the cc1-broadcast debouncer
-    // until the user clicks. Button order [Cancel, Open <ancestor>] with
-    // cancelId:0 / defaultId:0: Enter and Escape both land on the safe path.
     getLogger('project').info(
       { projectName, resolvedPickedName },
       'project admission confirmation requested',
@@ -2541,11 +1679,6 @@ async function openProject(
       toastPayload = { kind: 'ancestor-promote', ancestorPath: discovery.projectDir };
     }
   } else if (discovery.kind === 'managed') {
-    // Ancestor-promote: open the ancestor regardless of entry point; toast
-    // only when the user picked a sub-path (`ancestorPromoted`) AND the user
-    // didn't explicitly choose the project (Recents, or the BLOCK NESTED
-    // redirect from CreateProjectDialog where the user just acknowledged the
-    // existing project's path).
     flowKind = discovery.ancestorPromoted ? 'managed-promote' : 'managed-direct';
     if (
       discovery.ancestorPromoted &&
@@ -2555,29 +1688,11 @@ async function openProject(
       toastPayload = { kind: 'ancestor-promote', ancestorPath: discovery.projectDir };
     }
   } else {
-    // kind === 'fresh'. Spin the consent dialog up against the Navigator,
-    // then dispatch user choices. Cancel returns to Navigator with no fs
-    // writes. The new create-new-project flow scaffolds .ok/config.yml in
-    // the ok:project:create-new handler BEFORE calling openProject, so by
-    // the time we land here discovery.kind is never 'fresh' for a
-    // 'create-new' entry point.
     let navigator = navigatorWindow;
     if (!navigator) {
-      // No Navigator hosts the dialog yet. This is the cold-boot path
-      // when `lastOpenedProject` points at a folder whose `.ok/` was
-      // deleted out from under it — or any deep-link / Recents entry
-      // point that fires before the Navigator has been opened. Open
-      // the Navigator now and wait for its renderer to finish loading
-      // before dispatching the consent dialog. The mount-ack handshake
-      // inside `requestUserConsent` handles the renderer-not-yet-bound
-      // race past `did-finish-load`.
       openNavigator();
       navigator = navigatorWindow;
       if (!navigator) {
-        // openNavigator failed to mount a window — surface and bail.
-        // Should be unreachable in practice (createNavigatorWindow is
-        // synchronous and only fails on Electron-internal errors), but
-        // a defensive bail beats a stuck cold-boot.
         dialog.showErrorBox(
           'Cannot open this folder',
           `${projectPath}\n\nFailed to open the Project Navigator.`,
@@ -2588,18 +1703,6 @@ async function openProject(
         .webContents;
       if (navigatorWebContents.isLoading()) {
         getLogger('project').info({ projectName }, 'awaiting navigator load');
-        // Promise.race the load against the renderer being destroyed —
-        // a closed Navigator window or a crashed renderer mid-load would
-        // otherwise leave openProject stuck on a Promise that never
-        // resolves. The outer try/catch around the dialog path routes
-        // the rejection to the error-dialog branch.
-        //
-        // The loser of the race must be unregistered on settle; otherwise
-        // its `once`-bound closure holds references to the `resolve`/
-        // `reject` pair until the WebContents is GC'd. (Behaviorally a
-        // no-op — re-settling an already-settled Promise is ignored —
-        // but a future maintainer who swaps `once` for `on` would
-        // re-introduce a real fire-after-settle bug.)
         await new Promise<void>((resolve, reject) => {
           const onLoad = () => {
             navigatorWebContents.removeListener('destroyed', onDestroyed);
@@ -2614,9 +1717,6 @@ async function openProject(
         });
       }
     }
-    // Whichever Navigator ends up hosting the consent dialog is conscripted
-    // into this open, so this open owns retiring it — otherwise a launcher
-    // still showing the just-dismissed dialog outlives the project it created.
     navigatorHandoff.adopt(navigator);
     const showPayload: OnboardingShowPayload = {
       pickedPath: discovery.pickedPath,
@@ -2626,16 +1726,12 @@ async function openProject(
       gitRootPromoted: discovery.gitRootPromoted,
       warnings: validation.warnings.map((w) => ({ kind: w.kind })),
     };
-    // The dialog's own content probe walks the picked tree synchronously on the
-    // main thread, so this pair brackets the funnel's least bounded step.
     getLogger('project').info(
       { projectName, gitState: discovery.gitState },
       'onboarding consent requested',
     );
     const decision = await requestUserConsent(
       {
-        // Sink facade, not the raw ipcMain: the flow's one-shot renderer-ready
-        // handler arms inside the sink so unarmed acks stay absorbed.
         ipcMain: rendererReadySink?.ipcMain ?? ipcMain,
         navigator: (navigator as unknown as { webContents: Electron.WebContents }).webContents,
         previewContent,
@@ -2647,7 +1743,6 @@ async function openProject(
       'onboarding consent answered',
     );
     if (decision.outcome === 'cancel') {
-      // Return to Navigator with no fs changes, no Recents add.
       recordOnboardingFlow({
         flowKind: 'cancel',
         entryPoint,
@@ -2659,12 +1754,6 @@ async function openProject(
     }
     const { request } = decision;
     contentDirChanged = request.contentDir !== discovery.defaultContentDir;
-    // Customized vs default — telemetry attribute distinguishes the two
-    // so the team can answer "how often do users tweak the dialog?"
-    // The AI-tool row offers only the tools detected on this machine, so its
-    // id count carries no signal about whether the user touched it — an
-    // untouched row on a two-tool machine submits two ids, and on a machine
-    // with no tools submits none. The checkbox the user left is the answer.
     flowKind =
       contentDirChanged || request.additionalIgnores.trim().length > 0 || !request.connectEditors
         ? 'fresh-customized'
@@ -2679,8 +1768,6 @@ async function openProject(
       );
       await ensureProjectGit(discovery.projectDir);
       didEnsureGit = true;
-      // No gitState: `discovery.gitState` is the pre-init value and is never
-      // recomputed, so echoing it here would pair "ensured" with "absent".
       getLogger('project').info({ projectName }, 'ensured project git');
     }
     getLogger('project').info({ projectName, contentDirChanged }, 'initializing project content');
@@ -2694,9 +1781,6 @@ async function openProject(
     aiIntegrationsFailedCount = logAiIntegrationOutcomes(
       writeProjectAiIntegrations(discovery.projectDir, [...request.editorIds]),
     );
-    // Always exclude OK's built-in project-skill projection via the committed
-    // `.gitignore` (independent of the sharing toggle below) so the per-machine,
-    // per-build bundle can never be committed. Non-fatal.
     try {
       ensureProjectSkillGitignore(discovery.projectDir);
     } catch (err) {
@@ -2704,20 +1788,10 @@ async function openProject(
         `[onboarding] skipping project-skill .gitignore entry at ${discovery.projectDir}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    // Sharing-mode transition. Runs AFTER every artifact-
-    // writing step so the tracked-files probe inside
-    // `addOkPathsToGitExclude` sees the latest on-disk shape. On a tracked-
-    // files refusal we surface a non-blocking toast to the navigator (same
-    // posture as the legacy ai-integration failure toast); the project
-    // window still opens. disables the radio when `gitState === 'absent'`,
-    // but the user can still pick `local-only` if `initGit` was true (we
-    // just scaffolded a fresh `.git`) — by then the gitdir resolves.
     if (request.sharing === 'local-only') {
       const paths = getOkArtifactPaths(discovery.projectDir);
       const result = addOkPathsToGitExclude(discovery.projectDir, paths);
       if (result.kind === 'refused-tracked') {
-        // Re-use the existing toast channel — `ok:onboarding:toast` is the
-        // canonical surface for post-confirm advisory messages.
         const refusal: TrackedRefusal = result;
         toastPayload = {
           kind: 'sharing-refused-tracked',
@@ -2732,10 +1806,6 @@ async function openProject(
       }
     }
     if (discovery.gitRootPromoted && toastPayload === null) {
-      // A sharing refusal / no-git advisory (set just above) carries
-      // action-required `git rm --cached` remediation and must win over the
-      // git-root-promote notice, which is purely informational. Only surface
-      // the promote toast when no higher-priority sharing toast was set.
       toastPayload = {
         kind: 'git-root-promote',
         gitRoot: discovery.projectDir,
@@ -2753,20 +1823,7 @@ async function openProject(
     );
   }
 
-  // Project-skill reclaim — gated to committed managed opens. Reaching here
-  // means the open is committed (every cancel path returned earlier), so for a
-  // `managed` / confirmed `managed-requires-confirmation` open we pass
-  // `createIfWired: true`: any editor already wired for this OK project gets its
-  // SKILL.md created if missing (and refreshed if present), healing the
-  // MCP-but-no-skill cohort. A `fresh` open is handled by
-  // `writeProjectAiIntegrations` above (it writes skills for the editors the
-  // user consented to), so the reclaim doesn't run for it — no redundant
-  // double-write, and no seeding a folder the consent dialog just configured a
-  // different way.
   if (discovery.kind === 'managed' || discovery.kind === 'managed-requires-confirmation') {
-    // A managed open skips the whole fresh branch above, so without this the
-    // only marks on that path are admission and the window itself — and the
-    // gitignore ensure below is synchronous.
     getLogger('project').info({ projectName }, 'reclaiming project skills');
     void reclaimProjectSkillsOnProjectOpen({
       projectDir: resolvedProjectDir,
@@ -2776,14 +1833,10 @@ async function openProject(
       forceEnv: process.env.OK_M6B_FORCE ?? null,
       reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
       createIfWired: true,
-      // Project-local reclaim installs the rich `project` bundle.
-      // checkDesktop:false — the desktop resolves its own bundled assets.
       deps: {
         resolveBundledSkillDir: () => resolveBundledSkillDir('project', { checkDesktop: false }),
         readProjectSkillDecision: (dir) =>
           readBundleDecision(osHomedir(), projectSkillDecisionKey(dir)),
-        // Opening a wired project without the project skill CREATES it — the
-        // desktop's most common real install, and previously uncounted.
         reportInstalled: (skillNames, scope) => {
           const home = osHomedir();
           void reportSkillInstall(
@@ -2802,14 +1855,6 @@ async function openProject(
       });
     });
 
-    // Heal the git posture of OK's built-in project-skill projection for an
-    // existing (managed) repo: (1) ensure the committed `.gitignore` entry so a
-    // repo created before this rule gets it, and (2) untrack the projection if
-    // it is already tracked upstream — the fix for the recurring-conflict bug
-    // where teammates on different app builds restamp the bundle's version
-    // line. The untrack is a fire-and-forget dedicated commit that races safely
-    // with auto-sync (see `untrackTrackedProjectSkillProjection`); it is a
-    // no-op once HEAD no longer tracks the bundle.
     try {
       ensureProjectSkillGitignore(resolvedProjectDir);
     } catch (err) {
@@ -2835,7 +1880,6 @@ async function openProject(
       });
   }
 
-  // Emit one onboarding-consent span per completed flow. SDK disabled → no-op.
   recordOnboardingFlow({
     flowKind,
     entryPoint,
@@ -2845,8 +1889,6 @@ async function openProject(
     failedCount: aiIntegrationsFailedCount,
   });
 
-  // Paired with the window-created line below, which only lands once the fork
-  // resolves — a stall inside the utility spawn would otherwise be silent.
   getLogger('project').info({ projectName, flowKind, didEnsureGit }, 'creating project window');
   const ctx = await wm.createProjectWindow({
     projectPath: resolvedProjectDir,
@@ -2858,8 +1900,6 @@ async function openProject(
     didEnsureGit,
     consentVersion: 1,
     localOpCliArgs: resolveLocalOpCliArgs(),
-    // Nested-redirect implies an enclosing existing project (an established
-    // user), so it is deliberately excluded from the fresh-create signal.
     freshlyCreated: entryPoint === 'create-new',
   });
   getLogger('project').info(
@@ -2872,11 +1912,6 @@ async function openProject(
     },
     'project window created',
   );
-  // The external-link / asset safety net is attached by the window factory
-  // (WindowManager.attachSafetyNet) on every editor window, so no per-call-site
-  // wiring is needed here.
-  // Toast dispatch on did-finish-load so the renderer's sonner subscriber is
-  // mounted. `prefers-reduced-motion: reduce` is honored sonner-side.
   if (toastPayload !== null) {
     const payload = toastPayload;
     ctx.window.webContents.once('did-finish-load', () => {
@@ -2885,15 +1920,8 @@ async function openProject(
   }
 
   navigatorHandoff.close({ projectPath });
-  // Backfill the canonical GitHub remote URL so the share-receive lookup
-  // hits on subsequent shares for this repo. Best-effort and silent — a
-  // project with no `.git/config`, no `origin`, or a non-GitHub remote
-  // leaves the field undefined; the receiver pays a one-time cost.
   const gitRemoteUrl = readCanonicalGitHubRemoteUrl(resolvedProjectDir) ?? undefined;
   appState = addRecentProject(appState, resolvedProjectDir, ctx.projectName, gitRemoteUrl);
-  // Opening a worktree records it in recents (so it nests under its project),
-  // but the launch default stays the PROJECT, not the worktree — next launch
-  // reopens the main repo rather than a specific branch's window.
   if (entryPoint === 'worktree') {
     const mainRoot = classifyRecentGit(resolvedProjectDir).mainRoot;
     if (mainRoot !== null) appState = { ...appState, lastOpenedProject: mainRoot };
@@ -2902,30 +1930,11 @@ async function openProject(
   refreshApplicationMenu();
 }
 
-/**
- * Strict VS Code "Open Recent" parity: when a recents entry's folder no longer
- * exists on disk, drop it from the single canonical recents list (and its
- * associated session / window-bounds / last-opened keys, via
- * `removeRecentProject`) and refresh the File → Open Recent menu. Returns
- * whether an entry was actually removed plus the display name for the notice.
- * A no-op (`removed: false`) when the path is present, was never a recent, or is
- * only `'unreadable'` (an EACCES / I-O error where the folder may still exist),
- * so a plain pick-existing of a vanished folder is left to the normal error path.
- */
 function pruneRecentIfMissing(projectPath: string): { removed: boolean; name: string } {
   const entry = appState.recentProjects.find((p) => p.path === projectPath);
   if (entry === undefined) return { removed: false, name: basename(projectPath) };
-  // Strict VS Code parity: prune only on a genuine not-exist miss. `existsSync`
-  // collapses EACCES / I-O errors to `false`, so gating on it would wrongly drop
-  // a recent whose folder is still present but momentarily unreadable (a
-  // permission-restricted parent, a transient I/O error). Classify via the
-  // errno-aware probe so only a definitive `'missing'` prunes; `'exists'` and
-  // `'unreadable'` fall through to the normal open path.
   const dirState = checkProjectDirExists(projectPath);
   if (dirState !== 'missing') {
-    // A folder that exists but can't be read (EACCES / I-O) never self-cleans on
-    // open, so leave a breadcrumb — otherwise a "this dead recent won't go away"
-    // report is indistinguishable from an intentional keep.
     if (dirState === 'unreadable') {
       console.warn('[main] recents entry left intact: project folder is unreadable', {
         projectPath,
@@ -2936,10 +1945,6 @@ function pruneRecentIfMissing(projectPath: string): { removed: boolean; name: st
   appState = removeRecentProject(appState, projectPath);
   saveAppState(appState);
   refreshApplicationMenu();
-  // This deletes persisted state (recents row + saved session + window bounds +
-  // lastOpenedProject); leave a trace so a "my project vanished from recents"
-  // report has a main-process signal, as the sibling openProject-catch fallback
-  // does for its failure.
   console.warn('[main] pruned stale recents entry: project folder no longer exists', {
     projectPath,
   });
@@ -2960,15 +1965,6 @@ async function openProjectOrFallbackToNavigator(
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
   pendingTargetMissing?: boolean,
 ) {
-  // Prune-and-fall-back for internal callers that have no originating renderer
-  // to notify (native File → Open Recent, boot restore of a vanished
-  // lastOpenedProject): drop the stale recent and land on the Navigator rather
-  // than spawning a server for a gone path. Renderer opens instead prune (and
-  // toast) up front in the `ok:project:open` handler and return there on a
-  // genuine miss, so any renderer open that reaches here has a present folder —
-  // making this an extra, harmless existence probe for that path. Share opens
-  // carry a deep-link / branch-switch target and render their own honest verdict
-  // panel, so they skip this prune and proceed to `openProject` below.
   if (
     pendingDeepLinkTarget === undefined &&
     pendingShareBranchSwitch === undefined &&
@@ -2991,11 +1987,6 @@ async function openProjectOrFallbackToNavigator(
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
     const holderPid = (err as Error & { holderPid?: number }).holderPid;
-    // Which of the two refusals this is. `stale-lock-holder` covers both a
-    // holder that answered nothing and a lock whose port we cannot hold a
-    // connection open on, and only the second can involve a LIVE holder.
-    // Both are only meaningful on `stale-lock-holder`; other kinds reach the
-    // shared remedy copy below and must not read a `reason` that is not theirs.
     const isStaleLockHolder = kind === 'stale-lock-holder';
     const staleLockReason = isStaleLockHolder
       ? (err as Error & { reason?: string }).reason
@@ -3003,38 +1994,18 @@ async function openProjectOrFallbackToNavigator(
     const holderIsOwnChild =
       isStaleLockHolder &&
       (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild === true;
-    // Route through pino, not only `console.error`: a failure reported solely
-    // to the native dialog leaves nothing in `~/.ok/logs/desktop.*.log`, so a
-    // user who hits this can send logs that contain their successful opens and
-    // no trace of the one that failed. The dialog is for the user; this line
-    // is what makes the failure diagnosable afterwards.
     getLogger('project').error(
       {
         event: 'desktop-open-project-failed',
         projectPath,
         entryPoint,
         kind,
-        // Deliberately no top-level `pid`. The logger's `base` sets it to the
-        // writing process, and re-using the key for the spawned child would
-        // make this the one line in the desktop log where `pid` means
-        // something else. The child's is on `err.pid`.
-        //
-        // `exitCode` / `exitSignal` ARE duplicated from the serialized error,
-        // for query ergonomics on the fields an operator filters by first.
         exitCode: (err as Error & { exitCode?: number | null }).exitCode,
         exitSignal: (err as Error & { exitSignal?: string | null }).exitSignal,
-        // The Error itself, not its message: pino's `err` serializer needs the
-        // object to record type + stack, and a string collapses to the message
-        // we already have in the dialog. It also carries the error's own
-        // enumerable fields, so `kind`, `pid` and the stderr tail ride along.
         err,
       },
       '[main] openProject failed, falling back to Navigator',
     );
-    // Pick a dialog title + body based on the error's structured kind.
-    // Default ("Unable to open project") matches the existing pre-spec
-    // path so plain failures (generic boot crashes) continue to read the
-    // same way; specific kinds get specific copy.
     let dialogTitle = 'Unable to open project';
     let dialogBody = `${projectPath}\n\n${errorMessage}`;
     if (kind === 'mcp-server-stuck') {
@@ -3048,27 +2019,16 @@ async function openProjectOrFallbackToNavigator(
       dialogTitle = 'OpenKnowledge is already running for this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
     } else if (kind === 'stale-lock-holder') {
-      // Distinct from `lock-collision`: that one means a real server has the
-      // project and we should not fight it. On the probed arm the holder
-      // answered nothing on the port it advertises, so "already running" would
-      // be the wrong thing to tell someone whose project has been unopenable
-      // for days. The unusable-lock arm never dialed anyone, so it must not
-      // borrow that claim — its holder may be perfectly healthy.
       dialogTitle =
         staleLockReason === 'lock-not-attachable'
           ? 'This project\u2019s server lock cannot be used'
           : 'A stopped server is still holding this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
     }
-    // A spawn that timed out because a holder is in the way (fail-closed
-    // collision — visible in the child's stderr tail), or a direct lock
-    // collision, has a one-click remedy: stop the conflicting holder and
-    // retry. Everything else keeps the plain error box.
     const holderInTheWay =
       kind === 'lock-collision' ||
       kind === 'stale-lock-holder' ||
       (kind === 'spawn-lock-timeout' && errorMessage.includes('already running'));
-    // The one arm whose holder was never dialed, so it may be a live server.
     const warnsHolderMayBeLive = staleLockReason === 'lock-not-attachable' && !holderIsOwnChild;
     if (holderInTheWay) {
       const { response } = await dialog.showMessageBox({
@@ -3085,9 +2045,6 @@ async function openProjectOrFallbackToNavigator(
                 `sure it is gone and try again.`
               : `OpenKnowledge can stop the conflicting server process and retry opening the project.`),
         buttons: ['Stop Server & Retry', 'Cancel'],
-        // Enter lands on the safe path. Everywhere else that is Stop, because
-        // the holder is known inert; on the arm that just told the user their
-        // process may still be running, the safe path is the other button.
         defaultId: warnsHolderMayBeLive ? 1 : 0,
         cancelId: 1,
       });
@@ -3096,8 +2053,6 @@ async function openProjectOrFallbackToNavigator(
         const stop = await wm.forceStopConflictingServer(projectPath);
         if (stop.ok) {
           try {
-            // Single retry — a second failure falls through to the plain
-            // error box rather than looping the dialog.
             await openProject(
               projectPath,
               entryPoint,
@@ -3109,9 +2064,6 @@ async function openProjectOrFallbackToNavigator(
             );
             return;
           } catch (retryErr) {
-            // Same reasoning as the primary catch: a second failure that only
-            // ever reaches a message box leaves the user's logs describing the
-            // first failure and silent about the one they actually hit.
             getLogger('project').error(
               {
                 event: 'desktop-open-project-retry-failed',
@@ -3136,11 +2088,6 @@ async function openProjectOrFallbackToNavigator(
           );
         }
       } else {
-        // Every kind that reaches this dialog gets a decline record. The BOX is
-        // scoped narrower on purpose — the collision arms self-remedy in their
-        // own message text — but the record's reader is not the box's reader:
-        // to an operator reading a bundle, "kind=lock-collision, then silence"
-        // cannot distinguish a decline from an app quit mid-modal.
         getLogger('project').info(
           {
             projectPath,
@@ -3151,25 +2098,6 @@ async function openProjectOrFallbackToNavigator(
           'user declined the stop-and-retry remedy',
         );
         if (isStaleLockHolder) {
-          // Three holder states reach here, not two. On the own-child arm this
-          // method signalled that pid during the open the user just asked for,
-          // so "nothing was stopped" would be wrong there — but SIGTERM is a
-          // request, and the child releases the lock on receiving it, so that
-          // arm must not claim the stop completed OR that the lock survived.
-          //
-          // Quoted because this is a command the user is told to paste: `ok stop`
-          // rejoins its own argv, but never sees what the shell already ate. An
-          // apostrophe in a folder name hangs at a continuation prompt, and an
-          // `&` silently runs against a truncated path and reports success. The
-          // quoting is per-platform and lives in its own module, because POSIX
-          // single quotes are not a grouping character on `cmd.exe`.
-          //
-          // The target is the PROJECT PATH, never the pid: `ok stop <path>`
-          // resolves the same lockDir this refusal was computed from and stops
-          // it without reading `port`, while `ok stop <pid>` goes through a
-          // heuristic process scan that can miss, and matches a port before a
-          // pid — so on a machine where another project's port equals this
-          // holder's pid it stops the wrong one.
           const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
           dialog.showErrorBox(
             dialogTitle,
@@ -3197,18 +2125,6 @@ async function openProjectOrFallbackToNavigator(
   }
 }
 
-/**
- * Open a no-project file in an ephemeral single-file editing session (the
- * desktop side of `ok <file>`, reached via the `openknowledge://open?file=`
- * deep-link). Re-runs the shared `prepareSingleFileOpen` main-side — the
- * safety net: a `file=` whose realpath sits inside a project (a symlink, a
- * hand-crafted URL) routes to the normal project-open flow rather than spinning
- * an ephemeral server that would clobber the project's file.
- *
- * Ephemeral sessions are deliberately NOT added to recents — the user
- * opened a loose file, not a project. Teardown of the server + temp dir is owned
- * by `createEphemeralWindow`'s per-window `'closed'` handler.
- */
 async function openEphemeralFile(filePath: string): Promise<void> {
   ensureWindowManager();
   const navigatorHandoff = beginNavigatorHandoff(navigatorWindow);
@@ -3217,33 +2133,17 @@ async function openEphemeralFile(filePath: string): Promise<void> {
   try {
     plan = prepareSingleFileOpen(filePath);
   } catch (err) {
-    // The dialog is the user's copy; this is the operator's. Without it a
-    // "launched `ok <file>` and got the Navigator" report has no trace naming
-    // which file was attempted or which error class fired, while the sibling
-    // catch below is fully diagnosable. `warn` rather than `error` because the
-    // common cause is a file the user should not have opened (missing, or not
-    // markdown), not a fault in the app.
     getLogger('project').warn({ file: filePath, err }, 'single-file open could not be prepared');
-    // Typed user-facing errors (missing / not-a-file / not-markdown) render a
-    // native dialog rather than a stack trace.
     dialog.showErrorBox(
       'Cannot open this file',
       `${filePath}\n\n${err instanceof Error ? err.message : String(err)}`,
     );
-    // Same zero-window fallback as the create-window catch below. The launch
-    // claim is recorded when the URL is parsed, before any window exists, so a
-    // cold `ok <file>` has already suppressed the boot restore by the time this
-    // throws. Without the fallback the app is left running with no window at
-    // all, which off macOS is unrecoverable: `window-all-closed` fires only
-    // when a window closes, and none was ever created.
     if (BrowserWindow.getAllWindows().length === 0) {
       openNavigator();
     }
     return;
   }
 
-  // the file's realpath is inside a project → open the project focused on
-  // the file, not an ephemeral session.
   if (plan.mode === 'project') {
     await openProjectOrFallbackToNavigator(plan.projectRoot, 'deep-link', {
       kind: 'doc',
@@ -3253,10 +2153,6 @@ async function openEphemeralFile(filePath: string): Promise<void> {
   }
 
   try {
-    // Capture any pre-existing live session BEFORE the call so the log can tell a
-    // focus-dedup from a fresh spawn: `createEphemeralWindow` returns the SAME
-    // context object when it focuses an existing live window, and a NEW one when
-    // it spawns (including when it reaps a dead session and re-spawns).
     const existingBefore = wm.getWindowFor(plan.canonicalFilePath);
     const ctx = await wm.createEphemeralWindow({
       canonicalFilePath: plan.canonicalFilePath,
@@ -3274,12 +2170,6 @@ async function openEphemeralFile(filePath: string): Promise<void> {
         ? 'ephemeral single-file window focused (deduped)'
         : 'ephemeral single-file window created',
     );
-    // The external-link / asset safety net is attached by the window factory
-    // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is
-    // the file's real parent (`opts.contentDir`), wired there.
-    // Track the loose file in Recent Files (durable, separate from recent
-    // projects) so File → Open Recent can reopen it. Keyed by canonical path;
-    // does NOT touch `lastOpenedProject` (a loose file is not a project).
     appState = addRecentFile(appState, plan.canonicalFilePath, basename(plan.canonicalFilePath));
     saveAppState(appState);
     navigatorHandoff.close({ projectPath: plan.contentDir });
@@ -3293,56 +2183,17 @@ async function openEphemeralFile(filePath: string): Promise<void> {
       'Could not open file',
       `${filePath}\n\n${err instanceof Error ? err.message : String(err)}`,
     );
-    // Fall back to the Navigator only when the failed open would otherwise leave
-    // the app with no window (a cold `ok <file>` that errored) — a warm session
-    // with windows already open shouldn't get a surprise Navigator on top of the
-    // error dialog. (createEphemeralWindow already reaped the server + temp dir.)
     if (BrowserWindow.getAllWindows().length === 0) {
       openNavigator();
     }
   }
 }
 
-/**
- * Single in-flight `installApplicationMenu` promise. Rapid renderer pushes
- * (e.g. `notifyActiveTargetChanged` firing on every navigation) would
- * otherwise interleave two parallel `installApplicationMenu` invocations;
- * Electron's `Menu.setApplicationMenu` is last-write-wins, so the slower
- * call could clobber the newer state. Serialize: a refresh call that lands
- * while one is in flight marks `pendingRefresh = true`; when the current
- * call resolves, we kick off one more refresh to absorb whatever pushes
- * landed during the prior cycle. Coalesces N rapid pushes to at most 2
- * sequential refreshes (current + one queued).
- */
 let refreshInFlight: Promise<void> | null = null;
 let pendingRefresh = false;
 
-/**
- * The active menu translator, built lazily on the first menu render and
- * discarded whenever the renderer pushes a new language preference.
- *
- * Lazy rather than a boot step because the menu is the only consumer and it is
- * built inside `runBootstrap` — resolving here means the very first menu bar
- * paints translated, with no renderer round-trip and no extra ordering
- * constraint in the bootstrap prefix. Resolution reads `~/.ok/global.yml`
- * synchronously; it is one small file read per language change.
- */
 let menuTranslator: MenuTranslator | null = null;
 
-/**
- * The most recent preference a renderer pushed, or `null` when none has.
- *
- * The renderer pushes as soon as the config document changes, but that document
- * reaches `~/.ok/global.yml` through the debounced persistence path — so at push
- * time the file still holds the PREVIOUS language. Re-reading disk here would
- * rebuild the menu in the language the user just left, and it would look like
- * the menu simply does not follow the setting: the next reload re-pushes, by
- * which point the write has landed, and the menu finally catches up.
- *
- * Held UNRESOLVED, so a `'system'` preference keeps tracking the OS — the
- * resolve below re-runs against the current preferred-language list on every
- * rebuild rather than freezing whatever it reported when the user chose.
- */
 let pushedLanguagePreference: LanguagePreference | null = null;
 
 function currentMenuTranslator(): MenuTranslator {
@@ -3354,8 +2205,7 @@ function currentMenuTranslator(): MenuTranslator {
             preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
             env: process.env,
           })
-        : // The pushed value is fresher than the file by construction.
-          resolveDesktopLocaleForPushed(pushedLanguagePreference, {
+        : resolveDesktopLocaleForPushed(pushedLanguagePreference, {
             preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
             env: process.env,
           });
@@ -3371,10 +2221,6 @@ function currentMenuTranslator(): MenuTranslator {
   return menuTranslator;
 }
 
-/**
- * Rebuild the application menu. Called on app boot AND whenever the recent-
- * projects list changes, so File → Open Recent stays current.
- */
 function refreshApplicationMenu(): void {
   if (refreshInFlight !== null) {
     pendingRefresh = true;
@@ -3395,12 +2241,6 @@ function refreshApplicationMenu(): void {
     });
 }
 
-/**
- * Menubar `command` dispatch (the windows-linux-port renderer-menubar decision). Each case
- * reuses the exact behavior the native menu deps wire in
- * `runApplicationMenuRefresh` — a divergence here would make the same menu
- * item act differently per platform.
- */
 async function runMenuDispatchCommand(
   command: MenuDispatchCommand,
   sender: Electron.WebContents,
@@ -3420,8 +2260,6 @@ async function runMenuDispatchCommand(
       refreshApplicationMenu();
       return;
     case 'open-settings': {
-      // Same hash-routed mount path as the native Settings… item; prefer the
-      // dispatching window (the menubar lives in it) over the focus query.
       const target =
         BrowserWindow.fromWebContents(sender) ??
         BrowserWindow.getFocusedWindow() ??
@@ -3429,9 +2267,7 @@ async function runMenuDispatchCommand(
       if (!target) return;
       target.webContents
         .executeJavaScript("window.location.hash = '#settings'; undefined")
-        .catch(() => {
-          // Window torn down mid-dispatch — the click degrades to a no-op.
-        });
+        .catch(() => {});
       return;
     }
     case 'check-for-updates':
@@ -3442,13 +2278,9 @@ async function runMenuDispatchCommand(
       });
       return;
     case 'reconfigure-mcp-wiring':
-      // Gate lives inside reconfigureMcpWiringNow (returns false when the
-      // surface is unavailable) — same body the Cmd+K invoke channel runs.
       reconfigureMcpWiringNow();
       return;
     case 'open-github':
-      // Hardcoded https URL — same build-time-trusted rationale as the
-      // native Help-menu items (see openExternalUrl in the menu deps).
       void shell.openExternal('https://github.com/inkeep/open-knowledge');
       return;
     case 'toggle-spell-check':
@@ -3457,11 +2289,6 @@ async function runMenuDispatchCommand(
   }
 }
 
-/**
- * Menubar `role` dispatch — the hand-rolled equivalents of the Electron
- * menu roles the native template gets for free. Applied to the dispatching
- * window (the menubar that fired lives in it).
- */
 function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebContents): void {
   if (role === 'quit') {
     app.quit();
@@ -3496,8 +2323,6 @@ function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebConte
       wc.reloadIgnoringCache();
       return;
     case 'toggleDevTools':
-      // Channel-gated like the native View menu: stable builds don't expose
-      // the inspector even if a stale renderer sends the role.
       if (!app.isPackaged || channelFromVersion(app.getVersion()) === 'beta') {
         wc.toggleDevTools();
       }
@@ -3527,26 +2352,14 @@ async function runApplicationMenuRefresh(): Promise<void> {
   const focusedWindow = BrowserWindow.getFocusedWindow();
   const focusedWindowId = focusedWindow?.id ?? null;
   const editorViewMenuState = editorViewMenuStates.current(focusedWindowId);
-  // installApplicationMenu is async because it dynamically imports
-  // `electron.Menu` (see menu.ts header — keeps `buildMenuTemplate`
-  // unit-testable under Bun). Failures are logged; an uninstallable menu
-  // shouldn't crash the app.
   await installApplicationMenu({
     appName: app.name,
     translate: currentMenuTranslator(),
-    // Dev + any prerelease keep DevTools; only stable hides it. `app.isPackaged`
-    // alone is the wrong gate (true for both channels); the version's channel
-    // is the discriminator — stable promotion overrides the legacy commit's
-    // `-beta.N` via `--config.extraMetadata.version=X.Y.Z`. Reuses
-    // `channelFromVersion` so this stays aligned with the auto-updater channel.
     showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
     terminalCapable: isTerminalAvailable(),
     dialog,
     openNavigator,
     openProject: (path, entryPoint) => openProjectOrFallbackToNavigator(path, entryPoint),
-    // File → Open file… — the picker runs in the menu binding (menu.ts), which
-    // hands the absolute path here. `openEphemeralFile` re-derives project-vs-
-    // ephemeral (a file inside a project opens that project, not a temp session).
     openEphemeralFile: (filePath) => openEphemeralFile(filePath),
     getRecentProjects: () => appState.recentProjects,
     clearRecentProjects: () => {
@@ -3560,34 +2373,15 @@ async function runApplicationMenuRefresh(): Promise<void> {
       saveAppState(appState);
       refreshApplicationMenu();
     },
-    // The scheme allowlist is enforced in the renderer IPC path (shell-allowlist.ts).
-    // Help-menu URLs are hardcoded in menu.ts (always `https://github.com/inkeep/…`),
-    // so they're trusted at build time — direct shell.openExternal is fine here.
     openExternalUrl: (url: string) => {
       void shell.openExternal(url);
     },
-    // File → "Set up OpenKnowledge integrations…" re-trigger for the
-    // first-launch consent dialog (MCP wiring + shell-PATH install). Only
-    // plumb the dep on darwin + packaged builds; non-macOS has no MCP
-    // wiring, and dev-mode explicitly contaminates the developer's real
-    // configs — both should hide the row. The handler
-    // tears down any prior mcpWiringHandle then arms a fresh one with
-    // `forceShow: true` so the marker-present gate is bypassed, and hands
-    // it an already-loaded window so the dialog opens immediately. The
-    // wiring is user-global (the MCP entry resolves the project at tool-call
-    // time), so any window works — editor or Navigator. With zero loaded
-    // windows the armed mount-ack fallback delivers the dialog to the next
-    // window that opens.
     reconfigureMcpWiring:
       app.isPackaged && supportedPackagedInstall()
         ? () => {
             reconfigureMcpWiringNow();
           }
         : undefined,
-    // Help → Install in Claude Desktop… opens the skill install dialog in
-    // the focused window via the same URL-hash trigger the command palette
-    // + docs link use. Falls back to iterating all BrowserWindows when no
-    // window is focused (e.g. menu clicked from the Dock).
     openInstallSkillDialog: () => {
       const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       if (!target) return;
@@ -3595,32 +2389,15 @@ async function runApplicationMenuRefresh(): Promise<void> {
         "window.location.hash = '#install-claude-desktop'; undefined",
       );
     },
-    // App menu (macOS) / File menu (Windows/Linux) Settings… navigates the
-    // focused window's URL hash to `#settings` so the renderer's
-    // `useSettingsRoute` hook renders the Settings pane in the editor area.
-    // Same hash-routed pattern as `openInstallSkillDialog` so
-    // every entry point (menu / Cmd-, / HelpPopover / CommandPalette)
-    // funnels through the same client-side mount path. Silent no-op when
-    // the focused window is the Navigator (renderer is NavigatorApp, not
-    // App, and does not mount `useSettingsRoute`).
     openSettings: () => {
       const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
       if (!target) return;
       target.webContents
         .executeJavaScript("window.location.hash = '#settings'; undefined")
-        .catch(() => {
-          // Window torn down mid-dispatch — the click degrades to a no-op.
-        });
+        .catch(() => {});
     },
     onReportBug: () => sendMenuAction('report-bug'),
     onSendFeedback: () => sendMenuAction('send-feedback'),
-    // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
-    // void: the menu doesn't surface in-flight progress; the existing
-    // `update-available` / `update-not-available` electron-updater events
-    // are what drive the user-facing toast UX. Returns undefined when the
-    // updater handle hasn't booted yet (dev mode, or boot failure logged at
-    // error level) so the menu items short-circuit silently rather than
-    // throw on `undefined?.()`.
     onCheckForUpdates: autoUpdaterHandle
       ? () => {
           void autoUpdaterHandle?.checkForUpdatesNow().catch((err) => {
@@ -3636,21 +2413,10 @@ async function runApplicationMenuRefresh(): Promise<void> {
             getLogger('lifecycle').error({ err }, 'desktop self-uninstall flow failed');
           })
       : undefined,
-    // View menu history traversal uses the same focused-renderer action channel.
     onNavigateBack: () => sendMenuAction('navigate-back'),
     onNavigateForward: () => sendMenuAction('navigate-forward'),
     noteWindow: focusedWindow !== null && getNoteWindowContext(focusedWindow.id) !== undefined,
-    // File menu state-aware items. activeTarget drives enable/disable;
-    // per-item handlers fire `ok:menu-action` to the focused renderer which
-    // already knows the current scope (sidebar selection + editor
-    // activeTarget) and dispatches the corresponding primitive (the same
-    // primitives the sidebar context menus invoke). Routes through the
-    // existing `onMenuAction` channel so there's no new IPC surface for the
-    // renderer to subscribe to.
     activeTarget: currentActiveTarget(),
-    // Main-originated, unlike the tab menu and the palette: main already knows
-    // the focused window and its active document, so there is nothing to ask
-    // the renderer for and no channel to add.
     onOpenInNewWindow: () => {
       const focused = BrowserWindow.getFocusedWindow();
       const docName = docNameFromActiveTarget(editorActiveTargets.current(focused?.id ?? null));
@@ -3660,13 +2426,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     onNewFile: () => sendMenuAction('new-doc'),
     onNewFolder: () => sendMenuAction('new-folder'),
     onNewFromTemplate: () => sendMenuAction('new-from-template'),
-    // New project… — opens the create-new-project dialog in the
-    // focused window. Both window kinds (editor App, NavigatorApp) subscribe
-    // to this action and mount CreateProjectDialog.
     onNewProject: () => sendMenuAction('new-project'),
-    // Worktree selector (worktree = window). Both delegate to the
-    // focused renderer's ProjectSwitcher surface: `new-worktree` opens the
-    // create dialog, `switch-worktree` opens the sidebar switcher.
     onNewWorktree: () => sendMenuAction('new-worktree'),
     onSwitchWorktree: () => sendMenuAction('switch-worktree'),
     onRename: () => sendMenuAction('rename'),
@@ -3677,18 +2437,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     onSendToAi: () => sendMenuAction('send-to-ai'),
     onCopyFullPath: () => sendMenuAction('copy-full-path'),
     onCopyRelativePath: () => sendMenuAction('copy-relative-path'),
-    // View menu items reflect the latest renderer-pushed snapshot via
-    // `ok:editor:view-menu-state-changed`; `buildViewMenuStateDeps` owns the
-    // field/action mapping. Toggling fires `ok:menu-action` which the
-    // renderer routes through `projectLocalBinding.patch(...)`; the
-    // resulting CRDT mutation triggers a sibling push back so the checkmark
-    // snaps.
     ...buildViewMenuStateDeps(editorViewMenuState, sendMenuAction),
-    // Unsupported platforms strip every PTY-backed terminal handler so their
-    // menu items render disabled instead of surfacing a spawn failure.
-    // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
-    // `onToggleAgentPanel` is deliberately absent from the strip list: agent
-    // threads are server-hosted, so the agents panel works everywhere pty does not.
     ...(isTerminalAvailable()
       ? { onNewTerminalWindow: () => openTerminalWindow() }
       : {
@@ -3698,22 +2447,11 @@ async function runApplicationMenuRefresh(): Promise<void> {
           onKillTerminal: undefined,
           onNewTerminalWindow: undefined,
         }),
-    // Edit -> "Check Spelling While Typing": the checkbox reflects the
-    // persisted app-wide flag; the click flips it through the shared toggle
-    // (session + persist + menu rebuild) so this and the in-editor
-    // Disable/Enable rows stay consistent.
     spellCheckEnabled: appState.spellCheckEnabled,
     onToggleSpellCheck: () => setSpellCheckEnabledAppWide(!appState.spellCheckEnabled),
   });
 }
 
-/**
- * Shared predicate for the machine-integration surfaces (MCP wiring
- * re-arm, integrations settings): the running executable is one of the
- * supported packaged layouts from `install-shape.ts`. AppImage and dev
- * shells are excluded — matching the reclaim modules' own gates, so a
- * surface never arms a flow its module would refuse.
- */
 function supportedPackagedInstall(): boolean {
   const kind = classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind;
   return kind !== 'appimage' && kind !== 'unsupported';
@@ -3730,22 +2468,12 @@ async function showMessageBoxAttached(options: MessageBoxOptions) {
   return target ? dialog.showMessageBox(target, options) : dialog.showMessageBox(options);
 }
 
-/**
- * Show a `DesktopUninstallNoticeSpec` in the React uninstall window and resolve
- * true on confirm.
- *
- * Closing the window without pressing a button means Cancel for a two-button
- * notice — an unanswered question must not proceed. A single-button notice has
- * nothing else to choose and the flow still has to finish, so closing it
- * confirms. The screen mirrors the same split on Escape.
- */
 async function showDesktopUninstallNotice(
   spec: DesktopUninstallNoticeSpec,
   options: {
     width?: number;
     height?: number;
     resizable?: boolean;
-    /** Reveal the cleanup log in Finder when the notice's log link is clicked. */
     onRevealLog?: () => void;
   } = {},
 ): Promise<boolean> {
@@ -3767,8 +2495,6 @@ async function showDesktopUninstallNotice(
       title: spec.title,
       onIntent: (intent, win) => {
         if (intent.kind === 'notice-reveal-log') {
-          // Non-terminal: reveal the log in Finder and leave the notice up, so
-          // the user can read what happened and still answer.
           options.onRevealLog?.();
         } else if (intent.kind === 'notice-confirm') {
           finish(true, win);
@@ -3793,11 +2519,6 @@ function createDesktopUninstallUtilityWindow(options: {
   title: string;
   modal?: boolean;
   resizable?: boolean;
-  /**
-   * Load the preload bridge and tag the window as the uninstall renderer, so
-   * the preload exposes `okUninstall` instead of `okDesktop`. The inline-HTML
-   * screens omit it and get no preload at all.
-   */
   uninstallBridge?: boolean;
 }): BrowserWindow {
   const win = new BrowserWindow({
@@ -3828,24 +2549,8 @@ function createDesktopUninstallUtilityWindow(options: {
   return win;
 }
 
-/**
- * Every live React uninstall window, keyed by webContents id. Main answers
- * `ok:uninstall:dispatch` only for senders in here — see `uninstall-ipc.ts`.
- */
 const uninstallScreens = createUninstallScreenRegistry();
 
-/**
- * Open the React uninstall renderer (`packages/app/uninstall.html`) showing
- * `screen`, and resolve once it is visible.
- *
- * The theme is resolved here, in main, and travels in the entry query so the
- * renderer's inline stamp runs before the body parses — `ready-to-show` (and
- * therefore `show()`) cannot beat it, so there is no wrong-theme frame.
- *
- * The screen registration is torn down on `closed`, so a window main has
- * finished with can no longer drive the flow even if its renderer is still
- * executing.
- */
 async function openDesktopUninstallRendererWindow(options: {
   screen: UninstallScreenSpec;
   width?: number;
@@ -3854,19 +2559,8 @@ async function openDesktopUninstallRendererWindow(options: {
   minHeight?: number;
   title?: string;
   resizable?: boolean;
-  /**
-   * Refuse user-initiated closes. `destroy()` bypasses it, so main can still
-   * take the window down when the step it covers is over.
-   */
   preventClose?: boolean;
-  /** Receives the window so a settling intent can close the screen it came from. */
   onIntent: (intent: UninstallIntent, win: BrowserWindow) => void;
-  /**
-   * Runs once the window is gone, however it went — user close, a settling
-   * intent, or a load failure. Wired here rather than by the caller because a
-   * window can close before this function's promise resolves, and a listener
-   * attached afterwards would never fire.
-   */
   onClosed?: () => void;
 }): Promise<BrowserWindow> {
   const parent = BrowserWindow.getFocusedWindow();
@@ -3914,12 +2608,6 @@ async function openDesktopUninstallRendererWindow(options: {
       ),
     );
   } catch (err) {
-    // `win.destroy()` fires `closed` synchronously, which runs release()
-    // (idempotent) and onClosed?.() through the `closed` handler. The explicit
-    // release() here unregisters the window before destroy fires it again. The
-    // re-throw reaches the caller's `.catch()`, but for any caller providing
-    // `onClosed` its outer Promise has already settled through that closed path
-    // by the time the catch runs — the `settled` guard makes it a no-op.
     release();
     if (!win.isDestroyed()) win.destroy();
     throw err;
@@ -3928,15 +2616,6 @@ async function openDesktopUninstallRendererWindow(options: {
   return win;
 }
 
-/**
- * Show the project picker and resolve with the projects to also deinit, or
- * `null` when the user cancels.
- *
- * Closing the window IS a cancel — this screen is the flow's confirm gate, so
- * every exit that is not an explicit confirm has to leave the install alone.
- * (The churn survey deliberately maps close the other way; see
- * `showDesktopUninstallFeedbackWindow`.)
- */
 async function showDesktopUninstallProjectPicker(
   candidates: readonly DesktopUninstallProjectCandidate[],
 ): Promise<DesktopUninstallProjectCandidate[] | null> {
@@ -3985,14 +2664,6 @@ async function showDesktopUninstallProjectPicker(
   });
 }
 
-/**
- * Show the churn survey and resolve with whatever the user left behind. Every
- * non-answer exit — closing the window, a renderer that fails to load —
- * resolves empty and lets the uninstall continue: the decision was already made
- * on the confirm surface before this, so an optional question must not become a
- * second, hidden cancel gate. That is why this deliberately does NOT reuse the
- * project picker's close-means-cancel mapping.
- */
 async function showDesktopUninstallFeedbackWindow(): Promise<UninstallFeedbackAnswers> {
   const parent = BrowserWindow.getFocusedWindow();
   const workArea = (
@@ -4040,10 +2711,6 @@ async function collectDesktopUninstallFeedback(): Promise<void> {
   if (outcome.status === 'failed') {
     getLogger('lifecycle').warn({ err: outcome.error }, 'desktop uninstall feedback step failed');
   } else if (outcome.status === 'submitted' && !outcome.result.ok) {
-    // Offline, a hung intake, or feedback switched off server-side are all
-    // expected conditions. A rejected payload is not — it means our body and
-    // the intake's schema have drifted, and the only other symptom would be
-    // churn tickets quietly going to zero.
     const log = getLogger('lifecycle');
     const line = 'desktop uninstall feedback was not delivered';
     if (outcome.result.reason === 'invalid') log.warn({ reason: outcome.result.reason }, line);
@@ -4051,13 +2718,7 @@ async function collectDesktopUninstallFeedback(): Promise<void> {
   }
 }
 
-/**
- * Run `work` behind the progress screen, which stays up — and refuses to be
- * closed — until the work settles.
- */
 async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<T> {
-  // Cosmetic: a window that fails to load must neither skip the cleanup nor
-  // leak, so a failure is logged and the work runs without it.
   const win = await openDesktopUninstallRendererWindow({
     screen: { kind: 'progress' },
     width: 420,
@@ -4065,7 +2726,6 @@ async function withDesktopUninstallProgress<T>(work: () => Promise<T>): Promise<
     resizable: false,
     preventClose: true,
     title: 'Uninstalling OpenKnowledge',
-    // Nothing on this screen can be pressed, so anything arriving here is noise.
     onIntent: () => undefined,
   }).catch((err) => {
     getLogger('lifecycle').warn({ err }, 'desktop uninstall progress window failed to load');
@@ -4126,7 +2786,6 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
   );
   await runDesktopUninstallOutcomeStep({
     cleanup,
-    // Ask why only after a successful removal, before the finish screen.
     runFeedbackStep: collectDesktopUninstallFeedback,
     showCompletion: async () => {
       getLogger('lifecycle').info(
@@ -4139,11 +2798,6 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
       );
     },
     showFailure: async ({ error }) => {
-      // Cleanup ran but reported problems (a refused path, a failed deinit…).
-      // Surface the log inline so the user doesn't have to hunt for the file,
-      // then continue to the remove-the-app step — the user asked to uninstall,
-      // and the log spells out anything that needs manual follow-up. No survey
-      // here: a failed uninstall isn't a departure worth asking about.
       getLogger('lifecycle').warn(
         { includeProjects, projectCount: projectPaths.length, logPath, error },
         'desktop self-uninstall cleanup reported failures',
@@ -4165,22 +2819,6 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
   app.quit();
 }
 
-/**
- * Dev-only walkthrough of the uninstall UI. Reuses the exact windows the real
- * flow shows — project picker, progress, feedback survey, and the
- * completion/failure notices — but stubs out the destructive cleanup: nothing is
- * removed, and the app is never trashed or quit. Gated on `!app.isPackaged` via
- * `resolveDesktopUninstallUiPreviewMode`, so it can never fire in a shipped app.
- *
- * `OK_UNINSTALL_UI_PREVIEW=success` walks the happy path (feedback → completion);
- * `=failure` walks the failure notices. See `runDesktopUninstallUiPreview`.
- * `=renderer`, `=picker`, `=survey` and `=notice` skip the flow entirely and
- * open one screen — a notice, the project picker, the churn survey and both
- * notice shapes respectively — so a screen's fidelity and its IPC round trip
- * can be asserted on their own. Each settles by destroying its window, the same
- * shape the real screens use, which is the observable a smoke needs to prove an
- * intent actually reached main.
- */
 function maybeRunDesktopUninstallUiPreview(): void {
   const mode = resolveDesktopUninstallUiPreviewMode(
     process.env.OK_UNINSTALL_UI_PREVIEW,
@@ -4214,9 +2852,6 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
       { cancelled: selection === null, selected: selection?.length ?? 0 },
       'uninstall UI preview: project picker resolved',
     );
-    // Echo what main resolved back onto the screen, so walking the picker shows
-    // which projects the flow would actually have acted on rather than leaving
-    // that to the log.
     await openDesktopUninstallRendererWindow({
       screen: {
         kind: 'notice',
@@ -4233,16 +2868,12 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
     return;
   }
   if (mode === 'notice') {
-    // The two shapes back to back, so one walkthrough shows both close
-    // semantics: leaving the question unanswered must cancel, while leaving the
-    // recap unanswered must still confirm.
     const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
       height: 280,
     });
     let reveals = 0;
     const acknowledged = await showDesktopUninstallNotice(
       desktopUninstallCompletionNotice({ projectCount: 2 }),
-      // Counted rather than revealed: a preview must not open Finder.
       { height: 440, onRevealLog: () => (reveals += 1) },
     );
     getLogger('lifecycle').info(
@@ -4274,8 +2905,6 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
       { answered: hasUninstallFeedbackContent(answers) },
       'uninstall UI preview: churn survey resolved',
     );
-    // Nothing is POSTed here — the answers are echoed onto the screen so
-    // walking the survey shows exactly what the flow would have filed.
     await openDesktopUninstallRendererWindow({
       screen: {
         kind: 'notice',
@@ -4302,10 +2931,6 @@ function describeDesktopUninstallPreviewSelection(
   return `Picker confirmed: ${selection.map((candidate) => candidate.path).join(', ')}`;
 }
 
-/**
- * The whole answer set on one line. Names each field so the preview proves
- * which one an answer landed in, not just that something came through.
- */
 function describeDesktopUninstallPreviewAnswers(answers: UninstallFeedbackAnswers): string {
   if (!hasUninstallFeedbackContent(answers)) return 'Survey continued unanswered';
   return [
@@ -4316,10 +2941,6 @@ function describeDesktopUninstallPreviewAnswers(answers: UninstallFeedbackAnswer
   ].join(' | ');
 }
 
-/**
- * Stand-in projects for the dev-only previews. These paths are never touched —
- * every preview mode stubs out or stops short of the cleanup step.
- */
 function desktopUninstallPreviewCandidates(home: string): DesktopUninstallProjectCandidate[] {
   return [
     { path: `${home}/Notes`, open: true, recent: true, running: true },
@@ -4328,24 +2949,14 @@ function desktopUninstallPreviewCandidates(home: string): DesktopUninstallProjec
   ];
 }
 
-/**
- * Show the feedback survey during a preview without ever reaching production
- * intake. Submits only when a non-production `OK_FEEDBACK_INTAKE_ORIGIN` is set;
- * otherwise the survey is shown but nothing is POSTed, so a preview can never
- * file a real churn ticket.
- */
 async function collectDesktopUninstallFeedbackPreview(): Promise<void> {
   const origin = process.env.OK_FEEDBACK_INTAKE_ORIGIN;
   const hasLocalIntake =
     typeof origin === 'string' && origin.length > 0 && !/openknowledge\.ai/i.test(origin);
   if (hasLocalIntake) {
-    // A local intake is configured — exercise the real submit path against it.
     await collectDesktopUninstallFeedback();
     return;
   }
-  // No local intake: show the real survey but never POST. Point
-  // OK_FEEDBACK_INTAKE_ORIGIN at a local ok-marketing origin to exercise
-  // end-to-end delivery.
   await showDesktopUninstallFeedbackWindow();
   getLogger('lifecycle').warn(
     { submitted: false },
@@ -4376,9 +2987,6 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
 
   const projectPaths = confirmation.projectPaths;
   const logPath = defaultDesktopUninstallLogPath(home);
-  // Write a placeholder log so the completion screen's "reveal in Finder" link
-  // opens a real file during the preview — a single throwaway note in the
-  // standard uninstall-log location, nothing else on disk changes.
   try {
     writeFileSync(
       logPath,
@@ -4388,8 +2996,6 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
     log.warn({ err, logPath }, 'uninstall UI preview: could not write placeholder log');
   }
 
-  // Stubbed cleanup: pause on the progress window like a real removal would,
-  // then report the requested outcome. Nothing is deleted.
   const cleanup: RunDesktopUninstallCleanupResult = await withDesktopUninstallProgress(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1400));
     return mode === 'failure'
@@ -4422,18 +3028,6 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
   log.warn({ mode }, 'desktop uninstall UI preview finished — OpenKnowledge is still installed');
 }
 
-/**
- * Dispatch an `OkMenuAction` to its originating renderer when available.
- * Native-menu callers have no sender and use the focused window, then the first
- * BrowserWindow (for a menu click from the Dock).
- * Silent no-op when no windows are open (e.g. last project closed but app
- * still running on macOS via the Dock).
- *
- * `sender` picks the target window and nothing else; `origin` states the
- * dispatching surface separately, so a caller that threads a sender purely to
- * choose a window does not accidentally claim to be a launcher.
- */
-
 function sendMenuAction(
   action: OkMenuAction,
   sender: WebContents | null = null,
@@ -4448,15 +3042,8 @@ function sendMenuAction(
   sendToRenderer(target.webContents, 'ok:menu-action', { action, origin });
 }
 
-/**
- * Terminal → "New Terminal Window": open a dedicated terminal window inheriting
- * the focused window's project (the editor window's `windowsByPath` context, or
- * a focused terminal window's registry context for chaining; project-less from
- * the Navigator or with no focused project). Opens directly in main — like
- * `openNavigator` — rather than round-tripping the renderer.
- */
 function openTerminalWindow(): void {
-  if (terminalReaper == null) return; // PTY manager not yet wired (pre-boot) — unreachable from a menu click.
+  if (terminalReaper == null) return;
   const focused = BrowserWindow.getFocusedWindow();
   const editorCtx =
     focused && wm ? wm.getContextForBrowserWindow(focused as unknown as BrowserWindowLike) : null;
@@ -4481,8 +3068,6 @@ function openTerminalWindow(): void {
           preload: join(__dirname, '../preload/index.js'),
         },
       });
-      // Keep our per-window title against the renderer's static <title> (same as
-      // editor windows). The per-window PTY reap is wired by the factory.
       win.on('page-title-updated', (e) => {
         e.preventDefault();
       });
@@ -4500,17 +3085,6 @@ function openTerminalWindow(): void {
   recordTerminalWindowOpened();
 }
 
-/**
- * Reopen one popped-out window from a relaunch snapshot, after its project's
- * window and server are up.
- *
- * Declines silently when the project did not come up after all — the boot
- * filter already dropped entries whose project was absent from the snapshot,
- * but a project window can still fail to open, and a lone pop-out with nothing
- * to attach to is worse than a missing one. A document deleted while the app
- * was closed still opens: the window shows the deleted state, which tells the
- * user what happened instead of quietly dropping a window they left open.
- */
 function restoreNoteWindow(entry: {
   readonly projectPath: string;
   readonly docName: string;
@@ -4521,7 +3095,6 @@ function restoreNoteWindow(entry: {
   openNoteWindowForDoc({
     origin: null,
     docName: entry.docName,
-    // No entryPoint: a restore is not an adoption.
     project: {
       projectPath: ctx.projectPath,
       projectName: ctx.projectName,
@@ -4532,16 +3105,6 @@ function restoreNoteWindow(entry: {
   });
 }
 
-/**
- * Recreate a project's note windows against its freshly restarted server.
- *
- * A note window's attach argv is a frozen snapshot taken at creation, so after
- * a restart it still points at the terminated server — and the replacement
- * usually binds a different port, so the old window could never reconnect on
- * its own. Closing and reopening on the current scope is the whole fix; the
- * documents come back because each window's CURRENT document is read from the
- * registry, not its birth document.
- */
 function recreateNoteWindowsForProject(projectRoot: string, apiOrigin: string): void {
   const docNames = listNoteWindowsForProject(projectRoot)
     .map((windowId) => getNoteWindowContext(windowId)?.currentDocName)
@@ -4550,8 +3113,6 @@ function recreateNoteWindowsForProject(projectRoot: string, apiOrigin: string): 
 
   closeNoteWindowsForProject({
     projectRoot,
-    // Not a quit and not a user closing the project: the windows are coming
-    // straight back, so neither the restore snapshot nor a teardown applies.
     reason: 'project-close',
     closeWindowById: (windowId) => {
       BrowserWindow.fromId(windowId)?.close();
@@ -4565,10 +3126,6 @@ function recreateNoteWindowsForProject(projectRoot: string, apiOrigin: string): 
     apiOrigin,
   };
   for (const docName of docNames) {
-    // Isolate each recreate: the windows were already closed above, so a throw
-    // on one (a `BrowserWindow` constructor failure, say) would otherwise lose
-    // every pop-out after it. No entryPoint: the app is putting back what was
-    // already open, so this must not count as an adoption.
     try {
       openNoteWindowForDoc({ origin: null, docName, project });
     } catch (err) {
@@ -4580,11 +3137,6 @@ function recreateNoteWindowsForProject(projectRoot: string, apiOrigin: string): 
   }
 }
 
-/**
- * The project scope a window's main-side actions operate against, resolving an
- * editor window through `windowsByPath` and a note window through the note
- * registry. See `resolveWindowProjectScope` for why the fallback exists.
- */
 function windowProjectScope(win: BrowserWindow | null): {
   projectPath: string | undefined;
   apiOrigin: string | undefined;
@@ -4596,25 +3148,10 @@ function windowProjectScope(win: BrowserWindow | null): {
   });
 }
 
-/** The project path for a window, for the containment-gated shell handlers. */
 function windowProjectPath(win: BrowserWindow | null): string | undefined {
   return windowProjectScope(win).projectPath;
 }
 
-/**
- * Keep a note window's title and its dedup identity on the document it is
- * actually showing.
- *
- * A note window is single-document, but not fixed to the document it was born
- * with: wiki links navigate it in place, and a rename retargets it. Both arrive
- * here as an active-target push, which is why the title rides this existing
- * channel instead of a new one.
- *
- * No-ops for every other window kind. A non-doc target (the window is showing a
- * folder or an asset, reachable through in-place navigation) leaves the title
- * alone rather than blanking it — a stale-but-real name beats an empty title
- * bar.
- */
 function applyNoteWindowTargetChange(win: BrowserWindow, target: EditorActiveTargetSnapshot): void {
   if (getNoteWindowContext(win.id) === undefined) return;
   const docName = docNameFromActiveTarget(target);
@@ -4623,25 +3160,11 @@ function applyNoteWindowTargetChange(win: BrowserWindow, target: EditorActiveTar
   if (!win.isDestroyed()) win.setTitle(noteWindowTitle(docName));
 }
 
-/**
- * Pop a document into its own `--ok-mode=note` window, or focus the window
- * already showing it.
- *
- * One helper behind all three entry points: the doc-tab context menu and the
- * palette reach it through `ok:window:open-note`, the Window menu calls it
- * directly in main. `origin` is the invoking window, which supplies the project
- * — an editor window through `windowsByPath`, or another note window through
- * the registry so popping out from inside a pop-out works.
- */
 function openNoteWindowForDoc(args: {
   readonly origin: BrowserWindow | null;
   readonly docName: string;
-  /** Undefined for opens the user did not initiate (a restart recreate). */
   readonly entryPoint?: NoteWindowEntryPoint;
-  /** An explicit project, for callers with no origin window to resolve from. */
   readonly project?: NoteWindowProject;
-  /** This window's OWN frame from a relaunch snapshot, which beats the
-   *  per-project slot: each pop-out was positioned individually. */
   readonly restoredBounds?: PersistedWindowBounds;
 }): { ok: true; outcome: 'created' | 'focused' } | { ok: false; reason: 'no-project' } {
   const { origin, docName, entryPoint } = args;
@@ -4676,9 +3199,6 @@ function openNoteWindowForDoc(args: {
           preload: join(__dirname, '../preload/index.js'),
         },
       });
-      // Main owns the title so it can track the displayed document; the
-      // renderer's static <title> must not overwrite it (same as every other
-      // window factory).
       win.on('page-title-updated', (e) => {
         e.preventDefault();
       });
@@ -4695,11 +3215,6 @@ function openNoteWindowForDoc(args: {
     project,
     docName,
     entryPoint,
-    // Same external-link net every editor window gets from
-    // `WindowManager.attachSafetyNet`, wired here because a note window is
-    // created outside the window manager. `openExternal` is window-independent;
-    // `openAsset` is scoped to this window's project so containment resolves
-    // against the right root.
     attachSafetyNet: (win) =>
       attachAssetSafetyNet(win.webContents, {
         editorOrigin: project.apiOrigin,
@@ -4736,15 +3251,6 @@ function openNoteWindowForDoc(args: {
   return { ok: true, outcome: result.outcome };
 }
 
-/**
- * Arm first-launch MCP consent. Extracted as a helper so both the
- * `app.whenReady()` path (once-per-boot marker-respecting) AND the
- * "Set up OpenKnowledge integrations…" File menu path (forceShow, ignores
- * prior marker) share one wiring definition. The cli surface is
- * imported via the published-package name `@inkeep/open-knowledge` so
- * turbo's `^build` topology correctly invalidates desktop's cache when
- * CLI internals change.
- */
 function createMcpWiringCliSurface(): McpWiringCliSurface {
   return {
     detectInstalledEditors: (cwd, home) => detectInstalledEditors(cwd, home),
@@ -4779,9 +3285,6 @@ function createProjectMcpReclaimCliSurface(): ProjectMcpReclaimCliSurface {
       if (result.action === 'failed') {
         return { action: 'failed', error: result.error };
       }
-      // Preserve a `declined` outcome instead of collapsing it to `overwritten`,
-      // so the reclaim sweep records a decline (byte-untouched) rather than
-      // emitting a false `reclaimed` event for a file it never wrote.
       if (result.action === 'declined') {
         return { action: 'declined', reason: result.declineReason };
       }
@@ -4800,11 +3303,6 @@ const pathInstallLogger = {
     getLogger('path-install').info(payload, payload.event),
 };
 
-/**
- * Shared `ensureCliOnPath` options — one builder so the startup reclaim leg
- * and the consent-dialog confirm leg run the identical gate set (darwin,
- * packaged, executable shape, OK_RECLAIM_DISABLE) against the same marker.
- */
 function buildEnsureCliOnPathOpts() {
   return {
     executablePath: app.getPath('exe'),
@@ -4818,12 +3316,6 @@ function buildEnsureCliOnPathOpts() {
   };
 }
 
-/**
- * Shared opts for `reclaimUserSkillsOnLaunch` — one builder so the launch
- * fire-and-forget leg and the consent-dialog confirm leg run the identical
- * gate set (env gates, per-bundle opt-in, install/teardown) against the same
- * marker. The reclaim itself honors the recorded per-bundle decisions.
- */
 function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaunch>[0] {
   return {
     home: osHomedir(),
@@ -4833,7 +3325,6 @@ function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaun
     forceEnv: process.env.OK_M6B_FORCE ?? null,
     reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
     deps: {
-      // checkDesktop:false — the desktop resolves its own assets.
       userGlobalBundles: USER_GLOBAL_BUNDLE_IDS.map((id) => ({ id, name: BUNDLE_SKILL_NAME[id] })),
       resolveBundledSkillDir: (bundle) =>
         resolveBundledSkillDir(bundle as (typeof USER_GLOBAL_BUNDLE_IDS)[number], {
@@ -4844,9 +3335,6 @@ function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaun
         writeTargetVersion(home, target, version, surface),
       readBundleDecision: (home, name) => readBundleDecision(home, name),
       writeBundleDecision: (home, name, enabled) => writeBundleDecision(home, name, enabled),
-      // Count a genuine seed on skills.sh. Fire-and-forget and honouring the
-      // same telemetry setting + DO_NOT_TRACK gate as every other report, so a
-      // launch never waits on a third party.
       reportInstalled: (skillNames, scope) => {
         const home = osHomedir();
         void reportSkillInstall(
@@ -4859,38 +3347,17 @@ function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaun
           { home, enabled: resolveSkillInstallReportSettings(home).enabled },
         );
       },
-      // `bundleId` originates from `USER_GLOBAL_BUNDLE_IDS`, so the cast to the
-      // CLI's `BundleId` is sound.
       removeBundleFromDisk: (bundleId) =>
         removeUserGlobalSkillBundle(
           osHomedir(),
           bundleId as (typeof USER_GLOBAL_BUNDLE_IDS)[number],
         ),
-      // The reclaim module types `bundle` as `string` to stay import-free; the
-      // values come from `USER_GLOBAL_BUNDLE_IDS` so they're real ids.
       recordSkillInstallEvent: (event) =>
         recordSkillInstallEvent(event as Parameters<typeof recordSkillInstallEvent>[0]),
     },
   };
 }
 
-/**
- * Every destination a user-global bundle install writes to, tildified for
- * display. Mirrors the reclaim's own destination set and BOTH its gates, so no
- * surface can advertise a copy that will not be written:
- *
- *   - `USER_SKILL_HOSTS`, not the project-shaped host list — that one drops
- *     Copilot and Pi by design, silently omitting `~/.copilot`, `~/.pi/agent`
- *     and `~/.gemini` from a list users read as complete.
- *   - `skillsRoot`, not `hostDir + '/skills'` — Pi's user root is
- *     `.pi/agent/skills`, which the naive shape renders as a nonexistent
- *     `~/.pi/skills`.
- *   - The `.agents` hub only when it already exists; the reclaim writes that
- *     copy but never creates the hub.
- *
- * Single source for the first-launch consent disclosure AND the Settings row,
- * so the two cannot drift apart the way a hand-maintained second list did.
- */
 function userGlobalSkillDestinations(home: string, name: string): string[] {
   return [
     ...(existsSync(join(home, AGENTS_HUB_DIR)) ? [`~/${AGENTS_SKILLS_ROOT}/${name}`] : []),
@@ -4906,16 +3373,8 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
     executablePath: app.getPath('exe'),
     home: osHomedir(),
     platform: process.platform,
-    // Sink facade, not the raw ipcMain: the flow's one-shot renderer-ready
-    // handler arms inside the sink so unarmed acks stay absorbed.
     ipcMain: rendererReadySink?.ipcMain ?? ipcMain,
     cli: createMcpWiringCliSurface(),
-    // PATH leg of the first-launch consent dialog: descriptor for the show
-    // payload + the confirm-path finalizer. `applyConsent` reuses the exact
-    // startup install pipeline so idempotence, opt-outs, and the marker
-    // stay single-sourced in path-install.ts; the confirm path is the sole
-    // writer of a dialog-driven consent decision (startup only ever
-    // grandfathers).
     pathInstall: {
       computeDescriptor: () =>
         computePathInstallDescriptor({
@@ -4931,20 +3390,9 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
         if (result.status === 'failed-all') {
           return { ok: false as const, error: result.error };
         }
-        // No success toast here: the dialog named the exact files before
-        // the user consented, so re-announcing the write is noise. The
-        // disclosure toast stays reserved for BACKGROUND rc writes (startup
-        // self-heal under recorded consent), where it is the only signal.
         return { ok: true as const };
       },
     },
-    // Skills leg of the first-launch consent dialog: the bundles onboarding
-    // offers + the confirm finalizer. `applyConsent` records each OFFERED
-    // bundle's decision, then reuses the launch reclaim (decision-gated) to
-    // install the enabled set and tear down any declined-but-present bundle —
-    // one code path for install + removal. Bundles outside the onboarding set
-    // are never touched here: no decision recorded, nothing installed, and an
-    // existing copy left alone.
     skills: {
       computeDescriptors: () =>
         ONBOARDING_BUNDLE_IDS.map((id) => {
@@ -4954,12 +3402,6 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
         }),
       applyConsent: async (enabledIds: readonly string[]) => {
         const home = osHomedir();
-        // The consent dialog is the trust boundary: a failed decision write
-        // must NOT be swallowed. If it were, the reclaim below would re-read a
-        // null decision, grandfather an already-installed declined bundle back
-        // to enabled, and still return ok — silently losing the user's
-        // decline. Surface {ok:false} so mcp-wiring defers the marker and the
-        // dialog re-fires for a retry (same as a failed PATH/editor write).
         for (const id of ONBOARDING_BUNDLE_IDS) {
           try {
             await writeBundleDecision(home, BUNDLE_SKILL_NAME[id], enabledIds.includes(id));
@@ -4984,10 +3426,6 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
     reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
     forceShow: opts.forceShow ?? false,
     immediateDispatchTarget: opts.immediateDispatchTarget,
-    // Route the wiring's structured events (mcp-config-decline / -migrate /
-    // -repair-*) into the pino file logger. The default console sink is
-    // discarded in a packaged Electron main process with no attached terminal,
-    // which is exactly where these operability signals need to land.
     logger: {
       info: (msg: string, ctx?: object) =>
         getLogger('mcp-wiring').info((ctx ?? {}) as Record<string, unknown>, msg),
@@ -5005,18 +3443,6 @@ function armMcpWiring(opts: ArmMcpWiringOpts = {}): RunMcpWiringHandle {
   return runMcpWiringOnFirstLaunch(createMcpWiringOpts(opts));
 }
 
-/**
- * Re-arm the MCP consent dialog on demand — the shared body behind both the
- * File → "Set up OpenKnowledge integrations…" menu dep and the Cmd+K command's
- * `ok:mcp-wiring:reconfigure` invoke. Tears down any prior handle then arms a
- * fresh one with `forceShow: true` so the marker-present gate is bypassed, and
- * hands it an already-loaded window so the dialog opens immediately. Returns
- * `false` when the surface is unavailable (unpackaged, or an install shape
- * with no persistent MCP wiring — same gate that hides the menu leaf) or
- * when arming threw, so the palette can toast rather than silently no-op.
- * Shared by the native File menu dep, the renderer menubar's
- * `reconfigure-mcp-wiring` dispatch, and the Cmd+K invoke channel.
- */
 function reconfigureMcpWiringNow(): boolean {
   if (!(app.isPackaged && supportedPackagedInstall())) return false;
   mcpWiringHandle?.destroy();
@@ -5042,9 +3468,6 @@ function formatUnknownError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** The real `child_process` + timer wiring behind both platform probes. The
- *  timeout/exit-code/settle-once routing they share is unit-tested in
- *  claude-readiness.test.ts against these seams. */
 function realProbeSpawn(file: string, spawnArgs: readonly string[]): ProbeChild {
   const child = spawn(file, [...spawnArgs], {
     stdio: 'ignore',
@@ -5069,12 +3492,6 @@ const realProbeTimers: ProbeTimers = {
   clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
 };
 
-/**
- * Windows counterpart to {@link probeLoginShellOnPath}: is `bin` resolvable on
- * this process's PATH? Resolves `where.exe` under the real `SystemRoot` and
- * hands the tri-state routing to {@link runWindowsPathProbe} — exit code, or
- * `null` when the probe could not produce a verdict.
- */
 function probeWindowsPath(bin: string): Promise<number | null> {
   const systemRoot = getWindowsEnvValue(process.env, 'SystemRoot') ?? 'C:\\Windows';
   return runWindowsPathProbe(
@@ -5085,12 +3502,6 @@ function probeWindowsPath(bin: string): Promise<number | null> {
   );
 }
 
-/**
- * Run an interactive-shell `command -v <bin>` probe in the real shell (the same
- * `resolveShell` the PTY spawns), with `spawn` + timers wired to the OS. Shared
- * by the Claude readiness path and the generic non-Claude CLI path. `args`
- * selects the binary (`cliProbeArgs(bin)`); it defaults to the `claude` probe.
- */
 function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null> {
   return runLoginShellProbe(
     realProbeSpawn,
@@ -5101,16 +3512,6 @@ function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null>
   );
 }
 
-/**
- * Whether the project's OWN `open-knowledge` `.mcp.json` entry is OK's canonical
- * managed server. The trust gate for the docked-terminal Claude MCP pre-approval
- * (see core `terminal-launch.ts` + cli `isOwnManagedEntry`): a foreign,
- * tampered, or missing same-named entry — the supply-chain risk in a
- * shared/cloned project whose committed `.mcp.json` travels with it — returns
- * false, so the launch stays bare and Claude shows its own "trust this server?"
- * prompt. `classifyExistingMcpEntry` honors its never-throws contract; no bound
- * project, or an editor with no project config path, → false.
- */
 function isProjectClaudeMcpOwn(projectRoot: string | undefined): boolean {
   if (projectRoot === undefined) return false;
   const target = EDITOR_TARGETS.claude;
@@ -5120,13 +3521,6 @@ function isProjectClaudeMcpOwn(projectRoot: string | undefined): boolean {
   return classified.kind === 'present' && isOwnManagedEntry(classified.entry);
 }
 
-/**
- * Resolve docked-terminal Claude Code readiness: probe `claude` on the
- * terminal shell's PATH, classify the user-global `open-knowledge` entry in
- * `~/.claude.json`, and verify the PROJECT's `.mcp.json` `open-knowledge` entry
- * is OK's own (gates MCP pre-approval). The real subprocess + config reads are
- * the runtime e2e rung (a built terminal).
- */
 function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promise<ClaudeReadiness> {
   return resolveClaudeReadiness({
     probeClaude: () =>
@@ -5142,12 +3536,6 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
   });
 }
 
-/**
- * Resolve docked-terminal on-PATH readiness for a non-Claude agent CLI
- * (codex / cursor). `cli` maps to its fixed registry binary
- * (`TERMINAL_CLIS[cli].bin`), so the `command -v` probe is never
- * renderer-controlled. No MCP-wiring concept here — purely on-PATH.
- */
 function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
   return resolveCliOnPath({
     probe: () =>
@@ -5157,11 +3545,6 @@ function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
         probePosix: (args) => probeLoginShellOnPath(args),
         probeWindows: (bin) => probeWindowsPath(bin),
       }),
-    // Codex-only: report whether OK's `open-knowledge` server is already in the
-    // user's codex config, so the launch site adds the `-c` tool-auto-approve
-    // override only when it won't break config load (a `-c` under an undefined
-    // server id makes codex fail to load its config). `classifyExistingMcpEntry`
-    // never throws; `resolveCliOnPath` guards it anyway.
     ...(cli === 'codex'
       ? {
           okServerConfigured: () =>
@@ -5171,26 +3554,12 @@ function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
   });
 }
 
-/**
- * Time-to-live for the cached batched CLI installed-map. The New-chat default
- * auto-pick re-queries on each click; installs/uninstalls are rare, so a short
- * TTL spares four login-shell probes per click while staying fresh enough that a
- * just-installed CLI shows up within a minute.
- */
 const CLI_INSTALLED_MAP_TTL_MS = 60_000;
 let cliInstalledMapCache: {
   at: number;
   value: Promise<Partial<Record<TerminalCli, boolean>>>;
 } | null = null;
 
-/**
- * Batched on-PATH readiness for all registry CLIs, cached ~60s. Caches the
- * in-flight Promise (not the resolved value) so concurrent New-chat clicks share
- * one probe batch. `resolveCliInstalledMap` never rejects today (each entry
- * degrades to an omitted unverified key); the defensive `.catch` below evicts
- * the cache if a future change ever lets one through, so a transient failure
- * becomes an immediate retry rather than a 60s-cached rejection.
- */
 function resolveTerminalCliInstalledMap(): Promise<Partial<Record<TerminalCli, boolean>>> {
   const now = Date.now();
   if (cliInstalledMapCache && now - cliInstalledMapCache.at < CLI_INSTALLED_MAP_TTL_MS) {
@@ -5201,7 +3570,6 @@ function resolveTerminalCliInstalledMap(): Promise<Partial<Record<TerminalCli, b
     probePosix: (args) => probeLoginShellOnPath(args),
     probeWindows: (bin) => probeWindowsPath(bin),
   }).catch((err) => {
-    // Don't let a rejected probe stay cached for the full TTL; the next call retries fresh.
     cliInstalledMapCache = null;
     throw err;
   });
@@ -5209,14 +3577,6 @@ function resolveTerminalCliInstalledMap(): Promise<Partial<Record<TerminalCli, b
   return value;
 }
 
-/**
- * Window to receive an immediate `ok:mcp-wiring:show` on the File-menu
- * re-trigger. Focused window preferred (the dialog appears where the user
- * just clicked the menu), any loaded window otherwise. Still-loading
- * windows are excluded — their renderer hasn't subscribed yet, but its
- * module-init `signalReady` will deliver the dialog via the armed
- * mount-ack fallback once it loads.
- */
 function pickLoadedRendererForMcpDialog(): McpWiringDispatchTarget | undefined {
   const isUsable = (win: BrowserWindow): boolean =>
     !win.isDestroyed() && !win.webContents.isLoading();
@@ -5260,14 +3620,6 @@ function dispatchToastWhenReady(payload: {
     | { readonly status: 'failed'; readonly summary: string };
 }): void {
   let dispatched = false;
-  // After `did-finish-load` fires, the page has dispatched its `onload` event —
-  // module-init listeners (like `installOnboardingToastListener`) are registered
-  // and `webContents.send` is deliverable. Send directly without re-checking
-  // `isLoading()`: Electron emits `did-finish-load` BEFORE `did-stop-loading`
-  // flips `isLoading()` to false, so a same-navigation re-check returns true
-  // and would re-arm a `once('did-finish-load')` listener that never fires
-  // again on the same navigation. That race is what caused the empirically
-  // observed 60s-watchdog-without-dispatch.
   const send = (win: Electron.BrowserWindow): void => {
     if (dispatched || win.isDestroyed()) return;
     try {
@@ -5303,51 +3655,25 @@ function dispatchToastWhenReady(payload: {
   }, 60_000);
 }
 
-/**
- * Bound on the membership-set scoping for `ok:fs:remove-git-folder`.
- * Each `findEnclosingGitRoot` IPC return pushes its `gitRoot` here; the
- * destructive handler refuses anything not in the set. FIFO-evicted at
- * the cap so a long-lived session doesn't grow unbounded. The size is
- * generous enough that legitimate workflows (a user opening the Create
- * Project dialog repeatedly, switching parents, etc.) never evict a
- * candidate they're actively about to click on.
- */
 const RECENT_GIT_ROOTS_CAP = 256;
 
 function registerIpcHandlers() {
   const handle = createHandler(ipcMain);
 
-  // File → "Set up OpenKnowledge integrations…" / Cmd+K command. Shares the
-  // exact body the menu dep runs; resolves false when the surface is
-  // unavailable so the palette can toast instead of no-op.
   handle('ok:mcp-wiring:reconfigure', async (): Promise<boolean> => reconfigureMcpWiringNow());
 
-  // Edit → "Check spelling while typing" / Cmd+K command. Same single-source
-  // toggle the menu dep uses; returns the new app-wide enabled state.
   handle('ok:spellcheck:toggle', async (): Promise<boolean> => {
     setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
     return appState.spellCheckEnabled;
   });
 
-  // Self-uninstall renderer. The registry answers only senders it registered
-  // as live uninstall screens, so an editor window that invokes this channel
-  // gets `refused` and drives nothing. `event.sender.id` is the identity —
-  // it is observed by main, not supplied by the payload.
   handle('ok:uninstall:dispatch', (event, request) =>
     uninstallScreens.dispatch(event.sender.id, request),
   );
 
-  // Per-session membership set for `ok:fs:remove-git-folder`. Populated
-  // by `ok:fs:find-enclosing-git-root` returns; read by the destructive
-  // handler via the `allowedGitRoots` dep on `removeGitFolder`. Scope-
-  // narrows the destructive surface so a compromised or fabricated
-  // renderer payload can't target arbitrary `.git` directories.
   const recentGitRoots = new Set<string>();
   const recordRecentGitRoot = (gitRoot: string): void => {
     if (recentGitRoots.has(gitRoot)) {
-      // Move-to-end for LRU-ish eviction: re-probe of an already-known
-      // root keeps it from being evicted while the user is staring at
-      // its banner.
       recentGitRoots.delete(gitRoot);
     }
     recentGitRoots.add(gitRoot);
@@ -5358,8 +3684,6 @@ function registerIpcHandlers() {
     }
   };
 
-  // Docked-terminal PTY mediator. Forks one `pty-host` utilityProcess per
-  // window lazily on first create; coalesces + backpressures shell output.
   const terminalManager = createTerminalManager({
     forkPtyHost: () =>
       utilityProcess.fork(join(__dirname, 'utility/pty-host.js')) as unknown as PtyUtilityLike,
@@ -5374,20 +3698,12 @@ function registerIpcHandlers() {
     recordTerminalSession,
     recordConcurrentSessions,
   });
-  // Publish the reap surface so the window factory + will-quit can reach it.
   terminalReaper = terminalManager;
 
   handle('ok:pty:create', async (event, opts) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const editorCtx =
       win && wm ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike) : null;
-    // A standalone terminal window is not in `windowsByPath` (one-per-project,
-    // focus-existing), so `getContextForBrowserWindow` returns nothing for it.
-    // Editor windows keep their existing per-project resolution; a terminal
-    // window resolves its cwd from the windowId-keyed terminalWindows registry,
-    // falling back to homedir() when project-less (never null — create() refuses
-    // null). A window in neither map (e.g. the Navigator) resolves to null and
-    // is refused below rather than spawning a shell at an arbitrary dir.
     const projectPath = resolvePtyProjectRoot({
       editorProjectPath: editorCtx?.projectPath ?? null,
       terminalWindow: win ? getTerminalWindowContext(win.id) : undefined,
@@ -5402,18 +3718,6 @@ function registerIpcHandlers() {
       });
       return { ok: false, reason: 'no-project' };
     }
-    // Trust-boundary backstop (fail-open): the terminal is allowed by default,
-    // so refuse a real shell ONLY when the window's project-local
-    // `terminal.enabled === false`. Absent/unreadable/malformed/null/true all
-    // read as allowed. The renderer's TerminalGate is the UX enforcement; this
-    // re-check means a renderer regression/compromise can't spawn a shell after
-    // a human has explicitly opted the project out.
-    //
-    // A human opts out via a live CRDT config binding that reaches disk only
-    // after the persistence debounce. The bounded re-read covers the inverse
-    // race — re-enabling (false→absent) — so a shell-open immediately after
-    // re-enable isn't refused on a stale `false`; never trusting the renderer.
-    // The not-opted-out path stays instant and only a just-re-enabled open waits.
     if (!isTerminalConsented(projectPath) && !(await isTerminalConsentedWithGrace(projectPath))) {
       logIpcError({
         event: 'ipc.error',
@@ -5506,11 +3810,6 @@ function registerIpcHandlers() {
   handle('ok:terminal:claude-assist', async (event, req) => {
     let rewireError: string | undefined;
     if (req.action === 'rewire' && app.isPackaged && supportedPackagedInstall()) {
-      // Re-arm MCP wiring: the same forceShow consent path as
-      // File -> Set up OpenKnowledge integrations, so the user can wire
-      // `open-knowledge` into Claude Code. Fires ONLY from the renderer's
-      // re-wire button — agents have no ok:terminal:* surface, and the consent
-      // dialog itself is human-only.
       const win = BrowserWindow.fromWebContents(event.sender);
       mcpWiringHandle?.destroy();
       mcpWiringHandle = null;
@@ -5524,26 +3823,16 @@ function registerIpcHandlers() {
         getLogger('terminal').warn({ err: rewireError }, 'claude mcp rewire failed');
       }
     }
-    // Scope the project-MCP pre-approval check to the caller window's project
-    // (its `.mcp.json` is what `claude` reads in the PTY cwd). A window with no
-    // bound project → undefined → not pre-approvable (Claude prompts).
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const projectRoot =
       callerWin && wm
         ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
         : undefined;
     const readiness = await resolveTerminalClaudeReadiness(projectRoot);
-    // Surface the rewire failure to the renderer so the button doesn't no-op
-    // silently; readiness itself is still computed for the rest of the banner.
     return rewireError === undefined ? readiness : { ...readiness, rewireError };
   });
 
   handle('ok:terminal:cli-preflight', async (_event, req): Promise<CliReadiness> => {
-    // `req.cli` crosses the IPC boundary as a compile-time `TerminalCli`, but
-    // `createHandler` casts rawArgs without runtime enforcement — validate the
-    // untrusted discriminant against the registry before it indexes
-    // `TERMINAL_CLIS[...].bin`. An out-of-registry value yields a safe `unknown`
-    // verdict (never a silent TypeError, never a `command -v <bad>` probe).
     if (!(req.cli in TERMINAL_CLIS)) {
       getLogger('terminal').warn({ cli: req.cli }, 'cli-preflight: unknown cli discriminant');
       return { onPath: 'unknown' };
@@ -5560,7 +3849,6 @@ function registerIpcHandlers() {
 
   handle('ok:remote-access:dispatch', async (_event, req) => {
     if (req.kind === 'probe-port') return probeLoopbackPort(req.port);
-    // Exhaustive today; a future `kind` without a branch throws loudly.
     throw new Error(`unhandled remote-access dispatch kind: ${(req as { kind: string }).kind}`);
   });
 
@@ -5576,9 +3864,6 @@ function registerIpcHandlers() {
     const orders = dockOrderForWindow.get(win.id);
     return {
       terminalVisible: dockVisibleForWindow.get(win.id) ?? persisted?.terminalVisible ?? false,
-      // Agent-panel visibility is intentionally scoped to this renderer
-      // session. Only Terminal placement, width, tabs, and visibility are part
-      // of the full-restart restoration contract.
       agentPanelVisible: agentPanelVisibleForWindow.get(win.id) ?? false,
       terminal: orders?.terminal,
       terminalSnapshot: terminalSnapshotForWindow.get(win.id) ?? persisted?.terminalSnapshot,
@@ -5587,9 +3872,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:terminal:set-dock-state', async (event, req) => {
-    // createHandler's typed request has crossed IPC without runtime validation.
-    // Read the raw discriminant before using it as a map key so a forged value
-    // cannot create a phantom surface that the renderer will never restore.
     const surface = Reflect.get(req, 'surface');
     if (surface !== 'terminal' && surface !== 'agents') {
       logIpcError({
@@ -5639,10 +3921,6 @@ function registerIpcHandlers() {
     return promptForExistingFolder(dialog, opts);
   });
 
-  // File → Open file… (palette / Navigator entry). Picker + ephemeral open both
-  // run main-side, mirroring the native-menu binding in menu.ts; the picked path
-  // never crosses back to the renderer. Shares `promptForExistingMarkdownFile`
-  // with the menu binding so both agree on the picker's filters.
   handle('ok:project:open-file-picker', async () => {
     const picked = await promptForExistingMarkdownFile(dialog);
     if (picked) await openEphemeralFile(picked);
@@ -5668,13 +3946,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:shell:spawn-cursor', async (event, path) => {
-    // Scope the spawn to the caller window's project directory. A
-    // BrowserWindow without a ProjectContext (e.g. the Navigator, before it
-    // spawns an editor) should never reach this handler, but we treat that
-    // case as "no project scope" — a missing `projectPath` passes through to
-    // `spawnCursorImpl` which gates on the presence of the field. The
-    // validateSpawnPath + isPathWithinProject checks inside the impl refuse
-    // any out-of-scope path when a project IS bound.
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const callerProjectPath = windowProjectPath(callerWin);
     const outcome = await spawnCursorImpl(
@@ -5691,13 +3962,7 @@ function registerIpcHandlers() {
                 stdio: ['ignore', 'ignore', 'pipe'],
                 windowsHide: true,
               });
-              // Drain stderr so a chatty child can't block on a full pipe buffer.
               child.stderr?.on('data', () => {});
-              // `spawn` event fires once the process is successfully launched —
-              // that's the success criterion (not a clean exit). The
-              // macOS `/usr/bin/open` helper exits immediately after handing
-              // off to Launch Services, but the `spawn` event still resolves
-              // before exit, so this remains correct under the open-a routing.
               child.once('spawn', () => resolve({ ok: true }));
               child.once('error', () => resolve({ ok: false, reason: 'spawn-error' }));
             } catch {
@@ -5730,12 +3995,6 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  // Asset-open dispatch. Threads the caller window's
-  // ProjectContext.projectPath so containment checks scope to the project
-  // that owns the click — different windows (editor + navigator) don't see
-  // each other's roots. Windows without a ProjectContext resolve as no-op
-  // refusal (`path-escape`): a click from such a window has no legitimate
-  // asset scope.
   handle('ok:shell:open-asset', async (event, relPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const callerProjectPath = windowProjectPath(callerWin);
@@ -5798,14 +4057,6 @@ function registerIpcHandlers() {
     return outcome;
   });
 
-  // Native right-click context menu. Renderer plugin resolves the clicked
-  // on-disk reference (asset chip, wiki-link chip, or image) and invokes
-  // this with {relPath, title, kind}. Main builds the menu via
-  // `Menu.buildFromTemplate` and pops it on the caller window —
-  // gesture-attested because main observes the click directly (the
-  // renderer plugin merely forwards the intent; the actual popup is
-  // sourced in main). Actions route through the same `openAssetSafely` /
-  // `revealAssetSafely` gates as the left-click flow.
   handle('ok:shell:show-asset-menu', async (event, params) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     if (!callerWin || !wm) return undefined;
@@ -5851,8 +4102,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:shell:show-item-in-folder', async (event, path) => {
-    // Resolve caller window's project directory (undefined for Navigator).
-    // Validation, refusal, and security rationale live in `showItemInFolderImpl`.
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const callerProjectPath = windowProjectPath(callerWin);
     const result = showItemInFolderImpl(
@@ -5864,10 +4113,6 @@ function registerIpcHandlers() {
       },
       path,
     );
-    // Channel result is `undefined` (silent-by-design — don't leak validation
-    // signal back to a potentially-compromised renderer), but a refusal is
-    // worth a main-side breadcrumb: a renderer bug constructing a wrong path
-    // otherwise produces a "nothing happened" UX with no debug trail.
     if (!result.ok) {
       console.warn('[main] show-item-in-folder refused', { reason: result.reason });
     }
@@ -5875,12 +4120,8 @@ function registerIpcHandlers() {
   });
 
   handle('ok:shell:reveal-external', async (event, absPath) => {
-    // Out-of-project reveal for terminal clickable-links. Uncontained by design;
-    // the confirmation dialog is the trust boundary (see reveal-external.ts).
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const result = await handleRevealExternal(absPath, {
-      // statSync (not existsSync) so a permission error (EACCES/EPERM on a system
-      // path) surfaces as `unreadable` rather than being flattened to `missing`.
       probe: (p) => {
         try {
           statSync(p);
@@ -5920,12 +4161,6 @@ function registerIpcHandlers() {
   handle('ok:shell:trash-item', async (event, absPath) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const callerProjectPath = windowProjectPath(callerWin);
-    // Path normalization happens at span-creation time using the renderer
-    // input (pre-realpath). The post-realpath canonical path is what we'd
-    // emit to logs/index — but it may include the user home prefix, so we
-    // normalize-to-tail-two-segments to stay inside the cardinality budget
-    // (`fs.*` span attribute STOP rule). Outcome attribute is set AFTER
-    // dispatch so Tempo can filter ok-vs-failure span volume.
     const start = performance.now();
     const result = await withSpan(
       'ok.shell.trash_item',
@@ -5958,9 +4193,6 @@ function registerIpcHandlers() {
     });
     if (!result.ok) {
       _trashItemFailureCounter().add(1, { 'ok.shell.reason': result.reason });
-      // Main-side breadcrumb so a renderer-side toast failure-mode is
-      // diagnosable from the desktop console — mirror of the
-      // `show-item-in-folder refused` warn pattern above.
       console.warn('[main] trash-item refused', {
         reason: result.reason,
         detail: result.detail,
@@ -5970,11 +4202,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:editor:active-target-changed', async (event, target) => {
-    // The renderer pushes after each navigation; main records it against the
-    // SENDING window and rebuilds the menu so Rename / Duplicate / Move to
-    // Trash flip enabled/disabled per the focused window's scope. No attempt to
-    // dedupe identical successive pushes — the rebuild is cheap and the
-    // renderer dedupes upstream where it matters.
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
       editorActiveTargets.update(win.id, target);
@@ -5987,9 +4214,6 @@ function registerIpcHandlers() {
   handle('ok:editor:view-menu-state-changed', async (event, state) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) editorViewMenuStates.update(win.id, state);
-    // Panel visibility must recover per-window after a reload — record each
-    // panel keyed by the sender window so the reloaded renderer reads back its
-    // own state, not another window's.
     if (state.terminalVisible !== undefined || state.agentPanelVisible !== undefined) {
       if (win) {
         if (state.terminalVisible !== undefined) {
@@ -6013,10 +4237,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:editor:background-throttle', async (event, signal) => {
-    // Keep the sender window's Chromium timers alive while it holds unsynced
-    // work, so backgrounding never starves sync/recovery; restore the OS
-    // default when it goes clean. Policy lives here in main (the embedder);
-    // the renderer only reports the signal.
     applyBackgroundThrottle(event.sender, signal);
     return undefined;
   });
@@ -6048,12 +4268,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:locale:set-preference', async (_event, { preference }) => {
-    // The payload is user intent, stored and transported unresolved; resolution
-    // happens inside `currentMenuTranslator` at the point of activation, so a
-    // `'system'` preference keeps following the OS. Recording it is load-bearing
-    // rather than bookkeeping: the config document has not reached disk yet at
-    // this instant, so a rebuild that re-read the file would render the menu in
-    // the language the user just left.
     pushedLanguagePreference = preference;
     menuTranslator = null;
     getLogger('menu-locale').info({ preference }, 'language preference pushed; rebuilding menu');
@@ -6064,11 +4278,6 @@ function registerIpcHandlers() {
   handle('ok:theme:set-source', async (_event, { source }) => {
     return applyThemeSource(
       {
-        // `nativeTheme.themeSource` crosses our trust boundary — it is owned
-        // by Electron, not by our type system. The validator narrows the
-        // value back to `OkThemeSource` at the read seam (symmetric with
-        // the write-side guard `applyThemeSource` already runs on `source`)
-        // and falls back to `'system'` if Electron ever widens the union.
         getThemeSource: () =>
           isOkThemeSource(nativeTheme.themeSource) ? nativeTheme.themeSource : 'system',
         setThemeSource: (s) => {
@@ -6081,11 +4290,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:theme:applied', async (event, opts) => {
-    // Composition lives in `applyThemeApplied`. This handler resolves the
-    // sender's BrowserWindow (Electron-specific surface) and threads the
-    // structural collaborators in. See `theme-applied-handler.ts` for the
-    // multiplexed-signal contract and the cross-window vibrancy fan-out +
-    // per-window flicker memo.
     const win = BrowserWindow.fromWebContents(event.sender);
     applyThemeApplied(
       {
@@ -6104,24 +4308,12 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  // Windows/Linux renderer-menubar dispatch (the windows-linux-port renderer-menubar decision).
-  // The renderer-drawn menu bar routes every click here so menu semantics
-  // stay single-sourced with the native template: `menu-action` relays
-  // through the same menu-action path the native items use while preferring
-  // the dispatching renderer over focus state,
-  // `role` maps onto what Electron menu roles do, `command` reuses the
-  // same click handlers the native deps wire, and `query` returns the
-  // aggregated state (`activeTarget` + view-menu snapshot + recents +
-  // capability flags) that drives the native menu's enable/check rendering.
-  // macOS renderers never call this (they keep the native menu bar).
   handle('ok:menu:dispatch', async (event, request) => {
     switch (request.kind) {
       case 'query':
         return {
           recentProjects: appState.recentProjects.map((r) => ({ path: r.path, name: r.name })),
           spellCheckEnabled: appState.spellCheckEnabled,
-          // Same channel discriminator as the native menu (see
-          // runApplicationMenuRefresh's showDevToolsMenu rationale).
           showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
           canCheckForUpdates: autoUpdaterHandle != null,
           canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
@@ -6144,11 +4336,6 @@ function registerIpcHandlers() {
         applyMenuDispatchRole(request.role, event.sender);
         return undefined;
       default: {
-        // The roster's `satisfies` forces a new dispatch kind to be CLASSIFIED;
-        // this forces it to be HANDLED. Without both, a sixth kind compiles
-        // clean and then silently no-ops here — noticed on first manual use,
-        // unlike a misclassified origin, but still a compile error we can have
-        // for four lines.
         const _exhaustive: never = request;
         return _exhaustive;
       }
@@ -6156,12 +4343,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:startup:renderer-marks', async (_event, marks) => {
-    // Fold the renderer's two launch checkpoints into the waterfall. Fire-and-
-    // forget from the renderer; we never reject (the renderer swallows anyway).
-    // The payload crosses the IPC trust boundary untyped at runtime
-    // (`createHandler` casts without enforcement), so validate that both marks
-    // are finite before ingesting — a non-finite value would flow into
-    // `round(NaN - appReady)` and JSON-serialize as `null` in the timeline log.
     if (!Number.isFinite(marks?.pageListReadyMs) || !Number.isFinite(marks?.firstContentMs)) {
       return undefined;
     }
@@ -6180,30 +4361,14 @@ function registerIpcHandlers() {
       projectPath: ctx.projectPath,
       projectName: ctx.projectName,
       mode: 'editor' as const,
-      // Mirrors the preload's cold-start config: `true` under the Electron
-      // smoke suite so the renderer uses xterm's DOM renderer (see TerminalPanel).
       e2eSmoke: process.env.OK_DESKTOP_E2E_SMOKE === '1',
-      // Ephemeral single-file windows carry teardown state on `ctx.ephemeral`;
-      // its presence IS the single-file signal for the renderer's chrome gate.
       singleFile: ctx.ephemeral !== undefined,
-      // Mirrors the preload's cold-start config: PTY capability is the same
-      // platform fact for a re-queried live window.
       ptyAvailable: isTerminalAvailable(),
-      // `initialDoc` is a cold-start-only hash seed (consumed once at renderer
-      // boot from the preload-injected bridge config). A live window queried via
-      // get-info has already navigated, so there is nothing to re-seed → null.
       initialDoc: null,
-      // `freshlyCreated` is a cold-start-only onboarding signal (the card
-      // evaluates it once at first paint). A re-queried live window is past
-      // that point — parity with `initialDoc: null` above.
       freshlyCreated: false,
     };
   });
 
-  // OK config sharing mode — read + toggle the sharing posture for
-  // the active project window. Project scope flows from the WM context, so
-  // the renderer cannot target a different project than the one its
-  // window owns.
   handle('ok:sharing:dispatch', async (event, request) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) throw new Error('webContents has no parent BrowserWindow');
@@ -6216,12 +4381,6 @@ function registerIpcHandlers() {
     return handleSharingSetMode(ctx.projectPath, mode);
   });
 
-  // Slides (Slidev). `status` detects whether a runnable slidev resolves for the
-  // active project window (a window with no bound project still resolves a
-  // global slidev, so the status read is total). `open` starts a server for a
-  // deck and confirms it serves. The global probe reuses the same login-shell
-  // PATH walk the terminal CLI-readiness surface uses (a GUI Electron process
-  // does not inherit the user's shell PATH).
   handle('ok:slides:dispatch', async (event, request) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const projectRoot =
@@ -6230,13 +4389,6 @@ function registerIpcHandlers() {
         : undefined;
     const probes = {
       isExecutableFile: realIsExecutableFile,
-      // The interactive-shell probe exists for the macOS/Linux GUI-PATH problem: a
-      // desktop-launched process does not source the user's rc files, so a
-      // globally-installed binary is invisible to `process.env.PATH`. Windows
-      // has neither that problem (a GUI process inherits the user PATH from the
-      // registry) nor a POSIX login shell to run `-l -i -c` against, so it uses
-      // `where.exe`, which also honours PATHEXT and finds the `.cmd` shim.
-      // This yes/no surface admits only a verified exit-zero probe.
       isOnLoginPath: async (bin: string) =>
         (await (process.platform === 'win32'
           ? probeWindowsPath(bin)
@@ -6245,11 +4397,6 @@ function registerIpcHandlers() {
     if (request.kind === 'status') {
       return handleSlidesStatus(projectRoot, probes);
     }
-    // Trust boundary: the deck path is a renderer-supplied string over IPC.
-    // The admission decision (bound project + well-formed absolute path +
-    // realpath-then-contain, so an in-project symlink cannot escape) lives in
-    // `slides-deck-path.ts` where it is reachable from a test against a real
-    // filesystem; this site only logs the refusal.
     const deckPath = resolveDeckPath({
       docPath: request.docPath,
       projectRoot,
@@ -6266,8 +4413,6 @@ function registerIpcHandlers() {
       });
       return { kind: 'open', ok: false, reason: 'invalid-path' };
     }
-    // Both come from the admission decision, which proved the root defined —
-    // keeps the narrowing the discriminated spawn config depends on.
     const { resolvedDocPath, projectRoot: containedRoot } = deckPath;
     const resolution = await resolveSlidev(projectRoot, probes);
     if (!resolution.available) {
@@ -6305,18 +4450,12 @@ function registerIpcHandlers() {
           createWindow: (winOpts) => {
             const win = new BrowserWindow({
               ...DEFAULT_WIN_OPTS,
-              // A deck loads Slidev's page, not OK's renderer, so it has no
-              // `-webkit-app-region: drag` strip to move the window by. Restore
-              // an ordinary native title bar (see `slidesWindowChrome`).
               ...slidesWindowChrome(),
               minWidth: WINDOW_MIN_SIZE.EDITOR.width,
               minHeight: WINDOW_MIN_SIZE.EDITOR.height,
               title: winOpts.title,
               webPreferences: {
                 ...DEFAULT_WIN_OPTS.webPreferences,
-                // Isolate the deck's session from the editor and inject no OK
-                // preload/bridge — a slides window loads the out-of-process
-                // Slidev server, not OK's renderer, so it needs neither.
                 partition: winOpts.partition,
               },
             });
@@ -6331,22 +4470,12 @@ function registerIpcHandlers() {
         });
       },
       focusWindow: (window) => {
-        // Raise the already-open deck window (restore → show → moveTop → focus),
-        // the recipe editor windows use to surface an existing window.
         if (window.isMinimized?.()) window.restore?.();
         window.show?.();
         window.moveTop?.();
         window.focus();
       },
     });
-    // The deck-open span + failure counter are emitted inside handleSlidesOpen,
-    // once per genuine spawn attempt — never for a focus-existing reopen or a
-    // joined in-flight activation, which perform no spawn (see recordOpenAttempt
-    // above). That keeps the span's denominator genuine spawn attempts.
-    // Log the start/readiness failure at this boundary before returning it.
-    // Returning handleSlidesOpen(...) directly would let spawn-error / timeout
-    // / unsupported-server reach the renderer unlogged, re-opening the IPC
-    // observability asymmetry the paired-log discipline exists to close.
     if (!opened.ok) {
       logIpcError({
         event: 'ipc.error',
@@ -6358,12 +4487,6 @@ function registerIpcHandlers() {
     return opened;
   });
 
-  // In-app bug reporting — build the redacted diagnostic bundle for the
-  // sender window's project, upload a reviewed bundle to the private intake,
-  // or acknowledge a crash-detected invitation. Unlike the sibling
-  // project-scoped channels, a window with no project context (Navigator) is
-  // NOT refused: the bundle degrades to system-wide (user logs + sysinfo),
-  // labeled via `summary.systemWide`.
   handle('ok:bug-report:dispatch', async (event, request) => {
     if (request.kind === 'crash-ack') {
       return handleBugReportCrashAck(
@@ -6376,48 +4499,28 @@ function registerIpcHandlers() {
     }
     if (request.kind === 'delete') {
       const removed = await bugReportSidecar.remove(request.id);
-      // Only once the report is actually gone. A refused delete leaves it in the
-      // list (`in-flight` most of all, where the send may still fail and be
-      // retried), and that report keeps needing its picture.
       if (removed.ok) bugReportSendScreenshots.forget(request.id);
       return removed;
     }
     if (request.kind === 'send') {
       return handleBugReportSend(
         {
-          // Every build defaults to the production intake so Send uploads (dev
-          // included); `OK_BUG_REPORT_INTAKE_URL` overrides.
           intakeBaseUrl: resolveBugReportIntakeUrl({
             envUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
           }),
           appVersion: app.getVersion(),
           platform: `${process.platform} ${osRelease()}`,
-          // Same containment root the Reveal handler whitelists above — only
-          // zips `create` produced may be read and uploaded.
           bugReportsRoot: dirname(defaultBugReportZipPath()),
-          // Records uploading → sent/upload-failed/email-drafted on the sidecar
-          // and holds the in-flight lock, for the first send and a list retry.
           sidecar: {
             onSendStart: (id) => bugReportSidecar.sendHooks.onSendStart(id),
             onSendResult: async (id, outcome) => {
               try {
                 await bugReportSidecar.sendHooks.onSendResult(id, outcome);
               } finally {
-                // A confirmed send has already uploaded the asset and the report
-                // can no longer be retried, so nothing wants these bytes again —
-                // a picture of the user's screen should not outlive its use.
-                // Every other outcome stays retryable and keeps its capture.
-                // In `finally` so releasing them never depends on the sidecar
-                // honoring its never-throws contract.
                 if (outcome.kind === 'sent') bugReportSendScreenshots.forget(id);
               }
             },
           },
-          // The capture THIS report was composed from, uploaded separately as its
-          // own Linear asset so the ticket embeds it inline. Keyed by report, not
-          // by window: a retry that lands after a second report was composed must
-          // still attach its own picture. A retry in a later session finds nothing
-          // and files without the inline image.
           screenshotPngBytes: (reportId) => bugReportSendScreenshots.read(reportId),
         },
         request,
@@ -6435,11 +4538,6 @@ function registerIpcHandlers() {
       });
     }
     if (request.kind === 'capture-screenshot') {
-      // Captured before the report dialog paints (the gate awaits this reply
-      // before revealing the Radix overlay), so the picture is the app state
-      // underneath the dialog, not the dialog itself. The store/listener
-      // lifecycle lives in the unit-tested `handleBugReportCaptureScreenshot`;
-      // this arm only supplies the Electron seams.
       const captureWin = BrowserWindow.fromWebContents(event.sender);
       if (!captureWin) return null;
       const sender = event.sender;
@@ -6464,8 +4562,6 @@ function registerIpcHandlers() {
           packaged: app.isPackaged,
           channel: channelFromVersion(app.getVersion()),
         },
-        // The language on screen right now, not the one the debounced config
-        // write has reached disk with — see `describeDesktopLanguage`.
         readLanguage: () =>
           describeDesktopLanguage({
             homedir: osHomedir(),
@@ -6479,12 +4575,7 @@ function registerIpcHandlers() {
             foreignSkipped: 0,
             unknownSkipped: 0,
           },
-        // Main-owned bytes captured for this exact window; `create` stages them
-        // only when the renderer opted in via `includeScreenshot`.
         screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
-        // Whatever reached the bundle is filed under the new report's id, so the
-        // later (possibly retried) send resolves this report's picture rather
-        // than the window slot's current occupant.
         onScreenshotStaged: (reportId, png) => {
           const composedBy = event.sender.id;
           bugReportSendScreenshots.remember(reportId, png, composedBy);
@@ -6495,8 +4586,6 @@ function registerIpcHandlers() {
             bugReportSendScreenshots.forgetOwner(composedBy);
           });
         },
-        // Persist the report's `generated` sidecar and run the retention sweep
-        // once the bundle is written, so it survives dialog close + restart.
         onReportGenerated: (meta) => bugReportSidecar.recordGenerated(meta),
         logger: getLogger('bug-report'),
         flushLogger: flushDesktopLogger,
@@ -6506,23 +4595,11 @@ function registerIpcHandlers() {
   });
 
   handle('ok:project:list-recent', async () => {
-    // Enrich each present recent with its git-worktree relationship so the
-    // renderer can nest linked worktrees under their main project. Each present
-    // recent needs two git spawns (classify + branch); cold, that's up to ~40.
-    // Run them concurrently via `Promise.all` of the async variants so the
-    // response isn't gated on a serial chain of blocking spawns on the main
-    // event loop — otherwise the switcher's first open renders visibly late.
-    // `classifyRecentGitAsync` is memoized per path (repeat calls are cheap);
-    // the branch label is read fresh since it changes on checkout. Missing
-    // paths are left un-probed.
     return Promise.all(
       annotateMissing(appState).map(async (entry): Promise<RecentProject> => {
         if (entry.missing) return entry;
         const [git, branch] = await Promise.all([
           classifyRecentGitAsync(entry.path),
-          // Resolve the branch via git (walks up), not a raw `.git/HEAD` read, so
-          // a project opened at a git subdirectory (e.g. an OK subtree) still gets
-          // its branch label.
           readWorktreeBranchAsync(entry.path),
         ]);
         if (git.gitCommonDir === null) return entry;
@@ -6566,21 +4643,11 @@ function registerIpcHandlers() {
   });
 
   handle('ok:project:open', async (event, request) => {
-    // Route through the wrapper so boot failures (lock collision, git-init
-    // error, generic crash) surface as the standard Electron error dialog
-    // + Navigator fall-back instead of escaping to the renderer as a raw
-    // IPC error. Matches the menu / deep-link / last-opened-project paths.
     if (!isEntryPoint(request.entryPoint)) {
       throw new Error(
         `ok:project:open rejected: invalid entryPoint '${String(request.entryPoint)}'`,
       );
     }
-    // Strict VS Code "Open Recent" parity for renderer-initiated opens: a plain
-    // (non-share) open of a recents entry whose folder is gone prunes the stale
-    // entry from the single recents list and notifies the originating window
-    // with a lightweight toast — instead of spawning a broken window or bouncing
-    // to the Navigator. The user stays where they are. Share opens (which carry
-    // a deep-link / branch-switch target) are handled by the probe below.
     if (
       request.pendingDeepLinkTarget === undefined &&
       request.pendingShareBranchSwitch === undefined
@@ -6594,12 +4661,6 @@ function registerIpcHandlers() {
         return undefined;
       }
     }
-    // Renderer-initiated share-receive opens (fresh clone, multi-worktree pivot)
-    // reach window-open here instead of through the URL-scheme dispatcher, which
-    // is where `dispatchResolvedShare` probes the target. Run the same probe so a
-    // moved/deleted target flags `targetMissing` and the editor renders the
-    // honest verdict panel instead of the create-mode editor. Synchronous native
-    // probe — no new IPC — computed once for both the warm and cold branches.
     const targetMissing = (() => {
       const target = request.pendingDeepLinkTarget;
       if (target === undefined) return false;
@@ -6615,10 +4676,6 @@ function registerIpcHandlers() {
         probeCoordinate.target,
       );
     })();
-    // Warm-focus path for share-receive: when an existing window holds the
-    // requested project, focus it and dispatch the deep-link directly. Mirrors
-    // the URL-scheme warm path in url-scheme.ts so the IPC and the deep-link
-    // entry points stay equivalent.
     if (request.pendingDeepLinkTarget !== undefined && wm) {
       const existing = wm.focusWindowForProject(request.path) as
         | (BrowserWindowLike & { webContents: BrowserWindowLike['webContents'] })
@@ -6635,21 +4692,11 @@ function registerIpcHandlers() {
           ...(request.pendingDeepLinkTarget.contentRootDepth === undefined
             ? {}
             : { contentRootDepth: request.pendingDeepLinkTarget.contentRootDepth }),
-          // Only carry the flag when set — keeps the common (present) case's
-          // payload identical to the pre-gate shape.
           ...(targetMissing ? { targetMissing: true } : {}),
         });
         return undefined;
       }
     }
-    // Warm-focus path for the share-receive branch-switch ("I have it
-    // locally" on a mismatched branch). A branch-switch open carries no
-    // `pendingDeepLinkTarget`, so the deep-link warm path above is skipped;
-    // mirror it here so an already-open editor for this project gets the
-    // `project-branch-switch` surface instead of being spawned cold. Mirrors
-    // url-scheme.ts's warm `sendShareDeepLink` for the `fallback` case. For the
-    // bug's hot path (repo not yet in recents) no window is open, so this falls
-    // through to the cold spawn below.
     if (request.pendingShareBranchSwitch !== undefined && wm) {
       const existing = wm.focusWindowForProject(request.path) as
         | (BrowserWindowLike & { webContents: BrowserWindowLike['webContents'] })
@@ -6676,14 +4723,6 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  // Worktree selector (worktree = window). Git-only surface: enumerate
-  // the sender window's project's branches + worktrees, or create/locate the
-  // worktree for a branch under `<mainRoot>/.ok/worktrees/`. Opening the
-  // resulting worktree window is the renderer's job (`ok:project:open` with
-  // entryPoint `'worktree'`). A project-less window (Navigator) has no repo →
-  // `no-git`. The window's `projectPath` is already realpath-canonicalized by
-  // `discoverProject`, but we realpath defensively so the current-window flag
-  // matches `listGitWorktrees`'s realpath-collapsed entry paths.
   handle('ok:worktree:dispatch', async (event, request) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const ctx =
@@ -6719,9 +4758,6 @@ function registerIpcHandlers() {
             createBranch: request.createBranch,
           });
     if (!result.ok) {
-      // The renderer's toast shows only the typed reason; the classified git
-      // stderr in `message` (and the missing-helper name) lands here so a
-      // failure is diagnosable from ~/.ok/logs without a devtools session.
       getLogger('worktree').warn(
         {
           kind: request.kind,
@@ -6792,12 +4828,6 @@ function registerIpcHandlers() {
   });
 
   handle('ok:project:restart-server', async (event, projectPath) => {
-    // Renderer-initiated from the version-drift notification or the "server
-    // gone" error affordance. Terminates the server and recreates/retires the
-    // originating window against a fresh spawn. The returned outcome only reaches
-    // the renderer on failure (a surviving window). The try/catch makes the
-    // contract uniform: every path resolves with an outcome rather than rejecting
-    // on a destroyed renderer.
     if (!wm) {
       logIpcError({
         event: 'ipc.error',
@@ -6808,12 +4838,6 @@ function registerIpcHandlers() {
       return { ok: false, reason: 'other' };
     }
     try {
-      // Route by the REQUESTING window, not the `projectPath` arg — an ephemeral
-      // single-file window's server is file-keyed under a throwaway temp dir the
-      // directory-keyed `restartAttachedServer` can't reach. The decision lives in
-      // `restartServerForWindow` (on the class that owns the identity map) so it is
-      // unit-testable through the DI harness; this handler only adapts the sender
-      // webContents to a window and threads the CLI args.
       const senderWindow = BrowserWindow.fromWebContents(event.sender);
       const outcome = await wm.restartServerForWindow(senderWindow, projectPath, {
         localOpCliArgs: resolveLocalOpCliArgs(),
@@ -6839,20 +4863,7 @@ function registerIpcHandlers() {
     }
   });
 
-  // ── Create-new-project dialog cascade IPC ─────────────────────────────────
-  // Four read-only `ok:fs:*` probes + the `ok:project:create-new` writer.
-  // Renderer-side cascade (`CreateProjectDialog`) calls the probes reactively
-  // to render the inline banner; the writer re-runs every check server-side
-  // as defense-in-depth (renderer is untrusted at the IPC boundary).
-
   handle('ok:fs:default-projects-root', async () => {
-    // `app.getPath('documents')` throws when the OS can't resolve the
-    // Documents known folder (seen on headless Windows Server sessions,
-    // where SHGetKnownFolderPath fails for never-provisioned per-user
-    // folders). Evaluated eagerly it would reject the whole probe — even
-    // when a perfectly good persisted parent exists — and the dialog
-    // falls to its empty "No location selected" state. `home` resolves
-    // from the environment and does not have this failure mode.
     let documentsDir: string;
     try {
       documentsDir = app.getPath('documents');
@@ -6888,38 +4899,16 @@ function registerIpcHandlers() {
     }
     const result = findEnclosingGitRoot(path);
     if (result !== null) {
-      // Membership-set scoping for `ok:fs:remove-git-folder`: the renderer
-      // may only ask main to delete a `<gitRoot>/.git` that *main* surfaced
-      // from a recent probe. Bounded FIFO so the set doesn't grow without
-      // limit over a long-lived session. See `remove-git-folder.ts` and
-      // `remove-git-folder.test.ts` for the full validation chain.
       recordRecentGitRoot(result.gitRoot);
     }
     return result;
   });
 
-  // Destructive IPC scoped to a single shape: `<gitRoot>/.git`. Validation
-  // chain lives in `remove-git-folder.ts` (testable pure function with
-  // tmpdir-fixture coverage) — handler is a thin wrapper that owns only
-  // the per-session `recentGitRoots` membership set.
   handle('ok:fs:remove-git-folder', async (_event, gitRoot) => {
-    // Primary teardown: deterministically stop this worktree's OWN collab
-    // server BEFORE removing its `.git`, so a deleted worktree doesn't leave
-    // an orphaned server holding a now-dangling lockDir. Reuses
-    // the path-addressable `runStop` against the worktree's lockDir. Scoped to
-    // the same `recentGitRoots` membership set that gates the delete itself, so
-    // a fabricated path can't drive a stray SIGTERM. Best-effort: a worktree
-    // with no running server is a no-op, and a stop failure must not block the
-    // delete (idle-shutdown — 30min — is the backstop for anything missed).
     if (typeof gitRoot === 'string' && recentGitRoots.has(gitRoot)) {
       try {
-        // Route runStop's own log through the structured logger (not stdout) so
-        // the success path — which PIDs were SIGTERM'd before `.git` deletion —
-        // is captured for incident forensics, not silently dropped.
         const outcome = await runStop({
           lockDir: resolveLockDir(gitRoot),
-          // The worktree and its `.git` are going away regardless, so the
-          // in-use decline would only strand the server it is about to orphan.
           force: true,
           log: (msg) => getLogger('project').info({ gitRoot }, `[remove-git-folder] ${msg}`),
         });
@@ -6959,9 +4948,6 @@ function registerIpcHandlers() {
           cause: { message: err.message },
         });
       } else {
-        // Unexpected error type (TypeError, OOM, etc.) — still emit a
-        // structured log line so triage has a main-side audit trail; the
-        // renderer maps non-CreateNewProjectError shapes to `{reason:'unknown'}`.
         logIpcError({
           event: 'ipc.error',
           channel: 'ok:project:create-new',
@@ -6973,15 +4959,8 @@ function registerIpcHandlers() {
       throw err;
     }
 
-    // Per-editor write outcomes → structured log line (count of failures
-    // also feeds the OnboardingFlow span's ai_integrations_failed_count
-    // attribute, same as the pick-existing dialog path).
     const aiFailedCount = logAiIntegrationOutcomes(result.aiIntegrations);
 
-    // The user picked `args.parent`; persist that — NOT `result.target`'s
-    // parent (which is the same here, but the contract is "remember where
-    // the user wanted to put projects," not "remember where the last one
-    // landed after sanitization").
     appState = setLastUsedProjectParent(appState, args.parent);
     saveAppState(appState);
 
@@ -6989,19 +4968,11 @@ function registerIpcHandlers() {
       flowKind: result.variant,
       entryPoint: 'create-new',
       gitInitRequested: !result.gitRootPromoted,
-      // `result.defaultContentDir` is invariantly `'.'` (see the field's
-      // JSDoc in `create-new-project.ts`). The create-new flow has no UI
-      // for adjusting content scope at scaffold time, so this telemetry
-      // attribute is always `false` here — emitted explicitly for parity
-      // with the Pick-existing flow's payload shape.
       contentDirChanged: false,
       warningsCount: 0,
       failedCount: aiFailedCount,
     });
 
-    // Paths logged verbatim: the bounded-cardinality STOP rule applies to
-    // span/metric attributes, not pino log fields; the telemetry span emitted
-    // just above stays bounded.
     getLogger('create-new').info(
       {
         projectDir: result.projectDir,
@@ -7012,11 +4983,6 @@ function registerIpcHandlers() {
       'created project',
     );
 
-    // Open the editor window against the project root (the git root when
-    // promoted, otherwise the user-facing folder). By now `projectDir`
-    // carries `.ok/config.yml`, so `discoverProject`'s walk inside
-    // `openProject` classifies it as `kind: 'managed'` and the silent
-    // scaffold branch won't re-fire.
     await openProjectOrFallbackToNavigator(result.projectDir, 'create-new');
     return undefined;
   });
@@ -7066,13 +5032,6 @@ function registerIpcHandlers() {
     );
   });
 
-  // Schema-incompatibility IPC handlers. The pure handler bodies live in
-  // `update-state-handlers.ts` so the unit tier can pin the composition
-  // (persist → clear pending, including rollback on saveAppState failure).
-  // The deps factory captures the live closures over `appState` /
-  // `pendingSchemaIncompatibility`. `getBuildChannel` derives the channel
-  // purely from the running binary's version string (no persisted
-  // preference), so `ok:state:query` always matches the installed DMG.
   const updateStateDeps = (): UpdateStateHandlerDeps => ({
     getAppState: () => appState,
     setAppState: (s) => {
@@ -7090,9 +5049,6 @@ function registerIpcHandlers() {
     return ensureDebugIpc().requestKeyringSmoke(event.sender);
   });
 
-  // `ok seed` — project-level scaffolder. Pure plan/apply handlers scoped to
-  // the invoking window's ProjectContext (same pattern as `ok:shell:spawn-cursor`).
-  // See packages/desktop/src/main/ipc/seed.ts.
   const resolveSeedProjectRoot = (event: Electron.IpcMainInvokeEvent): string | undefined => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     return callerWin && wm
@@ -7134,10 +5090,6 @@ function registerIpcHandlers() {
   });
   handle('ok:seed:list-packs', async () => handleSeedListPacks());
 
-  // Chat & Cowork skill install-dialog IPC.
-  // Two channels: (1) detect Claude Desktop's presence, (2) build .skill
-  // locally + invoke OS file association. No network, no GitHub Releases.
-  // See packages/desktop/src/main/ipc/install-skill.ts.
   handle('ok:skill:detect-claude-desktop', async () => {
     return handleDetectClaudeDesktop();
   });
@@ -7155,12 +5107,6 @@ function registerIpcHandlers() {
     return result;
   });
 
-  // Pre-project local-op flows for the Navigator window. The Navigator has
-  // no backing API server (apiOrigin === ''), so the renderer's HTTP path
-  // to `/api/local-op/auth/login` + `/api/local-op/clone` 404s on the
-  // electron-vite dev server. These IPC handlers spawn the same CLI
-  // subprocess directly from main and stream events back via webContents.
-  // Editor windows continue to use the HTTP path — no regression.
   const localOpDeps: LocalOpDeps = {
     resolveCliArgs: resolveLocalOpCliArgs,
     state: createLocalOpState(),
@@ -7208,17 +5154,6 @@ function registerIpcHandlers() {
   registerProjectIntegrationsSettingsIpc();
 }
 
-/**
- * Machine-level editor presence shared by both Settings integration scopes,
- * cached ~60s as one in-flight Promise. Both scopes await a fresh pass on
- * every status fetch AND inside every toggle acknowledgment (behind the
- * mutation mutex), and the scheme-handler probes are subprocess-backed on
- * Linux (`xdg-mime` per scheme, 2s timeout each) — uncached, a checkbox click
- * would block its own acknowledgment on OS queries whose answer the mutation
- * cannot change (detection is ranking-only). Same TTL rationale and
- * promise-sharing shape as `resolveTerminalCliInstalledMap`, which caches the
- * CLI half independently.
- */
 const EDITOR_PRESENCE_TTL_MS = 60_000;
 let editorPresenceCache: { at: number; value: Promise<EditorPresenceProbes> } | null = null;
 
@@ -7228,8 +5163,6 @@ function probeEditorPresence(): Promise<EditorPresenceProbes> {
     return editorPresenceCache.value;
   }
   const value = probeEditorPresenceUncached().catch((err) => {
-    // Every sub-probe already degrades in place, so this shouldn't fire — but a
-    // rejection must not stay cached for the full TTL; the next call retries.
     editorPresenceCache = null;
     throw err;
   });
@@ -7254,8 +5187,6 @@ async function probeEditorPresenceUncached(): Promise<EditorPresenceProbes> {
   ]);
   return {
     cliOnPath,
-    // `claude-code` is the handoff-target id for the Claude desktop app; the
-    // other two share their scheme name with their target id.
     schemeHandler: {
       'claude-code': schemes[0] ?? false,
       codex: schemes[1] ?? false,
@@ -7264,20 +5195,8 @@ async function probeEditorPresenceUncached(): Promise<EditorPresenceProbes> {
   };
 }
 
-/**
- * Settings → AI tools: persistent status/toggle IPC over the same install
- * actors as the first-launch consent dialog (`createMcpWiringOpts`) and the
- * startup reclaim — `writeUserMcpConfigs` + surgical removal for editors,
- * `ensureCliOnPath` / rc-block strip for the PATH shim, decision-gated
- * reclaim + teardown for the user-global skill bundles. `available` mirrors
- * the wiring gate set so the section renders read-only exactly where the
- * consent dialog would refuse to arm.
- */
 function registerIntegrationsSettingsIpc(): void {
   const integrationsLogger = getLogger('integrations-settings');
-  // Mirrors the mcp-wiring/skill-reclaim gates via the shared classifier:
-  // any supported packaged layout (darwin bundle / NSIS / linux dir) is
-  // available; AppImage + dev shells render the section read-only.
   const available =
     process.env.OK_RECLAIM_DISABLE !== '1' &&
     (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
@@ -7289,18 +5208,10 @@ function registerIntegrationsSettingsIpc(): void {
     available,
     ipcMain,
     cli: {
-      // User-global surface only: `scope: 'project'` targets (Pi) have no
-      // user-global MCP config to manage — their `configPath()` throws — so
-      // they must not surface as a row here, mirroring the consent dialog's
-      // and startup repair sweep's scope filter in `mcp-wiring.ts`.
       allEditorIds: ALL_EDITOR_IDS.filter((id) => EDITOR_TARGETS[id].scope === 'global'),
       editorLabel: (editorId) => EDITOR_TARGETS[editorId].label,
       classifyExistingMcpEntry: (editorId, home) =>
         classifyExistingMcpEntry(EDITOR_TARGETS[editorId], '', home),
-      // The removal gate: `isEntryUpToDate` recognizes both the resolver-chain
-      // and OpenCode shapes via the version sentinel; `isOwnManagedEntry` is
-      // the exact canonical match. Same predicate `removeOwnMcpEntry` applies
-      // internally, so a row shown as 'installed' is always removable.
       isOwnEntry: (entry) => isEntryUpToDate(entry) || isOwnManagedEntry(entry),
       editorConfigPath: (editorId) =>
         editorConfigPathDisplay(EDITOR_TARGETS[editorId], osHomedir()),
@@ -7309,9 +5220,6 @@ function registerIntegrationsSettingsIpc(): void {
       removeUserMcpEntry: (editorId) =>
         removeOwnMcpEntry(EDITOR_TARGETS[editorId], '', osHomedir()),
     },
-    // Cached ~60s (see probeEditorPresence), so opening Settings or toggling a
-    // row costs no extra shell spawns and every surface answers the same
-    // question the same way.
     probeEditorPresence,
     path: {
       computeStatus: () => {
@@ -7357,10 +5265,6 @@ function registerIntegrationsSettingsIpc(): void {
     skills: {
       computeStatuses: () => {
         const home = osHomedir();
-        // Resolve reach once — the target set is identical for every built-in.
-        // The ledger read touches the filesystem (realpath containment), so a
-        // throw degrades to zero hosts, keeping the skill rows visible instead
-        // of emptying the whole group.
         let resolvedHosts: ResolvedSkillHost[];
         try {
           resolvedHosts = resolveBuiltinSkillHosts(home);
@@ -7387,8 +5291,6 @@ function registerIntegrationsSettingsIpc(): void {
         const id = USER_GLOBAL_BUNDLE_IDS.find((b) => b === bundleId);
         if (!id) return { ok: false as const, error: 'Unknown skill.' };
         const name = BUNDLE_SKILL_NAME[id];
-        // Decision first (the durable record every install actor gates on),
-        // then the disk effect — same order as the consent-dialog leg.
         try {
           await writeBundleDecision(home, name, enabled);
         } catch (err) {
@@ -7416,10 +5318,6 @@ function registerIntegrationsSettingsIpc(): void {
         } catch (err) {
           return { ok: false as const, error: formatUnknownError(err) };
         }
-        // Verify by effect against the same roots the disclosure lists. The
-        // central store alone is NOT the signal: the reclaim skips it entirely
-        // when `~/.agents` does not already exist, so probing only there failed
-        // every install on a machine without the hub.
         if (!builtinSkillInstalled(home, name)) {
           return { ok: false as const, error: `Couldn't install ${name}.` };
         }
@@ -7434,20 +5332,8 @@ function registerIntegrationsSettingsIpc(): void {
   });
 }
 
-/**
- * Settings → This project → AI tools: persistent status/toggle IPC over the
- * same PROJECT-LOCAL install actors as the per-project onboarding dialog and
- * the reclaim-on-open sweep — `writeEditorMcpConfig` / `removeOwnMcpEntry` with
- * a project config-path override for the per-editor MCP files, and
- * `writeProjectSkill` / `removeProjectSkill` for the project runtime skill.
- * Every request resolves the sender window's project (webContents →
- * ProjectContext) so the renderer can never target a foreign directory.
- * `available` mirrors the global surface's gate set.
- */
 function registerProjectIntegrationsSettingsIpc(): void {
   const projectLogger = getLogger('project-integrations-settings');
-  // Same shape gate as the user-scope section — see
-  // registerIntegrationsSettingsIpc.
   const available =
     process.env.OK_RECLAIM_DISABLE !== '1' &&
     (app.isPackaged || process.env.OK_M6B_FORCE === '1') &&
@@ -7456,10 +5342,6 @@ function registerProjectIntegrationsSettingsIpc(): void {
     const home = osHomedir();
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
   };
-  // The canonical project skill lives under Claude Code's `.claude/skills/`; its
-  // presence is the single row's checked state (the write fans out to every
-  // capable editor, but the `.claude` copy is the one the discovery skill and
-  // CLAUDE.md reference).
   const canonicalSkillTarget = EDITOR_TARGETS.claude;
   const projectInstallOpts: McpInstallOptions = { mode: 'published', skipAvailabilityCheck: true };
 
@@ -7469,14 +5351,7 @@ function registerProjectIntegrationsSettingsIpc(): void {
     projectConfigPath: (id, projectDir) =>
       EDITOR_TARGETS[id].projectConfigPath?.(projectDir) ?? null,
     projectSkillPath: (id, projectDir) => EDITOR_TARGETS[id].projectSkillPath?.(projectDir) ?? null,
-    // Same read the user-global rows use: parse the shipped bundle and price it
-    // from its own bytes, so the project row cannot quote a stale figure.
     projectSkillBundle: () => {
-      // resolveBundledSkillDir throws when the bundled asset is missing (a dev
-      // tree that never ran the bundle build). Let it propagate: the caller
-      // already catches it, logs the cause, and degrades the row to no cost
-      // line - catching it here produced the same degraded row with no log at
-      // all, which made the caller's warn dead code for this path.
       const sourceDir = resolveBundledSkillDir('project', { checkDesktop: false });
       const parsed = sourceDir ? parseSkillDir(sourceDir) : null;
       if (!parsed) return null;
@@ -7488,8 +5363,6 @@ function registerProjectIntegrationsSettingsIpc(): void {
     },
     entryLocator: (id) => {
       const target = EDITOR_TARGETS[id];
-      // `format: 'file'` targets (Pi) own a whole managed file, not a keyed
-      // entry — there is no dotted/table locator to show.
       if (target.format === 'file') return 'open-knowledge (managed extension file)';
       const server = target.serverName('');
       return target.format === 'toml'
@@ -7571,27 +5444,17 @@ function registerProjectIntegrationsSettingsIpc(): void {
   });
 }
 
-/**
- * Path to the Dock/app icon PNG. Hand-authored 1024² file committed to the
- * repo at build/icon.png. In packaged builds, electron-builder copies this
- * into the app bundle and generates .icns from it (electron-builder.yml
- * `icon:` key) — `app.dock.setIcon()` is a no-op for the packaged case
- * because Gatekeeper already knows the bundle's icon. In dev mode, we set
- * it at runtime so the Dock shows the real icon instead of the generic
- * Electron diamond.
- */
 const ICON_PNG_PATH = join(__dirname, '..', '..', 'build', 'icon.png');
 
 function installDockIcon(instanceLabel: string | null) {
   if (process.platform !== 'darwin') return;
-  if (app.isPackaged) return; // packaged build uses the bundle's .icns
-  // Differentiate parallel dev instances on the Dock. macOS reads the Dock
-  // tile *name* (hover tooltip) from the running bundle's Info.plist, which in
-  // dev is Electron's own — `app.setName()` renames the menu bar but not the
-  // Dock tile, and there is no runtime API to rename it for an unpackaged app.
-  // A badge is the only way to put the instance label onto the Dock icon at
-  // runtime; the OK icon already identifies it as OpenKnowledge. No-op for the
-  // default install (label null). See electron/electron#3391, #19892.
+  if (app.isPackaged) return;
+  /*
+   * UPSTREAM(electron/electron#3391): macOS reads the Dock tile name from the
+   * running bundle's Info.plist — Electron's own for an unpackaged app — and
+   * `app.setName()` does not reach it. A badge is the only runtime way to put
+   * an instance label on the Dock icon.
+   */
   if (instanceLabel) {
     try {
       app.dock?.setBadge(instanceLabel);
@@ -7615,36 +5478,6 @@ function installDockIcon(instanceLabel: string | null) {
   }
 }
 
-/**
- * Defensive CORS injector for localhost responses — bulletproofs the attach
- * path against older `ok start` CLI servers that predate the api-extension
- * CORS change. Background: the renderer origin (electron-vite dev server OR
- * `file://` in packaged builds) is cross-origin to the utility process's
- * `http://localhost:<port>`, so browser CORS policy applies to every `/api/*`
- * fetch. Our current server emits `Access-Control-Allow-Origin: *` natively,
- * but if an older CLI owns the `server.lock` (attach mode) it does NOT — every
- * sidebar load surfaces as "Could not reach server" even though `curl` shows
- * HTTP 200 + valid JSON.
- *
- * Two behaviors:
- *   1. Any localhost response missing `Access-Control-Allow-Origin` gets
- *      `*` + `Allow-Methods` + `Allow-Headers` injected. Safe because the
- *      filter below admits loopback URLs only — no remote origin is in scope.
- *   2. A `405`/`404` to an `OPTIONS` preflight from such a server is rewritten
- *      to `204 No Content` with the CORS headers so POSTs with a JSON body
- *      (which trigger a preflight) don't fail before the real request fires.
- *
- * Both are gated on hostname (`localhost` / `127.0.0.1`) and on `hasAcao`
- * being false — we leave responses from CORS-aware servers (our current
- * api-extension + any future release) untouched.
- *
- * The filter deliberately stays at `localhost` / `127.0.0.1` even though
- * `lockApiOrigin` admits other loopbacks (`[::1]`, `127.0.0.x`): pre-CORS CLI
- * servers — the only servers this injector exists for — could only ever bind
- * those two addresses, and any server new enough to take a non-default
- * loopback bind is new enough to emit native CORS headers. Widening the
- * filter would guard an unreachable version-skew combination.
- */
 function installLocalhostCorsInjector() {
   session.defaultSession.webRequest.onHeadersReceived(
     { urls: ['http://localhost:*/*', 'http://127.0.0.1:*/*'] },
@@ -7673,18 +5506,6 @@ function installLocalhostCorsInjector() {
   );
 }
 
-/**
- * Rewrite outbound `Referer` for YouTube embed-iframe requests so the
- * iframe player accepts the embed when the renderer is loaded via
- * `file://` in packaged builds. Sibling pattern to
- * `installLocalhostCorsInjector` — same Electron session-level hook,
- * scoped to the embed hosts that gate on Referer.
- *
- * The rewrite logic itself lives in `embed-referer.ts` so the
- * behavior is unit-testable without touching `session.defaultSession`.
- * Full rationale (why Error 153 happens, why `https://inkeep.com/`,
- * why YouTube-only) is in that module's docstring.
- */
 function installEmbedRefererRewriter() {
   session.defaultSession.webRequest.onBeforeSendHeaders(
     { urls: [...EMBED_HOST_PATTERNS] },
@@ -7696,19 +5517,6 @@ function installEmbedRefererRewriter() {
   );
 }
 
-// Single-instance lock — required for `app.on('second-instance')` to fire
-// AND to prevent a duplicate OK.app launch from racing state.json +
-// server.lock with the primary. A duplicate launch that carries an
-// `openknowledge://` URL in argv (`OK.app/Contents/MacOS/OpenKnowledge
-// openknowledge://...`) relinquishes the lock; Electron then dispatches its
-// argv to the primary via the `second-instance` listener registered below.
-// If we fail to acquire the lock we ARE the duplicate — exit without
-// registering any of the boot-time handlers below.
-//
-// Earliest possible main-process side effect — must precede any stdout/stderr
-// write so no timer-driven log can race ahead of the guard. See
-// process-safety-net.ts for why this is a stream-level guard, not a global
-// uncaughtException handler.
 const safetyNetLogger = getLogger('process-safety-net');
 installStdioBrokenPipeGuard(process, {
   onNonBenignError: (stream, err) => {
@@ -7719,43 +5527,10 @@ installStdioBrokenPipeGuard(process, {
   },
 });
 
-// Trust the OS certificate store (macOS Keychain / enterprise CA) so a GHES on
-// a self-signed or internal-CA cert — already trusted by `git` — works for the
-// app's TLS. `appendSwitch` covers Chromium's network stack; the runtime call
-// covers Node's fetch/undici in THIS main process (the two are separate trust
-// stores). The server fork and the CLI subprocess each apply the same trust on
-// their own boot.
 app.commandLine.appendSwitch('use-system-ca');
 trustSystemCertificates();
 
-// Driver-mode exception: when the env triplet
-// `OK_DEBUG_KEYRING_SMOKE=1 + OK_DEBUG_KEYRING_SMOKE_EXIT=1` is set, the
-// packaged app is being launched by the `verify-keyring-in-packaged-dmg.mjs`
-// driver for a creds-free packaged-DMG smoke. Short-circuit at the top of
-// boot — spawn a standalone utility, wait for its auto-smoke + self-exit,
-// then `app.quit()`. No single-instance lock, no Navigator, no window
-// creation. The utility's auto-smoke writes `KeyringSmokeResult` JSON to
-// `OK_DEBUG_KEYRING_SMOKE_OUT` before exiting; the driver reads the file.
-
-// Dev-only parallel-instance isolation. Electron keys the single-instance lock
-// on `userData` (and Chromium storage + recents live there), so two desktop
-// processes sharing one `userData` can't coexist — the second fails
-// `requestSingleInstanceLock()` and quits. Relocating this launch's `userData`
-// to a named sibling dir gives each instance its own lock + isolated storage.
-//
-// The instance name is `OK_INSTANCE` when set, else auto-derived from the git
-// checkout (branch name, or worktree dir on detached HEAD) so two `pnpm dev`
-// launches from different worktrees isolate automatically — no env needed. The
-// repo default branch (main/master) is skipped so plain dev on main keeps the
-// classic shared `userData`; `OK_AUTO_INSTANCE=0` disables auto-derivation.
-// Must run before `requestSingleInstanceLock()` and any `userData` read;
-// packaged builds ignore it so releases are never affected.
 if (!app.isPackaged) {
-  // Auto-derivation is for humans running `pnpm dev` from a worktree; keep it
-  // out of the E2E desktop smoke, which drives an unpackaged build on a feature
-  // branch. Deriving there would run git on the launch path and relocate
-  // `userData` on every smoke launch. Explicit `OK_INSTANCE` still wins, so a
-  // test can opt into isolation on purpose.
   const resolved = resolveEffectiveInstanceName(process.env, app.getAppPath(), {
     autoDeriveEnabled: process.env.OK_DESKTOP_E2E_SMOKE !== '1',
   });
@@ -7777,97 +5552,22 @@ if (!app.isPackaged) {
   }
 }
 
-// Differentiate parallel instances: when this launch uses a per-instance
-// `userData` (the parallel-instance launcher's `--user-data-dir`, or dev
-// `OK_INSTANCE`), surface that instance's name in the macOS menu-bar app name
-// and window titles so multiple instances are tellable apart. No-op for the
-// default install. Runs after `userData` is final, before any window is created.
 const instanceLabel = resolveInstanceLabel(app.getPath('userData'));
 if (instanceLabel) {
   app.setName(formatInstanceAppName(app.getName(), instanceLabel));
   setWindowInstanceLabel(instanceLabel);
 }
 
-// Opt-in: force Chromium to build the renderer accessibility tree so the
-// web-view UI (composer, buttons, tabs — all already carry aria-labels / roles)
-// is exposed to the macOS accessibility API. Electron/Chromium otherwise builds
-// that tree lazily, only once it detects an assistive technology, so an AX
-// client (VoiceOver, or a GUI-automation driver like peekaboo) sees only the
-// native window chrome and none of the React controls. Gated behind an env var
-// because the always-on AX tree carries a small perpetual cost — set
-// `OK_FORCE_A11Y=1` when driving the app with an accessibility/automation tool.
-// Must run before `app` is ready (command-line switches are read at that point).
 const A11Y_FORCED_BY_ENV = process.env.OK_FORCE_A11Y === '1';
 if (A11Y_FORCED_BY_ENV) {
   app.commandLine.appendSwitch('force-renderer-accessibility');
 }
 
-/**
- * Record whether assistive technology is attached, at boot and on every flip.
- *
- * A whole family of renderer crashes reaches a Blink `CHECK` that is only
- * reachable with a live accessibility tree. Chromium builds that tree lazily,
- * once it detects an AT client — so on a report where `OK_FORCE_A11Y` was not
- * set, the precondition of the entire diagnosis had to be argued from
- * circumstance. Not one accessibility line existed in any bundled log to argue
- * from.
- *
- * The companion signal is `ax_mode`, read off a minidump's Crashpad
- * annotations (see `readMinidumpAccessibilityMode`). This line and that one
- * differ by SCOPE, not by granularity: `features` below is the BROWSER
- * process's live flag set, while `ax_mode` is the flag set of ONE renderer at
- * the instant it died. Chromium can run renderers at different modes from each
- * other and from the browser-process summary, so neither substitutes for the
- * other — but this one is present on every session, and it carries the thing a
- * dump cannot: WHEN the client attached, relative to everything else in the log.
- *
- * `features` is Electron's `getAccessibilitySupportFeatures()`, whose own docs
- * direct diagnostics and telemetry to it in preference to the legacy boolean.
- * `supportEnabled` is kept beside it because it is not derivable from the array:
- * the boolean is Chromium's own "is this an accessible browser" predicate over
- * the mode, not a test for a particular flag, and reconstructing it here would
- * be this file guessing at that predicate.
- *
- * AS OF THE ELECTRON PINNED IN THIS PACKAGE — re-verify on any upgrade —
- * `features` is real on EVERY platform, the `@platform darwin,win32` tag in
- * Electron's typings notwithstanding. That tag is a docs annotation rather than
- * a runtime gate: the method is registered outside every `#if BUILDFLAG` and
- * implemented straight over `BrowserAccessibilityState::GetAccessibilityMode()`
- * with no platform branch, so Linux returns the live flag set like anywhere
- * else. Checkable at
- * https://github.com/electron/electron/blob/v41.10.3/shell/browser/api/electron_api_app.cc
- * (`GetAccessibilitySupportFeatures`, and its `SetMethod` registration in
- * `GetObjectTemplateBuilder`).
- *
- * The version scoping is the load-bearing part, not decoration: the same tag
- * sits on `isAccessibilitySupportEnabled`, which this very line already reports
- * unqualified on all platforms, and nobody re-reads a JSDoc during a routine
- * Electron bump. An incident responder must NOT discard a Linux `features`
- * value as meaningless — it is evidence.
- *
- * An empty array therefore means "no accessibility modes active", not
- * "unavailable" — and the two stay apart because the field is ABSENT when the
- * reading did not happen (see `accessibilityPostureFacts`). What an empty array
- * never means is that no renderer had a tree; only `ax_mode` answers that, and
- * only for a process that died. A false `supportEnabled` does not establish it
- * either.
- *
- * Each phase reports `supportEnabled` from its own authoritative source rather
- * than re-reading: the event hands the new value to the listener directly, and
- * whether the getter has settled by then is Chromium's business, not a thing
- * this log should quietly depend on. `features` has no such event-supplied
- * counterpart and is read live at each call.
- */
 function logAccessibilityPosture(phase: 'boot' | 'changed', supportEnabled: boolean): void {
   const features = resolveAccessibilityFeatures(
     app.getAccessibilitySupportFeatures?.bind(app),
     (error) =>
       getRootDesktopLogger().warn(
-        // `phase` rides along because both phases share this one call site: a
-        // failure on every boot and one that only happens when an AT client
-        // attaches mid-session are different problems, and without it the two
-        // produce a byte-identical line. Reading it off the neighbouring info
-        // line instead would be an implicit dependency on log adjacency.
         { event: 'desktop.accessibility.features-unreadable', phase, err: error },
         'could not read accessibility support features',
       ),
@@ -7877,28 +5577,12 @@ function logAccessibilityPosture(phase: 'boot' | 'changed', supportEnabled: bool
       phase,
       supportEnabled,
       features,
-      // Whether the app itself forced the tree on, which makes both readings
-      // beside the point for reachability: with the switch set, every renderer
-      // has a full tree whatever any AT client is doing.
       forcedByEnv: A11Y_FORCED_BY_ENV,
     }),
     'renderer accessibility posture',
   );
 }
 
-/**
- * Emit the boot posture without letting it become the thing that breaks a boot.
- *
- * The guard is around the WHOLE statement rather than inside the helper because
- * `app.isAccessibilitySupportEnabled()` is evaluated as an argument, before
- * anything inside is entered — a guard that reached only the flag-set read
- * would leave the boolean unprotected at the same position in the same
- * `whenReady` chain, and the invariant would be half-held.
- *
- * The risk is small: that boolean has been called unguarded per window creation
- * for a long time. Small is not the same as absent, and this call site is the
- * one place where being wrong costs the launch rather than a log field.
- */
 function logBootAccessibilityPosture(): void {
   try {
     logAccessibilityPosture('boot', app.isAccessibilitySupportEnabled());
@@ -7939,28 +5623,8 @@ function bootPrimaryInstance(): void {
     'desktop main process starting',
   );
 
-  // Read once, here, before anything in this function can touch the state file.
-  //
-  // Crash detection needs to know whether an install this app committed to may
-  // still have been running when the previous session ended, and the updater's
-  // boot reconciliation later in this function CLEARS that record the moment
-  // the running version catches up. Taking the snapshot at the top makes the
-  // answer independent of where either consumer ends up sitting: the two are
-  // ~1000 lines apart today, and a reordering that put the updater first would
-  // otherwise silently disable install-kill suppression while every test stayed
-  // green, because nothing here composes the two boot steps.
-  //
-  // Off disk rather than the module-level `appState`, which is still
-  // `emptyState()` this early: nothing has hydrated it yet at this point in
-  // boot, so reading it here would answer "no install was in flight" for every
-  // session regardless of the truth.
   const bootStateSnapshot = loadAppState();
 
-  // Stand up the renderer-ready mount-ack sink before anything can open a
-  // window: the preload invokes `ok:mcp-wiring:renderer-ready` /
-  // `ok:onboarding:renderer-ready` on every renderer mount, and the sink's
-  // permanent handlers are what keep an unarmed boot from logging Electron's
-  // "No handler registered" error for each ack.
   rendererReadySink = createRendererReadySink(
     ipcMain,
     ['ok:mcp-wiring:renderer-ready', 'ok:onboarding:renderer-ready'],
@@ -7970,29 +5634,13 @@ function bootPrimaryInstance(): void {
     },
   );
 
-  // Crash handling is strictly local: Crashpad writes minidumps under
-  // `app.getPath('crashDumps')` and uploads nothing. Started before any
-  // window so every child process inherits coverage, then the boot-time scan
-  // arms a report invitation if the previous session ended uncleanly. NO
-  // userland `uncaughtException` handler is involved anywhere in this
-  // pipeline — see process-safety-net.ts for why one must never be added.
   startLocalCrashReporter(crashReporter);
   crashDetection = createCrashDetection({
     sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
     ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
     crashDumpsDir: app.getPath('crashDumps'),
-    // macOS inherits Mach exception ports across fork/exec, so the crash
-    // database above also collects dumps for anything a descendant process
-    // launched (the in-app terminal's shell and whatever it starts). Detection
-    // checks each dump's own main module against this root before treating it
-    // as ours.
     appBundleRoot: appBundleRootFromExecutable(app.getPath('exe')),
-    // Recorded into this boot's sentinel, so a later boot can name the build
-    // that died even after an auto-update has replaced it.
     appVersion: app.getVersion(),
-    // Deliver to one live window — focused first — and report undeliverable
-    // so the invitation waits for the next renderer-ready signal instead of
-    // dropping (at boot, or when the only window is the one that crashed).
     emit: (event) => {
       const focused = BrowserWindow.getFocusedWindow();
       const candidates = focused
@@ -8008,26 +5656,6 @@ function bootPrimaryInstance(): void {
     },
     now: () => new Date(),
     currentBootSessionUuid: readBootSessionUuid,
-    // Was an install this app committed to still possibly running when the
-    // previous session ended? If so the session ended without its quit sequence
-    // completing so the installer could replace the app's files, and the dirty
-    // sentinel it left behind is not a crash. Which of the two platforms ends
-    // it, and how, is `crash-detection.ts`'s account to keep.
-    //
-    // Answered from `bootStateSnapshot`, taken at the top of this function
-    // before anything here can mutate the state file, so the verdict does not
-    // depend on this call sitting ahead of the updater's boot reconciliation.
-    // The staging stamp is passed as-is: the snapshot predates the stale-pending
-    // clear, so the field still holds the moment the artifact was staged.
-    //
-    // The span comes from detection and is forwarded whole. Only `deathFromMs`
-    // carries anything this boot does not already have, and substituting a
-    // wall-clock read for it reverts the suppression to decaying with how long
-    // the user left the app closed. TypeScript does not reject that
-    // substitution, so `install-in-flight-wiring.test.ts` pins this wiring and
-    // carries the derivation. Asked of the updater's own predicate rather than
-    // re-derived, so neither the bound nor the handoff resolution can drift
-    // from the one deciding whether to tell the user an install failed.
     installInFlight: (span) =>
       installWasInFlightDuring(
         bootStateSnapshot,
@@ -8043,16 +5671,8 @@ function bootPrimaryInstance(): void {
     defer: (fn) => {
       setImmediate(fn);
     },
-    // Async `showMessageBox`, never `showErrorBox` — the latter blocks the main
-    // process on macOS, which would wedge the very window being recovered (the
-    // same reason the boot unhandled-rejection path avoids it). The returned
-    // promise is load-bearing: recovery uses it to keep one dialog open per
-    // window rather than stacking a sheet per crash.
     promptManualRecovery: (contents, info) => {
       const log = getLogger('renderer-recovery');
-      // Safe despite the structural-subset type: every value reaching here came
-      // from `web-contents-created` and IS an Electron WebContents; the narrower
-      // type is the module's Electron-free boundary, not a different runtime shape.
       const target = BrowserWindow.fromWebContents(contents as unknown as WebContents);
       const options: MessageBoxOptions = {
         type: 'warning',
@@ -8064,9 +5684,6 @@ function bootPrimaryInstance(): void {
         defaultId: 0,
         cancelId: 1,
       };
-      // Every reload here is guarded: the window can be closed between the
-      // check and the native call, and this runs inside a promise chain whose
-      // rejection would otherwise be indistinguishable from a dialog failure.
       const reloadGuarded = (event: string) => {
         if (contents.isDestroyed()) return;
         try {
@@ -8085,16 +5702,10 @@ function bootPrimaryInstance(): void {
             { event: 'renderer-recovery.prompt-failed', reason: info.reason, err },
             'renderer recovery prompt failed — falling back to a direct reload',
           );
-          // The dialog was the last remaining affordance. If it could not be
-          // shown, reload rather than leaving the user staring at a blank window.
           reloadGuarded('renderer-recovery.fallback-reload-failed');
         });
     },
   });
-  // Keep the sentinel's liveness fresh and mirror power transitions into it,
-  // so the next boot can tell "the machine went down under a running app"
-  // (suppress the report prompt) from "the app died on its own" (prompt).
-  // `bootPrimaryInstance` runs inside `whenReady`, so powerMonitor is usable.
   crashSentinelHeartbeat = setInterval(
     () => crashDetection?.noteAlive(),
     SENTINEL_HEARTBEAT_INTERVAL_MS,
@@ -8103,35 +5714,8 @@ function bootPrimaryInstance(): void {
   powerMonitor.on('shutdown', () => crashDetection?.noteOsShutdown());
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
-  // The win32 half of that `shutdown` marker, which `powerMonitor` cannot
-  // provide: Electron documents its `shutdown` event as linux/darwin only, and
-  // Windows delivers the same news as `WM_ENDSESSION` to each top-level window
-  // instead. Without this, a Windows logoff/shutdown/restart left the sentinel
-  // dirty with nothing to explain it, and every such session was reported to
-  // the user as a crash — win32 was the only platform with none of our three
-  // "the environment ended it" signals, since the boot-session UUID is null
-  // there and `SIGTERM` is not delivered on Windows at all.
-  //
-  // Three properties of the event this relies on, none of them ours to change:
-  //   * It is emitted SYNCHRONOUSLY, inside the window procedure. That is what
-  //     makes a marker possible at all — Electron terminates the process the
-  //     moment the handlers return, so `noteOsShutdown`'s synchronous write
-  //     lands and anything deferred would not.
-  //   * Electron only emits it for a REAL ending (`wParam` true), so a
-  //     shutdown the user cancels leaves no marker to go stale. The heartbeat's
-  //     TTL clear stays as the backstop for anything that slips through.
-  //   * Hidden and minimized top-level windows still receive it; only
-  //     message-only windows do not. Off Windows the event simply never fires,
-  //     which is why this needs no platform guard.
-  //
-  // `browser-window-created` rather than the six construction sites: Electron
-  // emits it synchronously from `new BrowserWindow`, so every window is covered
-  // including the first, and a window closing takes its listener with it.
   app.on('browser-window-created', (_event, win) => {
     win.on('session-end', (event) => {
-      // Every window gets its own `WM_ENDSESSION`, but they all describe one
-      // ending — and this runs inside a ~5s budget the OS enforces, so the
-      // marker is written once rather than once per open window.
       if (crashDetection === null || osShutdownNoted) return;
       osShutdownNoted = true;
       crashDetection.noteOsShutdown(event.reasons);
@@ -8139,80 +5723,38 @@ function bootPrimaryInstance(): void {
         { event: 'lifecycle.session-end', reasons: event.reasons },
         'the OS is ending this session — marked the sentinel before termination',
       );
-      // The log destination is `sync: false`, and the termination above runs
-      // no `will-quit`, so none of the other shutdown-path drains fire here.
-      // Without this the sentinel would still be correct and the one line
-      // proving this path ran would not survive — which is the whole diagnostic
-      // on a path no unit test can reach.
       flushDesktopLogger();
     });
   });
-  // Clean-quit on catchable termination signals (SIGTERM/SIGINT/SIGHUP) so an
-  // orderly stop (logout, `killall`, Activity Monitor's "Quit") isn't misread
-  // as a crash next boot. Installed after crashDetection is wired so
-  // `markCleanQuit` is live. Full rationale + SIGKILL-race handling live in
-  // `signal-clean-quit.ts`.
   installSignalCleanQuit({
     process,
     markCleanQuit: () => crashDetection?.markCleanQuit(),
     quit: () => app.quit(),
     logger: getLogger('signal-clean-quit'),
   });
-  // A sidecar left `uploading` is a send interrupted by a crash/quit last
-  // session — a send never survives a restart, so demote it to `upload-failed`
-  // making it retryable and evictable again. Fire-and-forget +
-  // fail-soft: a reconcile failure must not block boot.
   void bugReportSidecar.reconcileStaleUploading();
   app.on('child-process-gone', (_event, details) => {
-    // Feed the server-exit recorder every Utility death (not just the crash
-    // reasons the invitation pipeline acts on) so the bundle can distinguish a
-    // `killed` / `oom` / `crashed` exit from a `clean-exit`.
     if (details.type === 'Utility') {
       getServerExitRecorder().noteGoneReason(details.reason);
     }
     crashDetection?.handleChildProcessGone(details);
   });
 
-  // Capture renderer console output into the desktop pino log
-  // (`~/.ok/logs/desktop.<date>.log`, bundled by `ok bug-report`). Registered
-  // before `whenReady` so every window's webContents is covered from creation.
   app.on('web-contents-created', (_event, contents) => {
     attachRendererConsoleCapture(contents);
     contents.on('render-process-gone', (_e, details) => {
       crashDetection?.handleRenderProcessGone(details);
-      // Detection arms a report invitation but is deliberately window-blind, so
-      // without this the window stays blank until the user discovers Cmd-R.
-      // Runs second so the invitation is armed against the pre-reload state.
       rendererRecovery?.handleRenderProcessGone(contents, details);
     });
     contents.once('destroyed', () => {
       rendererRecovery?.dispose(contents);
     });
-    // A freshly-loaded renderer can take a waiting crash invitation (boot
-    // events detect before any window exists; delivery must not race load).
-    // Both `did-finish-load` AND `did-stop-loading` retry delivery: a boot
-    // invite's `emit` skips a window that is `isLoading()`, and for a sole
-    // editor window whose `did-finish-load` fires while a follow-on load is
-    // still in flight, `did-finish-load` alone never retries once the window
-    // settles — the invitation would stay armed but undelivered. `did-stop-
-    // loading` is that missing "load settled" signal. `notifyRendererReady`
-    // is idempotent (guarded by the delivered flag), so the extra call is a
-    // no-op once delivered.
     const retryDelivery = () => crashDetection?.notifyRendererReady();
     contents.on('did-finish-load', retryDelivery);
     contents.on('did-stop-loading', retryDelivery);
   });
 
-  // Assistive-tech flips (e.g. VoiceOver, NVDA attach/detach) fan out to every window so
-  // the preload's live mirror stays current and an open terminal can toggle
-  // xterm's `screenReaderMode` in place. Cold-start value rides window
-  // creation via `--ok-screen-reader-active` (see withWindowRuntimeArgs).
   app.on('accessibility-support-changed', (_event, screenReaderActive) => {
-    // Logged before the fan-out, so the record survives a send that throws.
-    // The timestamp is the point: it places an AT client attaching against the
-    // rest of the session, which is the one thing a crash dump's `ax_mode`
-    // cannot say. `@platform darwin,win32` — this never fires on Linux, so a
-    // Linux log carries the boot line alone.
     logAccessibilityPosture('changed', screenReaderActive);
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.webContents.isDestroyed()) continue;
@@ -8220,20 +5762,6 @@ function bootPrimaryInstance(): void {
     }
   });
 
-  // Foreground-state mirror for the post-restore raise. Registered here, before
-  // `whenReady`, so the launch activation itself is observed — reading this
-  // later must never mistake "not yet initialized" for "user walked away".
-  //
-  // Both events are `@platform darwin`, so off darwin these flags stay false
-  // for the whole run. Every window then reveals with `show()`
-  // (`shouldRevealInactiveNow` needs `appHasEverBeenActive`), which is the
-  // pre-existing posture. The raise is NOT identical there: `shouldActivate`
-  // reads false unconditionally, so it always takes the `activate: false`
-  // branch and skips `win.show?.()` on the target. That is inert rather than
-  // equivalent — the target is already visible by then, and `moveTop()` +
-  // `focus()` reach the same end state — and `activateApp` is a no-op off macOS
-  // regardless. Two independent guards; don't drop either on the assumption the
-  // other covers it.
   app.on('did-become-active', () => {
     appIsActive = true;
     appHasEverBeenActive = true;
@@ -8242,18 +5770,9 @@ function bootPrimaryInstance(): void {
     appIsActive = false;
   });
 
-  // URL-scheme handler — register BEFORE `whenReady` so macOS cold-start
-  // `open-url` Apple Events are caught even if they fire before the ready hook.
-  // Listener registration is synchronous; the actual routing defers URLs into a
-  // queue and drains them after `whenReady` + the first BrowserWindow exists.
-  // Also wires `second-instance` for CLI / dev invocations that deliver the URL
-  // via argv rather than Apple Events.
   const protocolControl = registerProtocolHandler({
     app: {
       on: (event, cb) => {
-        // electron's `app.on` is overloaded — inject our typed shape by casting at
-        // the call site. The `url-scheme` module owns the narrowing; this is just
-        // the dispatch plumbing.
         app.on(event as Parameters<typeof app.on>[0], cb as Parameters<typeof app.on>[1]);
       },
       whenReady: () => app.whenReady(),
@@ -8263,28 +5782,11 @@ function bootPrimaryInstance(): void {
     },
     focusWindowForProject: (projectPath) => {
       if (!wm) return null;
-      // The warm seam: the project already has a window, so this surfaces it
-      // rather than opening one. It still needs the yield — `bringToFront`
-      // brings the window forward, but without this the restore's trailing
-      // raise would put the restore target straight back on top of it.
       yieldRestoreToDeepLink();
       return wm.focusWindowForProject(projectPath) as unknown as object | null;
     },
     openProject: async (projectPath, opts) => {
-      // A deep link asked for this window, so it must come forward even if a
-      // restore is still revealing its own windows quietly — and the restore's
-      // trailing raise must not then bury it.
       yieldRestoreToDeepLink();
-      // Use the Navigator-fallback path: on failure (bad path, git-init error,
-      // stale lock) the user sees a dialog and is returned to the Navigator
-      // rather than a silent "link doesn't work." Success path returns the
-      // BrowserWindow so the caller can dispatch `ok:deep-link`.
-      //
-      // `pendingDeepLinkTarget` + `pendingBranch` + `pendingMultiCandidate`
-      // + `pendingTargetMissing` + `pendingShareBranchSwitch` thread through
-      // `wm.createProjectWindow`, which registers each one's readiness-gated
-      // delivery BEFORE `loadURL` awaits. Delivery happens inside the
-      // window-manager hook — no post-load dispatch here.
       await openProjectOrFallbackToNavigator(
         projectPath,
         'deep-link',
@@ -8296,21 +5798,11 @@ function bootPrimaryInstance(): void {
       );
       const ctx = wm?.getWindowFor(projectPath);
       if (!ctx) {
-        // The fallback ran — dialog shown, Navigator reopened. Return null so
-        // the caller knows the spawn failed (nothing to dispatch).
         return null;
       }
       return ctx.window as unknown as object;
     },
-    // `openknowledge://open?file=<abs>` — the desktop side of `ok <file>`.
-    // `openEphemeralFile` re-derives the plan and routes project-vs-
-    // ephemeral itself, so the url-scheme layer just hands off the path.
     openEphemeralFile: (filePath) => {
-      // Same rule as `openProject` above, and it must live HERE rather than
-      // inside `openEphemeralFile`: the boot restore calls that function for
-      // its own file-kind entries, and yielding there would unmute the rest of
-      // the restore. The deep-link boundary also covers the branch where the
-      // file collapses onto a project.
       yieldRestoreToDeepLink();
       return openEphemeralFile(filePath);
     },
@@ -8324,14 +5816,8 @@ function bootPrimaryInstance(): void {
     },
     resolveShareTarget: (share) =>
       resolveShareTargetMain(share, {
-        // The shared selector inline-filters `missing:true` entries from
-        // its input, so the annotated projection is the production wiring
-        // (mirrors how the renderer's bridge.listRecentProjects() surfaces
-        // the same list).
         listRecent: () => annotateMissing(appState),
       }),
-    // Trust gate for GHES share hosts: an already-authenticated host proceeds
-    // silently; an unfamiliar one prompts, since deep links are untrusted.
     gateForeignShareHost: async (host, sharedUrl) => {
       let authenticated = false;
       try {
@@ -8340,21 +5826,14 @@ function bootPrimaryInstance(): void {
           host,
         });
         authenticated = status.authenticated;
-      } catch {
-        // Probe failure ⇒ treat as untrusted and fall through to the prompt.
-      }
+      } catch {}
       if (authenticated) return 'proceed';
 
-      // Focus first: a deep-link launch may have no active window, so the
-      // prompt would otherwise render behind other apps or not show at all.
       app.focus({ steal: true });
       const parentWindow = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
       const messageBoxOptions = {
         type: 'warning' as const,
         buttons: [`Connect to ${host}…`, 'Open in browser', 'Cancel'],
-        // Cancel is the safe keyboard default for an unfamiliar, attacker-
-        // suppliable host — neither connecting nor opening happens on a stray
-        // Enter/Escape. The user must choose Connect or Open deliberately.
         defaultId: 2,
         cancelId: 2,
         message: `This share points at ${host}`,
@@ -8366,37 +5845,19 @@ function bootPrimaryInstance(): void {
         ? await dialog.showMessageBox(parentWindow, messageBoxOptions)
         : await dialog.showMessageBox(messageBoxOptions);
       if (response === 0) {
-        // Connect: land the user on Account settings to sign in to this host
-        // (the PAT panel, since GHES can't use the browser sign-in). The share
-        // isn't received now — they re-open the link once connected. Same drop
-        // as the browser/cancel branches on the receive side.
         if (parentWindow) {
           (parentWindow as BrowserWindowLike).webContents.executeJavaScript(
             "window.location.hash = '#settings/account'; undefined",
           );
         } else {
-          // App running with every window closed: open one so Connect isn't a
-          // silent no-op. (Routing that fresh window straight to Account is a
-          // follow-up — it needs the editor renderer + a ready-gate.)
           openNavigator();
         }
         return 'connect';
       }
-      // Neither remaining choice opens a window, and a valid share claims the
-      // launch at parse time, before any window exists, so a cold launch has
-      // already suppressed its boot restore by the time this is answered.
-      // Declining would otherwise leave the app running with no window at all,
-      // which off macOS is unrecoverable: `window-all-closed` fires only when a
-      // window closes, and none was ever created. Same recovery as the Connect
-      // branch above.
       if (BrowserWindow.getAllWindows().length === 0) {
         openNavigator();
       }
       if (response === 1) {
-        // Route through the outbound-scheme allowlist rather than calling
-        // shell.openExternal directly: sharedUrl comes from an untrusted deep
-        // link, and a non-https scheme (vscode:, ms-msdt:, …) must never reach
-        // the OS protocol handler. Legitimate shares are always https.
         const check = checkOutboundUrl(sharedUrl);
         if (!check.ok) {
           getLogger('share-receive').warn(
@@ -8410,30 +5871,13 @@ function bootPrimaryInstance(): void {
       }
       return 'cancel';
     },
-    // Kind-aware target-existence gate, run after `branch-match-ok` and before
-    // dispatch (see `dispatchResolvedShare`). Native synchronous probe — no IPC.
     checkShareTargetExists: (projectPath, kind, path) =>
       checkTargetExistsImpl(projectPath, kind, path),
     routeShareToNavigator: (payload) => {
-      // Third deep-link seam. A share that resolves to the Navigator (target
-      // missing, or a non-OK branch match) opens a window through the same show
-      // gate as any other, so mid-restore it would otherwise reveal quietly and
-      // sit behind the user's foreground app — for a link they just clicked.
       yieldRestoreToDeepLink();
-      // `openNavigator(payload)` handles both cold-create (cold path:
-      // `createNavigatorWindow` registers `once('dom-ready', ...)` BEFORE
-      // `loadFile`/`loadURL`) and warm-focus (warm path: `isLoading()`
-      // gate → immediate send when loaded, `once('did-finish-load')` when
-      // still mid-load). It always leaves `navigatorWindow` set (or throws on
-      // an unrecoverable BrowserWindow failure that propagates), so there is
-      // no post-call null state to guard. No post-call dispatch needed here.
       openNavigator(payload);
     },
     openScreen: (win, screen) => {
-      // Same URL-hash trigger the app menu uses (`openSettings` /
-      // `openInstallSkillDialog` above) — funnels deep links through the
-      // renderer's existing client-side mount path. The Record gives
-      // exhaustiveness: a new ScreenTarget without a hash here is a type error.
       const w = win as BrowserWindowLike;
       const hashByScreen: Record<ScreenTarget, string> = {
         settings: '#settings',
@@ -8462,38 +5906,14 @@ function bootPrimaryInstance(): void {
   app
     .whenReady()
     .then(async () => {
-      // Startup instrumentation: stamp the launch origin and stand up the
-      // OTel root (Plan A). `beginRoot` is fault-isolated + gated on
-      // OTEL_SDK_DISABLED, so this is a near-free no-op when telemetry is off;
-      // its return tells the waterfall whether main spans are live.
       startupWaterfall.mark('appReady');
       startupWaterfall.otelEnabled = beginRoot();
-      // The cold-start accessibility posture. Read HERE rather than beside the
-      // `desktop.boot` line, which runs before `whenReady`:
-      // `isAccessibilitySupportEnabled` reaches into browser-process state that
-      // does not exist until then, and a pre-ready read would report a default
-      // rather than an answer. `accessibility-support-changed` covers every
-      // later flip, so between them the whole session is described.
       logBootAccessibilityPosture();
-      // Login-shell SSH_AUTH_SOCK harvest — started here so its (2s-bounded)
-      // shell spawn overlaps the bootstrap I/O below; awaited + applied just
-      // before the window-open branch, ahead of the git preflight and both
-      // server-spawn paths (utility fork + detached spawn). Desktop-main git
-      // spawns pick the corrected value up automatically: gitSpawnEnv()
-      // rebuilds from live process.env per call and must never be frozen
-      // into a module-level constant (see git-spawn-env.ts).
       const shellEnvLogger = {
         event: (payload: Record<string, unknown> & { event: string }) =>
           getLogger('shell-env').info(payload, payload.event),
       };
       const authSockHarvest = harvestShellAuthSock({ logger: shellEnvLogger });
-      // One-time userData migration for the "Open Knowledge" → "OpenKnowledge"
-      // rename. Dormant until the packaged productName flips the userData
-      // basename to "OpenKnowledge"; then it relocates a verified-ours legacy
-      // "Open Knowledge" dir and cleans it up. Runs BEFORE the first-run probe
-      // + loadAppState below so the migrated state is loaded, not treated as a
-      // fresh first run. Routes events to the pino file logger so a failed
-      // migration is visible in production logs, not just on the console.
       const userDataMigrationLog = getLogger('userdata-migration');
       const userDataMigration = await migrateLegacyUserDataDir({
         userDataDir: app.getPath('userData'),
@@ -8507,12 +5927,8 @@ function bootPrimaryInstance(): void {
         );
       }
 
-      // Configure the native About panel with the project copyright + GPLv3
-      // notice (the GUI "Appropriate Legal Notices" surface). Idempotent.
       app.setAboutPanelOptions(buildAboutPanelOptions(app.getVersion()));
 
-      // True-first-run signal for the deferred-share handshake: captured BEFORE
-      // bootstrap, which writes state.json and would otherwise erase the signal.
       const isTrueFirstRun = !existsSync(join(app.getPath('userData'), 'state.json'));
 
       const result = await runBootstrap({
@@ -8532,18 +5948,10 @@ function bootPrimaryInstance(): void {
       });
       appState = result.appState;
 
-      // Windows/Linux chrome theme-reactivity (windows-linux-port chrome): construction options are
-      // read once per window, so a theme flip after creation must re-apply
-      // the solid background (+ overlay colors on win32) to every live
-      // window. macOS is untouched — vibrancy tracks nativeTheme natively.
       if (process.platform !== 'darwin') {
         nativeTheme.on('updated', fanOutChromeColors);
       }
 
-      // AppImage deep-link self-registration (windows-linux-port deep-link posture): fire-and-forget — a
-      // failure means openknowledge:// links stay unregistered on this
-      // box, which is exactly the pre-existing state. Skips itself
-      // everywhere but packaged Linux AppImage launches.
       void registerAppImageDeepLinks({
         platform: process.platform,
         isPackaged: app.isPackaged,
@@ -8559,52 +5967,19 @@ function bootPrimaryInstance(): void {
         }
       });
       pendingSchemaIncompatibility = result.pendingSchemaIncompatibility;
-      // Snapshot the post-upgrade signal BEFORE step 6 (`bootAutoUpdater`)
-      // advances `lastSeenVersion` — this bootstrap runs at step 2, the first
-      // project window opens at step 4, and the updater consumes the marker at
-      // step 6. Captured once so it stays true for every project opened this
-      // run (a live re-read would flip false after the updater advances).
       firstLaunchAfterUpgrade = computeFirstLaunchAfterUpgrade(
         appState.lastSeenVersion,
         app.getVersion(),
       );
-      // Startup instrumentation: bootstrap (IPC handlers, menu, dock, state)
-      // is complete; the next launch phase is the project-window open + spawn.
       startupWaterfall.mark('bootstrapDone');
 
-      // Re-broadcast a pending downloaded-update to any window opened from now
-      // on. The relaunch banner (Toast A, `ok:update:downloaded`) fans out once
-      // per `update-downloaded` to every window then-open; a window opened
-      // *afterwards* missed that event, so resend it once the new window's
-      // renderer has loaded its subscriber (the module-level update-notices
-      // store attaches it before React mounts). `versionPendingInstall` is read
-      // inside the `did-finish-load` callback, not at window-create time, so a
-      // user who clicked "Relaunch now" in another window in the meantime
-      // (`ok:update:relaunch-now` clears the field before `quitAndInstall()`)
-      // doesn't get a stale banner here. Nothing staged → no-op.
       app.on('browser-window-created', (_event, win) => {
         win.webContents.once('did-finish-load', () => {
-          // Update notices are a production-only surface. In a dev build
-          // (unpackaged, no OK_UPDATER_FORCE_DEV) a persisted
-          // `versionPendingInstall` is stale dev/test residue — the auto-updater
-          // suppresses its boot-time emits there, so suppress this late-window
-          // re-broadcast on the same signal for parity (else a newly-opened dev
-          // window resurfaces the staged-update banner the boot path withheld).
           if (!(app.isPackaged || process.env.OK_UPDATER_FORCE_DEV === '1')) return;
           const pending = appState.versionPendingInstall;
-          // Hold the re-send while the post-update quiet window runs, for the
-          // same reason the updater holds the original broadcast: a user who
-          // just updated and then opened a project should not be met by a
-          // fresh update demand. The updater fires the held banner to every
-          // window once the window elapses, so nothing is lost here.
           if (pending && !autoUpdaterHandle?.isWithinPostUpdateQuietWindow()) {
             sendToRenderer(win.webContents, 'ok:update:downloaded', { version: pending });
           }
-          // Late-window release-notes delivery: a project opened while the
-          // what's-new notice is still live (within its ~60s window and not
-          // dismissed) still shows the card. `getActiveWhatsNew` returns null
-          // once that window elapses or the notice was dismissed, so an
-          // unrelated window opened later gets nothing.
           const whatsNew = autoUpdaterHandle?.getActiveWhatsNew();
           if (whatsNew) {
             sendToRenderer(win.webContents, 'ok:update:whats-new', whatsNew);
@@ -8612,33 +5987,12 @@ function bootPrimaryInstance(): void {
         });
       });
 
-      // First-launch MCP consent. Armed before the window-open branch so the
-      // `ok:mcp-wiring:renderer-ready` listener is installed BEFORE any
-      // renderer could possibly fire it — otherwise a fast `did-finish-load`
-      // → React-mount would race and the ack event lands on a dead channel.
-      // `runMcpWiringOnFirstLaunch` no-ops (returns an inert handle) when the
-      // platform is non-darwin, the app is in dev mode without
-      // `OK_M6B_FORCE=1`, the user-scoped marker is present, or
-      // `app.getPath('exe')` doesn't match the bundle shape. The cli surface
-      // is imported via the published-package name `@inkeep/open-knowledge`
-      // so turbo's `^build` topology correctly invalidates desktop's cache
-      // when CLI internals change. Rollup tree-shakes unused CLI code at
-      // electron-vite build time, keeping the DMG bundle size bounded.
       mcpWiringHandle = armMcpWiring();
-      // Startup path-install runs WITHOUT a consent decision: OK-owned
-      // steps (`~/.ok/bin` symlinks, `~/.ok/env.sh`) always self-heal, but
-      // the rc-file append requires a recorded `consent: granted` on the
-      // marker or grandfather evidence (a healthy managed block already on
-      // disk). A fresh machine gets no rc write here — the consent dialog's
-      // confirm path is the sole finalizer of a new decision.
       void Promise.allSettled([
         checkAndRepairMcpWiringOnStartup(createMcpWiringOpts()),
         ensureCliOnPath(buildEnsureCliOnPathOpts()),
       ])
         .then(([mcpSettled, pathSettled]) => {
-          // A hard rejection here is a whole-operation failure, not editor-
-          // specific — keep failedEditors empty (the failed-toast copy never
-          // names editors) and log the real error instead.
           if (mcpSettled.status === 'rejected') {
             console.warn('[main] MCP startup repair threw', {
               error: formatUnknownError(mcpSettled.reason),
@@ -8660,55 +6014,17 @@ function bootPrimaryInstance(): void {
           });
         });
 
-      // Apply the harvested login-shell SSH_AUTH_SOCK before the window-open
-      // branch. A Finder launch inherits launchd's default-agent socket, which
-      // holds no keys for external-agent users (1Password, Proton Pass) —
-      // patching process.env here lets every downstream git spawn inherit the
-      // agent the user's terminal actually uses. Failure or an empty value
-      // leaves the inherited socket untouched.
       applyHarvestedAuthSock(process.env, await authSockHarvest, shellEnvLogger);
 
-      // Every project open spawns a NEW editor window. Boot restore order:
-      //   1. A launch-claiming single-file or share URL owns the initial window
-      //      set, so no default restore window opens. Any snapshot is still
-      //      consumed on this path (cleared to null + persisted like every
-      //      other), so the suppressed window set is discarded permanently
-      //      rather than held back for the next boot.
-      //   2. Otherwise, a clean exit left a `pendingWindowRestore` snapshot —
-      //      open EVERY project that was open before, not just the last one.
-      //      The snapshot is consumed unconditionally (cleared to null +
-      //      persisted) before any window opens, so a crash mid-restore can't
-      //      loop it. A non-null-but-empty/all-missing snapshot opens the
-      //      Navigator and deliberately does NOT fall through to
-      //      `lastOpenedProject` — the relaunch is honored as "nothing was
-      //      open" rather than reopening a stale project.
-      //   3. Otherwise restore `lastOpenedProject` into one editor window.
-      //   4. Holding Option (`--navigator`) or having nothing to restore
-      //      opens the Navigator instead.
       const decision = await resolveBootRestoreDecision({
         pendingRestore: appState.pendingWindowRestore,
         lastOpenedProject: appState.lastOpenedProject,
         optionHeld: process.argv.includes('--navigator'),
         pathExists: existsSync,
-        // A launch-claiming URL that opens its own window — a single-file open
-        // (`ok <file>`) OR a valid share — suppresses the default boot-restore
-        // window so the URL flush owns the launch. Read AFTER the settle barrier
-        // resolves: on macOS the `open-url` Apple Event can land after this point
-        // in the boot chain, so reading the flag synchronously here would miss a
-        // cold-start share and open the previously-opened project instead.
         urlLaunchOwnsWindow: protocolControl.urlLaunchOwnsWindow,
         waitForUrlLaunchSettled: protocolControl.waitForUrlLaunchSettled,
       });
-      // Size of the snapshot this boot is about to consume, read BEFORE the
-      // clear below overwrites it. On the URL-claim path the snapshot is
-      // discarded without being restored, so this is the only record of how
-      // much the launch threw away.
       const snapshotWindowCount = appState.pendingWindowRestore?.length ?? 0;
-      // Field signal distinguishing "a URL owned the launch" from "restored
-      // despite an inbound share" — the settled flag/decision pair is otherwise
-      // unobservable outside a debugger. Carrying the count keeps a suppressed
-      // boot (`action: 'none'`) distinguishable from one that simply had
-      // nothing to restore.
       getLogger('startup').info(
         {
           urlLaunch: protocolControl.urlLaunchOwnsWindow(),
@@ -8720,63 +6036,28 @@ function bootPrimaryInstance(): void {
       if (decision.clearSnapshot) {
         appState = { ...appState, pendingWindowRestore: null };
         if (!saveAppState(appState)) {
-          // Persisting the cleared snapshot failed, so it may replay on the
-          // next boot. This is the raw entry count: the replaying boot re-runs
-          // the existsSync filter, which limits the blast radius to projects
-          // that still exist on disk.
           console.warn('[main] failed to persist cleared window-restore snapshot', {
             windowCount: snapshotWindowCount,
           });
         }
       }
 
-      // Git preflight — runs for every launch EXCEPT a single-file deep-link,
-      // whose ephemeral server boots git-off. Projects use git for the shadow
-      // repo, so a missing/old binary surfaces here as a recoverable native
-      // dialog (Open Install Page / Retry / Quit) instead of a spawn-ENOENT deep
-      // in a later CRDT trace, BEFORE the project window + detached server child
-      // are created. The Navigator preflights too — it opens no git-backed server
-      // itself, but it's the gateway to project opens, so the gate stays where it
-      // was pre-fix. Only the no-project ephemeral single-file shape skips it:
-      // that server boots git-off, so requiring git would block `ok <file>` for a
-      // user without it. A share launch ALSO yields `action: 'none'` (it
-      // suppresses the default window) but opens/clones a git-backed project, so
-      // it still preflights — gate on `singleFileLaunch()`, not the bare `'none'`.
-      // A project later opened from a single-file session falls back to the
-      // server child's own bootServer() preflight as the backstop.
       const skipGitPreflight = decision.action === 'none' && protocolControl.singleFileLaunch();
       if (!skipGitPreflight) {
         const gitOutcome = await ensureGitAvailable({
           assertGitAvailable,
-          // Electron's MessageBoxOptions wants a mutable `buttons: string[]`; the
-          // handler's contract uses `readonly string[]`. Spread to a fresh
-          // mutable copy at the boundary.
           showMessageBox: async (opts) =>
             dialog.showMessageBox({ ...opts, buttons: [...opts.buttons] }),
           openExternal: (url) => shell.openExternal(url),
           log: { warn: (msg, obj) => console.warn(msg, obj) },
         });
         if (gitOutcome === 'aborted') {
-          // User clicked Quit (or an unrecoverable non-typed error fired). Open
-          // no window; bootstrap ran but no project window/server was spawned.
           app.quit();
           return;
         }
       }
 
       if (decision.action === 'restore') {
-        // Re-derive each entry to its EFFECTIVE open target and dedupe. A loose
-        // file whose realpath now sits inside a project re-derives to that
-        // project (`prepareSingleFileOpen`, same as `openEphemeralFile`), so two
-        // entries — two loose files under one project root, or a loose file that
-        // resolves into a project already present as a `project` entry — can
-        // collapse onto one target. Deduping keeps a single ordered raise-key
-        // list and (with the WM's project in-flight reservation) prevents a
-        // duplicate window + second server. A file that vanished / became
-        // non-markdown since the snapshot throws here and is skipped silently.
-        // The file→project re-derivation + duplicate collapse + ordering lives
-        // in the pure `resolveRestoreActions` (unit-tested); here we just inject
-        // the real `prepareSingleFileOpen` (a throw → skip the vanished file).
         const { orderedKeys, actionByKey } = resolveRestoreActions(decision.windows, (filePath) => {
           try {
             const plan = prepareSingleFileOpen(filePath);
@@ -8788,23 +6069,8 @@ function bootPrimaryInstance(): void {
           }
         });
 
-        // Reveal every restored window WITHOUT foregrounding the app, so the N
-        // reveals spread across the restore can't repeatedly yank a user who
-        // switched away while waiting. Cleared once the raise below has made
-        // the single foreground decision for the whole restore.
         restoreRevealInactive = true;
 
-        // Parallel opens — each window's OS-level reveal is deferred behind its
-        // own dual-signal show gate, which releases in nondeterministic order,
-        // and every reveal lands above its predecessors in the window stack. So
-        // the raise waits for EVERY restored window to reveal before raising
-        // the last (most recently focused) entry — otherwise a sibling that
-        // reveals later would bury it. Waiting for all reveals also keeps
-        // `bringToFront`'s own reveal from bypassing the target's gate.
-        // Pop-outs are held back from this concurrent wave. They attach to
-        // their project's server, so one opened alongside its project would
-        // race it and find nothing to attach to; they open after the wave
-        // settles, when the project windows and servers exist.
         const docActions = orderedKeys
           .map((key) => actionByKey.get(key))
           .filter((action) => action?.kind === 'doc');
@@ -8818,9 +6084,6 @@ function bootPrimaryInstance(): void {
         void Promise.allSettled(opens)
           .then(() => {
             for (const action of docActions) {
-              // Isolate each restore: a throw on one (a `BrowserWindow`
-              // constructor failure, say) would otherwise skip both the
-              // remaining pop-outs and the bring-to-front `.then` below.
               try {
                 restoreNoteWindow(action);
               } catch (err) {
@@ -8832,15 +6095,9 @@ function bootPrimaryInstance(): void {
             }
           })
           .then(() => {
-            // A deep link that arrived mid-restore already put the window the
-            // user asked for in front. Raising the restore target now would
-            // bury it, so the restore yields its ordering claim entirely.
             if (deepLinkClaimedWindowDuringRestore) return undefined;
             return raiseMostRecentlyFocusedAfterRestore({
               windowKeys: orderedKeys,
-              // `getWindowFor` / `focusWindowForProject` canonicalize their input,
-              // so a loose-file key (canonical file path) resolves its ephemeral
-              // window just as a project key resolves its project window.
               getWindow: (key) => {
                 const ctx = wm?.getWindowFor(key);
                 return ctx ? (ctx.window as unknown as RevealableWindow) : undefined;
@@ -8848,11 +6105,6 @@ function bootPrimaryInstance(): void {
               raise: (key, opts) => {
                 wm?.focusWindowForProject(key, opts);
               },
-              // The one foreground decision for the whole restore, taken after
-              // every window has revealed: come forward only if OpenKnowledge
-              // is still the app the user is in. If they moved on during the
-              // restore, the target window is ordered correctly but the
-              // foreground app is left alone.
               shouldActivate: () => appIsActive,
               deps: {
                 setTimeout: (cb, ms) => setTimeout(cb, ms),
@@ -8862,16 +6114,9 @@ function bootPrimaryInstance(): void {
             });
           })
           .catch((err: unknown) => {
-            // Every window is already revealed by this point, so a throw here
-            // costs ordering, not visibility. Logged rather than swallowed so a
-            // future regression in the raise is diagnosable instead of showing
-            // up only as "the wrong window was in front".
             getLogger('startup').warn(
               {
                 event: 'restore-raise-failed',
-                // Which window should have ended up in front, and how many were
-                // in the restore — enough to reconstruct the case from a log
-                // alone, without a reproduction.
                 targetKey: orderedKeys[orderedKeys.length - 1],
                 windowCount: orderedKeys.length,
                 err,
@@ -8885,20 +6130,9 @@ function bootPrimaryInstance(): void {
       } else if (decision.action === 'navigator') {
         openNavigator();
       } else {
-        // 'none' — a launch-claiming URL (single-file deep-link or valid share)
-        // owns this launch. Open no default window; drain the queued URL now (the
-        // window manager is ready post-bootstrap) so the URL-driven window opens
-        // immediately rather than waiting out the auto-flush's window-ready retry
-        // budget.
         protocolControl.drainQueuedUrls();
       }
 
-      // Deferred-share first-run handshake. Fire-and-forget — it never claims
-      // the launch (redemption is probabilistic) and runs concurrently with the
-      // rest of boot. Gated to the fresh-install Navigator path (`'navigator'`):
-      // a project restore or a single-file/url launch means the user already
-      // arrived somewhere, so opening a `/continue` browser tab would be noise.
-      // Every failure mode degrades to the splash re-click recovery.
       if (isTrueFirstRun && decision.action === 'navigator') {
         const shareReceiveLogger = getLogger('share-receive');
         startFirstRunHandshake({
@@ -8935,56 +6169,15 @@ function bootPrimaryInstance(): void {
         });
       }
 
-      // Fire-and-forget user-global Agent Skill reclaim. Runs on every launch
-      // — force-writes each ENABLED bundle's SKILL into the central store and
-      // per-host dirs (per-bundle opt-in gated; declined bundles are removed).
-      // PATH-independent (no npx subprocess), so it survives the GUI launch
-      // context where /opt/homebrew/bin and ~/.nvm/… are off PATH. Never
-      // awaited so window rendering + menu are unblocked.
       void reclaimUserSkillsOnLaunch(buildReclaimUserSkillsOpts()).catch((err) => {
         console.warn('[main] user-skill reclaim failed', {
           err: err instanceof Error ? err.message : String(err),
         });
       });
 
-      // Dev-only: when OK_UNINSTALL_UI_PREVIEW is set (never in a packaged
-      // build), walk the uninstall windows non-destructively so the real UI can
-      // be exercised without removing anything. No-op otherwise.
       maybeRunDesktopUninstallUiPreview();
 
-      // Auto-updater — wired as the LAST step in whenReady, after the window-
-      // open branch (either openProjectOrFallbackToNavigator OR openNavigator).
-      // Not gated on createNavigatorWindow specifically — Navigator only opens
-      // on the Option-held / no-last-project path, but the updater must run on
-      // every boot path. `electron-updater` is imported dynamically so unit
-      // tests that import main/index.ts indirectly don't pull in the
-      // Electron-only runtime dependency.
-      //
-      // Routed through `bootAutoUpdater` — a thin testable wrapper that
-      // centralizes the dynamic-import + startAutoUpdater try/catch contract.
-      // A silent dynamic-import failure (bundling drift, corrupt node_modules,
-      // future Electron upgrade that desyncs the electron-updater version)
-      // would leave the app session un-updateable with no signal; the wrapper
-      // logs the failure at `error` level so operators see it in the
-      // packaged-app console output and returns null so `autoUpdaterHandle`
-      // stays null (destroy on will-quit no-ops).
-      //
-      // Linux updates flow through electron-updater like the other platforms:
-      // the packaged deb/rpm carries `resources/package-type`, which routes
-      // electron-updater to its DebUpdater/RpmUpdater classes — download from
-      // the release feed, then install via pkexec, so the user authenticates
-      // the swap with their password. The AppImage-shaped-provider concern
-      // that once platform-gated this off on Linux died with the AppImage cut:
-      // package-type selects the provider now, and only a build without the
-      // stamp falls back to the AppImage path (desktop-release.yml asserts it
-      // is present in every Linux payload).
       autoUpdaterHandle = await bootAutoUpdater(() => import('electron-updater'), {
-        // Route the auto-updater's diagnostics into the pino file logger. Its
-        // Logger interface is `(msg, ctx?)`; `getLogger` is `(data, msg)`, so
-        // adapt the shape. Without this the updater falls back to its
-        // console-only DEFAULT_LOGGER, which a packaged build never persists —
-        // leaving the relaunch trigger, channel vetoes, and update events
-        // invisible in `~/.ok/logs/`.
         logger: {
           info: (msg: string, ctx?: object) =>
             getLogger('updater').info((ctx ?? {}) as Record<string, unknown>, msg),
@@ -8998,14 +6191,6 @@ function bootPrimaryInstance(): void {
         ipcMain,
         readState: () => appState,
         writeState: (next) => {
-          // Rollback in-memory on disk-save failure so persistSafely-false in
-          // auto-updater.ts truly means "no gate armed". `saveAppStateToDir`
-          // returns a success boolean — on failure it has already logged +
-          // cleaned up; we just revert the in-memory commit and throw so
-          // persistSafely's catch registers the failure, skips the broadcast,
-          // and leaves memory + disk agreeing on "nothing armed."
-          // `saveAppStateToDir` itself never throws, so the rollback path is
-          // reached purely via the return value.
           const prev = appState;
           appState = next;
           const ok = saveAppState(appState);
@@ -9014,79 +6199,22 @@ function bootPrimaryInstance(): void {
             throw new Error('saveAppState failed — rolled back in-memory state');
           }
         },
-        // Single-window target for the one-shot prompts that shouldn't multiply
-        // (Toast C stuck-hint). Prefer the focused window so the prompt lands
-        // where the user is looking; fall back to the first open window; null
-        // when none is open so the broadcast helper no-ops.
         getPrimaryWindow: () => {
           const focused = BrowserWindow.getFocusedWindow();
           if (focused) return focused;
           const all = BrowserWindow.getAllWindows();
           return all[0] ?? null;
         },
-        // Fan-out target for the relaunch banner (Toast A), the release-notes
-        // notice (Toast B), and its cross-window dismiss — a staged update and
-        // "what's new" should be actionable/visible from whichever window the
-        // user is looking at, and a dismiss must reach every window.
         getAllWindows: () => BrowserWindow.getAllWindows(),
         getAppVersion: () => app.getVersion(),
         isPackaged: app.isPackaged,
         forceDevBypass: process.env.OK_UPDATER_FORCE_DEV === '1',
-        // smoke override: point the updater at a local mock HTTP server
-        // that serves a hand-crafted `latest-mac.yml` + fake .zip with valid
-        // sha512. Production leaves this unset and reads `publish: github`
-        // from `app-update.yml`. Paired with `OK_UPDATER_FORCE_DEV=1` (above)
-        // so the `checkForUpdates()` gate actually hits the network in a dev
-        // build. See `packages/desktop/scripts/smoke-mock-update.mjs --keep-alive`
-        // for the server side.
         feedUrl: process.env.OK_UPDATER_FEED_URL || undefined,
-        // Point the updater feed at the openknowledge.ai proxy so updates are
-        // counted per version. The proxy 302s to the byte-identical GitHub
-        // asset, preserving the manifest sha512 and the macOS signature; a feed
-        // failure reverts to the GitHub provider for the session. Both channels
-        // are enabled now that an end-to-end beta auto-update
-        // has been confirmed through the proxy; the `latest` (stable) path
-        // resolves via GitHub's authoritative `releases/latest` alias.
         proxyFeed: {
           base: 'https://openknowledge.ai/updates',
           channels: new Set<UpdateChannel>(['beta', 'latest']),
         },
-        // Toast B renderer-mount race —
-        // defer the dispatch until the primary window's renderer has
-        // finished loading so its `<UpdateToast/>` subscribers are
-        // attached. Without this, `webContents.send` sent from this very
-        // `app.whenReady()` handler is dropped on the floor (Electron does
-        // NOT buffer renderer-bound events before `did-finish-load`). If
-        // the primary window has already loaded by the time Toast B fires
-        // (rare — updater wires before loadURL resolves), fire immediately.
         whenRendererReady: (fn) => {
-          // Three cases, all must deliver Toast B eventually because
-          // `lastSeenVersion` has already advanced at the call site and the
-          // contract ("user sees a toast on first launch post-update")
-          // does not allow silent-drop — close the
-          // `lastSeenVersion`-advanced-but-broadcast-lost gap that the
-          // no-window race would otherwise open.
-          //
-          //   1. Window exists + already loaded → fire immediately.
-          //   2. Window exists + still loading  → wait for did-finish-load.
-          //   3. No window yet                  → wait for the next
-          //      `browser-window-created` event, then recurse into cases
-          //      1/2 against the fresh window.
-          //
-          // Electron emits `browser-window-created` synchronously inside
-          // `new BrowserWindow(opts)`; `once` self-detaches after the first
-          // firing so this listener can't leak across future spawns. If
-          // the user quits the app before any window ever opens (pathological
-          // — macOS doesn't dispatch Cmd+Q without a window), the listener is
-          // garbage-collected alongside the `app` object at process exit.
-          //
-          // `getURL() === ''` distinguishes a freshly-constructed window
-          // (loadURL not yet called) from an already-loaded one. Without it,
-          // a fresh window emerging via `browser-window-created` registers
-          // `isLoading() === false` and falls through to `fn()` synchronously
-          // — sending the IPC before the renderer's main.tsx has run + before
-          // `installUpdateNoticesBridge()` has attached the subscriber.
-          // Electron drops main→renderer IPC sent against an unloaded page.
           const tryFire = (win: BrowserWindow): void => {
             if (win.webContents.isLoading() || win.webContents.getURL() === '') {
               win.webContents.once('did-finish-load', fn);
@@ -9104,12 +6232,6 @@ function bootPrimaryInstance(): void {
             tryFire(createdWin as BrowserWindow);
           });
         },
-        // Linux manual-install fallback: when no graphical auth wrapper
-        // exists (or the automatic install fails for an infrastructure
-        // reason), the updater offers a dismissible dialog with a copyable
-        // shell-safe package-manager command instead of a doomed
-        // terminal-sudo attempt. The dialog re-shows after "Copy Command" so
-        // Relaunch / Not now stay reachable; Relaunch is unconditional.
         ...(process.platform === 'linux'
           ? {
               linuxInstallSupport: {
@@ -9130,9 +6252,6 @@ function bootPrimaryInstance(): void {
                           BrowserWindow.getAllWindows()[0] ??
                           null;
                         const options = { type: 'info' as const, ...request };
-                        // Unlike the check-now dialogs, show even with no
-                        // window — this is the only surface telling the user
-                        // why their update cannot install.
                         return target
                           ? dialog.showMessageBox(target, options)
                           : dialog.showMessageBox(options);
@@ -9149,11 +6268,6 @@ function bootPrimaryInstance(): void {
               },
             }
           : {}),
-        // Reclaim electron-updater's staged-installer cache once the boot
-        // reconciliation proves no install commitment remains armed (the
-        // timing contract lives on the `reclaimStagedUpdateCache` opt).
-        // Packaged builds only: dev builds ship no app-update.yml, and a
-        // guessed path is nothing to aim a recursive delete at.
         ...(app.isPackaged
           ? {
               reclaimStagedUpdateCache: () =>
@@ -9170,58 +6284,16 @@ function bootPrimaryInstance(): void {
                 }),
             }
           : {}),
-        // Pre-relaunch teardown — synchronously hard-kill every project-window
-        // utility (Hocuspocus host) right before
-        // `autoUpdater.quitAndInstall()`, so no server outlives the bundle swap
-        // and gets re-attached by the relaunched app at an older version. The
-        // graceful `{type:'shutdown'}` window-close IPC isn't fast enough —
-        // Hocuspocus drain + file-watcher teardown can outlast the swap window.
-        // Not about ShipIt's "App Still Running" abort, which cannot see these
-        // processes; `prepareForRelaunch` in `auto-updater.ts` says why.
         prepareForRelaunch: async () => {
-          // Freeze focus tracking BEFORE any teardown: the window-close
-          // cascade below re-focuses each surviving window, and tracking
-          // those events would rewrite `lastOpenedProject` / the focus
-          // sequence with close-order noise after the snapshot is taken.
           freezeFocusTracking('prepare-for-relaunch');
-          // Snapshot every open window (projects + loose files) so the
-          // post-update boot restores all of them — not just
-          // `lastOpenedProject` — ordered least → most recently focused so the
-          // boot can raise the last entry. Write-once + persisted BEFORE the
-          // server shutdown: `saveAppState` is a synchronous tmp-write + rename
-          // that completes well before `stopAllOwnedServers` returns or
-          // `quitAndInstall()` fires.
           captureWindowRestoreSnapshot('prepare-for-relaunch');
-          // Start the terminal hosts' graceful shutdown before waiting on the
-          // server drain. Any bundled console host still present after that
-          // wait is then removed by the install-tree-owned survivor sweep.
           await terminalReaper?.killAll();
-          // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
-          // dev-path utilityProcess.fork helpers), then poll the lock files
-          // until they release or 10 s elapses, then escalate to SIGKILL on
-          // detached pids whose drain ran long. Awaiting here means the
-          // updater's `quitAndInstall` waits for the process tree to be
-          // genuinely clean before ShipIt's pre-swap validation runs.
           await wm?.stopAllOwnedServers();
-          // Drain the async log buffer before `quitAndInstall()` hands off to
-          // Squirrel, which waits for this process to exit and then swaps the
-          // bundle. Without this, the relaunch-trigger + update lines emitted
-          // moments earlier never reach disk (the destination is `sync: false`).
           flushDesktopLogger();
         },
         sweepUpdateSurvivors: sweepConsoleHostsBeforeUpdate,
-        // User feedback for menu-driven `Check for Updates…` clicks. The
-        // periodic hourly check stays silent on a no-update outcome (the
-        // existing `update-not-available` log-only handler), but a manual
-        // gesture deserves explicit confirmation. macOS HIG / Sparkle
-        // convention is a modal dialog parented to the active window.
         showCheckNowResult: (result) => {
           const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-          // No-window case is rare on macOS (the app keeps the dock icon
-          // alive past last-window-close, and the menu is unreachable
-          // without at least one window) but cleanly degrade if it
-          // happens — a missing parent makes showMessageBox throw on some
-          // Electron versions.
           if (!target) return;
           if (result.kind === 'not-available') {
             void dialog.showMessageBox(target, {
@@ -9233,15 +6305,6 @@ function bootPrimaryInstance(): void {
               detail: `OpenKnowledge ${result.currentVersion} is the most current version available.`,
             });
           } else if (result.kind === 'ready-to-install') {
-            // Stated, not instructed. Every dialog in this chain is OK-only,
-            // and the wired "Relaunch" affordance lives on Toast A, which is
-            // dismissible — so a user can reach this dialog with no relaunch
-            // button anywhere on screen. Copy that said "Relaunch to install
-            // it" pointed at a control that may not exist. It also cannot say
-            // "quit and reopen": that installs on macOS and Windows, but Linux
-            // has `autoInstallOnAppQuit` off, so a plain quit installs nothing
-            // there. What holds on all three is that relaunching is when it
-            // lands.
             void dialog.showMessageBox(target, {
               type: 'info',
               buttons: ['OK'],
@@ -9271,25 +6334,10 @@ function bootPrimaryInstance(): void {
           }
         },
       });
-      // Re-install the menu now that the auto-updater handle exists, so the
-      // "Check for Updates…" entries actually have something to invoke.
       refreshApplicationMenu();
 
-      // Mid-session drag-replace detector. AppKit caches `Info.plist` at
-      // process launch (`NSBundle.mainBundle`); when a user drags a new
-      // `.app` over `/Applications/OpenKnowledge.app` while the app is
-      // running, every in-process reader (About panel, telemetry, Activity
-      // Monitor Get Info) keeps serving the OLD version until the user
-      // quits and relaunches. The auto-updater's `quitAndInstall` doesn't
-      // hit this — it fully terminates the process before swapping — so
-      // this watcher only ever fires for the manual drag-replace path.
-      // Packaged macOS only: dev builds run from a non-bundle layout
-      // (electron-vite → unpacked Resources), so there's no on-disk
-      // `.app/Contents/Info.plist` to compare against `app.getVersion()`.
       if (process.platform === 'darwin' && app.isPackaged) {
         const exePath = app.getPath('exe');
-        // `<exe>` resolves to `<…>/OpenKnowledge.app/Contents/MacOS/OpenKnowledge`,
-        // so the Info.plist sits two dirnames up.
         const infoPlistPath = join(dirname(dirname(exePath)), 'Info.plist');
         bundleReplaceWatcherHandle = startBundleReplaceWatcher({
           infoPlistPath,
@@ -9300,79 +6348,24 @@ function bootPrimaryInstance(): void {
       }
     })
     .catch((err: unknown) => {
-      // Boot diagnostic safety net. Without this, an unhandled rejection in
-      // the whenReady chain (runBootstrap throw, dynamic import failure,
-      // armMcpWiring synchronous error, etc.) leaves the user with no
-      // window and only the unhandled-rejection banner in stderr.
-      // Structured warn is the grep-able diagnostic trail.
-      //
-      // No `dialog.showErrorBox` here — that call is blocking on macOS.
-      // firing it from the
-      // unhandled-rejection path freezes the main process and prevents
-      // show-gate's setTimeout from resolving, which causes smoke tests
-      // (and real cold-launches in the same failure shape) to hang
-      // instead of fail loudly. The "no window" failure mode is
-      // acceptable here because boot already failed unrecoverably.
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? (err.stack ?? '') : '';
       console.error(JSON.stringify({ event: 'whenReady-unhandled-rejection', message, stack }));
     });
 
-  // App-lifecycle breadcrumbs for diagnosing unexpected restarts. A genuine
-  // crash fires NONE of these (the process dies with no quit sequence); a
-  // controlled quit fires `before-quit` → `will-quit`; an auto-update install
-  // additionally fires `before-quit-for-update`. Each flushes so the line
-  // survives the imminent exit.
   app.on('before-quit', () => {
     getLogger('lifecycle').info({}, 'before-quit');
-    // Stop tracking focus before the quit sequence closes windows — each
-    // close re-focuses a surviving window, and recording that churn would
-    // overwrite `lastOpenedProject` with whichever window closed last.
     freezeFocusTracking('before-quit');
-    // Snapshot the open-window set for session restore on the next launch.
-    // Write-once: the update paths (`prepareForRelaunch` / `before-quit-for-
-    // update`) already captured the richer pre-teardown set, so this no-ops
-    // there and only fires for a normal quit.
     captureWindowRestoreSnapshot('before-quit');
-    // Stamp the handoff moment while a live process still exists to observe it.
-    // With a staged update armed, this quit is what commits the install, and
-    // the swap then runs after the exit inside a process the next boot cannot
-    // see — so the next boot's "did the install take?" verdict has only what is
-    // recorded here to tell an install still underway from one that failed.
-    // No-ops when nothing is staged or the moment was already stamped (the
-    // "Relaunch now" path records its own).
     autoUpdaterHandle?.recordInstallHandoffOnQuit();
-    // Flush pending startup telemetry before exit. `emitStartupWaterfall`
-    // covers a quit during the post-window-shown flush-deadline window (the
-    // `.unref()`'d deadline timer won't fire once the process is exiting): it
-    // emits the partial timeline and ends the OTel root. `endRoot` then also
-    // covers a quit BEFORE any window was shown (emit no-ops without the
-    // `windowShown` mark). Both are idempotent, so the normal post-emit quit
-    // path is a no-op here.
     emitStartupWaterfall();
     endRoot();
     flushDesktopLogger();
   });
-  // electron-updater's MacUpdater installs via Electron's native autoUpdater
-  // singleton, so this fires for BOTH the "Relaunch now" toast `quitAndInstall()`
-  // and the `autoInstallOnAppQuit` install-on-quit path — it is the single
-  // signal that distinguishes "an update swapped the bundle and relaunched"
-  // from "the user just quit".
   electronAutoUpdater.on('before-quit-for-update', () => {
     getLogger('updater').info({}, 'before-quit-for-update — update install will relaunch the app');
-    // Same focus-churn guard as `before-quit` — this event precedes it on the
-    // silent install-on-quit path and is idempotent with the earlier
-    // `prepareForRelaunch` freeze on the "Relaunch now" path.
     freezeFocusTracking('before-quit-for-update');
-    // Snapshot BEFORE the server teardown below: on the silent
-    // `autoInstallOnAppQuit` path there is no `prepareForRelaunch`, and this
-    // hook precedes the plain `before-quit`, so this is the only pre-teardown
-    // capture point. Write-once, so the "Relaunch now" path (already
-    // snapshotted in `prepareForRelaunch`) no-ops here.
     captureWindowRestoreSnapshot('before-quit-for-update');
-    // The silent install-on-quit path bypasses prepareForRelaunch. Start the
-    // same bounded terminal drain; the will-quit barrier below keeps the main
-    // process alive, and the survivor sweep follows only after the drain.
     void (terminalReaper?.killAll() ?? Promise.resolve()).then(() => {
       const result = sweepConsoleHostsBeforeUpdate();
       if (result.scanFailed || result.revalidationFailed || result.failedCount > 0) {
@@ -9382,25 +6375,10 @@ function bootPrimaryInstance(): void {
         );
       }
     });
-    // Shut down the servers this desktop spawned BEFORE the swap completes, so
-    // the relaunched (new-version) app spawns fresh instead of attaching to a
-    // stale old-version server and showing the version-drift toast. Fires on
-    // both install paths: the "Relaunch now" path already drained its servers
-    // via `prepareForRelaunch` (so this no-ops there), while the silent
-    // `autoInstallOnAppQuit` install-on-quit path has no other teardown and is
-    // the case this closes. Synchronous best-effort — the event can't hold the
-    // quit open, but the server flushes pending writes + releases its lock far
-    // faster than the reinstall+relaunch takes. A plain quit never fires this
-    // event, so a normal app-quit leaves the detached server running, by design.
     wm?.signalStopAllOwnedServers();
     flushDesktopLogger();
   });
 
-  // Cleared on `will-quit` (canonical shutdown ordering — NOT `before-quit`,
-  // which fires earlier in the shutdown sequence). Each handle's teardown
-  // method (`destroy()` or `stop()`) is idempotent. The first pass holds quit
-  // for the terminal drain; the re-entrant pass performs the remaining teardown.
-  // Windows session-end terminates without `will-quit`, so this drain does not run there.
   const runTerminalQuitDrain = createTerminalQuitDrain({
     defer: (callback) => setImmediate(callback),
     drain: () => terminalReaper?.killAll() ?? Promise.resolve(),
@@ -9409,24 +6387,13 @@ function bootPrimaryInstance(): void {
   app.on('will-quit', (event) => {
     if (runTerminalQuitDrain(event)) return;
     getLogger('lifecycle').info({}, 'will-quit');
-    // A quit that reaches here was orderly — clear the dirty-shutdown
-    // sentinel so the next boot doesn't read this session as a crash.
-    // (`markCleanQuit` also freezes the sentinel writers, so a heartbeat
-    // tick racing this teardown can't resurrect the file.)
     crashDetection?.markCleanQuit();
     if (crashSentinelHeartbeat !== null) {
       clearInterval(crashSentinelHeartbeat);
       crashSentinelHeartbeat = null;
     }
-    // Stop recovering windows once quit is under way. A renderer that dies
-    // abnormally mid-teardown (an OOM during cleanup, say) still reports a
-    // recoverable reason, and reloading it would spawn a fresh renderer for a
-    // window Electron is actively closing.
     rendererRecovery = null;
-    // Reap every window's PTY host first so no user shell / spawn-helper
-    // outlives the app. Idempotent (clears the map; a second pass no-ops).
     void terminalReaper?.killAll();
-    // Reap every spawned Slidev server for the same reason. Idempotent.
     slidesDeckRegistry.reapAll();
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
@@ -9438,39 +6405,24 @@ function bootPrimaryInstance(): void {
     bundleReplaceWatcherHandle = null;
     mcpWiringHandle?.destroy();
     mcpWiringHandle = null;
-    // After the flows (which disarm through its facade), drop the sink's
-    // permanent renderer-ready handlers.
     rendererReadySink?.destroy();
     rendererReadySink = null;
-    // Final drain so the lifecycle + teardown lines reach disk before exit
-    // (the destination is `sync: false`).
     flushDesktopLogger();
   });
 
   app.on('window-all-closed', () => {
-    // macOS convention — keep app running so Dock icon click can re-open Navigator.
     if (process.platform !== 'darwin') {
       app.quit();
     }
   });
 
   app.on('activate', () => {
-    // macOS Dock icon click while no windows visible — re-open Navigator.
     if (BrowserWindow.getAllWindows().length === 0) {
       openNavigator();
     }
   });
-} // end bootPrimaryInstance
+}
 
-// ── OTel metric caches for sidebar shell IPCs ───────────────────────────────
-// Lazy initialization mirrors the file-watcher / rename-log patterns so the
-// SDK-disabled default build pays no cost beyond a single null-check per
-// dispatch. Histogram + counter co-exist with the span emission in the
-// `ok:shell:trash-item` handler — the span feeds traces (Tempo), the
-// histogram feeds duration distributions (Prometheus), and the counter
-// feeds failure-rate dashboards keyed by reason. Reason set is closed
-// (path-escape / not-found / permission-denied / system-error) so the
-// label cardinality is bounded by design.
 let _trashItemDurationHistCache: ReturnType<ReturnType<typeof getMeter>['createHistogram']> | null =
   null;
 function _trashItemDurationHist() {

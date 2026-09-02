@@ -5,12 +5,6 @@ import { Button } from '@/components/ui/button';
 import type { PlanEntry } from '@/lib/acp/thread-event-model';
 import { cn } from '@/lib/utils';
 
-/**
- * Present together or not at all: passing `approval` opts the checklist
- * into the Approve / Ask changes / Reject row shown while the agent is
- * waiting on the user (plan has pending items). Omitting it renders the
- * plain checklist — the shape legacy call sites without approvals use.
- */
 export interface PlanApprovalHandlers {
   onApprove: () => void;
   onAskChanges: () => void;
@@ -30,10 +24,6 @@ export function PlanChecklist({
   const hasPending = plan.some((p) => p.status !== 'completed');
   const showApprovals = approval !== undefined && hasPending;
 
-  // Auto-expand the checklist the first time the approval row appears — an
-  // approval gate whose subject is hidden trains click-through approval.
-  // The user keeps control after: they can still collapse and the effect
-  // only fires when approvals turn on, not on every render.
   useEffect(() => {
     if (showApprovals) setOpen(true);
   }, [showApprovals]);

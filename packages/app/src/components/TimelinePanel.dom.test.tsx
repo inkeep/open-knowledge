@@ -1,26 +1,6 @@
-/**
- * RTL mount test: the Timeline surfaces actor/system commits plus surfaced
- * rescue checkpoints.
- *
- * Pins the user-visible contracts: (1) actor/system rows render; (2) a
- * recovered-content rescue checkpoint (a registry-`surfaced` kind) renders as
- * an ordinary "Recovered content" version with a restore control; (3) routine
- * checkpoints stay out — registry-`hidden` kinds (auto-consolidation) and
- * null-kind Save-Version / cleanup rows; and (4) there is no Save Version
- * control in the panel header. This mount test locks the registry-driven
- * filtering + header contract without a browser (and without a shadow repo).
- * The click-restore journey has browser-tier coverage in
- * `tests/stress/timeline-recovered-restore.e2e.ts`.
- *
- * Invocation: `pnpm run test:dom` from `packages/app/`.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-// `vi.mock` is hoisted above every import, so `next-themes` resolves to this
-// stub before the SUT (imported dynamically below) pulls in its transitive
-// `useTheme`.
 vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
 }));
@@ -33,8 +13,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-// Import the component AFTER the next-themes mock registers so its transitive
-// `useTheme` import binds to the stub rather than the real provider.
 const { TimelineContent } = await import('./TimelinePanel');
 
 function wipEntry(sha: string, author: string): TimelineEntry {
@@ -76,7 +54,6 @@ function upstreamEntry(sha: string): TimelineEntry {
   };
 }
 
-/** A silent rescue checkpoint the shared kind registry marks `surfaced`. */
 function recoveredCheckpointEntry(sha: string, checkpoint: ParsedCheckpoint): TimelineEntry {
   return {
     sha,
@@ -84,8 +61,6 @@ function recoveredCheckpointEntry(sha: string, checkpoint: ParsedCheckpoint): Ti
     author: 'openknowledge',
     authorEmail: 'noreply@openknowledge.local',
     type: 'checkpoint',
-    // The raw checkpoint subject carries an internal, timestamped label; the UI
-    // must never render it — it shows the "Recovered content" framing instead.
     message: 'checkpoint: Before concurrent merge @ 2026-05-05T12:00:00Z',
     contributors: [],
     checkpoint,
@@ -203,21 +178,15 @@ describe('TimelineContent — actor/system commits only', () => {
 
     renderTimeline();
 
-    // Two WIP rows render; the interleaved checkpoint row is dropped.
     await waitFor(() => {
       expect(screen.getAllByTestId('timeline-entry-open')).toHaveLength(2);
     });
     expect(screen.getByText('Alice')).toBeTruthy();
     expect(screen.getByText('Bob')).toBeTruthy();
-    // The checkpoint's commit message never reaches the DOM (row filtered out).
     expect(screen.queryByText('checkpoint: cleanup')).toBeNull();
   });
 
   test('keeps upstream-sync entries visible (exclude-by-type, not a wip allowlist)', async () => {
-    // The filter is `type !== 'checkpoint'`, so non-wip system entries like
-    // `upstream` pass through and render via their dedicated path
-    // (displayAuthor → "Upstream sync"). Pins that the exclude-by-type choice
-    // keeps a future/non-wip actor type visible rather than silently dropping it.
     mockHistory([wipEntry('a'.repeat(40), 'Alice'), upstreamEntry('u'.repeat(40))]);
 
     renderTimeline();
@@ -248,9 +217,6 @@ describe('TimelineContent — actor/system commits only', () => {
     await waitFor(() => {
       expect(screen.getByText('Alice')).toBeTruthy();
     });
-    // Query by the user-facing affordance (role + accessible name), not the
-    // deleted testid — this catches a re-introduced Save Version control even
-    // under a different testid, where a tombstone testid query would stay green.
     expect(screen.queryByRole('button', { name: /save version/i })).toBeNull();
   });
 });
@@ -264,16 +230,12 @@ describe('TimelineContent — recovered-content checkpoints', () => {
 
     renderTimeline();
 
-    // Both the WIP row and the recovered checkpoint render.
     await waitFor(() => {
       expect(screen.getAllByTestId('timeline-entry-open')).toHaveLength(2);
     });
-    // The recovered row shows the registry-driven framing, never the raw
-    // service author or the internal, timestamped checkpoint subject.
     expect(screen.getByText('Recovered content')).toBeTruthy();
     expect(screen.queryByText(/Before concurrent merge/)).toBeNull();
     expect(screen.queryByText('openknowledge')).toBeNull();
-    // Every row — the recovered one included — carries a restore affordance.
     expect(screen.getAllByTestId('timeline-entry-restore')).toHaveLength(2);
   });
 
@@ -290,7 +252,6 @@ describe('TimelineContent — recovered-content checkpoints', () => {
       await waitFor(() => {
         expect(screen.getByText('Recovered content')).toBeTruthy();
       });
-      // No internal kind name (e.g. "producer-guard-loss") leaks into the UI.
       expect(screen.queryByText(new RegExp(checkpoint.kind))).toBeNull();
       cleanup();
     }
@@ -314,9 +275,6 @@ describe('TimelineContent — recovered-content checkpoints', () => {
   test('restoring a recovered row (with later edits) confirms, then POSTs /api/rollback for its sha', async () => {
     const recoveredSha = 'c'.repeat(40);
     const rollbackBodies: unknown[] = [];
-    // A newer WIP row above the recovered checkpoint gives it laterEdits > 0, so
-    // restore is destructive and must route through the confirm dialog rather
-    // than firing instantly.
     globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
       if (url.includes('/api/history')) {
@@ -342,16 +300,13 @@ describe('TimelineContent — recovered-content checkpoints', () => {
     renderTimeline();
     await waitFor(() => expect(screen.getByText('Recovered content')).toBeTruthy());
 
-    // The recovered row is second (Alice is newer) → laterEdits > 0.
     fireEvent.click(screen.getAllByTestId('timeline-entry-restore')[1]);
 
-    // The confirm dialog gates the restore — nothing has been rolled back yet.
     const confirm = await screen.findByTestId('timeline-entry-restore-confirm');
     expect(rollbackBodies).toHaveLength(0);
 
     fireEvent.click(confirm);
 
-    // Confirming issues exactly one rollback for the recovered checkpoint's sha.
     await waitFor(() => expect(rollbackBodies).toHaveLength(1));
     expect(rollbackBodies[0]).toEqual({ docName: 'notes', commitSha: recoveredSha });
   });

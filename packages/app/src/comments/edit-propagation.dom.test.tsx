@@ -1,13 +1,3 @@
-/**
- * A saved edit reaches every surface rendering the thread.
- *
- * Two `ThreadCard` instances over one store can be showing the same comment —
- * the two comment scopes, or a card that survives a scope switch — so revising
- * it in one must update the other the moment the server accepts: not on the
- * next CC1 push, and not never. Real store, real cards; only the network client
- * is doubled.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -51,8 +41,6 @@ vi.doMock('./comments-client', () => ({
 const store = await import('./store');
 const { ThreadCard } = await import('./ThreadCard');
 
-/** Two live instances of the same thread — the panel lists one card per
- *  thread, and both comment scopes can be showing the same comment. */
 function Surfaces() {
   const threads = store.useCommentThreads('notes/rollout');
   const thread = threads[0];
@@ -88,10 +76,8 @@ describe('editing a comment', () => {
     render(<Surfaces />);
     await waitFor(() => expect(screen.getAllByText('first draft')).toHaveLength(2));
 
-    // Open the edit in the FIRST card, revise, save.
     const docSide = screen.getByTestId('doc-side');
     fireEvent.click(
-      // eslint-style queries scoped by container: the two cards are identical.
       // biome-ignore lint/style/noNonNullAssertion: the card renders its edit button or the earlier waitFor failed
       docSide.querySelector('button[aria-label="Edit this comment"]')!,
     );
@@ -102,7 +88,6 @@ describe('editing a comment', () => {
     editor.commands.setContent('second thoughts');
     fireEvent.keyDown(field, { key: 'Enter' });
 
-    // BOTH surfaces converge on the revision once the server accepts.
     await waitFor(() => {
       const projectSide = screen.getByTestId('project-side');
       expect(projectSide.textContent).toContain('second thoughts');

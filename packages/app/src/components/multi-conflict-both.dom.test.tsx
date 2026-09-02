@@ -1,10 +1,3 @@
-/**
- * Multi-conflict resolution — the shape that used to write conflict markers to
- * disk and lose content.
- *
- * Substrate: jsdom.
- */
-
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ConflictView } from './ConflictView';
@@ -41,7 +34,6 @@ function renderView(onResolve = vi.fn()) {
 const rows = () => screen.queryAllByRole('button', { name: /^Accept current/ }).length;
 
 async function clickAll(name: string) {
-  // aria-label carries a per-conflict suffix, so match the label prefix.
   const byLabel = new RegExp(`^${name}`);
   for (let i = 0; i < 6; i++) {
     const btns = screen.queryAllByRole('button', { name: byLabel });
@@ -61,10 +53,7 @@ describe('multi-conflict resolution', () => {
     await settle();
 
     const resolved = onResolve.mock.calls[0][0] as string;
-    // The server refuses markers outright, so leaking one is a failed
-    // resolution rather than a cosmetic slip.
     expect(resolved).not.toMatch(/^(<{7} |={7}$|>{7} |\|{7} )/m);
-    // Both sides of BOTH conflicts survive.
     expect(resolved).toContain('Marcus Webb');
     expect(resolved).toContain('Priya Raman');
     expect(resolved).toContain('a rollback plan are ready.');
@@ -72,10 +61,6 @@ describe('multi-conflict resolution', () => {
   });
 
   test('undo and redo unwind every conflict, including from fully resolved', async () => {
-    // Resolving everything still clears the control list, which is the shape
-    // that caused the undo bug: a wipe assuming Pierre re-requests every host.
-    // Pinned across a full round trip, because one undo restoring one conflict
-    // looks identical to a broken restore that only ever yields one.
     renderView();
     await settle();
     expect(rows()).toBe(2);

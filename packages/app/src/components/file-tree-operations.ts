@@ -22,11 +22,6 @@ import {
 } from '@/components/file-tree-utils';
 import { joinWorkspacePath, type Workspace } from '@/lib/workspace-paths';
 
-// `RenamedDocMapping` is canonical in `@inkeep/open-knowledge-core` (mirrors
-// `RenamedDocMappingSchema` for the `/api/rename-path` success body).
-// `RenamedFolderMapping` is the parallel folder-rename mapping; it stays
-// local for now until a core schema is added (future cleanup — pair with a
-// `RenamedFolderMappingSchema` next to `RenamedDocMappingSchema`).
 export type { RenamedAssetMapping, RenamedDocMapping };
 
 export interface RenamedFolderMapping {
@@ -48,16 +43,11 @@ export type FileTreeTarget =
   | (FileTreeTargetBase & { kind: 'folder'; docExt?: undefined })
   | (FileTreeTargetBase & {
       kind: 'file';
-      /** On-disk extension for markdown files (`.md` / `.mdx`). */
       docExt?: string;
     })
   | (FileTreeTargetBase & { kind: 'asset'; docExt?: undefined });
 
 export function normalizeRenameValue(_kind: FileTreeTarget['kind'], value: string): string {
-  // PRESERVE user-typed extension when present — it's the signal the server
-  // uses to detect an extension-change rename (e.g., `foo.md` → `foo.mdx`).
-  // Basename-only edits still work because the validator reattaches the source
-  // extension before this value reaches `/api/rename-path`.
   return value.trim();
 }
 
@@ -174,8 +164,6 @@ export function canonicalizeAssetTargetForDelete(
   target: FileTreeTarget,
   documents: readonly FileEntry[],
 ): FileTreeTarget {
-  // Client-side best effort for an extensionless inline-rename commit window;
-  // the server still resolves against the filesystem as the trust boundary.
   if (target.kind !== 'asset') return target;
   if (documents.some((entry) => isAssetEntry(entry) && entry.path === target.path)) return target;
 
@@ -255,11 +243,6 @@ export function remapActiveDocName(
   return renamed.find((entry) => entry.fromDocName === activeDocName)?.toDocName ?? activeDocName;
 }
 
-/**
- * Build the OS-trash-bound absolute path for a tree target. Files reconstruct
- * the on-disk extension via `target.docExt`; folders and assets pass
- * `target.path` through unchanged.
- */
 export function buildTrashAbsPath(target: FileTreeTarget, workspace: Workspace): string {
   const relative =
     target.kind === 'file' ? docNameToTreePath(target.path, target.docExt) : target.path;

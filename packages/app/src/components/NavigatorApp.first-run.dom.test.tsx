@@ -21,9 +21,6 @@ const PACK_IDS = [
 function packFixture() {
   return PACK_IDS.map((id) => ({
     id,
-    // Distinct from `name` so a hover test can prove the tooltip surfaces the
-    // description field, not the name. Real descriptions are non-empty
-    // (SeedPackInfoSchema requires `z.string().min(1)`); '' was unrealistic.
     name: id,
     description: `Description for ${id}`,
     folders: [],
@@ -61,9 +58,6 @@ vi.doMock('./ui/badge', () => ({
   ),
 }));
 
-// Stub the pack grid: one card per pack whose click fires onPackSelect, so the
-// picker dialog's wiring can be asserted without the real grid. `iconForPack` is
-// stubbed too — NavigatorApp imports it for the pill row.
 vi.doMock('./PackCardGrid', () => ({
   iconForPack: () => () => null,
   PackCardGrid: ({
@@ -110,9 +104,7 @@ vi.doMock('./CreateProjectDialog', () => ({
         data-pack-id={props.initialPackId ?? ''}
         data-pack-count={props.packs === undefined ? '' : String(props.packs.length)}
       >
-        {/* Stand-in for the dialog's own close path (Escape / backdrop /
-            Cancel) so a test can drive the parent's onOpenChange(false)
-            without the real Radix dialog. */}
+        {}
         <button
           type="button"
           data-testid="create-dialog-close"
@@ -145,7 +137,6 @@ function createBridge(recents: unknown[]) {
     onRecentRemovedMissing: vi.fn(() => () => {}),
     config: { mode: 'navigator' },
     integrations: {
-      // CreateProjectDialog seeds its editor checkboxes off this on open.
       status: async () => ({
         available: false,
         editors: [],
@@ -178,8 +169,6 @@ async function renderNavigator(bridge: ReturnType<typeof createBridge>) {
   await waitFor(() => expect(bridge.project.listRecent).toHaveBeenCalledTimes(1));
 }
 
-// Import the component AFTER the mocks above register so its transitive
-// dependencies bind to the stubs rather than the real modules.
 const { NavigatorApp } = await import('./NavigatorApp');
 
 describe('NavigatorApp launcher — starter-pack line', () => {
@@ -196,20 +185,16 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
-    // The four doors are the primary actions on first run, same as for a
-    // returning user — the layout no longer swaps between the two states.
     expect(await screen.findByTestId('nav-create-new')).not.toBeNull();
     expect(screen.getByTestId('nav-open')).not.toBeNull();
     expect(screen.getByTestId('nav-open-file')).not.toBeNull();
     expect(screen.getByTestId('nav-clone')).not.toBeNull();
 
-    // Starter-pack line: first three packs as pills, rest behind the count.
     const row = await screen.findByTestId('nav-starter-packs');
     expect(row.textContent).toContain('or use a starter pack');
     expect(screen.getByTestId('nav-pack-pill-knowledge-base')).not.toBeNull();
     expect(screen.getByTestId('nav-pack-pill-software-lifecycle')).not.toBeNull();
     expect(screen.getByTestId('nav-pack-pill-codebase-wiki')).not.toBeNull();
-    // Packs 4 and 5 are not pills — they live behind the overflow affordance.
     expect(screen.queryByTestId('nav-pack-pill-plain-notes')).toBeNull();
     expect(screen.getByTestId('nav-pack-more').textContent).toContain('2');
   });
@@ -218,16 +203,11 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
-    // "+2 more" alone is a vague label out of visual context; the accessible
-    // name has to say what the count refers to.
     const more = await screen.findByTestId('nav-pack-more');
     expect(more.getAttribute('aria-label')).toBe('See all 5 starter packs');
   });
 
   test('hovering a pack pill surfaces its description in a tooltip', async () => {
-    // The pill shows only the pack name, so what it contains is invisible until
-    // hover. Assert the description text (not the name) is the hover payload, so
-    // a later swap of `pack.description` for another field fails here.
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
@@ -260,17 +240,11 @@ describe('NavigatorApp launcher — starter-pack line', () => {
       const dialog = screen.getByTestId('create-project-dialog');
       expect(dialog.getAttribute('data-open')).toBe('true');
       expect(dialog.getAttribute('data-pack-id')).toBe('knowledge-base');
-      // The full pack list (not a name string) threads through so the dialog
-      // can look up the chosen pack's display metadata.
       expect(dialog.getAttribute('data-pack-count')).toBe('5');
     });
   });
 
   test('the overflow count opens the create dialog on its own pack grid', async () => {
-    // The launcher used to own a second picker dialog that duplicated the
-    // create dialog's pack step. Browsing all packs now enters the same dialog
-    // as a pill does — with no pack chosen, so it opens on the grid — rather
-    // than routing through a parallel surface with its own state.
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
@@ -279,13 +253,9 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     await waitFor(() => {
       const dialog = screen.getByTestId('create-project-dialog');
       expect(dialog.getAttribute('data-open')).toBe('true');
-      // No pack yet — that is what makes the dialog open on its grid.
       expect(dialog.getAttribute('data-pack-id')).toBe('');
-      // Same assertion as the pill path: both routes thread the full list, or
-      // the dialog loses the packs' display metadata.
       expect(dialog.getAttribute('data-pack-count')).toBe('5');
     });
-    // The duplicate picker is gone, not merely hidden behind the dialog.
     expect(screen.queryByTestId('nav-pack-picker')).toBeNull();
   });
 
@@ -319,7 +289,6 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
-    // Open via a pack pill → dialog carries the pre-selected pack.
     fireEvent.click(await screen.findByTestId('nav-pack-pill-knowledge-base'));
     await waitFor(() => {
       const dialog = screen.getByTestId('create-project-dialog');
@@ -327,14 +296,11 @@ describe('NavigatorApp launcher — starter-pack line', () => {
       expect(dialog.getAttribute('data-pack-id')).toBe('knowledge-base');
     });
 
-    // Close the dialog (Escape / backdrop / Cancel stand-in).
     fireEvent.click(screen.getByTestId('create-dialog-close'));
     await waitFor(() => {
       expect(screen.getByTestId('create-project-dialog').getAttribute('data-open')).toBe('false');
     });
 
-    // Reopen via the blank "Create new project" door — the stale packId must
-    // not leak in, or the blank-create path would silently seed a pack.
     fireEvent.click(screen.getByTestId('nav-create-new'));
     await waitFor(() => {
       const dialog = screen.getByTestId('create-project-dialog');
@@ -344,12 +310,6 @@ describe('NavigatorApp launcher — starter-pack line', () => {
   });
 
   test('listPacks failure drops the pack line entirely, leaving the four cards', async () => {
-    // Deferred so the test owns the settle moment. The row renders nothing for
-    // BOTH the in-flight and the failed state, so an absence assertion is only
-    // meaningful once the fetch has provably settled — otherwise it passes
-    // because the fetch never finished, not because the component degraded.
-    // `waitFor` cannot supply that proof: it resolves on the first non-throwing
-    // check, so wrapping an already-true absence assertion in it is a no-op.
     let settle: (result: unknown) => void = () => {};
     const listPacks = vi.fn(
       () =>
@@ -358,14 +318,10 @@ describe('NavigatorApp launcher — starter-pack line', () => {
         }),
     );
     listPacksImpl = listPacks;
-    // The failure path logs before it clears the pack list, so the log is the
-    // observable edge of the settle — and that it logs at all is the contract
-    // (a silently swallowed fetch failure would be the defect).
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
-    // In flight: the row holds its space empty rather than flashing a stub.
     await waitFor(() => expect(listPacks).toHaveBeenCalled());
     expect(screen.queryByTestId('nav-starter-packs')).toBeNull();
 
@@ -377,8 +333,6 @@ describe('NavigatorApp launcher — starter-pack line', () => {
       ),
     );
 
-    // Settled and degraded: still nothing, and the four cards are already a
-    // complete path forward without it.
     expect(await screen.findByTestId('nav-create-new')).not.toBeNull();
     expect(screen.queryByTestId('nav-starter-packs')).toBeNull();
     expect(screen.queryByTestId('nav-pack-more')).toBeNull();
@@ -386,9 +340,6 @@ describe('NavigatorApp launcher — starter-pack line', () => {
   });
 
   test('a thrown listPacks drops the pack line too, leaving the four cards', async () => {
-    // Structurally distinct from the `ok: false` case above: a transport-level
-    // throw lands in the catch, not the else. Both must degrade the same way,
-    // and only a test per branch keeps that true through a refactor.
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     listPacksImpl = () => Promise.reject(new Error('network down'));
     const bridge = createBridge([]);
@@ -416,9 +367,6 @@ describe('NavigatorApp launcher — starter-pack line', () => {
   });
 
   test('listRecent failure falls back to the three-card launcher, not the packs view', async () => {
-    // A rejected listRecent leaves `recents` empty — but an empty-because-failed
-    // fetch must NOT read as "brand-new user" and offer scaffolding to someone
-    // who already has projects.
     const bridge = createBridge([]);
     bridge.project.listRecent = vi.fn(() => Promise.reject(new Error('boom')));
     await renderNavigator(bridge);
@@ -426,9 +374,7 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     expect(await screen.findByTestId('nav-create-new')).not.toBeNull();
     expect(screen.getByTestId('nav-open')).not.toBeNull();
     expect(screen.getByTestId('nav-clone')).not.toBeNull();
-    // The starter-pack line must be absent.
     expect(screen.queryByTestId('nav-starter-packs')).toBeNull();
-    // The failure surfaces the error banner.
     expect(screen.getByTestId('nav-error-banner')).not.toBeNull();
   });
 });

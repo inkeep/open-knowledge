@@ -105,10 +105,6 @@ function PaneStripDropTarget({
       data-editor-pane-tab-group={paneId}
       data-editor-pane-focused={isFocused || undefined}
       className="relative h-full min-w-0 shrink basis-0"
-      // First-paint value only. `applyHeaderLayout` overwrites this with the
-      // layout the panel group resolved, which is not what `size` describes
-      // once a pane minimum is in play. Keep the prop: without it a group has
-      // no width on any commit before the group has reported.
       style={{ flexGrow: size }}
     >
       {children}
@@ -323,11 +319,7 @@ function WorkspacePane({
       onPointerDownCapture={() => focusPane(pane.id)}
       onFocusCapture={() => focusPane(pane.id)}
     >
-      {/* Flex column, not a plain block: surfaces mounted here fill the pane via
-          `flex-1` and position their content against that height — the empty
-          state (`my-auto` / `justify-center` / `justify-end`) and the folder
-          overview's scroll region. A block parent leaves their `flex-1` inert,
-          collapsing them to content height pinned at the top. */}
+      {}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {renderPane({
           pane,
@@ -371,9 +363,6 @@ export function EditorWorkspace({
     visibleTabIdsByPane,
   } = useDocumentContext();
   const singleFile = useSingleFileMode();
-  // Two surfaces show exactly one document with no tab strip and no split: an
-  // ephemeral single-file session (`ok <file>`) and a popped-out note window.
-  // They reach it for different reasons but render the same reduced workspace.
   const singleDocumentSurface = singleFile || isNoteWindow();
   const deletedDocName = useSyncExternalStore(
     subscribeNoteWindowDeleted,
@@ -396,10 +385,6 @@ export function EditorWorkspace({
   const [parkingHost, setParkingHost] = useState<HTMLElement | null>(null);
   const focusFrameRef = useRef<number | null>(null);
   const [headerCanvas, setHeaderCanvas] = useState<HTMLDivElement | null>(null);
-  /**
-   * The last layout the pane group resolved, tagged with the pane set it was
-   * resolved for — see `syncHeaderLayout`.
-   */
   const resolvedPaneLayoutRef = useRef<{
     paneKey: string;
     layout: Record<string, number>;
@@ -437,29 +422,6 @@ export function EditorWorkspace({
     });
   }
 
-  // The panel group resolves a layout the persisted percentages do not
-  // describe: any pane whose share falls under MIN_EDITOR_PANE_WIDTH is raised
-  // to it, and the shortfall is reclaimed from the panes in index order, the
-  // first one with room to give absorbing what it can before the next, until
-  // the shortfall is covered. The tab groups carry no minimum of their own, so
-  // rendering them from `pane.size` puts them on different geometry than the
-  // panes they label.
-  //
-  // Re-applying after every commit is what makes them agree. The header canvas
-  // is portaled into the app header and can mount a commit AFTER the panel
-  // group reports its layout, and for a restored session that first report is
-  // the only one — a write aimed at a canvas that does not exist yet is lost
-  // with nothing to trigger a retry, which is how a reloaded four-pane split
-  // came back with its tab strips ~92px off its panes. Holding the canvas as
-  // state rather than a ref is what guarantees the retry: whatever commit
-  // mounts it re-renders this component, so the replay cannot depend on the
-  // caller's `renderHeader` happening to change identity at the same time.
-  //
-  // Splitting or closing a pane re-renders the groups from `pane.size` too, but
-  // the resolved layout for the previous pane set says nothing about the new
-  // one, so it is only replayed while the pane set is unchanged. `key={paneKey}`
-  // on the group means a changed pane set remounts it and it reports again,
-  // which refreshes this before the effect runs.
   useLayoutEffect(() => {
     const resolved = resolvedPaneLayoutRef.current;
     if (resolved?.paneKey === paneKey) applyHeaderLayout(resolved.layout);
@@ -747,8 +709,6 @@ export function EditorWorkspace({
 
   if (singleDocumentSurface) {
     const pane = panes.find((candidate) => candidate.id === focusedPaneId) ?? panes[0];
-    // A deleted document replaces the editor outright. The header stays so the
-    // window keeps its chrome and drag region while the user reads and closes.
     if (deletedDocName !== null) {
       return (
         <>

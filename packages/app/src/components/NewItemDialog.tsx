@@ -50,43 +50,14 @@ interface NewItemDialogProps {
   onOpenChange: (open: boolean) => void;
   kind: 'file' | 'folder';
   initialDir: string;
-  /**
-   * Pre-fills the file name input. Only applies when `kind === 'file'`;
-   * ignored when `kind === 'folder'` (folder always defaults to `index.md`).
-   */
   suggestedName?: string;
-  /**
-   * Pre-selects a template in the picker by `name` (the filename without `.md`).
-   * Only applies when `kind === 'file'`. If the template is not present in the
-   * resolved cascade for `initialDir`, the picker falls back to "Blank note".
-   */
   initialTemplate?: string;
-  /**
-   * When the dialog is opened *as* "new from template" (vs the blank "New
-   * File" flow), default the picker to the first resolved template — folder-
-   * local first, then inherited — instead of "Blank note". Ignored when
-   * `initialTemplate` pins a specific template, or when no templates resolve
-   * (falls back to "Blank note"). Only applies when `kind === 'file'`.
-   */
   defaultToTemplate?: boolean;
   description?: ReactNode;
   onCreated?: (docName: string) => void;
-  /**
-   * Optional pre-fetched folder config snapshot. When the dialog is co-mounted
-   * alongside other consumers of `useFolderConfig(initialDir)` (e.g. inside
-   * `FolderOverview`, which already fetches the same path for its
-   * `FolderPropertiesCard` + `TemplatesCard`), the parent can thread its
-   * handle here to dedup the fetch. Omit to let the dialog self-fetch
-   * (standalone callers like the file-tree shortcut).
-   */
   folderConfig?: FolderConfigHandle;
 }
 
-/**
- * Stable discriminant for a path-validation failure. The renderer maps each
- * key to localized copy via `pathErrorDescriptor` — keeping `validatePath`
- * locale-agnostic (and trivially unit-testable) instead of returning prose.
- */
 type PathValidationError = 'empty' | 'dotdot' | 'leading-slash' | 'backslash' | 'null-byte';
 
 export function validatePath(value: string): PathValidationError | null {
@@ -98,7 +69,6 @@ export function validatePath(value: string): PathValidationError | null {
   return null;
 }
 
-/** Localized copy for each `validatePath` failure key. */
 function pathErrorDescriptor(error: PathValidationError): MessageDescriptor {
   switch (error) {
     case 'empty':
@@ -120,18 +90,6 @@ export function ensureMdExtension(name: string): string {
   return `${name}.md`;
 }
 
-/**
- * Compose the final path to POST to /api/create-page.
- *
- * Precedence for the final extension:
- *  1. If `fileName` already carries a supported extension (.md or .mdx),
- *     it wins — Finder-like "typed-in extension always authoritative."
- *  2. Otherwise, the optional `fileExtension` override applies.
- *  3. If neither is set, defaults to `.md` (the dialog never passes an
- *     override, so new files are `.md` unless the name carries `.mdx`).
- *
- * Returns the canonical path relative to the content directory (no leading slash).
- */
 export function composeNewItemPath(args: {
   kind: 'file' | 'folder';
   initialDir: string;
@@ -141,8 +99,6 @@ export function composeNewItemPath(args: {
 }): string {
   const trimmed = args.fileName.trim();
   const sniffed = detectExtension(trimmed);
-  // Typed-in extension wins over picker state. When neither is present,
-  // `fileExtension` (or its default `.md`) applies.
   const file = sniffed ? trimmed : `${trimmed}${args.fileExtension ?? '.md'}`;
   if (args.kind === 'folder') {
     const folder = (args.folderName ?? '').trim();
@@ -181,18 +137,11 @@ export function NewItemDialog({
 }: NewItemDialogProps) {
   const { t } = useLingui();
   const { addPage } = usePageList();
-  // Skip the self-fetch when the parent supplied a pre-fetched handle —
-  // `useFolderConfig(null)` returns idle without hitting `/api/folder-config`.
-  // The unconditional call keeps the hooks order stable across renders;
-  // the path-null gate is the dedup mechanism, not a conditional hook.
   const selfFetch = useFolderConfig(folderConfigOverride ? null : initialDir);
   const folderConfig = folderConfigOverride ?? selfFetch;
   const [fileName, setFileName] = useState('');
   const [folderName, setFolderName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<string>(BLANK_TEMPLATE_VALUE);
-  // Tracks whether the user has manually touched the "Start from" picker this
-  // open-cycle, so the async `defaultToTemplate` effect (which fires once the
-  // cascade resolves) doesn't stomp an explicit choice.
   const [templateUserPicked, setTemplateUserPicked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -212,21 +161,11 @@ export function NewItemDialog({
       setErrorField(null);
       setBusy(false);
       setFolderName('');
-      // Provisional selection. `initialTemplate` pins a specific template;
-      // otherwise start at Blank and let the async `defaultToTemplate` effect
-      // promote to the first resolved template once the cascade loads.
       setSelectedTemplate(
         kind === 'file' && initialTemplate ? initialTemplate : BLANK_TEMPLATE_VALUE,
       );
       setTemplateUserPicked(false);
-      // Reset transient popover state — the dialog is mounted persistently
-      // (FileTree/CommandPalette/FolderOverview keep it in the tree), so a
-      // close path that left the popover open would flash it open on the
-      // next reopen before Radix re-anchors.
       setTemplatePickerOpen(false);
-      // Extension is always `.md` unless the user types a supported extension
-      // into the name (Finder-like, honored at compose time) — so the typed
-      // name is kept verbatim here, no sniff/strip.
       setFileName(kind === 'file' ? (suggestedName ?? 'untitled') : 'index');
     }
   }, [open, kind, suggestedName, initialTemplate]);
@@ -235,12 +174,6 @@ export function NewItemDialog({
     folderConfig.state.status === 'ready'
       ? sortTemplatesForPicker(folderConfig.state.data.folder.templates_available ?? [])
       : [];
-  // If the seeded `initialTemplate` doesn't exist in the resolved cascade
-  // (renamed, deleted, or shadowed since the caller captured the name), fall
-  // back to Blank so the user sees a coherent picker instead of a phantom
-  // selection that would 400 at create time. The dep is `folderConfig.state`
-  // (reference-stable between fetches), not the freshly-sorted `templates`
-  // array (which would re-trigger the effect on every render).
   useEffect(() => {
     if (!open) return;
     if (selectedTemplate === BLANK_TEMPLATE_VALUE) return;
@@ -250,12 +183,6 @@ export function NewItemDialog({
       setSelectedTemplate(BLANK_TEMPLATE_VALUE);
     }
   }, [open, selectedTemplate, folderConfig.state]);
-  // `defaultToTemplate` promotion: when the dialog is opened as "new from
-  // template" (not via a pinned `initialTemplate`, not the blank New File
-  // flow), default the picker to the first resolved template once the cascade
-  // loads. `sortTemplatesForPicker` orders folder-local before inherited, so
-  // `[0]` is the closest-scoped template. Skipped after a manual pick, and a
-  // no-op when nothing resolves (stays Blank).
   useEffect(() => {
     if (!open || !defaultToTemplate || initialTemplate) return;
     if (templateUserPicked) return;
@@ -266,11 +193,6 @@ export function NewItemDialog({
   const templatesLoading =
     folderConfig.state.status === 'loading' || folderConfig.state.status === 'idle';
   const templatesError = folderConfig.state.status === 'error' ? folderConfig.state.message : null;
-  // With no templates resolved there is nothing to start *from*, so the
-  // picker is pure chrome — hide it and let the dialog be name-only. Hidden
-  // while the cascade loads too, so the common (no-template) case never
-  // flashes a disabled combobox that then vanishes. Kept on error, since the
-  // inline "could not load templates" notice hangs off this block.
   const showTemplatePicker = kind === 'file' && (templates.length > 0 || !!templatesError);
 
   function handleFileNameChange(next: string) {
@@ -279,9 +201,6 @@ export function NewItemDialog({
   }
 
   function composePath(): string {
-    // No `fileExtension` arg — `composeNewItemPath` defaults to `.md`, and a
-    // supported extension typed into the name (e.g. `notes.mdx`) still wins
-    // via its internal sniff (Finder-like, honored for power users).
     return composeNewItemPath({
       kind,
       initialDir,
@@ -303,10 +222,6 @@ export function NewItemDialog({
     return null;
   }
 
-  // Submit waits out the cascade for files. The picker is hidden while it
-  // loads, so in a template-bearing folder a fast typist would otherwise
-  // submit before the choice ever rendered and get a blank doc, never knowing
-  // a template was on offer.
   const isSubmitDisabled =
     busy ||
     !fileName.trim() ||
@@ -325,8 +240,6 @@ export function NewItemDialog({
     setError(null);
     setErrorField(null);
     const path = composePath();
-    // Picker state: BLANK_TEMPLATE_VALUE → no template parameter (preserves
-    // today's blank-doc behavior). Otherwise forward the template name.
     const templateParam =
       kind === 'file' && selectedTemplate !== BLANK_TEMPLATE_VALUE ? selectedTemplate : undefined;
     const result = await createPageRequest({ path, template: templateParam, kind });
@@ -345,13 +258,7 @@ export function NewItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* data-ok-layer-spawned — consumed by InteractionLayer's outside-click
-        dismiss logic. When this dialog is opened
-        from a PropPanel (InternalLinkPropPanel's Create-Page affordance),
-        clicking inside it should NOT dismiss the PropPanel. Tagging the
-        shared NewItemDialog is safe because it's always modal — interacting
-        with it is exclusive, so there's no PropPanel-dismiss scenario to
-        preserve when the dialog is open from elsewhere. */}
+      {}
       <DialogContent className="sm:max-w-md" data-ok-layer-spawned="">
         <DialogHeader>
           <DialogTitle>
@@ -369,15 +276,7 @@ export function NewItemDialog({
         <DialogBody className="space-y-6 pb-1">
           {showTemplatePicker && (
             <div className="flex flex-col gap-2">
-              {/*
-               * No `htmlFor` on the label — the trigger is a button with
-               * role="combobox" + a self-referencing aria-labelledby
-               * ("<label> <trigger>") that concatenates the static "Start
-               * from" label with the button's own selected-value text. A
-               * label/htmlFor pair on a button only forwards click → focus,
-               * not click → open, so it'd surprise users carrying intuition
-               * from native <select>.
-               */}
+              {}
               <span id={templatePickerLabelId} className="text-sm font-medium">
                 <Trans>Start from</Trans>
               </span>
@@ -524,10 +423,6 @@ function TemplatePickerCombobox({
           role="combobox"
           aria-expanded={open}
           aria-haspopup="listbox"
-          // aria-controls only carries a real referent when the popup is
-          // mounted; the listbox is portaled-on-open by Radix, so the id
-          // doesn't resolve while closed. Per WAI-ARIA APG combobox
-          // pattern, gate aria-controls on `open`.
           aria-controls={open ? listboxId : undefined}
           aria-labelledby={`${labelledById} ${triggerId}`}
           disabled={loading}
@@ -551,22 +446,16 @@ function TemplatePickerCombobox({
       <PopoverContent
         className="w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
-        // Keep focus inside the Command's input rather than bouncing back to
-        // the trigger button — Radix's default onOpenAutoFocus on
-        // PopoverContent focuses the root, which then forwards to whichever
-        // child has tabindex=0. cmdk's <CommandInput> doesn't auto-focus
-        // unless we route focus to it explicitly.
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           (e.currentTarget as HTMLElement).querySelector<HTMLInputElement>('[cmdk-input]')?.focus();
         }}
-        // Popover-inside-Dialog: Radix Dialog wraps content in
-        // react-remove-scroll, whose document-level wheel/touchmove
-        // listeners preventDefault native scroll on portaled descendants
-        // (the popover renders to document.body, outside the dialog's
-        // DOM tree). stopPropagation here keeps the event from reaching
-        // those listeners, so native scroll fires normally.
-        // https://github.com/radix-ui/primitives/issues/1159
+        /*
+         * UPSTREAM(radix-ui/primitives#1159): the Dialog's react-remove-scroll
+         * preventDefaults native scroll on portaled descendants, and this
+         * popover renders to document.body. stopPropagation keeps the event
+         * away from those document listeners so the list scrolls.
+         */
         onWheel={(e) => {
           e.stopPropagation();
         }}
@@ -583,13 +472,6 @@ function TemplatePickerCombobox({
             {templates.map((tpl) => {
               const title = tpl.title ?? tpl.name;
               const subName = tpl.title && tpl.title !== tpl.name ? tpl.name : undefined;
-              // cmdk filters on `value` + `keywords`. Bake the searchable
-              // fields (title, name, description, scope, source folder)
-              // into keywords so typing any matches. source_folder is
-              // included because the inherited-scope badge surfaces it on
-              // the row — users who see "marketing/posts" expect to be
-              // able to type it. `value` stays unique-per-row so cmdk's
-              // selection state doesn't collide on duplicate display titles.
               const itemKey = `${tpl.scope}:${tpl.source_folder}:${tpl.name}`;
               return (
                 <CommandItem
@@ -634,9 +516,7 @@ function TemplatePickerCombobox({
                 </CommandItem>
               );
             })}
-            {/* Blank note sits last: templates are the primary intent of the
-              "Start from" picker, and the blank fallback is the least-specific
-              choice. */}
+            {}
             <CommandItem
               value="Blank note empty"
               onSelect={() => {

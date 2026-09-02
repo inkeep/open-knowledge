@@ -35,8 +35,6 @@ export const FORM_WRITE_ORIGIN = Object.freeze({
 
 export interface FrontmatterDocProvider {
   document: Y.Doc;
-  /** Subscribe to provider events. We only use `'synced'` for the
-   *  reconnect-fires-listener semantic — see `subscribe()` below. */
   on(event: 'synced', listener: () => void): void;
   off(event: 'synced', listener: () => void): void;
 }

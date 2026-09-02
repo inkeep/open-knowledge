@@ -1,9 +1,3 @@
-/**
- * Unit tests for project-wide + single-doc lint against a real temp tree:
- * native-file config resolution, content-filter exclusion, and the
- * diagnostics-only audit payload.
- */
-
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,7 +18,6 @@ function write(rel: string, content: string): void {
   writeFileSync(abs, content, 'utf-8');
 }
 
-// MD010 (hard tabs) is on by default; a doc with a tab produces a diagnostic.
 const DOC_WITH_TAB = '# Title\n\n\tindented with a tab\n';
 const CLEAN_DOC = '# Title\n\nClean paragraph.\n';
 
@@ -60,8 +53,6 @@ describe('lintDoc', () => {
   });
 
   test('honors the native .markdownlint.json (disables a rule)', async () => {
-    // markdownlint rules are sourced from the project's own `.markdownlint.*`,
-    // discovered server-side and injected into the effective config.
     write('sub/b.md', DOC_WITH_TAB);
     write('.markdownlint.json', JSON.stringify({ MD010: false }));
     const result = await lintDoc({
@@ -109,14 +100,10 @@ describe('lintDoc', () => {
       cache,
     };
     await lintDoc(opts);
-    // Same doc, same config, same stamp: a cached entry would be served here and
-    // would carry the diagnostics without the failure that says they are partial.
     const second = await lintDoc(opts);
     expect(second.failures).toHaveLength(1);
     expect(cache.stats().entries).toBe(0);
 
-    // Once the plugin recovers the walk caches again — the refusal self-heals
-    // rather than sticking to a key nothing invalidates.
     lint.mockRestore();
     const recovered = await lintDoc(opts);
     expect(recovered.failures).toEqual([]);
@@ -144,8 +131,6 @@ describe('auditProject', () => {
 
     const audit = await auditProject({ projectDir: root, contentDir: root, baseConfig: base });
 
-    // One line for the fault, not one per document it hit — the failure is
-    // systematic, and the agent channels that render this array are capped.
     expect(audit.warnings).toEqual([
       'source "markdownlint" lint failed on 3 documents (first: "a.md"): boom',
     ]);
@@ -241,9 +226,6 @@ describe('auditProject', () => {
   });
 
   test('skips hidden path segments — docs there are not addressable to fix or navigate', async () => {
-    // A dirty SKILL.md under .ok/ used to surface in the audit and then fail
-    // the project Fix all sweep: the fix endpoint refuses docNames with
-    // hidden segments (validateDocName), so the audit must not admit them.
     write('.ok/skills/pack/SKILL.md', DOC_WITH_TAB);
     write('.hidden-notes.md', DOC_WITH_TAB);
     write('visible.md', DOC_WITH_TAB);
@@ -271,10 +253,6 @@ describe('auditProject', () => {
   });
 
   test('liveSourceFor overrides disk for loaded docs; null falls back to disk', async () => {
-    // The disk/CRDT divergence wedge: disk still carries the violation while
-    // the live doc is already clean. The audit must lint what the editor and
-    // the fix endpoint see, or a Fix all sweep no-ops forever against
-    // problems only the stale disk copy has.
     write('loaded-clean.md', DOC_WITH_TAB);
     write('loaded-dirty.md', CLEAN_DOC);
     write('unloaded.md', DOC_WITH_TAB);
@@ -315,7 +293,6 @@ describe('auditProject', () => {
 
       const second = await auditProject(opts);
       expect(cache.stats().hits).toBe(3);
-      // The cached plane must be indistinguishable from the freshly-linted one.
       expect(second.files).toEqual(first.files);
       expect(second.warningCount).toBe(first.warningCount);
       expect(second.errorCount).toBe(first.errorCount);
@@ -328,8 +305,6 @@ describe('auditProject', () => {
       const opts = { projectDir: root, contentDir: root, baseConfig: base, cache };
       await auditProject(opts);
 
-      // A different length guarantees a distinct stamp regardless of timer
-      // granularity, which is the property the key actually rests on.
       write('a.md', `${DOC_WITH_TAB}\nAnother\tline with a tab.\n`);
       const after = await auditProject(opts);
 
@@ -358,15 +333,11 @@ describe('auditProject', () => {
         cache,
       });
 
-      // Nothing carries over: the config every entry was linted under is gone.
       expect(cache.stats().hits).toBe(0);
       expect(after.files.some((f) => f.diagnostics.some((d) => d.code === 'MD010'))).toBe(false);
     });
 
     test('editing the native .markdownlint.json invalidates the cache', async () => {
-      // The base config is unchanged here — only the on-disk cascade moved. The
-      // key rests on the RESOLVED config, so this has to invalidate too, or a
-      // native-file edit would serve diagnostics for the superseded rules.
       write('a.md', DOC_WITH_TAB);
       write('.markdownlint.json', JSON.stringify({ MD010: true }));
       const cache = new AuditCache();
@@ -390,8 +361,6 @@ describe('auditProject', () => {
         contentDir: root,
         baseConfig: base,
         cache,
-        // Live bytes move without touching the disk stamp the key rests on, so
-        // caching them would serve a stale plane for the doc being edited.
         liveSourceFor: (rel: string) => (rel === 'loaded.md' ? DOC_WITH_TAB : null),
       };
       const first = await auditProject(opts);
@@ -410,8 +379,6 @@ describe('auditProject', () => {
 
       const first = await auditProject(opts);
       expect(first.warnings.length).toBeGreaterThan(0);
-      // The warning channel must not thin out as the cache warms — a malformed
-      // config file has to keep reporting itself on every audit.
       const second = await auditProject(opts);
       expect(second.warnings).toEqual(first.warnings);
     });

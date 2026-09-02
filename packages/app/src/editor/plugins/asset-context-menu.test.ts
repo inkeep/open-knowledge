@@ -1,9 +1,3 @@
-/**
- * Unit tests for the right-click context-menu target classifier.
- * Exercises `classifyContextMenuTarget` against fake DOM ancestors
- * without mounting an editor.
- */
-
 import { describe, expect, test } from 'vitest';
 import { classifyContextMenuTarget } from './asset-context-menu';
 
@@ -49,8 +43,6 @@ describe('classifyContextMenuTarget', () => {
   });
 
   test('wiki-embed target keeps its percent sequences literal', () => {
-    // `data-target` is the authored wiki target, so `%20` is three characters
-    // of the filename. Decoding it points Reveal / Open at `100 done.png`.
     const a = makeEl('a', { 'data-wiki-embed': '', 'data-target': '100%20done.png' });
     expect(classifyContextMenuTarget(a, 'notes/readme')).toEqual({
       kind: 'asset',
@@ -63,8 +55,6 @@ describe('classifyContextMenuTarget', () => {
     const a = makeEl('a', { 'data-wiki-embed': '', 'data-target': '100%20done.png' });
     const target = classifyContextMenuTarget(a, 'notes/readme');
     expect(target?.relPath).not.toBe('notes/100 done.png');
-    // The markdown-href branch of the same walker, given the same bytes, DOES
-    // decode — the two branches are meant to disagree.
     const anchor = makeEl('a', { href: './100%20done.png' });
     expect(classifyContextMenuTarget(anchor, 'notes/readme')?.relPath).toBe('notes/100 done.png');
   });

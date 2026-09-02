@@ -1,20 +1,3 @@
-/**
- * Surfaces branch-driven content recycles (see `lib/branch-recycle-notice.ts`).
- *
- * Two modes:
- *   - **switch** (amber, transient): a branch switch is re-syncing content.
- *     Feedback for the moment every open doc blanks and reloads — previously
- *     silent, and read as "my content disappeared".
- *   - **refused** (red, persistent): the server repeatedly refused this
- *     window's content sessions with `branch-mismatch` and a server-info
- *     refresh did not resolve it — the state that used to render the whole
- *     app empty with no explanation. Names the remedy instead.
- *
- * Occupies the same fixed top strip as `ConnectingBanner`; the two are
- * mutually exclusive in practice (recycle notices only exist while a collab
- * URL is resolved, the connecting banner only while it is not).
- */
-
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
@@ -26,8 +9,6 @@ import { restartCollabServer } from '@/lib/restart-collab-server';
 export function BranchRecycleBanner() {
   const { contentRecycleNotice, dismissContentRecycleNotice } = useDocumentContext();
   const [restarting, setRestarting] = useState(false);
-  // The effect timer owns the clock (render must stay pure): the transient
-  // notice hides itself by flipping this flag at its expiry.
   const [switchExpired, setSwitchExpired] = useState(false);
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
 
@@ -64,7 +45,6 @@ export function BranchRecycleBanner() {
     setRestarting(true);
     try {
       const result = await restartCollabServer(bridge);
-      // Success tears this window down; only a resolved failure re-enables.
       if (!result.ok) setRestarting(false);
     } catch {
       setRestarting(false);

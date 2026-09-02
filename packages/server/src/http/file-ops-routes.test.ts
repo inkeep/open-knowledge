@@ -10,16 +10,6 @@ import type { AssetService } from '../services/assets.ts';
 import type { FileOpsService } from '../services/file-ops.ts';
 import { createFileOpsRoutes } from './file-ops-routes.ts';
 
-/**
- * Table-level pins for the file-ops group's mutating declaration. The wire
- * cannot pin this: the read half of the DNS-rebinding defense applies the
- * identical loopback + workspace-Host checks to every `/api/*` request, so an
- * emptied mutating set changes no composition-suite response — only which
- * gate (and telemetry tag) fires first. The declared membership is pinned
- * here directly against the legacy `MUTATING_ROUTES` membership it
- * reproduces: every path in this family mutated, so every path is declared.
- */
-
 type Deps = Parameters<typeof createFileOpsRoutes>[0];
 
 function buildGroup(overrides: Partial<Deps> = {}) {
@@ -32,8 +22,6 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     signalChannel: undefined,
     getSyncEngine: undefined,
     flushContributors: undefined,
-    // Never dispatched by these pins; the table declaration is what's under
-    // test, and constructing the group must not touch any of these.
     hocuspocus: {} as Hocuspocus,
     fileOpsService: {} as FileOpsService,
     assetService: {} as AssetService,
@@ -110,10 +98,6 @@ describe('createFileOpsRoutes table', () => {
 });
 
 describe('rename-path conflict envelope', () => {
-  // When the managed-rename spine throws `DocInConflictError`, the rename-path
-  // branch must return the documented 409 doc-in-conflict envelope rather than
-  // fall through `toManagedRenamePublicError` to a generic 500. Injecting a
-  // throwing spine pins that catch directly.
   test('maps a DocInConflictError from the rewrite spine to a 409 doc-in-conflict', async () => {
     const group = buildGroup({
       hocuspocus: { documents: new Map() } as unknown as Hocuspocus,
@@ -137,12 +121,6 @@ describe('rename-path conflict envelope', () => {
 });
 
 describe('create-page path-resolution error classification', () => {
-  // The create-page containment catch discriminates the WIDER throw set of
-  // `resolveContentEntryPath`: a client-side containment rejection (grouped by
-  // `isContainmentRejection` — the lexical `PathContainmentError` or the
-  // realpath `SymlinkEscapeError`) is a 400 path-escape, but a raw realpath
-  // errno that `assertNoSymlinkEscape` rethrows by contract must reach the
-  // handler's outer catch as a 500 — never be flattened into a client 400.
   async function dispatchCreatePage(resolveContentEntryPath: () => never) {
     const group = buildGroup({ resolveContentEntryPath });
     const resolved = group.table.resolve('/api/create-page');
@@ -161,9 +139,6 @@ describe('create-page path-resolution error classification', () => {
   });
 
   test('a ContentRootUnavailableError surfaces as a 500, not a 400', async () => {
-    // The missing-anchor condition is a server fault (dir deleted under a
-    // running server); `isContainmentRejection` excludes it, so it must reach
-    // the outer catch, never be flattened into the caller's path-escape.
     const captured = await dispatchCreatePage(() => {
       throw new ContentRootUnavailableError('content directory does not exist');
     });

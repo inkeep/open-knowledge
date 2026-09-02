@@ -4,24 +4,12 @@ import type { AgentSessionManager } from '../agent-sessions.ts';
 import { loggerFactory } from '../logger.ts';
 import { createFolderTemplateRoutes } from './folder-template-routes.ts';
 
-/**
- * Table-level pins for the folder-template group's mutating declaration. The
- * wire cannot pin this: the read half of the DNS-rebinding defense applies
- * the identical loopback + workspace-Host checks to every `/api/*` request,
- * so an emptied mutating set changes no composition-suite response — only
- * which gate (and telemetry tag) fires first. The declared membership is
- * pinned here directly against the legacy `MUTATING_ROUTES` membership it
- * reproduces — all three paths were members (any-verb-mutates ⇒ every verb,
- * GET arms included).
- */
-
 function buildGroup() {
   return createFolderTemplateRoutes({
     contentDir: '/nonexistent-content',
     projectDir: undefined,
     ephemeral: true,
     log: loggerFactory.getLogger('test'),
-    // Never dispatched by these pins; the table declaration is what's under test.
     hocuspocus: {} as Hocuspocus,
     sessionManager: {} as AgentSessionManager,
     getPrincipal: undefined,

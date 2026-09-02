@@ -1,15 +1,3 @@
-/**
- * Narrow-integration test for the install-projection:
- * `POST /api/skill/install` + the OF3 marker + reverse-projection on delete.
- *
- * Exercises the full Draft → Installed → Uninstalled lifecycle against a real
- * server (where `projectDir === contentDir`): author a skill, install it into
- * explicit editor targets, assert verbatim host-dir projections + the
- * `.ok/local/installed-skills.json` marker, then delete it and assert the
- * projections + marker entry are reverse-projected away. Plus the
- * pre-install validity gate (reserved name, conflict markers).
- */
-
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ProblemDetailsSchema, SkillInstallSuccessSchema } from '@inkeep/open-knowledge-core';
@@ -45,10 +33,6 @@ const hostSkillMd = (editorRoot: string, name: string) =>
 
 beforeAll(async () => {
   server = await createTestServer();
-  // Store retirement: skills author IN-PLACE. Seed the vendor-neutral `.agents`
-  // hub as the default authoring home so a fresh skill lands there (not directly
-  // into an editor dir like `.claude`), preserving the author → install-into-
-  // editors distinction these lifecycle assertions rely on.
   mkdirSync(join(server.contentDir, '.agents', 'skills'), { recursive: true });
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(async () => {
@@ -68,9 +52,6 @@ describe('skill install-projection lifecycle', () => {
       expect(parsed.data.scripts).toBe(false);
     }
 
-    // Store retirement: the on-disk projections ARE the truth (the scan, not the
-    // install marker, owns the host set for an in-place skill) — verbatim copies
-    // exist in each editor host dir.
     expect(existsSync(hostSkillMd('.claude', 'trip-log'))).toBe(true);
     expect(existsSync(hostSkillMd('.cursor', 'trip-log'))).toBe(true);
     expect(readFileSync(hostSkillMd('.claude', 'trip-log'), 'utf-8')).toContain('# Steps');
@@ -81,7 +62,6 @@ describe('skill install-projection lifecycle', () => {
       method: 'DELETE',
     });
     expect(res.status).toBe(200);
-    // Delete reverse-projects: the editor host-dir copies are gone (disk truth).
     expect(existsSync(hostSkillMd('.claude', 'trip-log'))).toBe(false);
     expect(existsSync(hostSkillMd('.cursor', 'trip-log'))).toBe(false);
   });
@@ -91,7 +71,6 @@ describe('skill install-projection lifecycle', () => {
     expect((await installSkill({ name: 'rename-me', targets: ['claude'] })).status).toBe(200);
     expect(existsSync(hostSkillMd('.claude', 'rename-me'))).toBe(true);
 
-    // Rename via POST /api/skill (the move spine).
     const moveRes = await fetch(`${base()}/api/skill`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -99,8 +78,6 @@ describe('skill install-projection lifecycle', () => {
     });
     expect(moveRes.status).toBe(200);
 
-    // Install-state carries over (disk truth — the scan owns the host set): the
-    // claude projection follows the rename, new name present, old name gone.
     expect(existsSync(hostSkillMd('.claude', 'rename-me'))).toBe(false);
     expect(existsSync(hostSkillMd('.claude', 'renamed-ok'))).toBe(true);
   });
@@ -119,8 +96,6 @@ describe('skill install-projection lifecycle', () => {
   });
 
   test('install refuses a source with git conflict markers → 400', async () => {
-    // Inject a conflicted SKILL.md directly on disk (bypassing the write gate)
-    // to prove the pre-install gate refuses it before any host write.
     const dir = join(server.contentDir, '.ok', 'skills', 'conflicted');
     mkdirSync(dir, { recursive: true });
     writeFileSync(
@@ -140,9 +115,6 @@ describe('skill install-projection lifecycle', () => {
     const parsed = SkillInstallSuccessSchema.safeParse(await res.json());
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      // No editor targets + none configured: nothing projects into an editor, so
-      // the skill stays where it authored — the `.agents` hub. Store retirement +
-      // no Draft: it is never hostless; its host set is the hub it lives in.
       expect(parsed.data.hosts).toEqual(['agents']);
       expect(parsed.data.warnings.some((w) => w.includes('No project-configured editors'))).toBe(
         true,

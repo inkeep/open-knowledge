@@ -1,22 +1,3 @@
-/**
- * Staged-install commit machinery shared by the two ACP install paths:
- * proprietary agent binaries (`launch.ts` → `ensureBinaryInstalled`) and the
- * managed language runtimes (`managed-runtime.ts` → `ensureManagedRuntime`).
- * One audited copy of the concurrency contract, so a crash-safety or
- * Windows-robustness fix lands in both paths at once:
- *
- *   - Extraction lands in a staging dir BESIDE the destination and is renamed
- *     into place, so the atomic commit stays on one filesystem and a crash
- *     mid-install never leaves a half-populated version dir that would satisfy
- *     the caller's fast-path check.
- *   - Only the commit is serialized (file lock): concurrent installers
- *     download in parallel, and every loser adopts the winner's tree instead
- *     of racing on the rename.
- *   - Stale artifacts from crashed installers — `.install-*` staging dirs,
- *     `*.install.lock` commit locks, `.install-failed-*` markers — are swept
- *     on the next install once they age past a day.
- */
-
 import { randomUUID } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -24,35 +5,19 @@ import { FileLockTimeoutError, withFileLock } from '@inkeep/open-knowledge-core/
 import { tracedMkdir, tracedRename, tracedRm } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 
-/** Age past which a crashed installer's leftovers are fair game for the sweep. */
 export const STALE_INSTALL_ARTIFACT_AGE_MS = 24 * 60 * 60 * 1_000;
 const INSTALL_COMMIT_LOCK_TIMEOUT_MS = 60_000;
 
-/**
- * Windows share-violation codes: an antivirus scanner or search indexer
- * briefly holding a handle inside a freshly extracted tree fails rename with
- * one of these even though nothing is wrong with the install. On POSIX the
- * same codes are genuine permission errors — the bounded retry merely delays
- * that verdict by a few seconds.
- */
 const RETRIABLE_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
 const RENAME_RETRY_ATTEMPTS = 6;
 const RENAME_RETRY_BASE_DELAY_MS = 100;
 
 export interface RenameRetryOptions {
   attempts?: number;
-  /** Delay before the first retry; doubles on each subsequent one. */
   baseDelayMs?: number;
-  /** Test seam — defaults to `tracedRename`. */
   renameImpl?: (from: string, to: string) => Promise<void>;
 }
 
-/**
- * `rename` with a bounded retry on transient Windows share violations (see
- * {@link RETRIABLE_RENAME_CODES}) — the failure a freshly extracted `.exe`
- * under real-time scanning hits at commit time. Everything else (ENOENT,
- * EXDEV, ENOTEMPTY, …) rethrows immediately.
- */
 export async function renameWithRetries(
   from: string,
   to: string,
@@ -75,15 +40,6 @@ export async function renameWithRetries(
   }
 }
 
-/**
- * Remove stale install leftovers in `parentDir` (the dir holding the
- * per-version trees): crashed installers orphan `.install-*` staging dirs and
- * `.install-failed-*` markers, and a process that dies while holding
- * `<version>.install.lock` orphans the lockfile forever — once any other path
- * completes the install, every later launch takes the fast path and nothing
- * re-enters the lock to clean it up. The age cutoff keeps live installs safe:
- * an active lock or staging dir is minutes old at most.
- */
 export async function cleanupStaleInstallArtifacts(
   parentDir: string,
   log: PinoLogger,
@@ -118,38 +74,19 @@ export async function cleanupStaleInstallArtifacts(
 }
 
 export interface StagedInstallOptions<T> {
-  /** Final destination; committed atomically via rename from staging. */
   versionDir: string;
-  /** Sanitized version label used in the staging dir name. */
   stagingLabel: string;
-  /** The installed artifact when a complete tree exists at `versionDir`, else null. */
   findInstalled: () => Promise<T | null>;
-  /**
-   * Download + verify + extract under `stagingDir` and return the tree to
-   * commit. Runs before the commit lock — concurrent installers prepare in
-   * parallel. Whatever it throws propagates to the caller unwrapped.
-   */
   prepare: (stagingDir: string) => Promise<string>;
   log: PinoLogger;
-  /** `[acp-launch]` / `[managed-runtime]` — tags every log line. */
   logPrefix: string;
-  /** Stable identifiers (`{id, version}` / `{kind, version}`) carried on every log line. */
   logContext: Record<string, unknown>;
-  /** Log message emitted on a successful fresh commit. */
   installedMessage: string;
-  /** Error message for a committed tree that still fails `findInstalled`. */
   missingAfterCommitMessage: string;
-  /** Test seam for synchronizing concurrent installers immediately before commit. */
   beforeCommit?: () => Promise<void>;
-  /** Test seam — defaults to the production commit-lock timeout. */
   commitLockTimeoutMs?: number;
 }
 
-/**
- * Install once per version dir; later calls reuse the committed tree via the
- * caller's `findInstalled` fast path. Errors propagate unwrapped so each
- * caller keeps its own error contract.
- */
 export async function stagedInstall<T>(opts: StagedInstallOptions<T>): Promise<T> {
   const parentDir = dirname(opts.versionDir);
   const existing = await opts.findInstalled();
@@ -168,8 +105,6 @@ export async function stagedInstall<T>(opts: StagedInstallOptions<T>): Promise<T
   try {
     const extractDir = await opts.prepare(stagingDir);
 
-    // A concurrent installer may have finished the same version while we
-    // downloaded — adopt it and drop our copy rather than racing on the rename.
     const raced = await opts.findInstalled();
     if (raced !== null) return raced;
     await opts.beforeCommit?.();
@@ -178,8 +113,6 @@ export async function stagedInstall<T>(opts: StagedInstallOptions<T>): Promise<T
       return await withFileLock(
         `${opts.versionDir}.install.lock`,
         async () => {
-          // Only the commit is serialized: concurrent installers download in
-          // parallel, but none can remove a complete tree installed by another.
           const winner = await opts.findInstalled();
           if (winner !== null) return winner;
 

@@ -5,9 +5,6 @@ import { connectableEditors, isPathRowActionable, type ToastImpl } from './McpCo
 
 type EditorDetection = OkMcpWiringShowPayload['detectedEditors'][number];
 
-/** Detection-literal factory — fills the location-disclosure fields
- *  (configPath/entryLocator) the pure helpers under test don't read, so each
- *  case stays focused on id/detected/willReplace. */
 function ed(o: Omit<EditorDetection, 'configPath' | 'entryLocator'>): EditorDetection {
   return { configPath: null, entryLocator: 'mcpServers.open-knowledge', ...o };
 }
@@ -78,23 +75,12 @@ describe('McpConsentDialog module shape', () => {
     expect(typeof McpConsentDialog).toBe('function');
     expect(typeof connectableEditors).toBe('function');
     expect(typeof isPathRowActionable).toBe('function');
-    // ToastImpl is a type; no runtime export — this assertion just ensures
-    // the import resolves at type-check time. The shape is exercised by the
-    // toast injection contract below.
     const toastShape: ToastImpl = { error: () => {}, message: () => {} };
     expect(typeof toastShape.error).toBe('function');
     expect(typeof toastShape.message).toBe('function');
   });
 
   test('ToastImpl exposes the full error + message surface the dialog injects', () => {
-    // Records the surface the dialog injects: any object with `error` +
-    // `message` substitutes for the production `defaultToast` (which wraps
-    // `sonnerToast.error` / `sonnerToast.message`). NOTE: this only DOCUMENTS
-    // the shape — it cannot fail on a shape change. `**/*.test.ts` is excluded
-    // from `packages/app/tsconfig.json` and vitest runs without `--typecheck`,
-    // so these literals are never type-checked; a real compile-time guard would
-    // need a test-inclusive tsconfig or `test.typecheck`, a packages/app-wide
-    // call out of scope here.
     const errors: string[] = [];
     const messages: string[] = [];
     const toast: ToastImpl = {
@@ -108,8 +94,6 @@ describe('McpConsentDialog module shape', () => {
   });
 
   test('mock module-level usage check: toast methods are invocable from a Set-like context', () => {
-    // Smoke that the ToastImpl shape composes through `mock()` for callers
-    // that want to inject spies.
     const spy = vi.fn((_msg: string) => {});
     const toast: ToastImpl = { error: spy, message: vi.fn() };
     toast.error('hello');

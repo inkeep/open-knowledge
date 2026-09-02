@@ -24,7 +24,6 @@ describe('probeLoopbackPort', () => {
   });
 
   test('true for a free port, false while it is held', async () => {
-    // Grab a kernel-assigned free port, learn its number, release it.
     const scout = await listenOn(0);
     const port = (scout.address() as { port: number }).port;
     await new Promise<void>((r) => scout.close(() => r()));
@@ -41,7 +40,6 @@ describe('probeLoopbackPort', () => {
     await new Promise<void>((r) => scout.close(() => r()));
 
     expect(await probeLoopbackPort(port)).toBe(true);
-    // The probe must have closed its own handle, so a real bind still succeeds.
     held = await listenOn(port);
     expect((held.address() as { port: number }).port).toBe(port);
   });

@@ -25,10 +25,6 @@ import {
 
 interface BlockType {
   name: string;
-  /**
-   * Deferred message. `blockTypes` is module scope, so a `t` call here would
-   * resolve once at import and never follow a language switch.
-   */
   label: MessageDescriptor;
   icon: React.ComponentType<{ className?: string }>;
   isActive: (editor: Editor) => boolean;
@@ -102,19 +98,11 @@ const blockTypes: BlockType[] = [
     label: msg`Code Block`,
     icon: SquareCode,
     isActive: (editor) => editor.isActive('codeBlock'),
-    // Default to JavaScript at creation so syntax highlighting fires on
-    // the first character. The default lives here (and on the sibling
-    // bare-backticks input rule + slash menu) rather than as a schema
-    // default — the y-tiptap bridge would otherwise migrate parsed-from-
-    // disk bare fences. See `extensions/code-block.ts`'s top-of-file
-    // comment for the bridge mechanics.
     command: (editor) => editor.chain().focus().toggleCodeBlock({ language: 'js' }).run(),
   },
 ];
 
 export function BlockTypeSelector({ editor }: { editor: Editor }) {
-  // Also the locale subscription: `I18nProvider` re-renders context consumers
-  // only, and `useEditorState` does not fire on a language switch.
   const { t } = useLingui();
   const { current, activeStates } = useEditorState({
     editor,

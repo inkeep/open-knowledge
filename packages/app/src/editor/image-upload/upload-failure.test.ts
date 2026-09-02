@@ -1,11 +1,3 @@
-/**
- * Unit tests for the upload-failure probe, classifier and report.
- *
- * The vanished-backing-store case is modelled with a zero-length Blob and a
- * non-zero `sizeAtDrop`, which is exactly what Chromium presents once the file
- * behind a dropped `File` is gone: `size` reads 0 while the object itself stays
- * usable.
- */
 import { describe, expect, test } from 'vitest';
 import {
   classifyUploadFailure,
@@ -14,7 +6,6 @@ import {
   uploadFailureMessage,
 } from './upload-failure.ts';
 
-/** A Blob whose `arrayBuffer()` rejects — models a read denied by the OS. */
 function unreadableBlob(size: number): Blob {
   const blob = new Blob(['x'.repeat(size)]);
   return Object.assign(blob, {
@@ -25,7 +16,6 @@ function unreadableBlob(size: number): Blob {
   }) as unknown as Blob;
 }
 
-/** A Blob whose read never settles — models a stalled cloud materialization. */
 function stalledBlob(size: number): Blob {
   const blob = new Blob(['x'.repeat(size)]);
   return Object.assign(blob, {
@@ -49,7 +39,6 @@ describe('probeFileReadable', () => {
   });
 
   test('reports UNREADABLE when the backing store vanished (size collapsed to 0)', async () => {
-    // The file was 788646 bytes at drop; its bytes are now gone.
     const probe = await probeFileReadable(new Blob([]), 788646);
     expect(probe.readable).toBe(false);
     expect(probe.bytesRead).toBe(0);
@@ -67,9 +56,6 @@ describe('probeFileReadable', () => {
   });
 
   test('bounds the read by the drop-time size, not the current size', async () => {
-    // Guards the regression that made the first version of this probe useless:
-    // slicing against the CURRENT size yields an empty buffer for a vanished
-    // file and resolves successfully, reporting "readable".
     const vanished = await probeFileReadable(new Blob([]), 1024);
     const genuinelyEmpty = await probeFileReadable(new Blob([]), 0);
     expect(vanished.readable).toBe(false);
@@ -77,8 +63,6 @@ describe('probeFileReadable', () => {
   });
 
   test('gives up on a read that never settles instead of hanging', async () => {
-    // The probe sits in front of the error UI, so an unbounded read would
-    // replace a wrong toast with no toast at all.
     const probe = await probeFileReadable(stalledBlob(1024), 1024, 20);
     expect(probe.timedOut).toBe(true);
     expect(probe.readable).toBe(false);

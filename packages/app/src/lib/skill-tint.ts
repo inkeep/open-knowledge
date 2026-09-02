@@ -1,6 +1,3 @@
-// Deterministic avatar tint from a seed string (skill or publisher name) so a
-// list of skills reads as a colored grid without a per-skill color in the data.
-// Same seed -> same gradient, so a publisher's skills share a hue.
 const GRADIENTS = [
   'from-[#ff9d6c] to-[#ff7eb3]',
   'from-[#8fe0c0] to-[#59c0ff]',

@@ -15,9 +15,6 @@ import type {
   PluginSourceInspection,
 } from './types.ts';
 
-// Claude leads: OK owns the Claude plugin lifecycle, and a multi-harness repo
-// (e.g. ponytail ships .claude-plugin/ AND .codex-plugin/ AND gemini-extension.json)
-// should resolve to the provider OK can actually drive setup for.
 const PROVIDERS = [
   claudePluginProvider,
   agentPluginsProvider,
@@ -60,7 +57,6 @@ export function enumeratePluginProvider(
   }));
 }
 
-/** Inspect a source with the first provider that recognizes its on-disk format. */
 export function inspectPluginSource(
   source: string,
   providerId?: PluginProviderId,
@@ -78,16 +74,6 @@ export function inspectPluginSource(
   return null;
 }
 
-/**
- * Recognize a CLONED source repo (a skills.sh import) as a plugin — skills.sh
- * surfaces one skill and never flags the plugin relationship, but the source
- * repo carries the manifest, and the preview/discover path already clones it.
- * The first provider whose manifest the dir matches wins; the shared
- * `skills/`-dir convention then enumerates the bundled siblings + capability
- * flags. Returns null for a bare skill repo (no plugin manifest) or a plugin
- * that ships no `skills/` dir (nothing to bundle-offer). Read-only — inspects
- * manifests, executes nothing.
- */
 export function inspectPluginBundleDir(dir: string): PluginBundleInspection | null {
   for (const provider of PROVIDERS) {
     const detected = provider.detectDir(dir);
@@ -107,7 +93,6 @@ export function inspectPluginBundleDir(dir: string): PluginBundleInspection | nu
   return null;
 }
 
-/** Resolve repository metadata without requiring a complete plugin inspection. */
 export function pluginRepositoryUrl(source: string, providerId?: PluginProviderId): string | null {
   for (const provider of providerCandidates(providerId)) {
     if (!provider.inspectSource(source)) continue;
@@ -117,7 +102,6 @@ export function pluginRepositoryUrl(source: string, providerId?: PluginProviderI
   return null;
 }
 
-/** Follow a provider-managed source to its current update candidate. */
 export function resolvePluginUpdateSource(source: string, providerId?: PluginProviderId): string {
   for (const provider of providerCandidates(providerId)) {
     if (!provider.inspectSource(source)) continue;

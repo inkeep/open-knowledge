@@ -17,11 +17,11 @@ declare module 'micromark-util-types' {
   }
 }
 
-const CODE_BANG = 33; // !
-const CODE_LBRACKET = 91; // [
-const CODE_RBRACKET = 93; // ]
-const CODE_PIPE = 124; // |
-const CODE_HASH = 35; // #
+const CODE_BANG = 33;
+const CODE_LBRACKET = 91;
+const CODE_RBRACKET = 93;
+const CODE_PIPE = 124;
+const CODE_HASH = 35;
 
 const tokenizeWikiLink: Tokenizer = (effects, ok, nok) => {
   let targetSize = 0;

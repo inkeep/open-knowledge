@@ -70,14 +70,6 @@ describe('CommandDialog runtime contracts', () => {
     }
   });
 
-  // cmdk's vim bindings map Ctrl+P / Ctrl+K to "select previous item" inside
-  // every Command root. The binding keys off `event.ctrlKey` alone, with no
-  // platform check, so it fires on macOS too — these two tests run the real
-  // library on whatever platform CI happens to be.
-  //
-  // The default-on case is the control: it proves the harness can observe the
-  // selection moving, so the opted-out case asserting it does NOT move is a
-  // real signal rather than a test that could never fail.
   async function renderTwoItemCommand(vimBindings?: boolean) {
     const { Command, CommandInput, CommandItem, CommandList } = await import('./command');
     render(
@@ -90,7 +82,6 @@ describe('CommandDialog runtime contracts', () => {
       </Command>,
     );
     const input = document.querySelector('[data-slot="command-input"]') as HTMLElement;
-    // Move off the first row so a "select previous" has somewhere to go.
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     return input;
   }

@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { githubUrl, skillAutoUpdateEnabled, skillOriginUrl } from './use-skill-origin';
 
-// `githubUrl` decides whether a skill's import source renders as a clickable
-// GitHub link or plain text in the toolbar provenance line — the 5 branches
-// below are the whole contract.
 describe('githubUrl', () => {
   test('owner/repo shorthand resolves to the repo page', () => {
     expect(githubUrl('inkeep/agents')).toBe('https://github.com/inkeep/agents');
@@ -51,10 +48,6 @@ describe('skillOriginUrl', () => {
     ).toBe('https://github.com/acme/ponytail-plugin');
   });
 
-  // The skills.sh path's middle segment is the REPO. Hardcoding a literal
-  // `skills` there resolved for publishers who happen to name their repo that
-  // and silently mis-linked everyone else — skills.sh answers 200 with a
-  // placeholder stub for an unknown owner/repo/slug, so nothing surfaced.
   test('builds the skills.sh page URL from the source repo, not a literal "skills"', () => {
     expect(
       skillOriginUrl(

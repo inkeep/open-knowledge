@@ -27,7 +27,6 @@ const anchor = (q: string) => {
   return createAnchor(BODY, s, s + q.length);
 };
 
-/** A whole thread, since the index caches threads rather than doc pointers. */
 function thread(threadId: string, docName: string, quote = 'one'): CommentThreadMeta {
   return {
     threadId,
@@ -68,8 +67,6 @@ describe('CommentIndex', () => {
     expect(index.threadsForDoc('a').sort()).toEqual(['t1', 't2']);
     expect(index.threadsForDoc('b')).toEqual(['t3']);
     expect(index.threadsForDoc('missing')).toEqual([]);
-    // The whole thread is cached, not just its doc — that's what lets listing
-    // serve reads without going back to disk.
     expect(index.listForDoc('b')[0].latestComment).toBe('a note');
   });
 
@@ -86,8 +83,6 @@ describe('CommentIndex', () => {
   });
 
   test('upsert replaces the cached thread, not just its doc', () => {
-    // The index is read INSTEAD of the file, so an upsert that kept a stale
-    // copy would serve the pre-mutation state forever.
     const index = new CommentIndex();
     index.upsert(thread('t1', 'a'));
     index.upsert({ ...thread('t1', 'a'), state: 'resolved', latestComment: 'revised' });
@@ -115,8 +110,6 @@ describe('CommentIndex', () => {
   });
 
   test('renameDoc re-points every thread and rewrites its cached docName', () => {
-    // Both halves matter: the lookup key AND the cached copy. Leaving the copy
-    // behind would serve the old docName to the app after a rename.
     const index = new CommentIndex();
     index.upsert(thread('t1', 'old'));
     index.upsert(thread('t2', 'old'));
@@ -136,15 +129,8 @@ describe('CommentIndex', () => {
   });
 });
 
-/**
- * Counting is the read-side surface: it feeds the comment signal MCP `exec`
- * folds into every file and folder it reports, so what it counts decides what
- * an agent believes about a doc it is about to edit.
- */
 describe('CommentIndex counting', () => {
   test('counts every requested doc, zero included', () => {
-    // A requested doc with no threads must come back as 0 rather than absent —
-    // the caller has to tell "clean" from "not asked about".
     const index = new CommentIndex();
     index.upsert(thread('t1', 'a'));
     index.upsert(thread('t2', 'a'));
@@ -156,8 +142,6 @@ describe('CommentIndex counting', () => {
   });
 
   test('resolved threads do not count', () => {
-    // Settled work must not leave a doc looking permanently outstanding to
-    // every agent that reads it.
     const index = new CommentIndex();
     index.upsert(thread('t1', 'a'));
     index.upsert({ ...thread('t2', 'a'), state: 'resolved' });
@@ -167,16 +151,12 @@ describe('CommentIndex counting', () => {
   });
 
   test('orphaned threads still count', () => {
-    // The passage moved, but the request stands — an orphan is exactly the case
-    // a reader most needs to know about before editing.
     const index = new CommentIndex();
     index.upsert({ ...thread('t1', 'a'), state: 'orphaned' });
     expect(index.countForDoc('a')).toBe(1);
   });
 
   test('prefix rollup is sparse and segment-bounded', () => {
-    // `docs` must not swallow `docsite/*`: the rollup annotates a FOLDER, and a
-    // sibling folder sharing a name prefix is a different folder.
     const index = new CommentIndex();
     index.upsert(thread('t1', 'docs/a'));
     index.upsert(thread('t2', 'docs/nested/b'));
@@ -188,8 +168,6 @@ describe('CommentIndex counting', () => {
       ['docs/a', 1],
       ['docs/nested/b', 1],
     ]);
-    // Sparse: a doc whose only thread is resolved is absent, not 0 — the folder
-    // line is drawn from the presence of entries.
     expect(counts.has('docs/resolved-only')).toBe(false);
     expect(counts.has('docsite/c')).toBe(false);
   });

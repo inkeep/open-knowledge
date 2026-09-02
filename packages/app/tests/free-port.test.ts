@@ -9,8 +9,6 @@ describe('getFreePort', () => {
   });
 
   test('resolves the requested loopback family without throwing', async () => {
-    // Exercises the explicit-family binding path; 127.0.0.1 is always present
-    // (::1 can be absent in IPv6-disabled CI, so it is not asserted here).
     const port = await getFreePort('127.0.0.1');
     expect(port).toBeGreaterThan(0);
   });

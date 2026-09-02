@@ -5,14 +5,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { ALL_EDITOR_IDS } from '../commands/editors.ts';
 import { writeProjectAiIntegrations } from './write-project-ai-integrations.ts';
 
-// `writeProjectAiIntegrations` is a thin wrapper over `applyProjectIntegrations`
-// (the per-(editor × integration) matrix is exhaustively covered in
-// project-integration-writers.test.ts). These tests pin the wrapper's own
-// responsibilities: it installs BOTH integrations — MCP config AND the
-// project-local runtime skill — for every selected editor (
-// the desktop path previously installed MCP config only), and it scaffolds
-// `.claude/launch.json` when `claude` is selected.
-
 let tmpRoot: string;
 let projectDir: string;
 
@@ -37,7 +29,6 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
     ]);
     for (const outcome of claudeOutcomes) expect(outcome.action).toBe('written');
 
-    // Both artifacts on disk — the project skill is the regression this fixes.
     expect(existsSync(join(projectDir, '.mcp.json'))).toBe(true);
     expect(existsSync(join(projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
       true,
@@ -58,7 +49,6 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
   test('all editors: 2 outcomes per editor; claude-desktop skips both as unsupported', () => {
     const result = writeProjectAiIntegrations(projectDir, ALL_EDITOR_IDS);
 
-    // mcp-config + project-skill for every selected editor.
     expect(result.integrations).toHaveLength(ALL_EDITOR_IDS.length * 2);
 
     const desktop = result.integrations.filter((o) => o.editorId === 'claude-desktop');
@@ -73,8 +63,6 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
   });
 
   test('never throws — a hostile target surfaces as action "failed", not an exception', () => {
-    // A regular file where cursor's `.cursor/` directory would live forces
-    // the downstream mkdir to fail; the wrapper must still return cleanly.
     writeFileSync(join(projectDir, '.cursor'), 'block');
 
     let result: ReturnType<typeof writeProjectAiIntegrations> | undefined;
@@ -86,7 +74,6 @@ describe('writeProjectAiIntegrations — installs MCP config AND the project ski
       (o) => o.editorId === 'cursor' && o.action === 'failed',
     );
     expect(cursorFailed).toBe(true);
-    // The other editors still completed.
     const claudeWritten = result?.integrations.every(
       (o) => o.editorId !== 'claude' || o.action === 'written',
     );

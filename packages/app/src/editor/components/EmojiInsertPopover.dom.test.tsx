@@ -1,15 +1,3 @@
-/**
- * Pins the `ok:emoji-picker-open` → popover → insert contract:
- *
- *   1. Dispatching the open event mounts the caret-anchored picker popover.
- *   2. `insertEmojiAtCaret` lands the emoji as plain text at the caret (the
- *      select path's only editor mutation).
- *   3. Dismissing the popover returns focus to the editor.
- *
- * Tier: `.dom.test.tsx` (jsdom) — the popover anchors off a mounted TipTap
- * Editor's `view.coordsAtPos`.
- */
-
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -110,7 +98,6 @@ describe('EmojiInsertPopover', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('emoji-picker-anchor')).toBeNull();
       });
-      // The refocus split's whole point: the clicked control keeps focus.
       expect(document.activeElement).toBe(outside);
       expect(editor.isFocused).toBe(false);
     } finally {
@@ -134,7 +121,6 @@ describe('EmojiInsertPopover', () => {
       await waitFor(() => {
         expect(screen.queryByTestId('emoji-picker-anchor')).toBeNull();
       });
-      // jsdom delivers the focus event (which flips `isFocused`) async.
       await waitFor(() => {
         expect(editor.isFocused).toBe(true);
       });

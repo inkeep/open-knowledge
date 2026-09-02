@@ -427,7 +427,7 @@ language js
 }
 ```
 
-**Message shape (load-bearing).** The diagnostic message has three parts in order: (1) the problem statement, (2) the fix-noun (the noun-phrase or action verb-phrase the reader applies to make the message go away), (3) `See <docs-URL>` pointing at this README's rule section. Anchor naming follows GitHub's auto-slug for code-fence-stripped headers — `### \`microcopy-ellipsis.grit\`` becomes `#microcopy-ellipsisgrit` (the dot is dropped, the backticks are stripped). Process metadata (decision tokens like `D19:`, spec citations) does NOT belong here — it rots like any other comment-discipline violation.
+**Message shape (load-bearing).** The diagnostic message has three parts in order: (1) the problem statement, (2) the fix-noun (the noun-phrase or action verb-phrase the reader applies to make the message go away), (3) `See <docs-URL>` pointing at this README's rule section. Anchor naming follows GitHub's auto-slug for code-fence-stripped headers — `### \`microcopy-ellipsis.grit\`` becomes `#microcopy-ellipsisgrit` (the dot is dropped, the backticks are stripped). Process metadata (decision tokens like `D19:`, spec citations) does NOT belong here — it rots like any other banned comment.
 
 **Regex matching note:** GritQL regex matches the ENTIRE node text. For substring matches, use `r"(?s).*<term>.*"` — the `.*` wildcards bracket the term, and `(?s)` enables single-line mode so `.` matches newlines (needed for multi-line argument expressions).
 
@@ -450,7 +450,7 @@ The main `pnpm lint` does NOT reach the `biome-plugins/` directory (lint paths a
 
 ### 4. Author the fixture-file test
 
-Place at `packages/<host>/tests/<scope>/<rule-name>.test.ts` where `<host>` matches the package whose code the rule mainly targets. For `<scope>`: use `lint-plugins/` when `<host>` is `app` (`packages/app/tests/integration/` is in `md-audit`'s `DEFAULT_TEST_GLOBS` and requires `@covers-surface` / `@covers-construct` JSDoc tags scoped to markdown editor surfaces that don't apply to lint-plugin tests), and use `integration/` for all other hosts (`desktop`, `plugin`). Template:
+Place at `packages/<host>/tests/<scope>/<rule-name>.test.ts` where `<host>` matches the package whose code the rule mainly targets. For `<scope>`: use `lint-plugins/` when `<host>` is `app` (`packages/app/tests/integration/` is in `md-audit`'s `DEFAULT_TEST_GLOBS` and requires audit JSDoc tags scoped to markdown editor surfaces that don't apply to lint-plugin tests), and use `integration/` for all other hosts (`desktop`, `plugin`). Template:
 
 ```ts
 import { describe, expect, test } from 'vitest';

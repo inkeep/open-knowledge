@@ -1,25 +1,3 @@
-/**
- * RTL behavior tests for the AgentDiffPane keyboard gate.
- *
- * This pane is the one guarded listener that stays on BUBBLE phase, so it
- * carries two arms the capture-phase sites do not need, and neither is
- * exercised anywhere else:
- *
- *  - `event.defaultPrevented` covers Escape. A dismissable layer claims Escape
- *    from a capture-phase listener on `document`, which also flips its
- *    `data-state` before this bubble-phase handler runs — so by then the layer
- *    probe alone reads "nothing open" and the pane would close out from under
- *    the dialog the user was dismissing.
- *  - the layer probe covers the review chords (j / k / ← / →), which no layer
- *    cancels.
- *
- * The overlay is a REAL Radix Dialog rather than a stub, because the
- * `defaultPrevented` arm is a claim about what Radix's DismissableLayer
- * actually does to the event.
- *
- * Substrate: jsdom via `pnpm run test:dom`.
- */
-
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -115,13 +93,6 @@ describe('AgentDiffPane keyboard gate', () => {
   });
 
   test('Escape already claimed by a dismissed layer does not also close the pane', async () => {
-    // jsdom dispatches synchronously, so a real Radix layer is still in the DOM
-    // when this bubble-phase handler runs and the layer probe alone would cover
-    // it. A real browser runs a microtask checkpoint between listeners, so React
-    // has already unmounted the layer by then and the probe reads "nothing
-    // open" — leaving `defaultPrevented` as the only thing standing between the
-    // user and a pane that closes out from under the dialog they dismissed.
-    // Reproduce that end state: cancelled Escape, no layer left in the DOM.
     await renderPane({ withOverlay: false });
 
     const claimEscape = (event: Event) => {

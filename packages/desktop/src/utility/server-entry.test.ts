@@ -6,11 +6,6 @@ import type { BootedServer, BootServerOptions } from '@inkeep/open-knowledge-ser
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { SetupUtilityDeps, UtilityHandle } from './server-entry.ts';
 
-// Stub node:os.homedir() before importing the utility (which transitively pulls
-// in the CLI's layered `loadConfig`) so the user-global layer
-// (`<home>/.ok/global.yml`) reads from a throwaway dir, never the developer's
-// real `~/.ok/global.yml`. The mock must be in place before the first import of
-// the module graph, hence the `await vi.doMock` + `await import` shape.
 let fakeHome = resolve(tmpdir(), '__ok_desktop_home_default__');
 await vi.doMock('node:os', async () => {
   const actual = await vi.importActual<typeof import('node:os')>('node:os');
@@ -55,8 +50,6 @@ describe('resolveDesktopServerRuntime — scope-correct three-layer load', () =>
   });
 
   test('a committed server.allowExternal stays inert (clone-leak guard)', () => {
-    // A value that traveled via clone in the committed project file must never
-    // arm exposure — only the project-local layer owns this leaf.
     writeProjectConfig('server:\n  allowExternal: true\n');
     const { serverRuntime } = resolveDesktopServerRuntime(testDir);
     expect(serverRuntime.allowExternal).toBe(false);
@@ -65,7 +58,6 @@ describe('resolveDesktopServerRuntime — scope-correct three-layer load', () =>
   test('project-local wins over a committed allowExternal in either direction', () => {
     writeProjectConfig('server:\n  allowExternal: true\n');
     writeLocalConfig('server:\n  allowExternal: false\n');
-    // Committed `true` is skipped for the project-local leaf; local `false` wins.
     expect(resolveDesktopServerRuntime(testDir).serverRuntime.allowExternal).toBe(false);
 
     rmSync(resolve(testDir, '.ok'), { recursive: true, force: true });
@@ -82,8 +74,6 @@ describe('resolveDesktopServerRuntime — scope-correct three-layer load', () =>
   });
 
   test('a project-local consent + committed externalUrl together admit the tunnel', () => {
-    // The two writes the Network Access pane makes: consent lands project-local,
-    // the origin lands project scope. Both must survive the merge.
     writeProjectConfig('server:\n  externalUrl: https://box.tailnet.ts.net\n  port: 24550\n');
     writeLocalConfig('server:\n  allowExternal: true\n');
     const { serverRuntime } = resolveDesktopServerRuntime(testDir);
@@ -92,15 +82,11 @@ describe('resolveDesktopServerRuntime — scope-correct three-layer load', () =>
   });
 
   test('degrades to schema defaults (consent forced off) on a schema-invalid config', () => {
-    // A non-coercible port is a hard schema violation, so loadConfig throws;
-    // desktop degrades rather than crashing the boot, and the fallback config
-    // is loopback-only with consent off (fail-closed).
     writeProjectConfig('server:\n  port: "abc"\n');
     const { config, configValid, serverRuntime } = resolveDesktopServerRuntime(testDir);
     expect(configValid).toBe(false);
     expect(serverRuntime.allowExternal).toBe(false);
     expect(serverRuntime.loopbackOnly).toBe(true);
-    // Still a usable Config, not a throw.
     expect(config.server?.allowExternal ?? false).toBe(false);
   });
 
@@ -136,15 +122,9 @@ interface DriveResult {
   ready?: { type: string; port: number; apiOrigin: string };
   readyErr?: Error;
   handle: UtilityHandle;
-  /** Every `reason` the booted server's `destroy` was handed. */
   destroyReasons: Array<string | undefined>;
 }
 
-/**
- * Drive `setupUtility` through a single `init` message with a fake `bootServer`
- * whose behavior is keyed on the requested port, so the port-pinning fallback
- * can be asserted without a real listener.
- */
 async function driveInit(opts: {
   requestedPort: number | undefined;
   ipcPort?: number;
@@ -217,7 +197,6 @@ describe('port pinning + EADDRINUSE fallback', () => {
     });
     expect(bootPorts).toEqual([24550]);
     expect(ready?.port).toBe(24550);
-    // No fallback → no degraded hint.
     const degraded = posted.find((m) => m.type === 'degraded');
     expect(degraded).toBeUndefined();
   });
@@ -228,12 +207,7 @@ describe('port pinning + EADDRINUSE fallback', () => {
       boot: (port) =>
         port === 24550 ? Promise.reject(addrInUse()) : Promise.resolve({ port: 51234 }),
     });
-    // First attempt pinned, second attempt ephemeral (0).
     expect(bootPorts).toEqual([24550, 0]);
-    // Ready reports the ACTUAL bound port; the Remote control pane compares it
-    // (via the bridge apiOrigin) against the configured server.port to warn that
-    // the tunnel target no longer matches. The fallback posts no degraded
-    // subsystem — it is a recoverable local condition, logged only.
     expect(ready?.port).toBe(51234);
     const degraded = posted.find((m) => m.type === 'degraded');
     expect(degraded).toBeUndefined();
@@ -254,7 +228,6 @@ describe('port pinning + EADDRINUSE fallback', () => {
       requestedPort: 24550,
       boot: () => Promise.reject(new Error('git preflight failed')),
     });
-    // Only one attempt — the error is not a port conflict.
     expect(bootPorts).toEqual([24550]);
     expect(readyErr?.message).toContain('git preflight failed');
     expect(posted.find((m) => m.type === 'error')).toBeDefined();

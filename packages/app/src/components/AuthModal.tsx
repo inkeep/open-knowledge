@@ -1,40 +1,3 @@
-/**
- * AuthModal — GitHub sign-in dialog.
- *
- * Device Flow: shows user_code and counts down to the deadline GitHub actually
- * issued (`expires_in`, ~15 min), not a local guess.
- * Calls POST /api/local-op/auth/login (streaming JSONL).
- *
- * Entry patterns (what happens on open):
- *   1. Caller-supplied `host` — no probe; the step resolves directly from the
- *      host (enterprise → PAT / gh-device, github.com → device flow). Used by
- *      known-host contexts, e.g. the share-receive trust gate.
- *   2. `identityPrompt` — probes to decide whether sign-in can be skipped (see
- *      below).
- *   3. Neither — probes `/auth/status` for host discovery: a non-github.com
- *      sync host resolves the step to 'pat' (GHES), github.com to the device
- *      flow. The "Checking sign-in status" spinner is this probe.
- *
- * Variant props:
- *   identityPrompt — when true, this is the "set git identity" entry point (the
- *                    sync popover's "Set identity" nudge). An already-signed-in
- *                    user is taken straight to the Name + Email step — the device
- *                    flow is skipped unless the on-open status probe reports the
- *                    user is NOT authenticated (then it falls back to sign-in,
- *                    showing the identity fields after success). Setting git
- *                    identity does not require re-authenticating.
- *   reauth        — when true, shows "Re-authenticate" heading instead of "Connect"
- *                    (host-accurate: the GHES steps get the Enterprise variant).
- *
- * On success: calls onSuccess({ login, name, avatarUrl }) and closes.
- *
- * Layout note: this dialog follows the sibling header/body/footer shape
- * (PublishToGitHubDialog, CloneDialog, CreateProjectDialog) — action buttons
- * live in <DialogFooter>, which must be a direct sibling of <DialogBody> under
- * <DialogContent> (the footer's `-mx-6 -mb-6` breakout assumes that position).
- * The identity field state is therefore lifted to this component so the
- * footer buttons can read it; the body panels below are presentational.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -62,14 +25,10 @@ import {
 } from './ui/dialog';
 import { Input } from './ui/input';
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
 async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
-  } catch {
-    /* ignore — clipboard not available */
-  }
+  } catch {}
 }
 
 interface AuthSuccessResult {
@@ -83,48 +42,16 @@ interface AuthModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: (result: AuthSuccessResult) => void;
-  /** Show git identity fields (Name + Email) after sign-in. */
   identityPrompt?: boolean;
-  /** Show "Re-authenticate" heading. */
   reauth?: boolean;
-  /**
-   * Transport for the device-flow subprocess. Defaults to the HTTP path
-   * (POST /api/local-op/auth/login) so existing editor / web callers
-   * don't change. The Project Navigator passes an IPC transport because
-   * its window has no backing API server.
-   */
   transport?: AuthTransport;
-  /**
-   * Transport for the on-open auth-status probe used by the `identityPrompt`
-   * path to decide whether to skip the device flow. Defaults to the HTTP
-   * path (POST /api/local-op/auth/status). Injectable for tests.
-   */
   queryTransport?: AuthQueryTransport;
-  /**
-   * The GitHub host to connect. When it's a non-github.com host (a GitHub
-   * Enterprise Server), the modal shows the Personal Access Token panel instead
-   * of the OAuth device flow (which only works on github.com). Absent/github.com
-   * keeps the device flow.
-   */
   host?: string;
-  /**
-   * Whether the gh CLI is installed (from the auth-status probe). When true and
-   * `host` is enterprise, the connect panel offers "Continue in browser" (gh
-   * flow) as the primary path, with the PAT field as the fallback.
-   */
   ghAvailable?: boolean;
 }
 
-// ── Device Flow panel ─────────────────────────────────────────────────────────
-
 interface DeviceFlowPanelProps {
   onSuccess: (result: AuthSuccessResult) => void;
-  /**
-   * Opens the streaming flow (verification → complete/error). Injected so the
-   * same panel drives both OK's own device flow (`transport.start`) and the
-   * gh-CLI browser flow (`transport.ghLogin`) — identical event shape, different
-   * endpoint.
-   */
   startFlow: () => AuthTransportHandle;
 }
 
@@ -134,10 +61,6 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
   const [verificationUri, setVerificationUri] = useState('https://github.com/login/device');
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Wall-clock deadline from the `verification` event's `expires_in`. Driving
-  // the countdown off a local constant instead told users the code died at 2:00
-  // when GitHub had issued it for ~15 minutes, and "Code expired" at 2:00 was
-  // also the point past which a dropped stream could no longer be recovered.
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const cancelRef = useRef<(() => void) | null>(null);
@@ -148,9 +71,6 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
     try {
       const handle = startFlow();
       cancelRef.current = handle.cancel;
-      // Manual iterator drive — React Compiler (BuildHIR) does not yet
-      // support `for await ... of` lowering, so we walk the iterator with
-      // explicit `next()` calls instead.
       const iter = handle.events[Symbol.asyncIterator]();
       let sawTerminal = false;
       let result = await iter.next();
@@ -193,15 +113,6 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: start device flow once on mount
   useEffect(() => {
-    // Defer the start by one microtask so React StrictMode's dev-mode
-    // mount→cleanup→remount cycle coalesces into a single start. The IPC
-    // main side is now idempotent (a second `:start` atomically displaces
-    // the stale slot rather than rejecting), but spawning a throwaway
-    // device-flow subprocess on every Strict double-mount still burns a
-    // device code with GitHub and emits a spurious displacement warn.
-    // The microtask defer lets the first mount's cleanup set
-    // `cancelled = true` before its start ever fires, leaving only the
-    // second mount's start to run.
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
@@ -215,7 +126,6 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
     };
   }, []);
 
-  // Countdown to the code's real deadline.
   useEffect(() => {
     if (expiresAt === null) return;
     timerRef.current = setInterval(() => {
@@ -261,10 +171,6 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
           <Button
             type="button"
             variant="outline"
-            // Whole box is the copy target; the icon swaps in place (no width
-            // change) so nothing shifts between the copy and copied states.
-            // Static label names the action + code; success is announced via the
-            // sibling live region below (a changing aria-label is not announced).
             aria-label={t`Copy code ${userCode}`}
             onClick={() =>
               void copyToClipboard(userCode).then(() => {
@@ -302,10 +208,6 @@ function DeviceFlowPanel({ onSuccess, startFlow }: DeviceFlowPanelProps) {
   );
 }
 
-// ── Identity body ─────────────────────────────────────────────────────────────
-// Presentational — shows who connected plus the Name + Email fields. The
-// "Save" / "Skip" buttons live in the dialog footer.
-
 interface IdentityBodyProps {
   login: string;
   name: string;
@@ -341,19 +243,13 @@ function IdentityBody({ login, name, onNameChange, email, onEmailChange }: Ident
   );
 }
 
-// ── PAT (enterprise) panel ────────────────────────────────────────────────────
-// Presentational token field for the GHES sign-in path. Token + submit state
-// live in the main modal so the footer "Connect" button can drive them.
-
 interface PatBodyProps {
   host: string;
   token: string;
   onTokenChange: (value: string) => void;
   error: string | null;
   onSubmit: () => void;
-  /** Show "Continue in browser" as the primary path (gh is installed). */
   showGhOption: boolean;
-  /** Start the gh browser sign-in (transition to the gh device step). */
   onGhSignIn: () => void;
 }
 
@@ -372,8 +268,7 @@ function PatBody({
     <div className="flex flex-col gap-3">
       {showGhOption ? (
         <>
-          {/* Primary path when gh is installed: browser sign-in, no token.
-              Labeled by outcome ("browser"), not the gh implementation detail. */}
+          {}
           <Button type="button" onClick={onGhSignIn}>
             <Trans>Continue in browser</Trans>
           </Button>
@@ -402,9 +297,7 @@ function PatBody({
         <Trans>Create a token on {host}</Trans>
         <ArrowUpRight className="inline size-3.5" aria-hidden />
       </a>
-      {/* The create-link pre-selects these scopes, but a manually created or
-          pre-existing token won't have gone through it — name them so a
-          wrong-scope 403 isn't the first hint. */}
+      {}
       <p className="text-xs text-muted-foreground">
         <Trans>The token needs the repo and read:user scopes.</Trans>
       </p>
@@ -419,11 +312,7 @@ function PatBody({
         }}
       />
       {error && <p className="text-1sm text-destructive">{error}</p>}
-      {/* gh-absent only: point the user at the browser path without pushing it.
-          The steps are honest because the server re-probes for gh on each
-          status check (see cachedGhBinaryPath) and AccountSection re-probes when
-          this dialog closes — so reopening it after installing gh shows the
-          "Continue in browser" button. */}
+      {}
       {!showGhOption && (
         <div className="mt-1 rounded-md border border-border/60 bg-muted/40 p-3 text-sm text-muted-foreground">
           <p>
@@ -443,19 +332,8 @@ function PatBody({
   );
 }
 
-// ── Main modal ────────────────────────────────────────────────────────────────
-
-// `checking` is the brief on-open auth-status probe for the identityPrompt
-// path (deciding skip-to-identity vs fall-back-to-device-flow). `pat` is the
-// enterprise (non-github.com) sign-in path — a token field instead of the
-// device flow, which GHES can't use.
 type AuthStep = 'checking' | 'auth' | 'pat' | 'gh-device' | 'identity' | 'done';
 
-// Upper bound on the on-open status probe. The relay is localhost and answers
-// near-instantly when healthy, but the HTTP transport's `fetch` has no timeout
-// of its own — a hung relay would otherwise leave the user on the checking
-// spinner indefinitely. On expiry we fall back to the device flow (which has a
-// Cancel), the same terminal state as a rejected probe.
 const IDENTITY_PROBE_TIMEOUT_MS = 10_000;
 
 export function AuthModal({
@@ -470,43 +348,26 @@ export function AuthModal({
   ghAvailable,
 }: AuthModalProps) {
   const { t } = useLingui();
-  // Default to the HTTP path so existing editor / web callers don't need
-  // to change. Navigator passes its IPC transport explicitly.
   const resolvedTransport = transport ?? httpAuthTransport();
   const resolvedQueryTransport = queryTransport ?? httpAuthQueryTransport();
   const [step, setStep] = useState<AuthStep>('auth');
   const [authResult, setAuthResult] = useState<AuthSuccessResult | null>(null);
 
-  // Identity-step field state, lifted so the footer "Save" button can read it.
   const [idName, setIdName] = useState('');
   const [idEmail, setIdEmail] = useState('');
 
-  // Enterprise (PAT) sign-in state, lifted so the footer "Connect" can read it.
   const [patToken, setPatToken] = useState('');
   const [patError, setPatError] = useState<string | null>(null);
   const [patSubmitting, setPatSubmitting] = useState(false);
-  // When a caller doesn't pass `host` (e.g. the editor's "Reconnect required"
-  // affordance), we probe auth-status on open to discover it — otherwise every
-  // host-less entry point would default to the github.com device flow, which
-  // FAILS on GHES (OK's OAuth app isn't registered there). The probed values
-  // back-fill the props; a passed prop always wins.
   const [probedHost, setProbedHost] = useState<string | undefined>(undefined);
   const [probedGhAvailable, setProbedGhAvailable] = useState<boolean | undefined>(undefined);
   const effectiveHost = host ?? probedHost;
   const effectiveGhAvailable = ghAvailable ?? probedGhAvailable;
   const isEnterpriseHost = !!effectiveHost && effectiveHost !== 'github.com';
-  // gh's browser sign-in works on GHES (its OAuth app is preregistered) where
-  // OK's device flow can't. Offer it as the primary path when gh is installed.
   const canUseGh =
     isEnterpriseHost && !!effectiveGhAvailable && typeof resolvedTransport.ghLogin === 'function';
-  // Sign-in path with no caller-supplied host → probe first (shows 'checking').
   const needsHostProbe = !identityPrompt && host === undefined;
 
-  // Synchronous step decision in a layout effect so it commits BEFORE the
-  // browser paints. In a passive effect the first painted frame would show the
-  // stale `step` (often 'auth', since this modal stays mounted and `step`
-  // persists across open/close), briefly flashing the device-flow panel on the
-  // set-identity path before the probe decision lands.
   useLayoutEffect(() => {
     if (!open) return;
     setAuthResult(null);
@@ -517,32 +378,13 @@ export function AuthModal({
     setPatSubmitting(false);
     setProbedHost(undefined);
     setProbedGhAvailable(undefined);
-    // Set-identity path OR a host-less sign-in: show the probe spinner; the
-    // async effect below resolves it to 'identity' / 'pat' / 'auth'. Host known
-    // and enterprise → straight to the PAT panel (GHES can't use the device
-    // flow). Host known and github.com → the device flow.
-    //
-    // Decide from the PROP host, never `isEnterpriseHost` (which folds in the
-    // *probed* host): depending on the derived value would re-run this effect
-    // when the probe resolves, which resets `probedHost` and bounces the step
-    // back to 'checking' — an infinite "Checking sign-in status" loop.
     const propEnterpriseHost = !!host && host !== 'github.com';
     setStep(identityPrompt || needsHostProbe ? 'checking' : propEnterpriseHost ? 'pat' : 'auth');
   }, [open, identityPrompt, host, needsHostProbe]);
 
-  // Set-identity path only: probe auth status to decide skip-to-identity vs
-  // fall-back-to-device-flow. The user reached this from the "git identity
-  // isn't set" nudge and is almost always already signed in — setting git
-  // user.name/user.email needs no re-auth. If authenticated, jump straight to
-  // the identity fields (pre-filled from the OAuth profile); otherwise fall
-  // back to the device flow.
   // biome-ignore lint/correctness/useExhaustiveDependencies: probe runs on open / identityPrompt change; resolvedQueryTransport is a fresh object each render and excluded intentionally
   useEffect(() => {
     if (!open || !identityPrompt) return;
-    // `settled` latches the first terminal transition. The probe result, the
-    // timeout, and cleanup all race; first writer wins, later ones no-op. This
-    // also stops a slow-but-eventually-resolving probe from yanking the user
-    // off the device flow after the timeout already fell back to it.
     let settled = false;
     const settle = (next: AuthStep) => {
       if (settled) return;
@@ -568,8 +410,6 @@ export function AuthModal({
         }
       })
       .catch(() => {
-        // Probe failed (offline, server hiccup) — fall back to the device flow
-        // rather than stranding the user on a spinner.
         settle('auth');
       });
     return () => {
@@ -578,12 +418,6 @@ export function AuthModal({
     };
   }, [open, identityPrompt]);
 
-  // Host-less sign-in path: probe auth-status to discover the origin host (and
-  // whether gh is available) so the modal routes to the enterprise PAT/gh panel
-  // on GHES instead of the github.com device flow. Without this, host-less
-  // entry points (the editor's "Reconnect required", clone/navigator sign-in)
-  // fire the device flow, which errors on a GHES host. Mirrors the identity
-  // probe's settle/timeout race discipline.
   // biome-ignore lint/correctness/useExhaustiveDependencies: probe runs on open; resolvedQueryTransport is a fresh object each render and excluded intentionally
   useEffect(() => {
     if (!open || !needsHostProbe) return;
@@ -604,7 +438,6 @@ export function AuthModal({
         settle(enterprise ? 'pat' : 'auth');
       })
       .catch(() => {
-        // Probe failed (offline, server hiccup) — fall back to the device flow.
         settle('auth');
       });
     return () => {
@@ -615,11 +448,6 @@ export function AuthModal({
 
   function handleAuthSuccess(result: AuthSuccessResult) {
     setAuthResult(result);
-    // identityPrompt = the set-identity entry point. Reaching device-flow
-    // success here means the on-open probe found the user unauthenticated and
-    // fell back to sign-in; now land on the identity fields (pre-filled from
-    // the OAuth profile) so the original intent — writing git user.name/email —
-    // is actually carried out instead of closing the moment a token exists.
     if (identityPrompt) {
       setIdName(result.name ?? '');
       setIdEmail(result.email ?? '');
@@ -652,18 +480,11 @@ export function AuthModal({
   }
 
   function handleIdentitySave(name: string, email: string) {
-    // Persist git identity via the correct endpoint (best-effort).
-    // /api/local-op/auth/set-identity writes to the active checkout's git
-    // config (per-worktree on a linked worktree, repo-local otherwise) and
-    // nudges the sync engine to re-probe so the unresolved-identity UI
-    // banner clears on the next push cycle.
     void fetch('/api/local-op/auth/set-identity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email }),
-    }).catch(() => {
-      /* ignore */
-    });
+    }).catch(() => {});
 
     const result = { ...(authResult ?? { login: '' }), name, email };
     setStep('done');
@@ -692,16 +513,12 @@ export function AuthModal({
         <DialogHeader>
           <DialogTitle>
             {reauth && (step === 'pat' || step === 'gh-device') ? (
-              // Enterprise re-auth: the PAT / gh steps mean the host resolved
-              // to a GHES, so keep the reauth framing host-accurate.
               <Trans>Re-authenticate with GitHub Enterprise Server</Trans>
             ) : reauth ? (
               <Trans>Re-authenticate with GitHub</Trans>
             ) : step === 'pat' || step === 'gh-device' ? (
               <Trans>Connect to GitHub Enterprise Server</Trans>
             ) : identityPrompt && step !== 'auth' ? (
-              // identityPrompt + non-`auth` step = the set-identity path with a
-              // signed-in user; `auth` means the probe fell back to sign-in.
               <Trans>Set git identity</Trans>
             ) : (
               <Trans>Connect GitHub</Trans>

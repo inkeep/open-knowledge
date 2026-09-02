@@ -1,13 +1,6 @@
 import { Trans } from '@lingui/react/macro';
 import { Spinner } from '@/components/ui/spinner';
 
-/**
- * Shown while the bundled CLI removes the OpenKnowledge footprint.
- *
- * Purely cosmetic and deliberately inert: there is nothing to answer and no way
- * out, because main prevents this window from closing until the cleanup it is
- * covering has finished.
- */
 export function UninstallProgressScreen() {
   return (
     <main className="grid h-dvh place-items-center bg-background text-foreground">

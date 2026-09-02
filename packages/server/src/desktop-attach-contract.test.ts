@@ -11,29 +11,6 @@ import {
   updateServerLockPort,
 } from './server-lock.ts';
 
-/**
- * The Claude Desktop attach contract. Sandboxed agent panes (Claude Desktop's
- * embedded browser) cannot be handed an arbitrary URL out of band — they
- * attach by asking the stdio MCP for a preview URL, and that answer is derived
- * from `server.lock`: a shell-serving server advertises ONE record — its `url`
- * plus `capabilities` containing `"ui"`, dialed directly. (The retired
- * sibling `ui.lock` and its yield-to-live-holder flow are gone; the single
- * listener serves every surface — `/`, `/api/*`, `/mcp`, `/collab` — at that
- * one origin.)
- *
- * The contract the readers (preview-url tools, `off-cwd-resolver`, the
- * clone→open redirect) rely on:
- *
- *   1. ADVERTISEMENT — a shell-serving server.lock carries `url` +
- *      `capabilities` containing `"ui"`, and that url serves the SPA shell.
- *   2. PORT SENTINEL — the lock exists with port 0 from acquire (pre-listen)
- *      until updateServerLockPort stamps the bound port. Readers must treat
- *      port 0 as "starting" (poll), never as an address.
- *   3. DISCOVERY HINT — a data server not serving the shell (no `ui`
- *      capability) tells humans in its 404 body how to get the editor
- *      (restart with plain `ok start`).
- */
-
 describe('server.lock — the Desktop attach advertisement', () => {
   test('port sentinel: acquire writes 0, updateServerLockPort stamps the bound port, release unlinks', async () => {
     const tmp = await mkdtemp(resolve(tmpdir(), 'ok-attach-sentinel-'));
@@ -65,8 +42,6 @@ describe('server.lock — the Desktop attach advertisement', () => {
         const body = parseProblem(await res.text());
         expect(body.detail).toContain('running without the web UI');
         expect(body.detail).toContain('ok start');
-        // No shell served → server.lock advertises no `ui` capability (and no
-        // separate ui.lock is ever written).
         const lock = readServerLock(resolve(tmp, '.ok', 'local'));
         expect(lock?.capabilities ?? []).not.toContain('ui');
         expect(existsSync(resolve(tmp, '.ok', 'local', 'ui.lock'))).toBe(false);
@@ -79,13 +54,6 @@ describe('server.lock — the Desktop attach advertisement', () => {
   }, 30_000);
 });
 
-/**
- * The canonical attach contract: a server that serves the React shell
- * advertises ONE record — `server.lock`'s `url` plus `capabilities` containing
- * `"ui"`. Claude Desktop's pre-declared entrypoint (and the MCP preview tools
- * via `resolveUiInfo`) dial that URL directly; every surface (`/`, `/api/*`,
- * `/mcp`, `/collab`) lives at the one origin.
- */
 describe('server.lock v2 — the canonical Claude Desktop attach contract', () => {
   test('a shell-serving server advertises url + the ui capability, and that url serves the shell', async () => {
     const tmp = await mkdtemp(resolve(tmpdir(), 'ok-attach-v2-'));
@@ -98,7 +66,6 @@ describe('server.lock v2 — the canonical Claude Desktop attach contract', () =
       try {
         await booted.ready;
 
-        // The advertisement: one URL, the ui capability, a bound port.
         const lock = readServerLock(resolve(projectDir, '.ok', 'local'));
         expect(lock).not.toBeNull();
         expect(lock?.port).toBe(booted.port);
@@ -107,14 +74,10 @@ describe('server.lock v2 — the canonical Claude Desktop attach contract', () =
         expect(lock?.capabilities).toContain('http');
         expect(lock?.capabilities).toContain('ws');
 
-        // Attach exactly as a pre-registered Desktop pane does: dial the
-        // advertised URL cold and expect the SPA shell.
         const shellRes = await fetch(`${lock?.url}/`);
         expect(shellRes.status).toBe(200);
         expect(await shellRes.text()).toContain('shell');
 
-        // Route precedence at the same origin: /api stays a data surface
-        // (problem+json), never the SPA fallback.
         const apiRes = await fetch(`${lock?.url}/api/definitely-not-a-route`);
         expect(apiRes.headers.get('content-type')).toContain('json');
       } finally {

@@ -1,19 +1,3 @@
-/**
- * Narrow-integration smoke test for the Skills API (`handleSkill` /
- * `handleSkillsList`) against a real test server.
- *
- * Asserts the canonical RFC 9457 wire shape + the full project-scope CRUD
- * lifecycle for `GET / PUT / POST / DELETE /api/skill` and `GET /api/skills`:
- *   - PUT happy path → 200 + `SkillPutSuccessSchema` (created flips on re-PUT).
- *   - XML tag in description, name ≠ frontmatter.name → 400.
- *   - `.strict()` rejects an injected `version` key → 400 (frontmatter purity).
- *   - global scope → 400 (deferred until the global store).
- *   - GET one + GET list reflect the written skill.
- *   - POST rename keeps SKILL.md `name` in sync with the new directory.
- *   - DELETE happy path (existed=true, then false); 404 on a missing GET.
- *   - method-not-allowed on PATCH → 405 + `Allow: GET, PUT, POST, DELETE`.
- */
-
 import {
   ProblemDetailsSchema,
   SkillDeleteSuccessSchema,
@@ -57,8 +41,6 @@ describe('skill envelope (RFC 9457) + CRUD lifecycle', () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.created).toBe(true);
-      // Store retirement: authored IN-PLACE (default home editor dir), not the
-      // retired `.ok/skills` store — the path ends with the real bundle path.
       expect(parsed.data.path).toMatch(/\/trip-log\/SKILL\.md$/);
       expect(parsed.data.path).not.toContain('.ok/skills');
     }
@@ -110,10 +92,6 @@ describe('skill envelope (RFC 9457) + CRUD lifecycle', () => {
   });
 
   test('PUT with global scope → 200 (global store at <home>/.ok/skills)', async () => {
-    // The harness isolates the user home to a throwaway tempdir, so this lands
-    // there, not the real `~/.ok/skills`. Full global-scope coverage (list
-    // union, unversioned history, deferred install) is in
-    // `skill-global-scope.test.ts`.
     const res = await putSkill({
       scope: 'global',
       name: 'mine',
@@ -142,8 +120,6 @@ describe('skill envelope (RFC 9457) + CRUD lifecycle', () => {
     if (parsed.success) {
       const entry = parsed.data.skills.find((s) => s.name === 'trip-log');
       expect(entry).toBeDefined();
-      // Store retirement + no Draft: a skill that exists lives in-place, so it is
-      // ALWAYS installed where it physically is (never a hostless Draft).
       expect(entry?.installed).toBe(true);
       expect(entry?.hosts?.length ?? 0).toBeGreaterThan(0);
     }
@@ -159,13 +135,11 @@ describe('skill envelope (RFC 9457) + CRUD lifecycle', () => {
     const parsed = SkillMoveSuccessSchema.safeParse(await res.json());
     expect(parsed.success).toBe(true);
 
-    // The renamed skill's frontmatter.name now equals the new directory.
     const get = await fetch(`${base()}/api/skill?name=voyage-log&scope=project`);
     expect(get.status).toBe(200);
     const got = SkillGetSuccessSchema.safeParse(await get.json());
     expect(got.success && got.data.skill.frontmatter.name).toBe('voyage-log');
 
-    // The old name no longer resolves.
     const old = await fetch(`${base()}/api/skill?name=trip-log&scope=project`);
     expect(old.status).toBe(404);
   });

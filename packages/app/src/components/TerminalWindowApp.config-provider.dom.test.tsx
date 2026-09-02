@@ -1,31 +1,13 @@
-/**
- * The standalone terminal window must establish its own ConfigProvider: the
- * terminal-consent hooks under TerminalGate (`useTerminalConsentState` /
- * `useTerminalEnabledWriter` → `useConfigContext`) read the project-local
- * ConfigBinding, and this window has no editor/document tree to inherit the
- * provider from. Without it `useConfigContext` throws "must be used within
- * <ConfigProvider />", blanking the whole React root and leaving the window empty.
- *
- * Unlike the sibling behavioral test, TerminalGate is stubbed with a component
- * that ACTUALLY consumes `useConfigContext` — the same context the real consent
- * hooks read — so the test exercises the missing-provider crash. With the
- * provider wrapping removed, this render throws; with it, the child mounts.
- */
-
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useConfigContext } from '@/lib/config-provider';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
-// The New split-button calls react-query's useQuery; stub it so this test needs
-// no QueryClientProvider.
 vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
-// Stand in for the real TerminalGate: read the same context the terminal-consent
-// hooks read. Throws (and blanks the root) if no ConfigProvider is above it.
 vi.doMock('./TerminalGate', () => ({
   TerminalGate: () => {
     const { projectLocalSynced } = useConfigContext();
@@ -35,9 +17,6 @@ vi.doMock('./TerminalGate', () => ({
   },
 }));
 
-// Capture what the report trigger is told about this window rather than mounting
-// the real dialog host: `systemWide` is the only thing this root decides for it,
-// and it is what tells the reporter whether there are project logs to collect.
 const reportTriggerProps: { systemWide?: boolean }[] = [];
 vi.doMock('./ReportBugMenuTrigger', () => ({
   ReportBugMenuTrigger: (props: { systemWide?: boolean }) => {
@@ -63,8 +42,6 @@ describe('TerminalWindowApp ConfigProvider wiring', () => {
   });
 
   test('provides ConfigProvider context to its terminal subtree (project-less / empty collabUrl)', () => {
-    // Empty collabUrl is the project-less terminal window. The consent hooks
-    // must fail-open: the context resolves (no throw) with an unsynced binding.
     render(
       <TooltipProvider>
         <TerminalWindowApp bridge={bridgeWithCollabUrl('')} />
@@ -94,9 +71,6 @@ describe('TerminalWindowApp ConfigProvider wiring', () => {
   });
 
   test('a project-bound terminal window reports scoped to that project', () => {
-    // The branch the sibling assertions never reached: with a collabUrl there
-    // ARE project logs to collect, so a report filed from this window must not
-    // claim to be system-wide or it collects the wrong thing.
     render(
       <TooltipProvider>
         <TerminalWindowApp bridge={bridgeWithCollabUrl('ws://localhost:5200/collab')} />

@@ -1,22 +1,3 @@
-/**
- * Reusable frontmatter-row primitives — extracted from `PropertyPanel.tsx`
- * so file frontmatter (PropertyPanel, CRDT-bound) and folder frontmatter
- * (FolderPropertiesCard, HTTP-bound) share the same row chrome.
- *
- * Affordances are opt-in:
- *   - `sortableId` enables `@dnd-kit` drag-handle for reorder
- *   - `rename` enables the click-to-rename UX
- *   - `isDuplicate` renders the duplicate-name warning marker
- *   - `onRemove` renders the delete-icon
- *   - `badge` renders an extra inline label after the key (e.g. "inherited")
- *
- * PropertyPanel passes every affordance. FolderPropertiesCard skips
- * `sortableId` (folder frontmatter is order-independent) but takes the rest. Each
- * card decides its commit transport — PropertyPanel routes through
- * `bindFrontmatterDoc.patch()` (CRDT); FolderPropertiesCard fires
- * `saveFolderConfig` (HTTP). The row component is transport-agnostic.
- */
-
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { useSortable } from '@dnd-kit/sortable';
@@ -85,80 +66,24 @@ interface FrontmatterRowRenameApi {
 }
 
 interface FrontmatterRowProps {
-  /** The frontmatter key. */
   keyName: string;
-  /** Current value. */
   value: FrontmatterValue;
-  /** Declared type — selects which widget renders. */
   declared: FrontmatterType;
-  /**
-   * Schema-derived vocabulary for this field (resolved from the doc's
-   * governing frontmatter schemas). When present and the value is simple,
-   * the free-text widget is replaced by a single-select (`multi: false`) or
-   * a toggleable multi-select (`multi: true`). Commits flow through the same
-   * `onCommit` write path as every other widget.
-   */
   enumConstraint?: { values: string[]; multi: boolean };
-  /** Inline validation error to render below the row. */
   error?: string | null;
-  /**
-   * Bumped to force the inner Widget to remount and re-sync its draft
-   * state from `value`. Use when the parent commits a change and wants
-   * to discard any uncommitted typing in the field.
-   */
   resetCounter?: number;
-  /**
-   * Stable `@dnd-kit` sortable id. Pass to enable drag-to-reorder.
-   * Omit when the host doesn't need ordering (e.g. folder properties).
-   */
   sortableId?: string;
-  /** Rename-by-clicking-the-key-name UX. Pass to enable. */
   rename?: FrontmatterRowRenameApi;
-  /** Render the duplicate-name warning marker. */
   isDuplicate?: boolean;
-  /** Optional inline badge after the key name. */
   badge?: ReactNode;
-  /**
-   * Render the row as a placeholder — no type-icon dropdown, no rename
-   * affordance on the key name, no trash. Used by the always-visible
-   * `tags` row when the YAML doesn't carry the key yet: the user sees
-   * "you can add tags here" without the row presenting affordances
-   * that imply it's a real property (the YAML key only materializes on
-   * first commit). The value widget stays fully interactive — that's
-   * the whole point of the row.
-   */
   isPlaceholder?: boolean;
-  /**
-   * Path TO this row's value (e.g. `['metadata']` for the top-level
-   * `metadata` row, `['metadata', 'version']` for a nested row). Used by
-   * recursive `ObjectWidget` to address its position in the binding's
-   * path API. Defaults to `[keyName]` for top-level callers that don't
-   * thread paths.
-   */
   path?: ReadonlyArray<string | number>;
-  /** Commit handler — triggered by the inner widget on blur / Enter / Escape. */
   onCommit: (next: FrontmatterValue) => void;
-  /** Type-change handler — invoked by the type-icon dropdown. */
   onChangeType: (next: FrontmatterType) => void;
-  /** Delete handler. Omit to hide the trash icon. */
   onRemove?: () => void;
-  /**
-   * Row-level affordance rendered beside the delete control — the document
-   * panel puts its "comment on this property" button here.
-   *
-   * A slot rather than a handler because the control owns a popover it has to
-   * anchor itself. Passing it in also keeps comments out of this file: the row
-   * is shared by templates, skills, and folder cards, none of which have
-   * comment threads.
-   */
   actionSlot?: ReactNode;
 }
 
-/**
- * Single row of a frontmatter editor — type icon, key name, widget, optional
- * delete. Extra affordances (drag-handle, rename, duplicate marker, badge)
- * surface based on which props the parent provides.
- */
 export function FrontmatterRow({
   keyName,
   value,
@@ -192,17 +117,7 @@ export function FrontmatterRow({
     >
       {(dragHandle) => (
         <>
-          {/*
-            Narrow-container reflow (precedent: Tailwind v4 container queries,
-            see ui/field.tsx). The row is a `@container/prow`; below ~26rem of
-            row width the fixed 128px key column starves the value widget into a
-            tall thin strip. At that width the value flips to `order-last` +
-            `basis-full` so it wraps to its own full-width line, indented by the
-            drag-handle + type-icon gutter (3.25rem = w-4 + gap + w-7 + gap) so
-            its left edge lines up under the key name instead of jutting out to
-            the row's left edge. Above the breakpoint every reflow class is an
-            inert `@max-*` override, so the wide layout is unchanged.
-          */}
+          {}
           <div className="flex items-start gap-1 @max-[26rem]/prow:flex-wrap">
             {dragHandle}
             <div className="flex items-center gap-1" data-testid="property-row-identity">
@@ -307,12 +222,6 @@ export function FrontmatterRow({
   );
 }
 
-/**
- * Wraps the row body with @dnd-kit's `useSortable` hook ONLY when a
- * `sortableId` is provided. Without it, renders a plain div — keeps the
- * hook out of the component tree for non-sortable hosts (avoids the
- * forced `<DndContext>` wrapper requirement).
- */
 function SortableShell({
   sortableId,
   keyName,
@@ -346,13 +255,6 @@ function SortableShell({
       </SortableRowBody>
     );
   }
-  // The placeholder row renders a same-width spacer where the drag-handle
-  // would sit on sortable file rows in the same panel — without it, the
-  // icon / key / value columns shift ~16px left of the file rows above it.
-  // The spacer is gated on `isPlaceholder` so FolderPropertiesCard (where
-  // every row is non-sortable and there's no sortable row to align with)
-  // is unaffected, while the placeholder `tags` row in PropertyPanel
-  // (sortable siblings above it) aligns correctly.
   const dragHandleSlot = isPlaceholder ? <span aria-hidden className="h-7 w-4 shrink-0" /> : null;
   return (
     <div
@@ -429,15 +331,6 @@ function SortableRowBody({
   );
 }
 
-/**
- * Static type-icon glyph rendered in place of `TypeIconButton` when the row
- * carries a complex value (nested object or array of objects). The picker
- * is dropped because every scalar destination coerces the value through
- * `String()`, which corrupts the nested structure to `'[object Object]'`.
- * The icon reflects the inferred type (object → Braces, list-of-objects →
- * List) so the row's identity column matches the value's shape; the
- * `data-type="complex"` test attribute remains as the meta-label.
- */
 function ComplexValueTypeIcon({ keyName, type }: { keyName: string; type: FrontmatterType }) {
   const { t } = useLingui();
   const Icon = TYPE_ICON[type];
@@ -511,10 +404,6 @@ function RenameInput({
   );
 }
 
-/**
- * Key-name button rendered as a click-to-rename target. Disabled when no
- * rename handler is wired (e.g. a read-only host).
- */
 function KeyNameButton({
   keyName,
   onBegin,
@@ -539,15 +428,6 @@ function KeyNameButton({
   );
 }
 
-/**
- * Identity column for placeholder rows — the always-visible `tags` row
- * uses this when the YAML doesn't carry the key yet. Static type-icon
- * glyph (no dropdown) + plain-text key name (no rename affordance), so
- * the row reads as "you can add a value here" without implying it's a
- * fully-realized property. Layout (size + spacing) mirrors the live
- * `<TypeIconButton>` + `<KeyNameButton>` pair so the column alignment
- * matches the live rows above it.
- */
 function PlaceholderIdentity({ keyName, type }: { keyName: string; type: FrontmatterType }) {
   const Icon = TYPE_ICON[type];
   return (
@@ -578,60 +458,15 @@ interface AddPropertyRowProps {
   onChangeName: (next: string) => void;
   onChangeType: (next: FrontmatterType) => void;
   onChangeValue: (next: FrontmatterValue) => void;
-  /**
-   * Commit the new property. The optional `valueOverride` carries the
-   * freshly-typed value from an Enter-in-value-field submit, so the consumer
-   * commits that value directly rather than racing the async `onChangeValue`
-   * state update (which lands after this synchronous call).
-   */
   onCommit: (valueOverride?: FrontmatterValue) => void;
   onCancel: () => void;
-  /**
-   * Distinguishes one add-row from its siblings when a host renders several at
-   * once (the panel stages one per schema-required property the doc lacks).
-   * Scopes this row's DOM ids and `data-key`, so two rows can't collide on an
-   * `aria-describedby` target. Single-row hosts can leave it at the default.
-   */
   rowId?: string;
-  /**
-   * Which control takes focus on mount. `name` is the default and what a blank
-   * row wants. A row that arrives pre-named wants `value` — the name is already
-   * filled, so the value is the only thing left to type. `none` keeps focus
-   * where it is, which is what every row but the first of a staged batch needs:
-   * `autoFocus` is last-one-wins, so several rows each claiming it would land
-   * focus on the bottom row.
-   */
   autoFocus?: 'name' | 'value' | 'none';
-  /**
-   * Schema-derived vocabulary for the property being added, resolved by the
-   * host from the same schemas the linter uses. Present when the drafted name
-   * names an enum-constrained field: the value editor becomes that field's
-   * select instead of free text, matching how the field will render once it is
-   * a real row.
-   */
   enumConstraint?: { values: string[]; multi: boolean };
-  /**
-   * Fields the doc's governing schemas declare and the doc does not yet have,
-   * offered as type-ahead suggestions on the name input. Empty (the default)
-   * leaves the name a plain free-text field — which is what an unschema'd doc,
-   * and the folder card, get.
-   */
   fieldSuggestions?: readonly AddPropertyFieldSuggestion[];
-  /**
-   * Applies a picked suggestion's name AND type as one update. Optional: the
-   * fallback drives the existing name/type callbacks instead, which is correct
-   * but applies the two in separate updates rather than one atomic change (React
-   * batches the render either way).
-   */
   onPickField?: (suggestion: AddPropertyFieldSuggestion) => void;
 }
 
-/**
- * Inline "add new property" row — type icon + name input + value widget,
- * with Enter/Escape semantics matching the rename input. Used by both
- * PropertyPanel ("Add property" on a doc) and FolderPropertiesCard
- * ("Add property" on a folder's own frontmatter).
- */
 export function AddPropertyRow({
   draft,
   onChangeName,
@@ -650,15 +485,6 @@ export function AddPropertyRow({
   const nameInputRef = useRef<HTMLInputElement>(null);
   const valueCellRef = useRef<HTMLDivElement>(null);
 
-  // Focusing the VALUE means reaching into whichever widget the drafted type
-  // renders — a text input, a select trigger, a chip input, a checkbox. Taking
-  // the first focusable descendant of the value cell covers every one of them
-  // without each widget having to forward a ref it otherwise has no use for.
-  //
-  // Latched to fire at most once per mounted row. `autoFocus` describes where
-  // the row OPENS, so a later flip of it must not move a caret the user has
-  // since placed somewhere else — moving focus mid-word swallows keystrokes
-  // into whatever it lands on.
   const wantsValueFocus = autoFocus === 'value';
   const valueFocusClaimed = useRef(false);
   useEffect(() => {
@@ -678,9 +504,6 @@ export function AddPropertyRow({
     onChangeName(suggestion.name);
     onChangeType(suggestion.type);
   }
-  // Gate the commit affordance: non-empty name AND non-empty value (matches
-  // the server's mergePatch drop-on-empty semantic via the shared core
-  // predicate; `0` and `false` count as non-empty).
   const isAddDisabled = draft.name.trim() === '' || isFrontmatterValueEmpty(draft.value);
 
   return (
@@ -695,11 +518,6 @@ export function AddPropertyRow({
           type={draft.type}
           onChangeType={onChangeType}
           onCloseAutoFocus={(event) => {
-            // Radix's default close-auto-focus returns focus to the type-icon
-            // trigger button. In the add-property flow the natural next typing
-            // target is the name input, so preempt the trigger refocus before
-            // it fires — racing it via rAF / setTimeout loses against
-            // Presence's two-commit unmount in jsdom + user-event.
             event.preventDefault();
             nameInputRef.current?.focus();
           }}
@@ -721,11 +539,7 @@ export function AddPropertyRow({
           ref={valueCellRef}
           className="min-w-0 flex-1 @max-[26rem]/prow:order-last @max-[26rem]/prow:mt-0.5 @max-[26rem]/prow:basis-full @max-[26rem]/prow:pl-[2rem]"
         >
-          {/* Enum-constrained fields get the same select they will render as a
-              committed row — a fixed vocabulary is not something to retype from
-              memory. Both selects commit through `onChangeValue`, so the draft
-              plumbing below is unchanged; only free-text/complex drafts fall
-              through to the type-dispatched widget. */}
+          {}
           {enumConstraint && !enumConstraint.multi ? (
             <EnumSelectWidget
               keyName="__add__"
@@ -792,56 +606,20 @@ interface WidgetProps {
   keyName: string;
   value: FrontmatterValue;
   widgetType: FrontmatterType;
-  /**
-   * Path TO this widget's value. Threaded to recursive `ObjectWidget` so a
-   * nested object claims its own location for path-addressed CRUD. Defaults
-   * to `[keyName]` for top-level callers via {@link FrontmatterRow}.
-   */
   path: ReadonlyArray<string | number>;
   onCommit: (next: FrontmatterValue) => void;
-  /**
-   * Optional Enter-to-submit handler forwarded to the scalar value editors
-   * (text / number / date). The add-property row wires this so Enter in the
-   * value field commits the new property instead of just blurring. Absent for
-   * existing-row editors, which keep blur-to-settle Enter semantics.
-   */
   onSubmit?: (next: FrontmatterValue) => void;
 }
 
-/**
- * Type-dispatched widget renderer — picks one of the frontmatter widgets
- * based on (a) the property's keyName for specialized keys (`icon` /
- * `cover`, both backed by text storage but rendered with a live preview
- * chip — see `PageHeaderWidgets`), and (b) the declared `widgetType` for
- * everything else. List values are presented as the chip widget
- * regardless of declared type (value-shape wins over declared type).
- *
- * KeyName-conditional rendering mirrors the existing `keyName === 'tags'`
- * chip precedent in `ListWidget`. Avoids inventing new `FrontmatterType`
- * variants (which would ripple through the type picker, YAML codec,
- * inferType, and coerceValue — all overkill for two specialized fields).
- */
 function Widget({ keyName, value, widgetType, path, onCommit, onSubmit }: WidgetProps) {
-  // Specialized text widgets keyed by frontmatter name. Storage stays
-  // `text`; the widget adds a live preview chip + targeted placeholder.
   if (keyName === 'icon') {
     const str = typeof value === 'string' ? value : '';
     return <PageIconWidget keyName={keyName} value={str} onCommit={onCommit} />;
   }
-  // `banner` is the Obsidian-plugin convention (Pixel Banner / Obsidian
-  // Banners); `cover` is the Notion vocabulary. Both route through the same
-  // widget so vaults migrated from either surface get the file-picker UX
-  // without a rename.
   if (keyName === 'cover' || keyName === 'banner') {
     const str = typeof value === 'string' ? value : '';
     return <PageCoverWidget keyName={keyName} value={str} onCommit={onCommit} />;
   }
-  // Intercept complex values (nested object / array of objects) before any
-  // scalar widget can claim them — scalar widgets would either `String()`
-  // them to `'[object Object]'` (TextWidget) or filter object entries out
-  // (ListWidget). Plain objects route to the expandable ObjectWidget;
-  // homogeneous arrays of objects route to the indexed ArrayOfObjectsWidget;
-  // heterogeneous shapes fall back to the read-only ComplexValueWidget.
   if (isPlainObjectValue(value)) {
     return <ObjectWidget keyName={keyName} value={value} path={path} depth={path.length - 1} />;
   }
@@ -876,17 +654,6 @@ function Widget({ keyName, value, widgetType, path, onCommit, onSubmit }: Widget
   return <TextWidget keyName={keyName} value={str} onCommit={onCommit} onSubmit={onSubmit} />;
 }
 
-/**
- * Shared "inherited" badge — marks a template that resolves from an ancestor
- * folder rather than the current one (TemplatesCard, TemplateProperties).
- * Templates resolve leaf-to-root, so a root template surfaces in every
- * subfolder; this badge points the tooltip at the inherited template's
- * actual on-disk location.
- *
- * `source` is the project-root-relative folder path of the owning folder
- * (empty string = root). `target` is the file-suffix under `<source>/.ok/`
- * to reference in the tooltip (default `'frontmatter.yml'`).
- */
 export function InheritedBadge({
   source,
   target = 'frontmatter.yml',
@@ -908,12 +675,6 @@ export function InheritedBadge({
   );
 }
 
-/**
- * Schema-vocabulary single-select: replaces the free-text widget when the
- * doc's governing schemas give this field an `enum`. A current value outside
- * the vocabulary stays selectable (the linter flags it; the panel must not
- * eat it), and commits ride the standard row write path.
- */
 function EnumSelectWidget({
   keyName,
   value,
@@ -949,12 +710,6 @@ function EnumSelectWidget({
   );
 }
 
-/**
- * Schema-vocabulary multi-select for `array` fields with `items.enum`:
- * toggleable value chips committing the full array. Values already in the doc
- * but outside the vocabulary render as chips too, so toggling never silently
- * drops them.
- */
 function EnumMultiSelectWidget({
   keyName,
   value,

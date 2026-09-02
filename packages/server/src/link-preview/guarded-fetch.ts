@@ -1,56 +1,3 @@
-/**
- * The single outbound-fetch chokepoint for link previews. Every remote request
- * — the page fetch, the favicon fetch, and every redirect hop — passes through
- * here so the SSRF guard cannot be bypassed.
- *
- * The transport is node:http/node:https `request()`, NOT `fetch`, because the
- * pin must behave identically on both runtimes this server runs under (Bun in
- * dev/CI, Node in the packaged desktop and the npm CLI). Bun's `fetch` accepts
- * a `tls.serverName` extension for SNI-preserving IP pins, but Node's `fetch`
- * silently ignores it, which turns the pinned HTTPS handshake into
- * SNI=IP-literal and fails certificate validation on every external target.
- * `request()` honors the same pinning options on both runtimes (verified
- * empirically on Node 22 and Bun 1.3).
- *
- * The guard is TOCTOU-safe by construction. A hostname is resolved once via
- * the injectable resolver and EVERY resolved address is validated as public
- * unicast (ip-classifier). The request then keeps the original hostname URL —
- * so SNI, certificate validation (a name mismatch rejects the fetch), and the
- * automatic `Host` header all run against the real name — while the socket is
- * pinned to the validated address through the request's `lookup` option, which
- * answers with ONLY that address. The runtime performs no second DNS lookup,
- * so there is no window in which a name could re-resolve to an internal
- * address between the check and the connect. (Both runtimes may call `lookup`
- * in the all-addresses form; the pin answers whichever form was requested.)
- * IP-literal hosts skip resolution and are classified directly (encoded forms
- * canonicalized first, and the request URL is rebuilt on the canonical literal
- * so the runtime dials it as an IP rather than resolving it as a name).
- *
- * Redirects are never auto-followed — `request()` returns the 3xx — and we
- * re-run the full scheme+resolve+validate admission on each hop's target,
- * bounded to a small hop count. Response reads are bounded on both time
- * (AbortSignal) and DECOMPRESSED size, and admit only allowlisted content
- * types. HTML reads additionally stop at head-end (`</head>` close or `<body`
- * open, scanned incrementally as decompressed bytes arrive): everything the
- * metadata extractor reads lives in the head, so the buffered prefix is
- * returned as the successful body and the rest of the page is never consumed.
- * The byte cap therefore rejects a page only when it is reached BEFORE
- * head-end — content-heavy pages whose head arrives early preview fine, while
- * bounded work is preserved (never more than the cap buffered, no reads past
- * head-end). Decompression contract: the request advertises
- * `Accept-Encoding: identity`; if a server compresses anyway, the body is
- * streamed through node:zlib (gzip/deflate/br) and the byte cap is applied to
- * the DECOMPRESSED output — the decompression-bomb guard — while unknown
- * encodings are rejected outright. No credentials ever leave: no cookie,
- * authorization, or referer header, and userinfo in the URL is dropped when
- * the request URL is rebuilt from parts (it never reaches the transport, which
- * would otherwise turn it into a basic-auth header).
- *
- * Failures return a bounded reason code and never a partial body. Reason codes
- * are the ONLY thing logged — never the hostname, resolved IP, or fetched
- * content — so local logs can't become an internal-network-topology oracle.
- */
-
 import { lookup } from 'node:dns/promises';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest, type RequestOptions } from 'node:https';
@@ -65,20 +12,10 @@ const logger = getLogger('link-preview.guarded-fetch');
 
 const USER_AGENT = 'OpenKnowledge-LinkPreview/1.x';
 
-/**
- * Decompressed-body ceiling; a read aborts as oversized when it is reached
- * before head-end (for HTML) or before end-of-body (anything else).
- */
 export const DEFAULT_MAX_BYTES = 512 * 1024;
-/** Total wall-clock budget across all redirect hops and the body read. */
 export const DEFAULT_TIMEOUT_MS = 5000;
-/** Redirect hops followed before a chain is rejected. */
 export const DEFAULT_MAX_REDIRECTS = 3;
 
-/**
- * Bounded taxonomy of rejection causes. Deliberately coarse so it is safe to
- * log: no member encodes the target host, resolved address, or body.
- */
 export type GuardRejectReason =
   | 'bad-scheme'
   | 'private-ip'
@@ -92,16 +29,8 @@ export type GuardRejectReason =
 /** @lintignore Union member of the exported GuardedFetchResult; no direct importer. */
 export interface GuardedFetchSuccess {
   ok: true;
-  /**
-   * Decompressed response bytes, guaranteed within the byte cap. For an HTML
-   * response this is the prefix up to head-end when the page declares one —
-   * sufficient for the head-only metadata extractor, and the reason a page
-   * whose full body exceeds the cap can still succeed.
-   */
   body: Uint8Array;
-  /** Lowercased mime type with parameters stripped (e.g. `text/html`). */
   contentType: string;
-  /** The final hostname-bearing URL after redirects (domain derivation seam). */
   finalUrl: string;
 }
 
@@ -122,55 +51,21 @@ export interface ResolvedAddress {
   family: 4 | 6;
 }
 
-/**
- * DNS seam. Production wires the platform resolver (getaddrinfo, all records);
- * tests substitute a resolver that forces a hostname to a chosen address so the
- * validator can be exercised without real DNS.
- */
 export type HostResolver = (hostname: string) => Promise<ResolvedAddress[]>;
 
 export interface GuardedFetchOptions {
-  /**
-   * Response content-type admission predicate (lowercased, no parameters).
-   * Defaults to HTML only; the favicon path passes an image predicate.
-   */
   allowContentType?: (mimeType: string) => boolean;
-  /** Overrides {@link DEFAULT_MAX_BYTES}. */
   maxBytes?: number;
-  /** Overrides {@link DEFAULT_TIMEOUT_MS}. */
   timeoutMs?: number;
-  /** Overrides {@link DEFAULT_MAX_REDIRECTS}. */
   maxRedirects?: number;
-  /** DNS seam; defaults to the platform getaddrinfo resolver. */
   resolve?: HostResolver;
-  /**
-   * Resolved-address admission predicate; defaults to the public-unicast
-   * classifier. Overridden ONLY by integration tests, to admit the loopback
-   * address of a local rig so post-admission behavior (caps, redirects,
-   * content-type) can be exercised against a real socket. Production never
-   * passes it, and every redirect target still runs the real classifier, so
-   * the SSRF property is proven by the tests that omit this override.
-   */
   isAddressAllowed?: (ip: string) => boolean;
 }
 
 interface AdmittedTarget {
-  /**
-   * Sanitized URL the request is issued against: rebuilt from parts so
-   * userinfo and fragment never survive. Keeps the original hostname (SNI,
-   * cert validation, and the Host header derive from it) except for IP-literal
-   * hosts, where it carries the canonical literal the runtime dials directly.
-   */
   requestUrl: string;
-  /**
-   * The single validated address the socket must dial, enforced via the
-   * request's `lookup` option; absent for IP-literal hosts (the runtime
-   * connects to the literal without any DNS).
-   */
   pinnedAddress: ResolvedAddress | undefined;
-  /** Original hostname for explicit TLS SNI; absent for IP literals. */
   serverName: string | undefined;
-  /** Hostname-bearing URL used as the base for resolving redirect Locations. */
   logicalUrl: string;
 }
 
@@ -184,12 +79,6 @@ const defaultResolve: HostResolver = async (hostname) => {
   }));
 };
 
-/**
- * Rebuild the request URL against an explicit host, preserving scheme, port,
- * path, and query while dropping userinfo and fragment. Building from parts
- * (rather than string-editing the original) is what guarantees no embedded
- * credentials survive into the outbound request.
- */
 function buildSanitizedUrl(url: URL, host: string): string {
   const port = url.port ? `:${url.port}` : '';
   return `${url.protocol}//${host}${port}${url.pathname}${url.search}`;
@@ -253,12 +142,6 @@ async function admit(
   };
 }
 
-/**
- * Connection pin: answer every runtime lookup with ONLY the validated address.
- * Both runtimes may ask in the all-addresses form (happy-eyeballs), and both
- * reject a scalar answer to an `all` question, so the shape must follow the
- * question.
- */
 function pinnedLookup(pinned: ResolvedAddress): LookupFunction {
   return (_hostname, options, callback) => {
     if (options.all) {
@@ -278,7 +161,6 @@ function parseMimeType(header: string | undefined): string {
   return (header.split(';', 1)[0] ?? '').trim().toLowerCase();
 }
 
-/** A request/read that failed because the shared deadline fired reads as a timeout. */
 function classifyFetchError(err: unknown, signal: AbortSignal): GuardRejectReason {
   if (signal.aborted) return 'timeout';
   if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
@@ -287,14 +169,10 @@ function classifyFetchError(err: unknown, signal: AbortSignal): GuardRejectReaso
   return 'fetch-error';
 }
 
-/** Best-effort release of an unread response (redirect / rejected body). */
 function discardMessage(message: IncomingMessage): void {
   try {
     message.destroy();
-  } catch {
-    // The stream may already be closed by the remote/runtime; a cleanup
-    // destroy that throws has no bearing on the guard decision.
-  }
+  } catch {}
 }
 
 type IssueResult =
@@ -313,8 +191,6 @@ function issueRequest(target: AdmittedTarget, signal: AbortSignal): Promise<Issu
     const isHttps = target.requestUrl.startsWith('https:');
     const options: RequestOptions = {
       method: 'GET',
-      // One socket per request, never pooled: a keep-alive agent could reuse a
-      // connection across hops whose pinned addresses differ.
       agent: false,
       signal,
       headers: {
@@ -328,9 +204,6 @@ function issueRequest(target: AdmittedTarget, signal: AbortSignal): Promise<Issu
 
     try {
       const req = (isHttps ? httpsRequest : httpRequest)(target.requestUrl, options, (response) => {
-        // Swallow-guard: a mid-body socket error must reach the body reader's
-        // listener, not crash the process as an unhandled stream error in the
-        // window before that listener attaches.
         response.on('error', () => {});
         resolveOnce({ ok: true, response });
       });
@@ -342,13 +215,6 @@ function issueRequest(target: AdmittedTarget, signal: AbortSignal): Promise<Issu
   });
 }
 
-/**
- * Streaming decoder for a response that compressed despite
- * `Accept-Encoding: identity`. Returns `'identity'` for an uncompressed body,
- * a zlib transform for the encodings we can safely decode, or `null` for
- * anything else (rejected — an undecodable body can't be admitted and an
- * unknown coding can't be size-guarded).
- */
 function makeDecompressor(encoding: string): Transform | 'identity' | null {
   if (encoding === '' || encoding === 'identity') return 'identity';
   if (encoding === 'gzip' || encoding === 'x-gzip') return createGunzip();
@@ -357,33 +223,12 @@ function makeDecompressor(encoding: string): Transform | 'identity' | null {
   return null;
 }
 
-/**
- * Incremental head-end detector for a streaming HTML body. Feed decompressed
- * chunks in order; each call returns the offset into the CURRENT chunk just
- * past the head-end boundary (`</head>`'s closing `>`, or the terminator that
- * ends a `<body` open tag's name, so an attributed `<body class="a">` reports
- * the offset just past that terminator, mid-tag), or -1 while the head has not
- * ended. Chunks are accumulated and re-scanned by `findHeadEndOffset` (the same
- * context-aware walk the metadata extractor uses), so markup-shaped bytes inside
- * a head-level script, comment, quoted attribute value, or `<title>` are skipped
- * rather than mistaken for the end, and a boundary split across chunks is
- * detected once its bytes arrive. The accumulated view is latin1 (1:1 with
- * bytes; the markup tokens are ASCII), so the offset it yields is a true byte
- * offset.
- *
- * Re-scanning the whole accumulation per chunk is O(n^2) in the accumulated
- * size; the fetch layer's byte cap (`DEFAULT_MAX_BYTES`) bounds that
- * accumulation, so raising the cap raises this scan's worst-case cost
- * quadratically.
- */
 export function createHeadEndScanner(): (chunk: Uint8Array) => number {
   let html = '';
   return (chunk) => {
     const consumed = html.length;
     html += Buffer.from(chunk).toString('latin1');
     const end = findHeadEndOffset(html);
-    // The previous accumulation held no boundary, so a newly found one always
-    // lands within this chunk: its offset is in (consumed, html.length].
     return end === -1 ? -1 : end - consumed;
   };
 }
@@ -400,8 +245,6 @@ function readCappedBody(
     discardMessage(message);
     return Promise.resolve({ ok: false, reason: 'fetch-error' });
   }
-  // The cap below counts bytes AFTER this pipe, so it bounds the decompressed
-  // size — a tiny compressed bomb still aborts at the cap.
   const source = decompressor === 'identity' ? message : message.pipe(decompressor);
 
   return new Promise((settle) => {
@@ -426,7 +269,6 @@ function readCappedBody(
     const onAbort = () => resolveOnce({ ok: false, reason: 'timeout' });
     signal.addEventListener('abort', onAbort, { once: true });
 
-    // `pipe` does not forward source errors; surface them on the terminal read.
     if (source !== message) {
       message.on('error', (err) =>
         resolveOnce({ ok: false, reason: classifyFetchError(err, signal) }),
@@ -436,12 +278,6 @@ function readCappedBody(
       if (findHeadEnd) {
         const endInChunk = findHeadEnd(chunk);
         if (endInChunk !== -1) {
-          // Head-end seen: the head prefix is a complete successful body.
-          // Realize the head-first contract (only a cap reached BEFORE head-end
-          // is oversized) by cap-checking just the bytes up to the marker
-          // (`received + endInChunk`), then truncating there and stopping all
-          // further reads via teardown. The whole-chunk cap check below is
-          // bypassed, so bytes past head-end never count toward the cap.
           if (received + endInChunk > maxBytes) {
             resolveOnce({ ok: false, reason: 'oversized' });
             return;
@@ -470,14 +306,6 @@ function rejectWith(reason: GuardRejectReason): GuardedFetchFailure {
   return { ok: false, reason };
 }
 
-/**
- * Fetch a URL under the SSRF guard. On success returns the bounded response
- * body plus the derived content-type and final URL; on any violation, a bounded
- * reason code. For an HTML response the body is the head prefix (everything up
- * to `</head>`/`<body>`) — all the metadata extractor reads — while any other
- * admitted content (the favicon path's images) is returned whole. A failure
- * never yields a partial body.
- */
 export async function guardedFetch(
   rawUrl: string,
   options: GuardedFetchOptions = {},
@@ -523,9 +351,6 @@ export async function guardedFetch(
       return rejectWith('non-html');
     }
 
-    // Head-first streaming applies only to HTML pages; any other admitted
-    // content (the favicon path's images) may legitimately contain
-    // marker-shaped bytes and must be read in full.
     const bodyResult = await readCappedBody(
       response,
       maxBytes,

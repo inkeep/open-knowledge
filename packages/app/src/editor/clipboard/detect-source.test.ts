@@ -1,11 +1,3 @@
-/**
- * Tests for the clipboard source-detection dispatcher signal.
- *
- * We build minimal DataTransfer-shaped fakes since jsdom's DataTransfer
- * has limitations; the detection function only reads `.types` and
- * `.getData(key)`, so a plain object suffices.
- */
-
 import { describe, expect, test } from 'vitest';
 import { detectSource } from './detect-source.ts';
 

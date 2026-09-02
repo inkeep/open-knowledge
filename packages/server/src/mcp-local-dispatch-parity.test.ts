@@ -1,7 +1,5 @@
 import { describe as _bunDescribe, afterAll, beforeAll, expect, test } from 'vitest';
 
-// Same skip-on-CI gate as boot.test.ts (oven-sh/bun#11892): boots a real
-// server; local runs + the full check gate cover it.
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -16,15 +14,6 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { type BootedServer, bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';
-
-/**
- * End-to-end transport parity for the collapsed MCP self-calls: the SAME
- * project server answers two MCP sessions — the boot-mounted `/mcp` (wired
- * with `localApi`, so collapsed tools dispatch in-process) and a side
- * handler created WITHOUT `localApi` (every tool call round-trips HTTP).
- * For each covered tool the two sessions' final MCP responses must match
- * after masking genuinely per-call fields (timings).
- */
 
 const TEST_CONFIG = ConfigSchema.parse({});
 
@@ -54,7 +43,6 @@ async function connectClient(url: string, name: string): Promise<Client> {
   return client;
 }
 
-/** Mask per-call volatile fields so the two transports compare stably. */
 function maskVolatile(result: ToolResult): unknown {
   return JSON.parse(
     JSON.stringify({
@@ -97,8 +85,6 @@ beforeAll(async () => {
   });
   await booted.ready;
 
-  // Side MCP endpoint against the SAME server, minus localApi — the pure-HTTP
-  // control arm of the comparison.
   httpOnlyMcp = createMcpHttpHandler({
     contentDir: booted.contentDir,
     projectDir: booted.contentDir,
@@ -117,7 +103,6 @@ beforeAll(async () => {
   localClient = await connectClient(`http://127.0.0.1:${booted.port}/mcp`, 'parity-suite');
   httpClient = await connectClient(`http://127.0.0.1:${sidePort}/mcp`, 'parity-suite');
 
-  // Wait out the search-index warmup so the read comparisons are stable.
   const deadline = Date.now() + 15_000;
   for (;;) {
     const res = await fetch(`http://127.0.0.1:${booted.port}/api/search`, {
@@ -185,8 +170,6 @@ describe('MCP local-dispatch transport parity (same server, two sessions)', () =
 
   test('checkpoint — snapshot lands through both transports', async () => {
     const [viaLocal, viaHttp] = await callBoth('checkpoint', {});
-    // Each call mints its own checkpoint commit; the SHA is the one
-    // legitimately different byte-run between the transports.
     const normalize = (value: unknown): unknown =>
       JSON.parse(JSON.stringify(value).replace(/[0-9a-f]{40}/g, '<sha>'));
     expect(normalize(viaLocal)).toEqual(normalize(viaHttp));
@@ -202,8 +185,6 @@ describe('MCP local-dispatch transport parity (same server, two sessions)', () =
       name: 'delete',
       arguments: { document: 'del-http' },
     })) as ToolResult;
-    // Different docs (each session deletes its own), so normalize the names
-    // before comparing the full response.
     const normalize = (result: ToolResult, doc: string): unknown =>
       JSON.parse(JSON.stringify(maskVolatile(result)).replaceAll(doc, '<doc>'));
     expect(normalize(viaLocal, 'del-local')).toEqual(normalize(viaHttp, 'del-http'));
@@ -259,16 +240,6 @@ describe('MCP local-dispatch transport parity (same server, two sessions)', () =
     expect((viaLocal as { isError: boolean }).isError).toBe(true);
   });
 
-  // Deliberately no success-path arms for `/api/skill/import` and
-  // `/api/skill/install`: their responses are not deterministic even between
-  // two consecutive plain-HTTP calls — the reported bundle `path` and the
-  // "now lives at" location ordering depend on editor-host detection against
-  // the developer's real home dir and on background projection fan-out
-  // timing relative to response assembly. A byte-compare here measures that
-  // race, not the transport. Their marshaling (validation, envelopes, error
-  // mapping) is pinned by the CI-run handler-level parity suite
-  // (`http/local-api-dispatch.test.ts`); the deterministic error path is
-  // compared below.
   test('install — unknown skill error surfaces identically', async () => {
     const [viaLocal, viaHttp] = await callBoth('install', {
       name: 'no-such-skill-here',

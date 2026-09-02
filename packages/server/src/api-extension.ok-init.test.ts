@@ -38,20 +38,9 @@ function initRepo(cwd: string): void {
   run(cwd, 'git config commit.gpgsign false');
 }
 
-/**
- * Boot a Hocuspocus-based api-extension test rig. The rig's projectDir is
- * what `createApiExtension({projectDir})` receives; the ok-init endpoint
- * doesn't read from it (the body's projectPath is the operative target),
- * so a minimal git repo there satisfies the boot.
- */
 async function bootRig(
   options: { localOpConcurrencyGuard?: TestConcurrencyGuard } = {},
 ): Promise<TestRig> {
-  // Root tmpRoot under the real home dir so projectPaths constructed beneath
-  // it pass the handler's `isSafeLocalPath` home-dir containment gate. (A
-  // tmpdir() root resolves outside $HOME on macOS — `/private/var/...` — and
-  // would be rejected with `dir-outside-home`.) realpath-collapse so target
-  // paths match what the handler returns (canonical realpath).
   const tmpRoot = realpathSync(mkdtempSync(join(homedir(), '.ok-init-api-test-')));
   const projectDir = join(tmpRoot, 'host-project');
   const contentDir = join(projectDir, 'content');
@@ -156,15 +145,12 @@ describe('POST /api/local-op/ok-init', () => {
     run(target, 'git add -A');
     run(target, 'git commit -q -m initial');
 
-    // First call scaffolds.
     const first = await postOkInit(rig.port, { projectPath: target });
     expect(first.json.ok).toBe(true);
 
-    // Customize config.yml.
     const configPath = join(target, '.ok/config.yml');
     writeFileSync(configPath, 'custom: true\n');
 
-    // Second call should NOT rewrite.
     const second = await postOkInit(rig.port, { projectPath: target });
     expect(second.json.ok).toBe(true);
     expect(readFileSync(configPath, 'utf8')).toBe('custom: true\n');
@@ -179,7 +165,6 @@ describe('POST /api/local-op/ok-init', () => {
     expect(res.status).toBe(200);
     expect(res.json.ok).toBe(false);
     expect(res.json.reason).toBe('not-a-git-worktree');
-    // No .ok/ written.
     expect(existsSync(join(target, '.ok'))).toBe(false);
   });
 
@@ -194,10 +179,6 @@ describe('POST /api/local-op/ok-init', () => {
 
   test('projectPath outside home returns 400 (urn:ok:error:dir-outside-home) without scaffolding', async () => {
     rig = await bootRig();
-    // A real, existing git worktree rooted OUTSIDE the user home dir
-    // (tmpdir resolves to /private/var/... on macOS — outside $HOME). The
-    // path must exist so `realpathSync` succeeds and execution reaches the
-    // containment gate rather than short-circuiting on not-a-git-worktree.
     const outsideRoot = realpathSync(mkdtempSync(join(tmpdir(), 'ok-init-outside-home-')));
     try {
       mkdirSync(join(outsideRoot, 'repo'));
@@ -210,7 +191,6 @@ describe('POST /api/local-op/ok-init', () => {
       const res = await postOkInit(rig.port, { projectPath: target });
       expect(res.status).toBe(400);
       expect(res.json.type).toBe('urn:ok:error:dir-outside-home');
-      // The containment gate fires before `initContent` — no scaffold written.
       expect(existsSync(join(target, '.ok'))).toBe(false);
     } finally {
       rmSync(outsideRoot, { recursive: true, force: true });
@@ -281,7 +261,5 @@ describe('POST /api/local-op/ok-init', () => {
     const res = await postOkInit(rig.port, { projectPath: wt });
     expect(res.json.ok).toBe(true);
     expect(existsSync(join(wt, '.ok/config.yml'))).toBe(true);
-    // The linked worktree's .git is a pointer file, not a directory — our
-    // gate accepts both 'directory' and 'linked' kinds.
   });
 });

@@ -14,10 +14,6 @@ import {
 const execFileAsync = promisify(execFile);
 
 let tmpRoot: string;
-// macOS' /tmp resolves to /private/tmp, and `mkdtempSync(tmpdir())` returns
-// the unresolved path. realpath-resolving up front means fixtures live in the
-// same canonical-path space resolveProjectRoot's return values use, so direct
-// equality assertions hold.
 let tmpReal: string;
 let fakeHome: string;
 
@@ -100,9 +96,6 @@ describe('resolveProjectRoot — ancestor walk wins', () => {
     expect(result.defaultContentDir).toBe('.');
   });
 
-  // This pins the WALK only: home is not a project ancestor. It is not a
-  // statement that home is a usable project root — `runInit` refuses that
-  // root outright via `isHomeDir` (see the HomeProjectRootError suite).
   test('walk excludes home itself — picking home does not match home/.ok/', () => {
     writeOkConfig(fakeHome);
 
@@ -117,9 +110,6 @@ describe('resolveProjectRoot — ancestor walk wins', () => {
   });
 
   test('legacy .ok/ below git root wins over git-root promotion', () => {
-    // Fixture: <fakeHome>/repo/.git/, <fakeHome>/repo/docs/.ok/. Picked
-    // path is <fakeHome>/repo/docs/api. Walk hits .ok/ at <fakeHome>/repo/docs
-    // BEFORE git-root resolution, so the ancestor branch wins.
     const repo = resolve(fakeHome, 'repo');
     const docs = resolve(repo, 'docs');
     const api = resolve(docs, 'api');
@@ -150,9 +140,6 @@ describe('resolveProjectRoot — git-root promotion', () => {
     });
 
     expect(result.projectRoot).toBe(repo);
-    // After git-root promotion, content scope aligns with the opened folder
-    // (the git root). Narrowing back to the picked sub-folder is opt-in via
-    // post-init `content.dir`, not the silent default.
     expect(result.defaultContentDir).toBe('.');
     expect(result.gitRootPromoted).toBe(true);
     expect(result.ancestorPromoted).toBe(false);
@@ -236,9 +223,6 @@ describe('resolveProjectRoot — fallback (no ancestor, no git)', () => {
   });
 
   test('cwd that does not yet exist falls back without throwing', () => {
-    // realpathSync throws ENOENT — the helper swallows it and operates
-    // against the resolved path. Caller's existsSync walk yields the
-    // no-promotion branch.
     const ghost = resolve(fakeHome, 'never-created');
 
     const result = resolveProjectRoot(ghost, {
@@ -255,8 +239,6 @@ describe('resolveProjectRoot — fallback (no ancestor, no git)', () => {
 
 describe('resolveProjectRoot — depth bound', () => {
   test('walk stops at ANCESTOR_WALK_DEPTH_LIMIT (default 30) without finding ancestor', () => {
-    // 31 levels under fakeHome; place .ok/ at level-1 so the cap fires
-    // before the walk reaches it.
     const segments = Array.from({ length: 31 }, (_, i) => `l${i}`);
     const leaf = resolve(fakeHome, ...segments);
     mkdirSync(leaf, { recursive: true });
@@ -267,8 +249,6 @@ describe('resolveProjectRoot — depth bound', () => {
       gitTopLevel: stubGitTopLevel({}),
     });
 
-    // Cap fires; walk never reaches level-0; so ancestor never matches.
-    // Falls through to no-promotion branch.
     expect(result.ancestorPromoted).toBe(false);
   });
 });
@@ -280,9 +260,6 @@ describe('resolveProjectRoot — symlink canonicalization', () => {
     mkdirSync(realSub, { recursive: true });
     writeOkConfig(project);
 
-    // Test driver passes the realpath path; on the actual filesystem this
-    // is an identity transformation. Establishes that the function uses the
-    // canonical path consistently.
     const result = resolveProjectRoot(realpathSync(realSub), {
       homeDir: fakeHome,
       gitTopLevel: stubGitTopLevel({}),
@@ -300,7 +277,6 @@ describe('resolveProjectRoot — integration with real git', () => {
     mkdirSync(docs, { recursive: true });
     await execFileAsync('git', ['init', '--initial-branch=main', repo]);
 
-    // No gitTopLevel stub — uses the real default that shells out.
     const opts: ResolveProjectRootOptions = { homeDir: fakeHome };
     const result = resolveProjectRoot(docs, opts);
 
@@ -313,7 +289,6 @@ describe('resolveProjectRoot — integration with real git', () => {
     const folder = resolve(fakeHome, 'plain');
     mkdirSync(folder, { recursive: true });
 
-    // No git init; default gitTopLevel returns null.
     const result = resolveProjectRoot(folder, { homeDir: fakeHome });
 
     expect(result.projectRoot).toBe(folder);
@@ -332,8 +307,6 @@ describe('isHomeDir', () => {
   });
 
   test('a symlinked spelling of home still compares equal', () => {
-    // The reason this is a canonicalizing compare and not `===`: the two
-    // operands reach `runInit` by different routes (`cwd` vs `os.homedir()`).
     const linked = resolve(tmpReal, 'home-link');
     symlinkSync(fakeHome, linked);
 

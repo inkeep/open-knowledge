@@ -1,24 +1,3 @@
-/**
- * Per-handler narrow-integration smoke test for `handleMetricsAgentEffects`.
- *
- * Asserts the canonical RFC 9457 wire shape for
- * `GET /api/metrics/agent-effects`. This handler shares the same
- * auth-before-method-dispatch ordering as `handleMetricsAgentPresence`
- * (loopback gate → host-allowlist gate → method check) so a bad Host never
- * leaks "verb the endpoint expects" via 405.
- *
- * Coverage:
- *   - happy path: 200 + `application/json` + body parses against
- *     `MetricsAgentEffectsSuccessSchema`, no `ok` discriminator.
- *   - populated path: an agent write is captured into the doc's ring buffer
- *     and surfaces as a summarized per-doc block (character counts only —
- *     never the raw delta text).
- *   - DNS-rebinding Host → 403 `urn:ok:error:host-not-allowed` (must
- *     emit BEFORE the method check).
- *   - method-not-allowed on POST → 405 `urn:ok:error:method-not-allowed`
- *     with `Allow: GET`.
- */
-
 import {
   MetricsAgentEffectsSuccessSchema,
   ProblemDetailsSchema,
@@ -70,7 +49,6 @@ describe('metrics-agent-effects envelope (RFC 9457)', () => {
     expect(block?.entries.length).toBeGreaterThan(0);
     const entry = block?.entries[0];
     expect(entry?.insertedChars).toBeGreaterThan(0);
-    // Summaries only: the response must never carry the written text.
     expect(JSON.stringify(parsed.data)).not.toContain('Agent effects probe');
   });
 
@@ -80,7 +58,6 @@ describe('metrics-agent-effects envelope (RFC 9457)', () => {
       'evil.example.com',
       { method: 'POST' },
     );
-    // Auth-before-method-dispatch ordering: bad Host → 403, NOT 405.
     expect(res.status).toBe(403);
     expect(res.headers.get('content-type')).toBe('application/problem+json');
 

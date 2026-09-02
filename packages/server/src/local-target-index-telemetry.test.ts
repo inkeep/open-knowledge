@@ -34,7 +34,6 @@ afterEach(async () => {
   __resetIndexTelemetryForTests();
 });
 
-/** The `ok.index.update` spans finished since the last `exporter.reset()`. */
 function updateSpans(): ReadonlyArray<{ attributes: Record<string, unknown> }> {
   return exporter
     .getFinishedSpans()
@@ -74,14 +73,10 @@ describe('local-target index update telemetry is proportional to real work', () 
       fileTargets: ['assets/a.pdf', 'assets/b.pdf', 'assets/c.pdf'],
     });
 
-    // Steady state: disk agrees with the index, so the repair sweep has nothing
-    // to repair. This is what an idle project does every few seconds, forever.
     exporter.reset();
     expect(await rig.index.reconcileDependentFileTargetsFromDisk()).toBe(0);
     expect(await rig.index.reconcileDependentFileTargetsFromDisk()).toBe(0);
 
-    // One span per referenced target per sweep is what recycles the span ring
-    // before a bug report's own evidence can reach it.
     expect(updateSpans()).toEqual([]);
   });
 
@@ -124,8 +119,6 @@ describe('local-target index update telemetry is proportional to real work', () 
     exporter.reset();
     expect(await rig.index.reconcileDependentFileTargetsFromDisk()).toBe(2);
 
-    // One span per repaired target, not one per sweep: batching the loop into a
-    // single span would still satisfy the zero-repair and one-repair cases above.
     expect(updateSpans()).toHaveLength(2);
   });
 
@@ -155,7 +148,6 @@ describe('local-target index update telemetry is proportional to real work', () 
     expect(index.reconcileFileTargets(['assets/report.pdf'])).toBe(1);
     expect(updateSpans()).toHaveLength(1);
 
-    // The watcher re-publishes the same inventory: no identity moved.
     exporter.reset();
     expect(index.reconcileFileTargets(['assets/report.pdf'])).toBe(0);
     expect(updateSpans()).toEqual([]);

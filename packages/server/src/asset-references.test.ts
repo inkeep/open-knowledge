@@ -84,9 +84,6 @@ describe('asset reference extraction', () => {
     ).toEqual(['./real.png', './real-html.jpeg']);
   });
 
-  // Exercised through the signature rather than a bare predicate: admission is
-  // plane-aware now, and a raw-bytes predicate sitting beside the plane-aware
-  // one is what invites a caller to reintroduce the collapse.
   const admits = (markdown: string): boolean => assetReferenceSignature(markdown) !== '';
 
   test('classifies only local supported asset hrefs as sidebar asset references', () => {
@@ -129,7 +126,6 @@ describe('asset reference extraction', () => {
         }),
       ).toBe(realpathSync(resolve(dir, 'vault/Board.canvas')));
 
-      // Wiki-link style (bare filename, no ./)
       expect(
         resolveReferencedAssetPath({
           contentDir: dir,
@@ -199,11 +195,6 @@ describe('asset reference extraction', () => {
     ).toBe(true);
   });
 
-  // The signature gates whether the collector re-runs, so it has to agree with
-  // the collector. Both of these edits change which file is referenced while
-  // leaving the href bytes recognizable only to a plane-aware, decoded reading —
-  // a signature that collapsed either would report "unchanged" and serve a stale
-  // cache.
   test('signature notices a plane switch on identical href bytes', () => {
     expect(assetReferencesChanged('![[100%20done.png]]', '[x](100%20done.png)')).toBe(true);
   });
@@ -282,9 +273,6 @@ describe('asset reference extraction', () => {
     withFixture((dir) => {
       mkdirSync(join(dir, 'docs'));
       writeFileSync(join(dir, 'docs', 'My%20Photo.png'), 'png');
-      // RFC 3986 §2.4: escaped octets decode exactly once, so `%2520`
-      // addresses the literal-`%20` filename above. The space-named
-      // sibling exists to catch a double decode, which would land here.
       writeFileSync(join(dir, 'docs', 'My Photo.png'), 'png');
 
       expect(
@@ -300,8 +288,6 @@ describe('asset reference extraction', () => {
   test('a wiki target names the literal filename, not its decoded neighbour', () =>
     withFixture((dir) => {
       mkdirSync(join(dir, 'docs'));
-      // Both files exist, so a wrong plane resolves to a real path rather than
-      // to null — a test that only asserted "not null" would pass either way.
       writeFileSync(join(dir, 'docs', '100%20done.png'), 'png');
       writeFileSync(join(dir, 'docs', '100 done.png'), 'png');
 
@@ -321,7 +307,6 @@ describe('asset reference extraction', () => {
           literal: true,
         }),
       ).not.toBe(realpathSync(resolve(dir, 'docs', '100 done.png')));
-      // The markdown plane, given the identical bytes, reaches the other file.
       expect(
         resolveReferencedAssetPath({
           contentDir: dir,
@@ -339,8 +324,6 @@ describe('asset reference extraction', () => {
       writeFileSync(join(dir, 'docs', '100 done.png'), 'png');
       writeFileSync(
         join(dir, 'docs', 'guide.md'),
-        // Same bytes, two syntaxes: the wiki embed must land on the literal
-        // name and the markdown link on the decoded one.
         '![[100%20done.png]]\n\n![md](./100%20done.png)\n',
       );
 
@@ -362,10 +345,6 @@ describe('asset reference extraction', () => {
       ]);
     }));
 
-  // The case above authors the two planes with different bytes (`./` prefix), so
-  // it never reaches the collector's dedup. Byte-identical hrefs do, and they
-  // still name two different files — keying dedup on the bytes alone would drop
-  // one of them.
   test('byte-identical hrefs on both planes are both collected', () =>
     withFixture((dir) => {
       mkdirSync(join(dir, 'docs'));
@@ -468,11 +447,6 @@ describe('asset reference extraction', () => {
       });
     }));
 
-  // Links to existing, referenced non-markdown files (html viewer,
-  // gpx track, xml/7z data) rendered as redlinks because collectReferencedAssets
-  // gates on ASSET_EXTENSIONS, which omitted these even though the frontend
-  // classifies any non-md/mdx href as an asset link. An existing + referenced
-  // file of these types must be collected so its link resolves.
   test('collects referenced existing html / gpx / xml / 7z assets (PRD-6948)', () =>
     withFixture((dir) => {
       mkdirSync(join(dir, 'fishing-log'), { recursive: true });

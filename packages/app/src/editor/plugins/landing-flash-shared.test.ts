@@ -8,10 +8,6 @@ describe('clampFlashRange', () => {
   });
 
   test('refuses the flash at an unverified grade', () => {
-    // A clamped landing could not place the target; an ordinal landing is an
-    // unverified guess that can sit on the wrong block entirely (a count
-    // mismatch shifts every ordinal below the collapse). Flashing either would
-    // assert a precision the landing does not have.
     expect(clampFlashRange(100, 10, 20, 'clamped')).toBeNull();
     expect(clampFlashRange(100, 10, 20, 'ordinal')).toBeNull();
   });
@@ -30,7 +26,6 @@ describe('clampFlashRange', () => {
   });
 
   test('refuses a range wholly past the document end', () => {
-    // start clamps to the end, collapsing the range.
     expect(clampFlashRange(15, 40, 60, 'exact')).toBeNull();
   });
 });

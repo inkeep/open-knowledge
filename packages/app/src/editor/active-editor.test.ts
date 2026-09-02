@@ -6,7 +6,6 @@ const fakeEditor = (id: string): Editor => ({ __id: id }) as unknown as Editor;
 
 describe('active-editor registry', () => {
   afterEach(() => {
-    // Clear known docNames any test may have touched so cross-test bleed can't hide a bug.
     for (const doc of ['doc-a', 'doc-b', 'doc-concurrent']) {
       const current = getEditorForDoc(doc);
       if (current) unregisterEditor(doc, current);
@@ -27,15 +26,11 @@ describe('active-editor registry', () => {
   });
 
   test('unregister is a no-op when the ref does NOT match (StrictMode / HMR guard)', () => {
-    // Simulates the StrictMode double-invoke ordering:
-    //   mount-A → register(A)
-    //   mount-B → register(B)   (last-writer overwrites)
-    //   cleanup-A → unregister(A)   ← MUST NOT clobber B
     const a = fakeEditor('A');
     const b = fakeEditor('B');
     registerEditor('doc-concurrent', a);
     registerEditor('doc-concurrent', b);
-    unregisterEditor('doc-concurrent', a); // stale cleanup from mount-A
+    unregisterEditor('doc-concurrent', a);
 
     expect(getEditorForDoc('doc-concurrent')).toBe(b);
   });

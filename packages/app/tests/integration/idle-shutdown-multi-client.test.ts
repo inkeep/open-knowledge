@@ -1,11 +1,3 @@
-/**
- * Server lifetime follows connected WebSocket clients, not the process that
- * launched the server. One remaining sibling client keeps the lock
- * alive past the idle window; after the last client disconnects, idle-shutdown
- * tears the server down and marks the lock draining (the unlink itself is
- * deferred to process exit).
- */
-
 import {
   existsSync,
   mkdirSync,
@@ -41,7 +33,6 @@ let lockPath = '';
 beforeAll(async () => {
   contentDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-idle-multi-')));
   await ensureProjectGit(contentDir);
-  // Pre-listen check needs <contentDir>/.ok/config.yml present.
   const okDir = join(contentDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });
   writeFileSync(join(okDir, 'config.yml'), '', 'utf-8');
@@ -60,9 +51,6 @@ beforeAll(async () => {
 }, HARNESS_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
-  // Idempotent — idle-shutdown now runs the full destroy() chain, so the
-  // httpServer + telemetry will already be torn down by the time we get here.
-  // The call below is a safety net for failure paths that exit before idle.
   await booted?.destroy();
   rmSync(contentDir, { recursive: true, force: true });
 });
@@ -74,7 +62,6 @@ test('closing spawning editor leaves sibling editor connected; idle-shutdown fir
   }
   const port = server.port;
 
-  // Both clients connect before the initial scheduleShutdown timer fires.
   const docA = `idle-multi-a-${crypto.randomUUID()}`;
   const docB = `idle-multi-b-${crypto.randomUUID()}`;
   const yDocA = new Y.Doc();
@@ -97,23 +84,14 @@ test('closing spawning editor leaves sibling editor connected; idle-shutdown fir
 
   expect(existsSync(lockPath)).toBe(true);
 
-  // Editor A disconnects (the editor that originally spawned `ok start`).
-  // Let the WebSocket close event reach the server-side idle counter before
-  // checking that the sibling keeps the lock alive.
   providerA.destroy();
   yDocA.destroy();
   await wait(WS_CLOSE_SETTLE_MS);
 
-  // Server stays alive past the idle threshold because B is still connected.
   await wait(IDLE_SHUTDOWN_MS + 200);
   expect(existsSync(lockPath)).toBe(true);
   expect(providerB.isSynced).toBe(true);
 
-  // Now editor B disconnects — counter goes to zero, idle-shutdown schedules,
-  // and the server tears down within the configured window. Teardown no
-  // longer unlinks the lock (that is deferred to actual process exit, which a
-  // same-process test can't observe); the observable teardown signal is the
-  // `draining` flag flipping on.
   providerB.destroy();
   yDocB.destroy();
 
@@ -131,15 +109,6 @@ test('closing spawning editor leaves sibling editor connected; idle-shutdown fir
   }
   expect(readDraining()).toBe(true);
 
-  // Regression guard: idle-shutdown must run the FULL destroy chain, not just
-  // destroyHocuspocus(). Pre-fix, the lock file release above passed (Hocuspocus
-  // releases it directly) while httpServer.listening stayed true, leaving a
-  // zombie listener that survived for the lifetime of the parent process.
-  // `boot.ts`'s destroy() runs httpServer.close() before destroyHocuspocus(),
-  // so by the time the lock is draining the listener teardown is in the same
-  // chain — poll it to completion. boot.test.ts has a faster spot-test for
-  // this but is skipped on CI (oven-sh/bun#11892); this assertion is the
-  // CI-side guard.
   const listenDeadline = Date.now() + 5_000;
   while (server.httpServer.listening && Date.now() < listenDeadline) {
     await wait(25);

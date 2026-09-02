@@ -13,7 +13,6 @@ import {
 
 const HEX = /^#[0-9a-f]{6}$/;
 
-/** The upstream Tinted Theming layout, verbatim. */
 const CURRENT_LAYOUT = `system: "base16"
 name: "Ayu Dark"
 author: "Khue Nguyen <Z5483Y@gmail.com>"
@@ -37,7 +36,6 @@ palette:
   base0F: "#e6b673"
 `;
 
-/** The original chriskempson layout: top-level slots, bare hex, no variant. */
 const LEGACY_LAYOUT = `scheme: "Tomorrow Night"
 author: "Chris Kempson"
 base00: "1d1f21"
@@ -98,7 +96,6 @@ describe('parseBase16Scheme', () => {
     if (!result.ok) return;
     expect(result.scheme.palette.base00).toBe('#1d1f21');
     expect(result.scheme.palette.base0A).toBe('#f0c674');
-    // No `variant` key — derived from the ramp, background darker than foreground.
     expect(result.scheme.variant).toBe('dark');
   });
 
@@ -121,11 +118,6 @@ describe('parseBase16Scheme', () => {
   });
 
   test('reads unquoted scalars as written, including exponent-shaped hex', () => {
-    // A bare legacy hex is ambiguous once YAML types it: `1e5` is valid
-    // three-digit hex but reads as the number 100000 under the core schema,
-    // and `001122` loses its leading zeros. Reconstructing digits from the
-    // parsed number silently yields the wrong color, so the parser keeps
-    // scalars as their source text instead.
     const result = parseBase16Scheme(
       [
         'base00: 112233',
@@ -141,7 +133,6 @@ describe('parseBase16Scheme', () => {
     expect(result.scheme.palette.base00).toBe('#112233');
     expect(result.scheme.palette.base01).toBe('#aabbcc');
     expect(result.scheme.palette.base02).toBe('#001122');
-    // `1e5` is three-digit hex, not 100000.
     expect(result.scheme.palette.base03).toBe('#11ee55');
     expect(result.scheme.palette.base04).toBe('#00ee00');
   });
@@ -186,14 +177,10 @@ describe('parseBase16Scheme', () => {
     const result = parseBase16Scheme('{[unclosed');
     expect(result).toMatchObject({ error: { kind: 'unparseable' } });
     if (result.ok || result.error.kind !== 'unparseable') return;
-    // A pasted scheme is ~20 lines; without a position the user has nothing to
-    // go on but "it didn't parse".
     expect(result.error.line).toBe(1);
   });
 
   test('an unparseable input with no reported position still classifies', () => {
-    // `line` is optional — the parser may reject without a position, and the
-    // caller must not depend on it being present.
     const result = parseBase16Scheme('a: b: c: d');
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -219,7 +206,6 @@ describe('base16ToTokens', () => {
     expect(t.card).toBe(p.base01);
     expect(t.sidebar).toBe(p.base01);
     expect(t.border).toBe(p.base02);
-    // base02 IS the selection slot — no alpha-derived approximation.
     expect(t['selection-soft']).toBe(p.base02);
     expect(t['muted-foreground']).toBe(p.base04);
     expect(t.primary).toBe(p.base0D);
@@ -231,9 +217,6 @@ describe('base16ToTokens', () => {
 
   test('covers the surfaces that a palette without slot roles could not reach', () => {
     const t = base16ToTokens(scheme);
-    // Fifteen callout accents, the lint pair, and sixteen ANSI slots. These
-    // are only derivable because the accent slots carry fixed roles; drop one
-    // and that surface falls back to a hardcoded literal no theme can override.
     for (const name of [
       'callout-note-color',
       'callout-warning-color',
@@ -273,8 +256,6 @@ describe('base16ToTokens', () => {
 
   test('spreads the callout accents across distinct slots', () => {
     const t = base16ToTokens(scheme);
-    // Adjacent callout types must stay visually distinguishable; collapsing
-    // them onto one accent is the failure this guards.
     const accents = new Set([
       t['callout-note-color'],
       t['callout-abstract-color'],
@@ -297,8 +278,6 @@ describe('base16ToTokens', () => {
 
 describe('base16ToYaml', () => {
   test('round-trips through the parser', () => {
-    // The point of exporting is portability, which only holds if the output is
-    // a scheme every base16 tool — including this one — can read back.
     const original = parseBase16Scheme(CURRENT_LAYOUT);
     expect(original.ok).toBe(true);
     if (!original.ok) return;
@@ -392,7 +371,6 @@ describe('color helpers', () => {
     expect(mixHex('#000000', '#ffffff', 0)).toBe('#000000');
     expect(mixHex('#000000', '#ffffff', 1)).toBe('#ffffff');
     expect(mixHex('#000000', '#ffffff', 0.5)).toMatch(HEX);
-    // Out-of-range ratios clamp rather than producing an invalid channel.
     expect(mixHex('#000000', '#ffffff', 5)).toBe('#ffffff');
     expect(mixHex('#000000', '#ffffff', -5)).toBe('#000000');
   });

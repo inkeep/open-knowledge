@@ -1,7 +1,3 @@
-/**
- * CLI parity for the desktop reclaim's first-run-only seeding: once the bundle
- * exists anywhere the user can reach it, the sweep leaves the host set alone.
- */
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,7 +7,6 @@ import { repairSkills } from './repair-skills.ts';
 
 const NAME = 'open-knowledge-discovery';
 
-/** hostDir (existence gate) -> skillsRoot (write target), per `USER_SKILL_HOSTS`. */
 const HOSTS: Array<[string, string]> = [
   ['.claude', '.claude/skills'],
   ['.cursor', '.cursor/skills'],
@@ -23,11 +18,6 @@ const HOSTS: Array<[string, string]> = [
   ['.lmstudio', '.lmstudio/skills'],
 ];
 
-// The list above is hand-written on purpose (these suites build fixture dirs
-// from it), but it documents itself as mirroring `USER_SKILL_HOSTS` — and a
-// hand-mirror drifts silently, which is exactly what happened when `.lmstudio`
-// was added to `EDITOR_USER_SKILL_ROOT` and neither suite noticed. This pins the
-// mirror so the NEXT editor fails here instead of going untested.
 test('HOSTS mirrors USER_SKILL_HOSTS', () => {
   expect([...HOSTS].map(([, root]) => root).sort()).toEqual(
     USER_SKILL_HOSTS.map((h) => h.skillsRoot).sort(),
@@ -39,9 +29,7 @@ afterEach(() => {
   for (const p of cleanup.splice(0)) {
     try {
       rmSync(p, { recursive: true, force: true });
-    } catch {
-      /* best effort */
-    }
+    } catch {}
   }
 });
 

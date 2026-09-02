@@ -25,8 +25,6 @@ describe('tall-doc fixture generator', () => {
     expect(new Set(markers).size).toBe(40);
     for (const block of manifest.blocks) {
       expect(block.marker).toBe(blockMarker(block.index));
-      // The marker must appear verbatim in the rendered source so an assertion
-      // can locate the block by text in either editor.
       expect(markdown).toContain(block.marker);
     }
   });
@@ -61,11 +59,9 @@ describe('tall-doc fixture generator', () => {
     expect(first?.delayMs).toBe(250);
     expect(first?.heightPx).toBe(800);
     expect(first?.url.startsWith(SHIFTER_URL_PREFIX)).toBe(true);
-    // Unspecified delay/height fall back to deterministic defaults, never random.
     expect(second?.delayMs).toBeGreaterThan(0);
     expect(second?.heightPx).toBeGreaterThan(0);
 
-    // The shifter image renders immediately after its block and before the next.
     const blockThreeStart = markdown.indexOf(blockMarker(3));
     const shifterMarkup = markdown.indexOf(`(${first?.url})`);
     const blockTwoStart = markdown.indexOf(blockMarker(2));
@@ -90,8 +86,6 @@ describe('tall-doc fixture generator', () => {
 
   test('manifest is a plain data record safe to assert against', () => {
     const { manifest } = generateTallDoc({ blockCount: 2 });
-    // No functions on the manifest — tests assert on values, and the shape
-    // survives a structured-clone round trip (e.g. crossing an evaluate boundary).
     const roundTripped = structuredClone(manifest) as TallDocManifest;
     expect(roundTripped).toEqual(manifest);
   });

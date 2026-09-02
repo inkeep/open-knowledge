@@ -30,27 +30,25 @@ describe('metaDescription', () => {
   });
 
   test('truncates over-long text to within the limit with an ellipsis', () => {
-    const s = 'word '.repeat(60); // 300 chars
+    const s = 'word '.repeat(60);
     const out = metaDescription(s);
     expect(out.length).toBeLessThanOrEqual(MAX);
     expect(out.endsWith('…')).toBe(true);
   });
 
   test('prefers a word boundary — does not cut mid-word when a space is available', () => {
-    const s = `${'alpha '.repeat(40)}END`; // long, spaced
+    const s = `${'alpha '.repeat(40)}END`;
     const out = metaDescription(s);
-    // The kept portion (sans ellipsis) ends on a whole word, not a partial.
     const body = out.replace(/…$/, '');
     expect(body.endsWith(' ')).toBe(false);
     expect(body).toBe(body.trimEnd());
-    // Every retained token is the complete word "alpha", never a fragment.
     for (const token of body.split(' ')) {
       expect(token).toBe('alpha');
     }
   });
 
   test('hard-slices when there is no usable space in the truncation window', () => {
-    const s = 'x'.repeat(MAX + 50); // single unbroken token
+    const s = 'x'.repeat(MAX + 50);
     const out = metaDescription(s);
     expect(out.length).toBeLessThanOrEqual(MAX);
     expect(out.endsWith('…')).toBe(true);

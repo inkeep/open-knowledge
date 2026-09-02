@@ -1,13 +1,3 @@
-/**
- * The user-facing shape of blank-line preservation: press Enter a few times,
- * leave, come back, and the blank lines are still there.
- *
- * Every path that used to lose them is a full re-derive of the WYSIWYG
- * fragment from the source bytes, so the two round trips that matter are the
- * source-mode toggle and a reload. Both are exercised here against the real
- * browser keymap, which is the one surface the jsdom and integration tiers
- * cannot reach.
- */
 import { randomUUID } from 'node:crypto';
 import type { Page } from '@playwright/test';
 import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
@@ -19,7 +9,6 @@ function readSource(page: Page): Promise<string> {
   return page.evaluate(() => window.__activeProvider?.document.getText('source').toString() ?? '');
 }
 
-/** Top-level paragraphs with no text — what a preserved blank line renders as. */
 function countBlankParagraphs(page: Page): Promise<number> {
   return page.evaluate(() => {
     const editor = document.querySelector('.ProseMirror:not(.composer-prosemirror)');
@@ -51,8 +40,6 @@ test.describe('blank lines typed in the visual editor', () => {
   });
 
   test('survive a source-mode round trip and a reload', async ({ page }) => {
-    // Three Enters at the end of the first paragraph: three empty paragraphs,
-    // i.e. three blank lines the user means to keep.
     const firstParagraph = page
       .locator('.ProseMirror:not(.composer-prosemirror)')
       .getByText('Above.', { exact: true });

@@ -1,20 +1,3 @@
-/**
- * Command-palette / menu parity ratchet (Ratchet A + B).
- *
- * Modeled on `attribution-sweep-coverage.test.ts`: partitions every command
- * identity into exactly one classification and fails when something new is
- * neither reachable from Cmd+K nor explicitly reserved with a reason. This is
- * the durable "nothing is missed" guarantee — a new `OkMenuAction` id or a new
- * native-menu leaf that no one classified turns this test red.
- *
- * Two id-spaces are swept:
- *  - Ratchet A: the `OK_MENU_ACTIONS` runtime array (its drift from the
- *    `OkMenuAction` type is a compile error in `ok-menu-actions.ts`; here we
- *    assert every id is classified palette-command vs. app-reserved).
- *  - Ratchet B: every actionable leaf parsed from `buildMenuTemplate` across
- *    both platform branches is classified palette-command / OS-role / reserved.
- */
-
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { COMMAND_IDENTITIES, type MenuPlatform } from '@inkeep/open-knowledge-core';
@@ -34,18 +17,8 @@ import {
   type MenuDeps,
 } from '../../../desktop/src/main/menu.ts';
 
-// Derive the menu-item type from buildMenuTemplate itself, so the ratchet does
-// not take a direct `electron` dependency (the app package has none).
 type MenuTemplateItem = ReturnType<typeof buildMenuTemplate>[number];
 
-// ─── Ratchet A: OkMenuAction id classification ──────────────────────────────
-// The classification sets (PALETTE_COMMAND_IDS / APP_RESERVED_IDS) are shared
-// with the DOM render suite via command-menu-parity.test-helper.
-
-// ─── Ratchet B: native-menu leaf classification ─────────────────────────────
-
-// Electron `role:` items — keyboard-native / platform-standard / dev-only. This
-// allowlist is maintained by hand against Electron's role set.
 const OS_ROLE_EXEMPT = new Set<string>([
   'about',
   'services',
@@ -72,9 +45,6 @@ const OS_ROLE_EXEMPT = new Set<string>([
   'close',
 ]);
 
-// Actionable menu leaves that ARE palette commands (labels, ellipsis-normalized;
-// state-aware View toggles contribute both their Show/Hide variants). "Full path"
-// / "Relative path" are the Copy-path submenu leaves the palette flattens.
 const PALETTE_COMMAND_LABELS = new Set<string>([
   'Back',
   'Forward',
@@ -91,8 +61,6 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'Rename',
   'Move to Trash',
   'Reveal in Finder',
-  // Platform variants of moveToTrash / revealInFinder (PLATFORM_MENU_LABELS in
-  // core) — the same commands, so the same palette rows cover them.
   'Move to Recycle Bin',
   'Reveal in File Explorer',
   'Open containing folder',
@@ -125,18 +93,14 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
   'OpenKnowledge on GitHub',
   'Report a bug',
   'Send feedback',
-  // Present already; not a single registry command but reachable from the palette
-  // as its own surface (Install for Claude, gated behind SHOW_INSTALL_SKILL).
   'Install for Claude Chat & Cowork (desktop app)',
 ]);
 
-// Non-role, non-palette leaves deliberately kept out of Cmd+K — each reasoned.
 const APP_RESERVED_LABELS = new Map<string, string>([
   ['Uninstall OpenKnowledge', 'rare + destructive; deliberately not a quick-launch row'],
   ['New Terminal Window', 'opens directly in main with no renderer handler; window management'],
 ]);
 
-/** All the deps present so every conditional menu item renders. */
 function makeFullDeps(): MenuDeps {
   const noop = () => {};
   return {
@@ -209,19 +173,11 @@ interface Leaf {
   label: string;
   role?: string;
   accelerator?: string;
-  // State-dependent output the registry now drives generically. Captured so the
-  // state-rendering tests below can pin the Show/Hide variant, smart-hide
-  // `visible`, and checkbox `type`/`checked`: a condition inversion in that
-  // generic code would otherwise stay green under the all-enabled sweep snapshot.
   visible?: boolean;
   itemType?: string;
   checked?: boolean;
 }
 
-/** Recurse the template, collecting actionable leaves (skip separators, disabled
- *  placeholders, and submenu parents — which contribute their children). A
- *  smart-hidden leaf (`visible: false`, still enabled) is retained so its
- *  `visible` state can be asserted. */
 function collectLeaves(items: readonly MenuTemplateItem[], out: Leaf[]): void {
   for (const item of items) {
     if (item.type === 'separator') continue;
@@ -230,7 +186,7 @@ function collectLeaves(items: readonly MenuTemplateItem[], out: Leaf[]): void {
       collectLeaves(sub, out);
       continue;
     }
-    if (item.enabled === false) continue; // disabled placeholder (e.g. "No recent projects")
+    if (item.enabled === false) continue;
     const accelerator = typeof item.accelerator === 'string' ? item.accelerator : undefined;
     const visible = typeof item.visible === 'boolean' ? item.visible : undefined;
     const checked = typeof item.checked === 'boolean' ? item.checked : undefined;
@@ -249,7 +205,6 @@ function collectLeaves(items: readonly MenuTemplateItem[], out: Leaf[]): void {
   }
 }
 
-/** Strip the trailing platform ellipsis the native menu appends at call time. */
 function normalizeLabel(label: string): string {
   return label.replace(/…$/, '').trim();
 }
@@ -285,10 +240,6 @@ describe('command-menu parity ratchet', () => {
     expect(stale).toEqual([]);
   });
 
-  // The classification derives from the registry, so a duplicate row id (two
-  // rows fighting over one testid) or a duplicate menuActionId (two rows
-  // claiming to cover the same menu action) would silently collapse in the
-  // derived Set. Pin uniqueness here instead.
   test('registry invariants: command ids and menu-action ids are unique', () => {
     const ids = PALETTE_COMMANDS.map((cmd) => cmd.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -302,7 +253,6 @@ describe('command-menu parity ratchet', () => {
     const leaves = [
       ...collectLeavesForPlatform('darwin'),
       ...collectLeavesForPlatform('win32'),
-      // linux shares win32's menu structure but carries its own reveal label.
       ...collectLeavesForPlatform('linux'),
     ];
     const untracked = leaves.filter((leaf) => {
@@ -313,12 +263,6 @@ describe('command-menu parity ratchet', () => {
     expect(untracked.map((l) => l.role ?? normalizeLabel(l.label))).toEqual([]);
   });
 
-  // A hand-authored menu can place the same command in two sections of the same
-  // platform's menu bar (the macOS App-menu + Help-menu "Check for updates…"
-  // dupe was the live case, fixed via platform-XOR). Fail structurally when a
-  // non-role leaf label appears more than once in one platform's template, so
-  // the class cannot recur. A future deliberate multi-placement earns an entry
-  // in the allowlist below with its reason.
   const DECLARED_MULTI_PLACEMENT = new Set<string>([]);
 
   test('Ratchet B: no menu leaf label appears twice in the same platform menu', () => {
@@ -338,9 +282,6 @@ describe('command-menu parity ratchet', () => {
 
   test('Ratchet B sanity: the sweep actually found the backfilled leaves', () => {
     const labels = new Set(collectLeavesForPlatform('darwin').map((l) => normalizeLabel(l.label)));
-    // A few representative backfilled palette leaves must be present, or the sweep is inert.
-    // makeFullDeps sets the panels visible, so the state-aware View toggle
-    // renders its "Hide …" variant.
     expect(labels.has('Check for updates')).toBe(true);
     expect(labels.has('Back')).toBe(true);
     expect(labels.has('Forward')).toBe(true);
@@ -349,11 +290,6 @@ describe('command-menu parity ratchet', () => {
     expect(labels.has('New Terminal')).toBe(true);
   });
 
-  // ─── Ratchet D: menu accelerator ↔ keyboard-shortcut registry parity ────────
-  // Commands with BOTH a native-menu accelerator AND a keyboard-shortcuts.ts
-  // binding must agree. Guards the live drift between menu.ts's hand-typed
-  // accelerators and the shortcut registry (they share no import); the id-spaces
-  // differ, so this map bridges menu label → shortcut id.
   interface MenuShortcutPair {
     menuLabel: string;
     shortcutId: KeyboardShortcutId;
@@ -364,10 +300,6 @@ describe('command-menu parity ratchet', () => {
     { menuLabel: 'Forward', shortcutId: 'navigate-forward' },
   ];
 
-  // A single `CmdOrCtrl+…` accelerator has to resolve on BOTH platforms, so
-  // these pairs are swept twice. The navigation pairs above cannot join them:
-  // they declare a platform-SPLIT accelerator (Cmd+[ vs Alt+Left), so each
-  // platform's leaf carries a different chord.
   const CROSS_PLATFORM_SHORTCUT_PAIRS: readonly MenuShortcutPair[] = [
     { menuLabel: 'Report a bug', shortcutId: 'report-bug' },
   ];
@@ -389,9 +321,6 @@ describe('command-menu parity ratchet', () => {
     { menuLabel: 'Hide Agents', shortcutId: 'toggle-agent-panel' },
   ];
 
-  // Canonical token set — order-insensitive; treats Cmd/Ctrl as MOD and
-  // Delete/Backspace as one key, so the Electron accelerator string and the
-  // display-glyph binding compare equal when they mean the same chord.
   function chordTokens(s: string): string {
     const tokens = new Set<string>();
     if (/CmdOrCtrl|Cmd|Ctrl|⌘|⌃/.test(s)) tokens.add('MOD');
@@ -445,10 +374,6 @@ describe('command-menu parity ratchet', () => {
   });
 
   test('Ratchet D: cross-platform accelerators declare a platform-neutral modifier', () => {
-    // `chordTokens` folds Cmd / Ctrl / CmdOrCtrl into one MOD token, so a
-    // placement that declares a bare `Cmd+…` with no `platform` gate satisfies
-    // both sweeps above while binding nothing at all on Windows and Linux. Pin
-    // the literal string, which is the only thing that distinguishes them.
     for (const platform of ['darwin', 'win32'] as const) {
       const leaves = collectLeavesForPlatform(platform);
       const accelerators = CROSS_PLATFORM_SHORTCUT_PAIRS.map((pair) => ({
@@ -463,8 +388,6 @@ describe('command-menu parity ratchet', () => {
     }
   });
 
-  // Exactly one bridge.onMenuAction listener (the bus forwarder) — no subscriber
-  // may double-fire alongside it.
   test('FR3: the bus forwarder is the only bridge.onMenuAction listener', () => {
     const appSrc = join(import.meta.dir, '..', '..', 'src');
     const migrated = [
@@ -481,23 +404,16 @@ describe('command-menu parity ratchet', () => {
     ];
     for (const rel of migrated) {
       const source = readFileSync(join(appSrc, rel), 'utf8');
-      // No migrated subscriber may still listen on the bridge directly (that
-      // would double-fire alongside the forwarder); each attaches to the bus.
       expect({ file: rel, listensOnBridge: source.includes('.onMenuAction(') }).toEqual({
         file: rel,
         listensOnBridge: false,
       });
       expect(source.includes('subscribeLocalMenuAction')).toBe(true);
     }
-    // The bus module owns exactly one bridge.onMenuAction call — the forwarder.
     const busSource = readFileSync(join(appSrc, 'lib/local-menu-action-bus.ts'), 'utf8');
     expect(busSource.split('.onMenuAction(').length - 1).toBe(1);
   });
 
-  // Repo-wide guard: exactly one production `.onMenuAction(` call site — the bus
-  // forwarder. Unlike the hand-maintained `migrated` allowlist above, this walks
-  // all of src, so a NEW subscriber that listens on the bridge directly (a
-  // double-fire) turns this red without being added to any list.
   test('FR3: exactly one production bridge.onMenuAction call site (the bus forwarder)', () => {
     const appSrc = join(import.meta.dir, '..', '..', 'src');
     const isTestLike = (name: string) => /\.(test|test-helper)\.[cm]?tsx?$/.test(name);
@@ -520,10 +436,6 @@ describe('command-menu parity ratchet', () => {
   });
 });
 
-// ─── Phase 2b: registry drives both surfaces ────────────────────────────────
-// The native menu now renders its command leaves from the same core registry
-// (`COMMAND_IDENTITIES`) the palette does. These guard the registry itself, now
-// that it is the single declaration point across menu + palette.
 describe('command identity registry (Phase 2b)', () => {
   const OK_MENU_ACTION_SET = new Set<string>(OK_MENU_ACTIONS);
 
@@ -565,16 +477,10 @@ describe('command identity registry (Phase 2b)', () => {
   });
 
   test('a shortcut hidden from the web hotkeys list is chordless in the web palette too', () => {
-    // Two surfaces read two flags: Settings drops a `desktopOnly` shortcut's
-    // whole row on web, the palette drops a `shortcutDesktopOnly` command's
-    // chord glyphs there. Declaring one without the other hides the row in one
-    // place while still printing the chord in the other.
     const desktopOnlyShortcutIds = KEYBOARD_SHORTCUTS.filter(
       (shortcut) => shortcut.desktopOnly === true,
     ).map((shortcut) => shortcut.id);
 
-    // Pinned rather than merely counted: a new desktop-only shortcut has to be
-    // classified here, which is where the pairing below gets checked.
     expect(desktopOnlyShortcutIds.sort()).toEqual(['report-bug']);
 
     const chordShownOnWeb = COMMAND_IDENTITIES.filter(
@@ -594,19 +500,11 @@ describe('command identity registry (Phase 2b)', () => {
   });
 
   test('every palette command without an override dispatch has a menuActionId to emit', () => {
-    // Bus-dispatched palette rows derive their dispatch from the id; a palette
-    // command that neither overrides dispatch nor carries a menuActionId would
-    // have nothing to emit. The known override ids are the dialog / bridge /
-    // renderer commands.
     const OVERRIDES = new Set<string>([
-      // Renderer-only: opens a client-side tab, so there is no menu action to
-      // emit and deliberately no native-menu placement.
       'open-blob-run',
       'new-file',
       'new-folder',
       'open-graph',
-      // Invokes the note-window bridge channel directly. The menu-action bus is
-      // renderer-local, and this has to reach main to spawn a BrowserWindow.
       'open-in-new-window',
       'initialize-starter-pack',
       'new-project',
@@ -644,11 +542,6 @@ describe('command identity registry (Phase 2b)', () => {
     expect(bad).toEqual([]);
   });
 
-  // Ratchet B, structural cure: with placement now DECLARED in the registry, a
-  // command that lists two placements resolving to the same platform is the
-  // hand-duplication class the "Check for updates" App+Help dupe belonged to.
-  // Flag it at the declaration level — earlier than the rendered-output dupe
-  // check above. A deliberate multi-placement earns an allowlist entry.
   const DECLARED_MULTI_PLACEMENT = new Set<string>([]);
 
   test('Ratchet B (declared): no command has two same-platform menu placements', () => {
@@ -664,10 +557,6 @@ describe('command identity registry (Phase 2b)', () => {
     expect(offenders).toEqual([]);
   });
 
-  // The registry-driven menu decouples identity (core) from the desktop binding
-  // (click / enabled / presence / checkbox). A menu-placed command with no
-  // binding renders a leaf with no click handler, enabled by default — a silent
-  // no-op the optional-chained `MENU_BINDINGS[cmd.id]` lookup would not flag.
   test('every menu-placed command has a MENU_BINDINGS entry', () => {
     const missing = COMMAND_IDENTITIES.flatMap((cmd) =>
       cmd.menu && cmd.menu.length > 0 && !MENU_BINDING_IDS.has(cmd.id) ? [cmd.id] : [],
@@ -684,15 +573,6 @@ describe('command identity registry (Phase 2b)', () => {
   });
 });
 
-// ─── Menu state-dependent rendering ─────────────────────────────────────────
-// The registry drives the Show/Hide toggle label, the smart-hide `visible`
-// flag, the checkbox `type`/`checked` state, and presence-gated absence through
-// generic code in `buildCommandLeaves` / `menuLeafLabel`. The classification
-// sweeps above run a single all-enabled `makeFullDeps` snapshot, so a condition
-// inversion in that generic code (a flipped Show/Hide, availability mapped to
-// `enabled` instead of `visible`, an inverted `checked`, a dropped presence
-// gate) would render a user-visible menu regression while staying green. These
-// pin each branch by building the template with the triggering state.
 describe('menu state-dependent rendering', () => {
   const findLeaf = (leaves: Leaf[], label: string): Leaf | undefined =>
     leaves.find((leaf) => normalizeLabel(leaf.label) === label);
@@ -708,7 +588,6 @@ describe('menu state-dependent rendering', () => {
     expect(labels.has('Show sidebar')).toBe(true);
     expect(labels.has('Show document panel')).toBe(true);
     expect(labels.has('Show Terminal')).toBe(true);
-    // A flipped `visible ? hideKey : showKey` would leave the Hide variants here.
     expect(labels.has('Hide sidebar')).toBe(false);
     expect(labels.has('Hide document panel')).toBe(false);
     expect(labels.has('Hide Terminal')).toBe(false);
@@ -727,10 +606,6 @@ describe('menu state-dependent rendering', () => {
   });
 
   test('smart-hide maps availability to `visible` (not `enabled`) for Expand/Collapse all', () => {
-    // canExpandAll:false → the Expand all leaf renders `visible:false` while
-    // staying enabled (its click dep is wired). Mapping availability to `enabled`
-    // instead would drop the leaf from the collected set (disabled-item filter),
-    // which the `toBeDefined` assertion catches.
     const collapsedTree = collectLeavesForPlatform('darwin', {
       ...makeFullDeps(),
       canExpandAll: false,
@@ -767,9 +642,6 @@ describe('menu state-dependent rendering', () => {
   });
 
   test('presence-gated leaves disappear when their dep is unwired', () => {
-    // `check-for-updates` is presence-gated on `onCheckForUpdates`; dropping the
-    // dep removes the leaf entirely (not render it disabled) on both the macOS
-    // App-menu and the Windows/Linux Help-menu placement.
     for (const platform of ['darwin', 'win32'] as const) {
       expect(
         findLeaf(collectLeavesForPlatform(platform, makeFullDeps()), 'Check for updates'),
@@ -780,8 +652,6 @@ describe('menu state-dependent rendering', () => {
       });
       expect(findLeaf(withoutDep, 'Check for updates')).toBeUndefined();
     }
-    // `set-up-integrations` is presence-gated on `reconfigureMcpWiring`: unwiring
-    // it must remove the File-menu leaf, not render a non-functional MCP entry.
     expect(
       findLeaf(
         collectLeavesForPlatform('darwin', makeFullDeps()),

@@ -41,7 +41,6 @@ describe('rewriteSkillRefsAcrossScope', () => {
     });
 
     expect(read('grilling')).toContain('Start with /searing, then `/searing` again.');
-    // A longer slug that merely starts with the old name is a different skill.
     expect(read('plating')).toContain('/grill-me-later');
     expect(out.map((r) => r.rel)).toEqual(['SKILL.md']);
     expect(out[0]?.dir).toBe('.claude/skills/grilling');
@@ -79,9 +78,6 @@ describe('rewriteSkillRefsAcrossScope', () => {
     expect(read('grilling')).toBe(before);
   });
 
-  // The global branch routes through a DIFFERENT scanner (scanGlobalInPlaceSkills)
-  // with different root resolution. Without this, a regression there would leave
-  // every inbound ref stale on a global rename with no test signal.
   test('carries refs at global scope too, through the other scanner', () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-skill-ref-rename-home-'));
     try {

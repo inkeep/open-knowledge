@@ -82,7 +82,6 @@ describe('ThreadPersistenceStore', () => {
       'm1',
       'm2',
     ]);
-    // Window reads slice by seq.
     const window = await readAll(store, 't1', 1, 2);
     expect(window).toHaveLength(1);
     expect(window[0]?.seq).toBe(1);
@@ -119,7 +118,6 @@ describe('ThreadPersistenceStore', () => {
     const store = await makeStore();
     store.queueMetaWrite('t1', meta('t1'));
     await store.whenIdle('t1');
-    // Corrupt sibling + future-version sibling must not break the scan.
     writeFileSync(store.metaPath('junk'), 'not json');
     writeFileSync(store.metaPath('future'), JSON.stringify({ ...meta('future'), version: 99 }));
     const metas = await store.scan();
@@ -167,11 +165,10 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
   test('scan cwd-filters the shared global dir (by realpath) but never the legacy dir', async () => {
     const global = tmp();
     const legacy = tmp();
-    const rawCwd = tmp(); // on macOS a /var symlink; canonicalizes to /private/var
+    const rawCwd = tmp();
     const canonCwd = realpathSync(rawCwd);
     const otherCwd = realpathSync(tmp());
 
-    // Global-dir threads for this project (cwd matches) and another (does not).
     const globalWriter = new ThreadPersistenceStore({
       primaryDir: global,
       legacyDir: legacy,
@@ -179,13 +176,11 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
       log,
     });
     await globalWriter.init();
-    globalWriter.queueMetaWrite('mine', metaCwd('mine', rawCwd)); // un-canonicalized, as the manager stores it
+    globalWriter.queueMetaWrite('mine', metaCwd('mine', rawCwd));
     globalWriter.queueMetaWrite('other', metaCwd('other', otherCwd));
     await globalWriter.whenIdle('mine');
     await globalWriter.whenIdle('other');
 
-    // A pre-move thread living in the per-project legacy dir, with a cwd that
-    // would FAIL a cwd filter — proving the legacy dir is admitted unfiltered.
     const legacyWriter = new ThreadPersistenceStore({ primaryDir: legacy, log });
     await legacyWriter.init();
     legacyWriter.queueMetaWrite('legacy', metaCwd('legacy', otherCwd));
@@ -198,7 +193,7 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
       log,
     });
     const ids = (await reader.scan()).map((m) => m.info.threadId).sort();
-    expect(ids).toEqual(['legacy', 'mine']); // 'other' filtered out; realpath let 'mine' match
+    expect(ids).toEqual(['legacy', 'mine']);
   });
 
   test('a legacy-homed thread stays in legacy for append and delete (never split)', async () => {
@@ -221,7 +216,6 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
     await store.init();
     expect((await store.scan()).map((m) => m.info.threadId)).toContain('tl');
 
-    // Appends ride the legacy file — the seq contract needs one file, not a split.
     store.appendEvents('tl', [ev(2)]);
     await store.whenIdle('tl');
     expect(store.eventsPath('tl')).toContain(legacy);
@@ -248,7 +242,7 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
 
   test('an unwritable primary dir degrades to legacy without failing init', async () => {
     const fileAsDir = join(tmp(), 'not-a-dir');
-    writeFileSync(fileAsDir, 'x'); // primaryDir is a file → mkdir(<file>/threads) fails
+    writeFileSync(fileAsDir, 'x');
     const legacy = tmp();
     const store = new ThreadPersistenceStore({
       primaryDir: fileAsDir,
@@ -256,7 +250,7 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
       cwd: null,
       log,
     });
-    await store.init(); // must NOT throw — boot survives a bad HOME
+    await store.init();
     store.queueMetaWrite('td', metaCwd('td', '/x'));
     store.appendEvents('td', [ev(0)]);
     await store.whenIdle('td');

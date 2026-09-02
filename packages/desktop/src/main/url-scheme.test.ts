@@ -7,12 +7,6 @@ import {
 } from '../../../../test-support/share/frozen-v1-share-reader.test-helper.ts';
 import { parseOpenKnowledgeUrl, parseScreenUrl, parseShareUrl } from './url-scheme.ts';
 
-/**
- * The old-app claim is asserted through the SHARED frozen reader, never a
- * local restatement of it. A second oracle spelled out here would model the
- * same shipped binary at a different fidelity, and the two would agree only
- * for whichever inputs the corpus happens to carry.
- */
 describe('frozen pre-v2 reader compatibility oracle', () => {
   test.each(fixture.customSchemeCases)('$id keeps its documented old-app outcome', (entry) => {
     expect(frozenV1CustomSchemeOutcome(entry.uri)).toBe(entry.baseline);
@@ -32,11 +26,6 @@ describe('frozen pre-v2 reader compatibility oracle', () => {
     ).toEqual({ kind: 'unsupported-version', version: 2 });
   });
 });
-
-/**
- * Pure function — no
- * Electron bindings touched at module top, so Bun runs it directly.
- */
 
 describe('parseOpenKnowledgeUrl — valid inputs', () => {
   test('parses well-formed open/project/doc URL', () => {
@@ -90,9 +79,6 @@ describe('parseOpenKnowledgeUrl — valid inputs', () => {
   });
 
   test('accepts nested doc-name (common MCP producer shape)', () => {
-    // `preview-url.ts` (MCP) emits `doc=<encodeURIComponent(docName)>` where
-    // docName is routinely nested — `notes/meeting`, `docs/a`, etc. The
-    // parser MUST accept these or the entire MCP deep-link contract breaks.
     expect(parseOpenKnowledgeUrl('openknowledge://open?project=/abs&doc=docs%2Fa')).toMatchObject({
       doc: 'docs/a',
     });
@@ -123,7 +109,6 @@ describe('parseOpenKnowledgeUrl — protocol + host validation', () => {
   });
 
   test('rejects empty host', () => {
-    // `openknowledge:` with no authority part — URL parser may treat as opaque.
     expect(parseOpenKnowledgeUrl('openknowledge:?project=/abs&doc=x')).toBeNull();
   });
 
@@ -168,9 +153,6 @@ describe('parseOpenKnowledgeUrl — null-byte defense', () => {
   });
 
   test('rejects double-encoded %2500 in project (layered null-byte smuggle)', () => {
-    // URL.searchParams.get() decodes once ('%2500' → '%00'); decodeURIComponent
-    // decodes again ('%00' → '\x00'). The post-decode null-byte recheck must
-    // catch it — otherwise a layered encoding would bypass the raw-input gate.
     expect(
       parseOpenKnowledgeUrl('openknowledge://open?project=%2500/safe/proj&doc=x.md'),
     ).toBeNull();
@@ -239,15 +221,6 @@ describe('parseOpenKnowledgeUrl — path-traversal defense', () => {
   });
 });
 
-/**
- * Locks the producer/consumer contract with `packages/cli/src/mcp/tools/
- * preview-url.ts` — the MCP helper emits
- * `openknowledge://open?project=<encodeURIComponent(realpath)>&doc=<encodeURIComponent(docName)>`
- * for ANY docName (flat, nested, unicode). The parser MUST accept every
- * shape the producer emits, or deep-link routing silently fails for anything
- * other than project-root docs. If a change here breaks round-trip, the
- * MCP contract in preview-url.ts needs an accompanying breaking-change note.
- */
 describe('parseOpenKnowledgeUrl — MCP producer/consumer round-trip', () => {
   function buildProducerUrl(project: string, docName: string): string {
     return `openknowledge://open?project=${encodeURIComponent(project)}&doc=${encodeURIComponent(docName)}`;
@@ -270,30 +243,12 @@ describe('parseOpenKnowledgeUrl — MCP producer/consumer round-trip', () => {
   });
 
   test('producer-shape traversal attempts still rejected', () => {
-    // The producer never emits these, but belt-and-suspenders: simulate a
-    // malicious MCP client constructing the URL directly.
     expect(parseOpenKnowledgeUrl(buildProducerUrl('/abs', 'a/../b'))).toBeNull();
     expect(parseOpenKnowledgeUrl(buildProducerUrl('/abs', '../escape'))).toBeNull();
     expect(parseOpenKnowledgeUrl(buildProducerUrl('/abs', '/absolute'))).toBeNull();
   });
 });
 
-/**
- * `parseShareUrl` tests — share-flow URL decoder.
- *
- * Pairs with the encoder in `@inkeep/open-knowledge-core` and the
- * blob-URL parser in `@inkeep/open-knowledge`. Two input shapes:
- *
- *   - Universal Link: `https://openknowledge.ai/d/<base64url([0x01]||blob)>`
- *     (and `www.openknowledge.ai`) — version-byte-prefixed payload.
- *   - Custom scheme: `openknowledge://share?url=<urlencoded(<blob-url>)>` —
- *     URL carried directly (no version byte; immediate-handoff path).
- *
- * Both funnel through `parseGitHubBlobUrl` for shape validation; result is
- * `{kind: 'ok' | 'unsupported-version' | 'invalid', source, ...}` for share-
- * shaped inputs, or `null` for anything else (caller falls through to
- * `parseOpenKnowledgeUrl`).
- */
 describe('parseShareUrl — universal-link happy path', () => {
   test.each(
     fixture.validShares.filter((entry) => entry.version === 2),
@@ -343,10 +298,6 @@ describe('parseShareUrl — universal-link happy path', () => {
   });
 
   test('parses universal-link with branch containing percent-encoded slash', () => {
-    // Senders MUST percent-encode branch slashes per parseGitHubBlobUrl's
-    // contract — the literal `/blob/feat/foo/file.md` form is ambiguous
-    // without a network call. The pair (encoder builds sharedUrl with
-    // %2F-encoded branch; decoder round-trips it) preserves the slash.
     const encoded = encodeShareUrl('https://github.com/o/r/blob/feat%2Ffoo/docs/sub/page.md');
     const result = parseShareUrl(`https://openknowledge.ai/d/${encoded}`);
     expect(result).toMatchObject({
@@ -426,8 +377,6 @@ describe('parseShareUrl — universal-link error states', () => {
   });
 
   test('parses a github /tree/ URL as a folder target', () => {
-    // A GitHub tree URL is a folder share — `parseGitHubShareUrl` resolves it
-    // to a `folder` target whose `folderPath` is the directory path.
     const encoded = encodeShareUrl('https://github.com/inkeep/playbooks/tree/main/docs');
     const result = parseShareUrl(`https://openknowledge.ai/d/${encoded}`);
     expect(result).toMatchObject({
@@ -444,10 +393,6 @@ describe('parseShareUrl — universal-link error states', () => {
   });
 
   test('reports invalid for extra path segments after /d/<encoded>', () => {
-    // Path-prefix evolution reserves `/s/`, `/p/`, etc. for future
-    // share types. `/d/<encoded>/foo` is NOT a v1 share URL — caller must
-    // see an invalid result, not silently take `<encoded>` and ignore the
-    // tail.
     const encoded = encodeShareUrl('https://github.com/o/r/blob/main/x.md');
     const result = parseShareUrl(`https://openknowledge.ai/d/${encoded}/extra`);
     expect(result).toEqual({ kind: 'invalid', source: 'universal-link' });
@@ -562,8 +507,6 @@ describe('parseShareUrl — custom-scheme error states', () => {
   });
 
   test('parses a github /tree/ root URL as a folder target with empty folderPath', () => {
-    // `tree/<branch>` with no trailing path denotes the repo/branch root —
-    // `parseGitHubShareUrl` yields `folderPath: ''`.
     const sharedUrl = 'https://github.com/o/r/tree/main';
     const result = parseShareUrl(`openknowledge://share?url=${encodeURIComponent(sharedUrl)}`);
     expect(result).toMatchObject({
@@ -581,9 +524,6 @@ describe('parseShareUrl — custom-scheme error states', () => {
 
 describe('parseShareUrl — not-a-share-url (returns null, caller falls through)', () => {
   test('returns null for openknowledge://open?... (legacy open action)', () => {
-    // Caller MUST be able to disambiguate: share-shaped → ShareParseResult,
-    // open-shaped → falls through to parseOpenKnowledgeUrl. Returning null
-    // here is the contract.
     const result = parseShareUrl('openknowledge://open?project=/abs&doc=x.md');
     expect(result).toBeNull();
   });
@@ -661,7 +601,6 @@ describe('parseScreenUrl', () => {
   });
 
   test('URL-decodes the name param', () => {
-    // %2D → '-', so the encoded form still resolves to install-claude.
     expect(parseScreenUrl('openknowledge://screen?name=install%2Dclaude')).toEqual({
       host: 'screen',
       name: 'install-claude',
@@ -694,8 +633,6 @@ describe('parseScreenUrl', () => {
   test('returns null for null-byte smuggle attempts', () => {
     expect(parseScreenUrl('openknowledge://screen?name=sett\x00ings')).toBeNull();
     expect(parseScreenUrl('openknowledge://screen?name=settings%00')).toBeNull();
-    // Double-encoded `%2500` decodes to `%00` past the raw-input guard; the
-    // allowlist check then rejects the non-member name.
     expect(parseScreenUrl('openknowledge://screen?name=settings%2500')).toBeNull();
   });
 });

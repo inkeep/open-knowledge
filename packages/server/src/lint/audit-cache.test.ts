@@ -1,9 +1,3 @@
-/**
- * Behavioral tests for the audit result cache: key composition (every input a
- * doc's diagnostics derive from), entry isolation from caller mutation, and
- * LRU eviction under both the entry and byte bounds.
- */
-
 import type { LintDiagnostic, LinterConfig } from '@inkeep/open-knowledge-core';
 import { DEFAULT_LINTER_CONFIG } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
@@ -92,7 +86,6 @@ describe('AuditCache', () => {
 
     const first = cache.get(key);
     expect(first).not.toBeNull();
-    // The audit merges and sorts the array it gets back, in place.
     first?.splice(0, 1);
     first?.push(diagnostic('INJECTED'));
 
@@ -113,7 +106,6 @@ describe('AuditCache', () => {
     const keyFor = (doc: string) => AuditCache.key({ ...BASE_KEY, docRelPath: doc });
     cache.set(keyFor('a.md'), [diagnostic('A')]);
     cache.set(keyFor('b.md'), [diagnostic('B')]);
-    // Touch `a` so `b` becomes the least recently used.
     expect(cache.get(keyFor('a.md'))).not.toBeNull();
     cache.set(keyFor('c.md'), [diagnostic('C')]);
 
@@ -124,14 +116,11 @@ describe('AuditCache', () => {
   });
 
   test('evicts under the byte bound even when the entry count is small', () => {
-    // One diagnostic already exceeds this, so every insert forces eviction.
     const cache = new AuditCache({ maxBytes: 40 });
     const keyFor = (doc: string) => AuditCache.key({ ...BASE_KEY, docRelPath: doc });
     cache.set(keyFor('a.md'), [diagnostic('A')]);
     cache.set(keyFor('b.md'), [diagnostic('B')]);
 
-    // The bound is honored down to a floor of one entry — the most recent
-    // insert is always retained, so a single oversized doc still caches.
     expect(cache.stats().entries).toBe(1);
     expect(cache.get(keyFor('b.md'))).not.toBeNull();
     expect(cache.get(keyFor('a.md'))).toBeNull();

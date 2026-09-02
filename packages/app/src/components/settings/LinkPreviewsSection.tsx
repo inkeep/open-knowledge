@@ -1,21 +1,3 @@
-/**
- * Settings → Link previews — rich preview cards for external links in the
- * editor hover panel. On by default; this section is the per-machine opt-out.
- * Per-machine (project-local scope) because it controls outbound egress: each
- * machine keeps its own choice rather than inheriting one collaborator's egress
- * setting through git.
- *
- * The toggle reads the synchronous project-local CRDT preference (the same
- * pattern as the Search and Sync sections — never the server's resolved state,
- * which round-trips through the persistence debounce + config file-watcher and
- * would make the control appear to lag). Every off → on transition is gated by
- * a confirmation dialog that discloses the egress; on → off commits immediately
- * (the safe direction).
- *
- * Previews of links to other documents in this project are read entirely from
- * the local index with no network request and are always on — this setting
- * gates external links only.
- */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { humanFormat } from '@inkeep/open-knowledge-core';
@@ -41,9 +23,6 @@ export function LinkPreviewsSection() {
   const { t } = useLingui();
   const { projectLocalConfig, projectLocalSynced, projectLocalBinding } = useConfigContext();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // The confirm dialog is opened programmatically (no Radix trigger), so Radix
-  // has nothing to restore focus to on close. Keep a handle on the Switch and
-  // send focus back there ourselves (WCAG 2.4.3).
   const switchRef = useRef<HTMLButtonElement | null>(null);
 
   const enabled = projectLocalConfig?.linkPreviews?.enabled ?? false;
@@ -69,8 +48,6 @@ export function LinkPreviewsSection() {
 
   function onToggleRequest(next: boolean) {
     if (next) {
-      // Off → on: gate behind the egress confirmation. On → off is the safe
-      // direction and commits immediately.
       setConfirmOpen(true);
       return;
     }
@@ -78,7 +55,6 @@ export function LinkPreviewsSection() {
   }
 
   function onConfirm() {
-    // Close only on success so a failed write leaves the dialog open to retry.
     if (write(true)) setConfirmOpen(false);
   }
 
@@ -154,15 +130,9 @@ interface EnableLinkPreviewsConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
-  /** The Switch that initiated the off to on request; focus returns to it on close. */
   returnFocusRef: RefObject<HTMLButtonElement | null>;
 }
 
-/**
- * Guards every off → on transition. Turning external link previews on is the
- * moment a hovered URL first leaves the machine, so the dialog spells out what
- * is sent, where, and that it's per-machine.
- */
 function EnableLinkPreviewsConfirmDialog({
   open,
   onOpenChange,
@@ -175,10 +145,6 @@ function EnableLinkPreviewsConfirmDialog({
         className="sm:max-w-lg"
         data-testid="settings-link-previews-confirm"
         onCloseAutoFocus={(event) => {
-          // With no Radix trigger, the default close-auto-focus targets a null
-          // triggerRef and focus falls to document.body. Preempt it and return
-          // focus to the Switch instead, on confirm, cancel, and Escape alike
-          // (same idiom as FrontmatterRow's add-property flow).
           event.preventDefault();
           returnFocusRef.current?.focus();
         }}

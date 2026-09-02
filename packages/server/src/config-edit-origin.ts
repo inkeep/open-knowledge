@@ -26,23 +26,6 @@ export const CONFIG_VALIDATION_REVERT_ORIGIN = {
   context: { origin: 'config-validation-revert' },
 } as const satisfies LocalTransactionOrigin;
 
-/**
- * Transaction origin for config-file-watcher → Y.Text writes.
- *
- * `skipStoreHooks: true` prevents the persistence-hook from re-writing the
- * file we just READ from disk — that is the exact feedback loop the watcher
- * exists to avoid. Without this flag, every external edit would round-trip
- * through Y.Text → onStoreDocument → tracedRename → chokidar → onChange and
- * the LKG-equality short-circuit would only break the loop one cycle later
- * than necessary.
- *
- * Identity-distinct from `CONFIG_VALIDATION_REVERT_ORIGIN` so any future
- * filtering or telemetry can tell the two skip-store paths apart even though
- * both carry `skipStoreHooks: true`.
- *
- * NOT a paired-write origin — the markdown bridge is bypassed for config
- * docs in `server-observer-extension.ts`. No `paired: true` flag.
- */
 export const CONFIG_FILE_WATCHER_ORIGIN = {
   source: 'local' as const,
   skipStoreHooks: true,

@@ -1,14 +1,3 @@
-/**
- * `BugReportSendToast` layout + subscription tests.
- *
- * The component is driven by a real `createBugReportSendManager` over a
- * scripted bridge rather than by hand-built operation objects: the manager's
- * published shape is the contract under test, and a hand-built object would
- * keep passing after that shape drifted.
- *
- * Substrate: jsdom via `pnpm run test:dom`.
- */
-
 import type { OkBugReportListRow, OkBugReportSendResult } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -31,7 +20,7 @@ const ROW: OkBugReportListRow = {
   createdAt: '2026-07-10T00:00:00.000Z',
   bundleLevel: 'standard',
   state: 'generated',
-  zipBytes: 7130316, // renders as "6.8 MB"
+  zipBytes: 7130316,
   zipDeleted: false,
   zipExists: true,
   systemWide: false,
@@ -48,7 +37,6 @@ const FAILED_RESULT: OkBugReportSendResult = {
   fallback: { mailtoUrl: MAILTO, zipPath: ZIP_PATH },
 };
 
-/** Resolvers for every `send` the scripted bridge has been asked to make. */
 let pendingSends: Array<(result: OkBugReportSendResult) => void> = [];
 
 function startOperation(): BugReportSendManager {
@@ -70,11 +58,6 @@ async function settleWith(result: OkBugReportSendResult): Promise<void> {
   });
 }
 
-/**
- * `satisfies` rather than an annotated return type: it holds the doubles to the
- * real action contract (a prop added to the interface fails here) while leaving
- * the inferred mock types intact for the call assertions.
- */
 function makeActions() {
   return {
     dismiss: vi.fn(),
@@ -98,8 +81,6 @@ function renderToast(manager: BugReportSendManager, actions: ReturnType<typeof m
 
 afterEach(async () => {
   cleanup();
-  // Any operation still 'sending' owns a live easing interval; settling it is
-  // what clears that interval, so leave none behind for the next test file.
   const stragglers = pendingSends;
   pendingSends = [];
   for (const resolve of stragglers) resolve(FAILED_RESULT);
@@ -117,19 +98,19 @@ describe('while the send is in flight', () => {
     const bar = screen.getByRole('progressbar');
     expect(bar.getAttribute('aria-valuenow')).toBeNull();
     expect(bar.getAttribute('data-state')).toBe('indeterminate');
-    // The bar's accessible name comes from the visible title rather than a
-    // second invented string.
     expect(bar.getAttribute('aria-labelledby')).toBeTruthy();
 
     await settleWith(FAILED_RESULT);
   });
 
-  test('Dismiss asks the host to close the toast without touching the send', async () => {
+  test('Close asks the host to close the toast without touching the send', async () => {
     const manager = startOperation();
     const actions = makeActions();
     renderToast(manager, actions);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(actions.dismiss).toHaveBeenCalledTimes(1);
     expect(manager.get(OPERATION_ID)?.status).toBe('sending');
@@ -156,18 +137,12 @@ describe('when the send succeeds', () => {
     await settleWith({ ok: true, reference: 'OK-1234-ABCD' });
     renderToast(manager, actions);
 
-    // Labelled, and labelled *next to* the value: an unlabelled identifier
-    // reads as a ticket the reporter should go open, rather than the handle
-    // they quote back to support. A label parked elsewhere in the toast would
-    // not do that job, so assert the row, not just the presence of the word.
     const reference = screen.getByText('OK-1234-ABCD');
     expect(reference.parentElement?.textContent).toContain('Reference');
 
     await userEvent.click(screen.getByRole('button', { name: 'Copy reference' }));
     expect(actions.writeToClipboard).toHaveBeenCalledWith('OK-1234-ABCD');
 
-    // Retention reclaims the zip on a confirmed send, so there is no file left
-    // to reveal.
     expect(screen.queryByRole('button', { name: 'Reveal in Finder' })).toBeNull();
     expect(actions.revealInFileManager).not.toHaveBeenCalled();
   });
@@ -269,5 +244,55 @@ describe('when the operation is unknown', () => {
     );
 
     expect(container.textContent).toBe('');
+  });
+});
+
+describe('every outcome can be closed', () => {
+  const outcomes: ReadonlyArray<
+    readonly [label: string, settle: (() => Promise<void>) | undefined, marker: string]
+  > = [
+    ['sending', undefined, 'Sending report'],
+    ['sent', () => settleWith({ ok: true, reference: 'OK-1234-ABCD' }), 'Thanks for the report!'],
+    [
+      'email-draft',
+      () =>
+        settleWith({
+          ok: false,
+          reason: 'email-draft',
+          fallback: { mailtoUrl: MAILTO, zipPath: ZIP_PATH },
+        }),
+      'Send your report by email',
+    ],
+    ['failed', () => settleWith(FAILED_RESULT), "Couldn't send the report"],
+    [
+      'already-sending',
+      () =>
+        settleWith({
+          ok: false,
+          reason: 'send-in-flight',
+          fallback: { mailtoUrl: MAILTO, zipPath: ZIP_PATH },
+        }),
+      'Already sending this report',
+    ],
+  ];
+
+  test.each(outcomes)('%s offers Close', async (_label, settle, marker) => {
+    const manager = startOperation();
+    const actions = makeActions();
+    if (settle !== undefined) await settle();
+    renderToast(manager, actions);
+
+    expect(screen.getByText(marker)).toBeTruthy();
+
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    await userEvent.tab();
+    expect(document.activeElement).toBe(close);
+
+    await userEvent.click(close);
+    expect(actions.dismiss).toHaveBeenCalledTimes(1);
+
+    if (settle === undefined) await settleWith(FAILED_RESULT);
   });
 });

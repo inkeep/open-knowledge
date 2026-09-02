@@ -1,19 +1,6 @@
-/**
- * Unit tests for the pure functions that drive Mirror resolution. The
- * `useMirrorSource` hook itself is React + Y.js + Hocuspocus and not
- * exercised here — the pool machinery it subscribes through is covered by
- * `tests/integration/live-doc-pool.test.ts` (real server) and
- * `live-doc-pool.dom.test.tsx` (hook-level, faked transport). These tests
- * pin the tree-walking + subtree-render shape so anchor-matching and HTML
- * synthesis can't silently regress.
- */
-
 import { describe, expect, test } from 'vitest';
 import { findMirrorSource, renderMirrorSubtree } from './use-mirror-source.ts';
 
-// Build a structurally-correct mdast subset for the tests. The hook's local
-// types are intentionally inlined (structural, not imported from
-// `mdast-util-mdx`) — these match shape-for-shape.
 function mirrorSourceNode(id: string, children: Array<Record<string, unknown>> = []) {
   return {
     type: 'mdxJsxFlowElement' as const,
@@ -66,11 +53,10 @@ describe('findMirrorSource', () => {
   });
 
   test('ignores non-MirrorSource JSX flow elements named MirrorSource at a deeper level only by id check', () => {
-    // Same name, no id attribute → not a match.
     const stray = {
       type: 'mdxJsxFlowElement',
       name: 'MirrorSource',
-      attributes: [], // no id
+      attributes: [],
       children: [],
     };
     expect(findMirrorSource(root([stray]), 'x')).toBeNull();

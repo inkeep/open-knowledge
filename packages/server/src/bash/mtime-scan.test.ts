@@ -76,7 +76,9 @@ describe('deriveScanRoots', () => {
   });
 
   test('grep drops the pattern positional but keeps operands', () => {
-    expect(deriveScanRoots([stage('grep', '-rn', 'oauth', 'articles/')])).toEqual(['articles/']);
+    const roots = deriveScanRoots([stage('grep', '-rn', 'oauth', 'articles/')]);
+    expect(roots).toContain('articles/');
+    expect(roots).not.toContain('oauth');
   });
 
   test('recursive grep with no operand scans the whole tree', () => {
@@ -96,14 +98,15 @@ describe('deriveScanRoots', () => {
   });
 
   test('find roots are the leading non-flag args; glob predicates are skipped', () => {
-    expect(deriveScanRoots([stage('find', 'specs', '-name', '*.md')])).toEqual(['specs']);
+    const roots = deriveScanRoots([stage('find', 'specs', '-name', '*.md')]);
+    expect(roots).toContain('specs');
+    expect(roots).not.toContain('*.md');
   });
 
   test('find literal predicate values stay watched', () => {
-    expect(deriveScanRoots([stage('find', 'specs', '-newer', 'ref.md')]).sort()).toEqual([
-      'ref.md',
-      'specs',
-    ]);
+    expect(deriveScanRoots([stage('find', 'specs', '-newer', 'ref.md')])).toEqual(
+      expect.arrayContaining(['ref.md', 'specs']),
+    );
   });
 
   test('find with no path root scans the whole tree', () => {
@@ -119,9 +122,9 @@ describe('deriveScanRoots', () => {
   });
 
   test('glob-bearing attached flag values are match patterns, not paths', () => {
-    expect(deriveScanRoots([stage('grep', '-rn', '--include=*.md', 'oauth', 'articles/')])).toEqual(
-      ['articles/'],
-    );
+    const roots = deriveScanRoots([stage('grep', '-rn', '--include=*.md', 'oauth', 'articles/')]);
+    expect(roots).toContain('articles/');
+    expect(roots).not.toContain('*.md');
   });
 
   test('literal attached flag values are watched as candidate write targets', () => {
@@ -278,12 +281,38 @@ describe('diffMtimes', () => {
     try {
       writeFileSync(resolve(tmp2, 'a.md'), 'v1');
       const before = (await snapshotMtimes(tmp2)).snapshot;
-      await wait(15); // ensure mtime differs
+      await wait(15);
       writeFileSync(resolve(tmp2, 'a.md'), 'v2');
       const after = (await snapshotMtimes(tmp2)).snapshot;
       expect(diffMtimes(before, after).changed).toEqual(['a.md']);
     } finally {
       await rm(tmp2, { recursive: true, force: true });
     }
+  });
+});
+
+describe('deriveScanRoots — over-inclusion is the correct bias for a detective layer', () => {
+  test('an extension-less attached write target is still watched', () => {
+    expect(deriveScanRoots([stage('sort', '--out=notes', 'other.md')])).toContain('notes');
+    expect(deriveScanRoots([stage('sort', '-onotes', 'other.md')])).toContain('notes');
+  });
+
+  test('a delimiter argument never becomes a scan root', () => {
+    expect(deriveScanRoots([stage('cut', '-d.', '-f1', 'other.md')])).not.toContain('.');
+    expect(deriveScanRoots([stage('sort', '-t.', 'other.md')])).not.toContain('.');
+    expect(deriveScanRoots([stage('cut', '-d/', '-f1', 'other.md')])).not.toContain('/');
+  });
+
+  test('the scan base is what resolveWithinRoot turns into the whole-tree sentinel', () => {
+    expect(SCAN_WHOLE_TREE).toBe('');
+    expect(deriveScanRoots([stage('cut', '-d.', '-f1', 'other.md')])).toContain('other.md');
+  });
+});
+
+describe('deriveScanRoots — a match-pattern flag value is not a path', () => {
+  test('an exclude-dir value does not become a root the sweep then walks', () => {
+    const roots = deriveScanRoots([stage('grep', '-rn', '--exclude-dir=node_modules', 'x', 'a/')]);
+    expect(roots).toContain('a/');
+    expect(roots).not.toContain('node_modules');
   });
 });

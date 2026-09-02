@@ -1,32 +1,3 @@
-/**
- * Extended scenarios for create-new-project dialog.
- *
- * These tests cover scenarios beyond the 3-test smoke (free / nested / git
- * promote): editor customization, location persistence, IPC error surfacing,
- * keyboard navigation, double-click idempotency, sanitization preview, ARIA
- * roles, probe debounce/cache behavior. The basic smoke harness pattern
- * (env-var test seam, mkdtemp HOME, --user-data-dir) is reused verbatim.
- *
- * The renderer-only busy-state dismissal guard (onOpenChangeInternal's
- * `if (busy) return`) is exercised in CreateProjectDialog.runtime.dom.test.tsx,
- * not here — it needs an in-flight createNew the DOM tier can hold open
- * deterministically.
- *
- * The editor checkboxes are seeded from `integrations.status().detectedEditorIds`
- * on each open, and every spec here runs under a freshly-minted tmp HOME with
- * no agent tool installed — so the deterministic baseline is "nothing checked",
- * and a spec that wants an editor wired ticks it explicitly.
- *
- * Name-first model. Browse picks the **parent**; the project
- * basename is supplied by typing into the Name <Input>. Tests set
- * `OK_DESKTOP_TEST_PICKED_PATH = parent` and use the `typeProjectName`
- * helper to fill the name.
- *
- * Skip gates match its 3-test sibling — opt-in via `OK_DESKTOP_E2E_SMOKE=1`,
- * a supported host platform, and build-must-exist. The picker is replaced by
- * the env-var seam on every OS, so nothing here is macOS-specific.
- */
-
 import { execSync } from 'node:child_process';
 import {
   existsSync,
@@ -57,23 +28,6 @@ const TARGET = resolveDesktopTarget();
 
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
-/**
- * Make `bin` resolve as an installed CLI for editor-presence detection.
- * `bin` must be the registry binary name (`TERMINAL_CLIS[<id>].bin` in
- * core/src/handoff/terminal-launch.ts) — the editor id and its binary differ
- * for some tools (cursor → `cursor-agent`).
- * Detection is probe-based (login-shell `command -v` on POSIX, `where` on
- * Windows) — a config directory under HOME is deliberately NOT a presence
- * signal, so this seeds a real executable stub instead:
- *   - a stub under `<tmpHome>/bin` (`.cmd` flavor for `where` + PATHEXT),
- *   - login+interactive rc files prepending it to PATH (the POSIX probe spawns
- *     `$SHELL -l -i`, which rebuilds PATH from these; bash reads the profile
- *     files, zsh reads .zprofile/.zshrc),
- *   - launchApp additionally prepends `<tmpHome>/bin` to the app's PATH env,
- *     which is what the Windows `where` probe consults.
- * Scheme-handler probes stay untouched — empty CI homes report none, which is
- * the hermetic baseline these tests rely on.
- */
 function seedCliOnPath(tmpHome: string, bin: string): void {
   const binDir = join(tmpHome, 'bin');
   mkdirSync(binDir, { recursive: true });
@@ -108,10 +62,6 @@ function seedTmpHome(prefix: string, stateOverride?: Record<string, unknown>): s
 }
 
 interface LaunchOpts {
-  /**
-   * Parent directory the OK_DESKTOP_TEST_PICKED_PATH seam returns. The
-   * project basename comes from the Name input.
-   */
   pickedParent?: string;
 }
 
@@ -124,8 +74,6 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
       timeout: 30_000,
       env: {
         ...process.env,
-        // `<tmpHome>/bin` first so seedCliOnPath stubs win resolution — the
-        // Windows `where` presence probe reads this PATH directly.
         PATH: `${join(tmpHome, 'bin')}${delimiter}${process.env.PATH ?? ''}`,
         ...homeEnv(tmpHome),
         OK_DESKTOP_E2E_SMOKE: '1',
@@ -193,17 +141,10 @@ test.describe('QA extended create-new-project', () => {
     }
   });
 
-  // editor customization → only chosen editors land on
-  // disk; aria roles; telemetry variant via flow_kind attribute.
   test('QA-005 the AI-tool decision writes exactly the detected tools', async ({
     captureStderrFor,
   }) => {
     const tmpHome = seedTmpHome('editors');
-    // Cursor only: the write set is now "every tool we detected", so what makes
-    // this test meaningful is that the OTHER editors' artifacts stay absent.
-    // Cursor's terminal CLI ships as `cursor-agent`, not `cursor` — must match
-    // `TERMINAL_CLIS.cursor.bin` (core/src/handoff/terminal-launch.ts) or the
-    // presence probe resolves nothing.
     seedCliOnPath(tmpHome, 'cursor-agent');
     const parent = join(tmpHome, 'projects');
     mkdirSync(parent, { recursive: true });
@@ -221,9 +162,6 @@ test.describe('QA extended create-new-project', () => {
 
     await expect(navigator.locator('[data-testid="create-name"]')).toBeVisible();
 
-    // confirm-git banner role=status; nested banner role=alert;
-    // nonempty banner role=alert. We assert on rendered ones in
-    // separate tests. Here in editors-test we focus on customization.
     await navigator.locator('[data-testid="create-browse"]').click();
     await expect(navigator.locator('[data-testid="create-location-display"]')).toContainText(
       parent,
@@ -235,10 +173,6 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 5_000 },
     );
 
-    // One pre-checked box covering the detected tools, top-level (no longer
-    // behind Advanced). Its subtext names the write set (the title line is
-    // fixed copy), so assert that rather than per-editor checkboxes that no
-    // longer exist.
     const connectBox = navigator.locator('[data-testid="create-editors-checkbox"]');
     await expect(connectBox).toBeVisible({ timeout: 15_000 });
     await expect(connectBox).toBeChecked();
@@ -259,7 +193,6 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => existsSync(join(expected, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
 
-    // The detected editor is wired; undetected ones leave nothing behind.
     await expect
       .poll(() => existsSync(join(expected, '.cursor', 'mcp.json')), { timeout: 15_000 })
       .toBe(true);
@@ -268,8 +201,6 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(expected, '.mcp.json'))).toBe(false);
   });
 
-  // dialog UX: name input is focused on open, Location is hydrated, and the
-  // AI-tool decision is a single top-level checkbox with a live status region.
   test('QA-010 dialog UX — focus, location, checkboxes, ARIA', async ({ captureStderrFor }) => {
     const tmpHome = seedTmpHome('uxshape');
     seedCliOnPath(tmpHome, 'codex');
@@ -286,24 +217,15 @@ test.describe('QA extended create-new-project', () => {
     const dialog = navigator.locator('[data-testid="create-project-dialog"]');
     await expect(dialog).toBeVisible({ timeout: 15_000 });
 
-    // Name input is the first focused control on open.
     await expect(navigator.locator('[data-testid="create-name"]')).toBeFocused();
 
-    // The Location display hydrates from defaultProjectsRoot() — the
-    // persisted last-used parent, else ~/Documents/OpenKnowledge.
-    // It never sits empty for long.
     const locationDisplay = navigator.locator('[data-testid="create-location-display"]');
     await expect(locationDisplay).toBeVisible();
 
-    // aria-live on the caption is 'polite' so AT users hear the resolved
-    // target update as they type.
     const caption = navigator.locator('[data-testid="create-target-caption"]');
     const ariaLive = await caption.getAttribute('aria-live');
     expect(ariaLive).toBe('polite');
 
-    // The AI-tool decision is one top-level, pre-checked box whose subtext
-    // names the tools it covers — no longer a row per editor behind Advanced
-    // settings.
     const connectBox = navigator.locator('[data-testid="create-editors-checkbox"]');
     await expect(connectBox).toBeVisible({ timeout: 15_000 });
     await expect(connectBox).toBeChecked();
@@ -311,13 +233,10 @@ test.describe('QA extended create-new-project', () => {
       'Codex',
     );
 
-    // The status region is a live region that persists across probe states, so
-    // "checking…" → settled actually announces.
     const status = navigator.locator('[data-testid="create-editors-status"]');
     expect(await status.getAttribute('aria-live')).toBe('polite');
     await expect(status).toHaveAttribute('data-status', 'ready');
 
-    // The disclosure names the exact project files, and the box is interactive.
     await navigator.locator('[data-testid="create-editors-details-toggle"]').click();
     await expect(navigator.locator('[data-testid="create-editors-details"]')).toContainText(
       '.codex/config.toml',
@@ -327,26 +246,14 @@ test.describe('QA extended create-new-project', () => {
     await connectBox.click();
     await expect(connectBox).toBeChecked();
 
-    // Type the name + Browse → caption shows the resolved target.
     await typeProjectName(navigator, projectName);
     await navigator.locator('[data-testid="create-browse"]').click();
     await expect(caption).toContainText(expectedTarget, { timeout: 15_000 });
   });
 
-  // lastUsedProjectParent persists across app restarts (the
-  // Location field on the next open is prefilled to the previously-used
-  // parent); transient form state (name, editors) resets per open.
   test('QA-011 + QA-016 — lastUsedProjectParent persists across opens; transient form state resets on reopen', async ({
     captureStderrFor,
   }) => {
-    // Two full Electron cold-starts (the first creates the project + persists
-    // lastUsedProjectParent; the second relaunches and asserts the prefill). The
-    // cumulative inner-timeout budget is ~190s — over the suite-wide 150s
-    // CI per-test budget set in `playwright.config.ts`. The 2x launch is
-    // structurally required by the test (cross-restart persistence cannot
-    // be observed in a single launch), so this test opts into a larger
-    // budget rather than fragmenting into two coupled tests. Local dev
-    // keeps the suite default via CI=undefined.
     if (process.env.CI) {
       test.setTimeout(240_000);
     }
@@ -357,16 +264,8 @@ test.describe('QA extended create-new-project', () => {
     const projectName = 'First';
     trackForCleanup(tmpHome);
 
-    // First launch: submit a project. The handler must persist
-    // lastUsedProjectParent (= the parent we picked).
     const app1 = await launchApp(tmpHome, { pickedParent: parent });
     captureStderrFor(app1);
-    // Need a ChildProcess handle here-and-now for the explicit
-    // closeAppBounded call between Pass 1 and Pass 2 (the fixture's
-    // bounded teardown only runs at end-of-test). captureStderrFor above
-    // already registers the proc into the fixture for end-of-test
-    // teardown — this is a parallel local handle for the inter-pass
-    // close.
     const app1Proc = captureAppProcess(app1);
     const navigator = await findWindowByMode(app1, 'navigator');
     await clickNavCreateNew(navigator);
@@ -387,9 +286,6 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => countWindowsByMode(app1, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
 
-    // This submits the detection-seeded selection — empty, since nothing is
-    // installed under the seeded tmp HOME. That still creates a real project; it just wires no
-    // editor integrations.
     const firstProject = join(parent, projectName);
     await expect
       .poll(() => existsSync(join(firstProject, '.ok', 'config.yml')), { timeout: 15_000 })
@@ -397,21 +293,11 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(firstProject, '.cursor'))).toBe(false);
     expect(existsSync(join(firstProject, '.mcp.json'))).toBe(false);
 
-    // First → second launch hand-off. Both launches share the same `tmpHome` →
-    // same Electron `userData` dir. Two Electron processes against the
-    // same userData would contend on Chromium's lockfile; the first must be
-    // fully reaped before the second launches. Use the bounded primitive
-    // (5s graceful + SIGKILL-on-process-group fallback) so the inter-pass
-    // close cannot regress to the unbounded `app.close()` shape.
     await closeAppBounded(app1Proc, { gracefulMs: 5_000 });
 
-    // Inspect state.json on disk: lastUsedProjectParent should equal `parent`.
     const stateAfterSubmit = JSON.parse(readFileSync(join(userDataDir, 'state.json'), 'utf8'));
     expect(stateAfterSubmit.lastUsedProjectParent).toBe(parent);
 
-    // Pre-populate state.json so the next launch starts at navigator (not
-    // editor). Clearing lastOpenedProject + recentProjects forces the
-    // Navigator-first boot path.
     const persistedParent = stateAfterSubmit.lastUsedProjectParent;
     writeFileSync(
       join(userDataDir, 'state.json'),
@@ -426,17 +312,8 @@ test.describe('QA extended create-new-project', () => {
       }),
     );
 
-    // closeAppBounded SIGKILLs app1 (it never sends app.quit(), so app1 never
-    // reaches `will-quit` and markCleanQuit() never clears the dirty-shutdown
-    // sentinel). That kill is a harness teardown artifact, not a real crash;
-    // leaving the sentinel makes app2's boot crash-detection open a crash-invite
-    // dialog that stacks over the create dialog and intercepts clicks on its controls.
     rmSync(join(userDataDir, 'bug-report-dirty-shutdown.json'), { force: true });
 
-    // Second launch: relaunch. Location prefills from lastUsedProjectParent;
-    // the Name input resets to empty; the AI-tool decision re-probes detection
-    // (which finds nothing under the seeded tmp HOME) and the checkbox itself
-    // resets to its pre-checked default.
     const app2 = await launchApp(tmpHome);
     captureStderrFor(app2);
     const navigator2 = await findWindowByMode(app2, 'navigator', 30_000);
@@ -444,25 +321,19 @@ test.describe('QA extended create-new-project', () => {
     await expect(navigator2.locator('[data-testid="create-project-dialog"]')).toBeVisible({
       timeout: 15_000,
     });
-    // Name resets to empty on each fresh open.
     const nameInput = navigator2.locator('[data-testid="create-name"]');
     await expect(nameInput).toBeVisible();
     await expect(nameInput).toHaveValue('');
-    // Location prefills from the persisted last-used parent.
     await expect(navigator2.locator('[data-testid="create-location-display"]')).toContainText(
       persistedParent,
       { timeout: 15_000 },
     );
-    // Nothing is installed under this HOME, so the probe settles empty and the
-    // row says so instead of offering a checkbox that would write nothing.
     await expect(navigator2.locator('[data-testid="create-editors-status"]')).toHaveAttribute(
       'data-status',
       'none',
       { timeout: 15_000 },
     );
     await expect(navigator2.locator('[data-testid="create-editors-checkbox"]')).toHaveCount(0);
-    // Config sharing sits at the top level and resets to its "Only me"
-    // default on a fresh open.
     await expect(navigator2.locator('[data-testid="create-sharing"]')).toBeVisible();
     await expect(navigator2.locator('[data-testid="create-sharing-local-only"]')).toHaveAttribute(
       'data-state',
@@ -470,12 +341,6 @@ test.describe('QA extended create-new-project', () => {
     );
   });
 
-  // Create stays enabled even before the user types a name — a disabled
-  // button gives no hint why. Submitting with no name does not create or
-  // navigate (it surfaces an "Enter a project name" toast — asserted
-  // deterministically in CreateProjectDialog.runtime.dom.test.tsx; the
-  // transient portal toast is not reliably catchable in Electron
-  // Playwright). Typing a name + Browse then enables real creation.
   test('submit with no name does not create; typing the name enables creation', async ({
     captureStderrFor,
   }) => {
@@ -492,33 +357,24 @@ test.describe('QA extended create-new-project', () => {
       timeout: 15_000,
     });
 
-    // Before name: empty input, but submit is ENABLED so the click can
-    // explain the requirement.
     const nameInput = navigator.locator('[data-testid="create-name"]');
     await expect(nameInput).toHaveValue('');
     const submit = navigator.locator('[data-testid="create-submit"]');
     await expect(submit).toBeEnabled();
     const caption = navigator.locator('[data-testid="create-target-caption"]');
-    // Pre-name, caption is empty (no resolved target to show yet).
     await expect(caption).toHaveText('', { timeout: 5_000 });
 
-    // Clicking with no name must NOT create a project: the dialog stays open
-    // and no editor window opens. Give a real chance for an (erroneous) editor
-    // window to appear before asserting none did.
     await submit.click();
     await navigator.waitForTimeout(2_000);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible();
     expect(await countWindowsByMode(app, 'editor')).toBe(0);
 
-    // Type the name + Browse → caption shows the resolved path and submit
-    // stays enabled for real creation.
     await typeProjectName(navigator, 'AfterPick');
     await navigator.locator('[data-testid="create-browse"]').click();
     await expect(caption).toContainText(join(parent, 'AfterPick'), { timeout: 15_000 });
     await expect(submit).toBeEnabled();
   });
 
-  // double-click does not fire two IPCs.
   test('QA-019 — double-click Create produces exactly one project', async ({
     captureStderrFor,
   }) => {
@@ -546,31 +402,20 @@ test.describe('QA extended create-new-project', () => {
     const submit = navigator.locator('[data-testid="create-submit"]');
     await expect(submit).toBeEnabled();
 
-    // Rapid double-click: button should become disabled after first click,
-    // second click is a no-op.
     await submit.click();
-    // Best-effort second click; should be ignored.
     try {
       await submit.click({ timeout: 1_000, force: true });
-    } catch {
-      // Expected: button disabled.
-    }
+    } catch {}
 
-    // Exactly one editor window opens. Wait a generous timeout to confirm
-    // a second window doesn't appear.
     await expect
       .poll(() => countWindowsByMode(app, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
-    // Wait via setTimeout (navigator window may close after editor opens).
     await new Promise((r) => setTimeout(r, 2_000));
     const editorCount = await countWindowsByMode(app, 'editor');
     expect(editorCount).toBe(1);
-    // And exactly one project dir on disk.
     expect(existsSync(join(parent, projectName, '.ok', 'config.yml'))).toBe(true);
   });
 
-  // banner ARIA roles (nested role=alert, confirm-git
-  // role=status, nonempty role=alert).
   test('QA-025 — banner ARIA roles per severity', async ({ captureStderrFor }) => {
     const tmpHome = seedTmpHome('aria');
     const rootPath = join(tmpHome, 'existing-project');
@@ -596,14 +441,12 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 15_000 },
     );
 
-    // Nested banner: role=alert.
     const nestedBanner = navigator.locator('[data-testid="create-banner-nested"]');
     await expect(nestedBanner).toBeVisible({ timeout: 15_000 });
     const nestedRole = await nestedBanner.getAttribute('role');
     expect(nestedRole).toBe('alert');
   });
 
-  // confirm-git banner has role=status, aria-live=polite.
   test('QA-025b — git-confirm banner role=status, aria-live=polite', async ({
     captureStderrFor,
   }) => {
@@ -639,9 +482,6 @@ test.describe('QA extended create-new-project', () => {
     expect(ariaLive).toBe('polite');
   });
 
-  // Keyboard submit: pressing Enter while focused on the Submit button
-  // submits the form (load-bearing for keyboard users who never reach
-  // for the mouse).
   test('Enter on Submit button submits the form', async ({ captureStderrFor }) => {
     const tmpHome = seedTmpHome('kbd');
     const parent = join(tmpHome, 'projects-kbd');
@@ -664,11 +504,9 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 15_000 },
     );
 
-    // Wait for cascade to settle (free state).
     const submit = navigator.locator('[data-testid="create-submit"]');
     await expect(submit).toBeEnabled({ timeout: 10_000 });
 
-    // Press Enter while focused on the Submit button. Form should submit.
     await submit.focus();
     await submit.press('Enter');
 
@@ -678,7 +516,6 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(parent, projectName, '.ok', 'config.yml'))).toBe(true);
   });
 
-  // inline "Open <basename>" action: clicking opens that project.
   test('QA-002 — clicking Open <basename> dispatches openProject and closes dialog', async ({
     captureStderrFor,
   }) => {
@@ -708,18 +545,12 @@ test.describe('QA extended create-new-project', () => {
 
     const openBtn = navigator.locator('[data-testid="create-banner-nested-open"]');
     await expect(openBtn).toBeVisible({ timeout: 15_000 });
-    // Button label includes the basename of the enclosing project.
     await expect(openBtn).toHaveText(/Open NestedTarget/);
     await openBtn.click();
 
-    // Editor window for the existing project should open. The dialog
-    // closes (typically by the navigator window itself closing once an
-    // editor window opens). Asserting "editor opened" + "dialog gone"
-    // covers either route: dialog DOM unmounted or navigator window closed.
     await expect
       .poll(() => countWindowsByMode(app, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
-    // Either the navigator is gone or the dialog is no longer visible.
     const navStillAlive = !navigator.isClosed();
     if (navStillAlive) {
       await expect(navigator.locator('[data-testid="create-project-dialog"]')).not.toBeVisible({
@@ -728,16 +559,12 @@ test.describe('QA extended create-new-project', () => {
     }
   });
 
-  // Name-field inline validation: a name resolving to an
-  // existing non-empty folder shows inline `create-name-error-taken`
-  // and disables Create — no separate subfolder input.
   test('PRD-7129 — name resolving to a non-empty folder shows inline name-taken error', async ({
     captureStderrFor,
   }) => {
     const tmpHome = seedTmpHome('name-taken');
     const parent = join(tmpHome, 'projects-taken');
     mkdirSync(parent, { recursive: true });
-    // Seed a non-empty folder at parent/Notes.
     const taken = join(parent, 'Notes');
     mkdirSync(taken, { recursive: true });
     writeFileSync(join(taken, 'existing.md'), '# existing\n');
@@ -757,18 +584,14 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 15_000 },
     );
 
-    // Type the name of the existing non-empty folder.
     await typeProjectName(navigator, 'Notes');
 
-    // Inline name-taken error appears on the name field; Create disabled;
-    // no standalone subfolder-rescue input.
     await expect(navigator.locator('[data-testid="create-name-error-taken"]')).toBeVisible({
       timeout: 15_000,
     });
     await expect(navigator.locator('[data-testid="create-submit"]')).toBeDisabled();
     await expect(navigator.locator('[data-testid="create-subfolder-rescue"]')).toHaveCount(0);
 
-    // Switching to a different name clears the inline error.
     await typeProjectName(navigator, 'FreshNotes');
     await expect(navigator.locator('[data-testid="create-name-error-taken"]')).toHaveCount(0, {
       timeout: 15_000,

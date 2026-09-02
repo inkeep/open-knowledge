@@ -10,29 +10,16 @@ type ProjectStatus = 'active' | 'recent';
 
 interface UninstallPickerScreenProps {
   projects: readonly UninstallProjectRow[];
-  /** Indexes into `projects`, ascending. Main re-resolves them against its own list. */
   onConfirm: (selectedIndexes: number[]) => void;
   onCancel: () => void;
 }
 
-/**
- * One status per row. `open` (a live editor window) and `running` (a live server
- * process) both mean the project is in use right now, so they collapse to
- * `active`; the open/server split is an implementation detail the user doesn't
- * act on. A project only in the recents list is `recent`. `active` wins when
- * both hold — it is the distinction that bears on removing the project now.
- */
 function projectStatus(project: UninstallProjectRow): ProjectStatus | null {
   if (project.open || project.running) return 'active';
   if (project.recent) return 'recent';
   return null;
 }
 
-/**
- * Trailing path segment, the way `node:path`'s `basename` reads it — the
- * renderer has no `node:path`, and this stays macOS-shaped like the rest of the
- * uninstall flow. Falls back to the whole path when there is no segment.
- */
 function projectDisplayName(path: string): string {
   return path.split('/').filter(Boolean).at(-1) ?? path;
 }
@@ -70,8 +57,6 @@ function ProjectRow({
         className="mt-0.5"
         checked={checked}
         onCheckedChange={(next) => onCheckedChange(next === true)}
-        // Overrides the visible label so the row announces what ticking it does,
-        // not just which project it is.
         aria-label={t`Remove OpenKnowledge from ${project.path}`}
       />
       <Label htmlFor={checkboxId} className="min-w-0 flex-col items-start gap-0.5 font-normal">
@@ -91,14 +76,6 @@ function ProjectRow({
   );
 }
 
-/**
- * First screen of the desktop self-uninstall flow: confirm the uninstall, and
- * optionally pick projects to run `ok deinit` against.
- *
- * The rows are whatever main sent down; the only thing that travels back is a
- * set of indexes into that list, so this screen can never name a path main did
- * not already offer.
- */
 export function UninstallPickerScreen({
   projects,
   onConfirm,
@@ -167,8 +144,7 @@ export function UninstallPickerScreen({
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border">
-            {/* Fixed select-all header row: a tri-state checkbox (all / some /
-                none) plus the total count. Only the rows below it scroll. */}
+            {}
             <div className="flex shrink-0 items-center gap-2.5 border-border border-b px-3 py-2.5 bg-muted/30">
               <Checkbox
                 id={selectAllId}
@@ -178,9 +154,7 @@ export function UninstallPickerScreen({
               <Label htmlFor={selectAllId} className="flex-1 font-medium text-sm">
                 <Trans>Select all</Trans>
               </Label>
-              {/* Selected-of-total, announced on change (replaces a separate
-                  footer count). Visually a bare fraction; the aria-label spells
-                  it out for screen readers. */}
+              {}
               <span
                 role="status"
                 aria-label={t`${selected.size} of ${projects.length} projects selected`}
@@ -189,8 +163,7 @@ export function UninstallPickerScreen({
                 {selected.size} / {projects.length}
               </span>
             </div>
-            {/* `overflow-y-scroll` over `auto` keeps the gutter present at every
-                list length, so a row's tag column never shifts as rows are added. */}
+            {}
             <div className="subtle-scrollbar min-h-0 flex-1 overflow-y-scroll [scrollbar-gutter:stable]">
               {projects.map((project, index) => (
                 <ProjectRow
@@ -213,7 +186,7 @@ export function UninstallPickerScreen({
       </section>
 
       <footer className="flex items-center justify-end gap-2.5 border-border border-t bg-muted/50 px-6 pt-3.5 pb-4">
-        {/* Cancel holds initial focus so Return cannot uninstall by accident. */}
+        {}
         <Button type="button" variant="outline-mono" autoFocus onClick={onCancel}>
           <Trans>Cancel</Trans>
         </Button>

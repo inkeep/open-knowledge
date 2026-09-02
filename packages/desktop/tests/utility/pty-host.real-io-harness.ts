@@ -1,16 +1,3 @@
-/**
- * Real-shell-I/O harness for the PTY host.
- *
- * This harness drives the actual `setupPtyHost` factory with a real `node-pty`
- * spawn under Node and asserts the real-I/O contract end to end.
- * `pty-host-real-io.test.ts` invokes it as an isolated subprocess and asserts
- * on its exit code + result line.
- *
- * Scenarios: real command round-trip, cwd binding + env-marker stripping,
- * Windows PowerShell launch composition, host-survives-PTY-death containment,
- * bad-shell async exit.
- */
-
 import { randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -27,10 +14,6 @@ import {
 
 const require = createRequire(import.meta.url);
 
-// node-pty's prebuilt `spawn-helper` ships mode 0644 (node-pty#850); a real
-// PTY spawn fails with "posix_spawnp failed" until it is executable. The
-// packaged app fixes this in afterPack; for the dev node_modules we chmod the
-// current-arch helper here.
 function ensureSpawnHelperExecutable(): void {
   const pkgDir = dirname(dirname(require.resolve('node-pty')));
   const helper = join(pkgDir, 'prebuilds', `${process.platform}-${process.arch}`, 'spawn-helper');
@@ -70,12 +53,6 @@ function createWindowsReadinessLaunch(): {
   launchCommand: { executable: string; args: string[] };
 } | null {
   if (process.platform !== 'win32') return null;
-  // Never probe or retry with control characters before this marker: an early
-  // Ctrl+C can be taken as process termination (NTSTATUS 0xC000013A) before the
-  // shell's line editor owns the console. These scenarios pass no `shell:`, so
-  // the ladder picks whatever the host resolves (pwsh 7 on `windows-latest`).
-  // The structured command is the non-mutating startup gate; the real command
-  // immediately after it proves interactive input.
   const marker = `OK_SHELL_READY_${randomUUID().replaceAll('-', '')}`;
   return {
     marker,
@@ -108,13 +85,8 @@ async function waitForInteractiveShellReady(
 async function main(): Promise<void> {
   ensureSpawnHelperExecutable();
 
-  // The parent wrapper redirects the OS temp environment into its own
-  // best-effort cleanup directory. Synchronous exit cleanup here can block on
-  // Windows while a just-killed shell still holds this directory as its CWD.
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pty-harness-')));
 
-  // A real command runs and its evaluated output streams back,
-  // and the prompt sits at the supplied project root.
   await scenario('real command round-trip at project root', async () => {
     const cwdToken = randomUUID();
     writeFileSync(join(tmp, CWD_PROOF_FILE), cwdToken, 'utf8');
@@ -136,8 +108,6 @@ async function main(): Promise<void> {
         'interactive shell ready at project root',
         readiness?.marker ?? null,
       );
-      // The arithmetic expression only resolves to 42 if the shell evaluated
-      // it; the echoed input line keeps the literal expression.
       host.send({
         type: 'input',
         ptyId: 'io',
@@ -163,7 +133,6 @@ async function main(): Promise<void> {
     }
   });
 
-  // Desktop-only markers are stripped from the user's shell.
   await scenario('strips desktop env markers from the shell', async () => {
     const host = createHost({
       ...BASE_ENV,
@@ -211,11 +180,6 @@ async function main(): Promise<void> {
   });
 
   if (process.platform === 'win32') {
-    // This is the only real-shell proof whose structured PowerShell launch
-    // carries meaningful argv beyond the readiness marker. The explicit
-    // Windows PowerShell override is load-bearing; the package smoke
-    // intentionally pins ComSpec/cmd instead. The host-survival scenario below
-    // separately exercises the plain empty-argv Windows spawn path twice.
     await scenario('PowerShell executes a structured launch command', async () => {
       const powershell = join(
         process.env.SystemRoot ?? 'C:\\Windows',
@@ -245,9 +209,6 @@ async function main(): Promise<void> {
             args: ['/d', '/c', 'echo', '%OK_HARNESS_LAUNCH_TOKEN%'],
           },
         });
-        // The launch rides in as composed argv, so the output wait below needs
-        // no pre-write gate. A distinct command typed afterward proves the shell
-        // remains interactive after the EncodedCommand returns.
         await waitForCondition(
           launch,
           () => launch.read().includes(launchToken),
@@ -275,15 +236,11 @@ async function main(): Promise<void> {
     });
   }
 
-  // Killing the shell (a crash) yields an exit event and the host stays
-  // alive — a fresh PTY spawns in the same host.
   await scenario('host survives a PTY death and respawns', async () => {
     const host = createHost(BASE_ENV);
     const first = host.streamOf('c1');
     const second = host.streamOf('c2');
     host.send({ type: 'create', ptyId: 'c1', cwd: tmp, cols: 80, rows: 24 });
-    // Neither shell here is driven with input, so "the PTY produced bytes" is
-    // the whole claim — spawn liveness, not read-loop readiness.
     await waitForCondition(first, () => first.read().length > 0, 'first shell prompt');
     host.send({ type: 'kill', ptyId: 'c1' });
     await waitForCondition(first, () => host.exitOf('c1') !== null, 'exit after kill');
@@ -296,15 +253,11 @@ async function main(): Promise<void> {
     host.killActive();
   });
 
-  // A shell that cannot launch surfaces through the host's failure channel.
   await scenario('bad shell surfaces as a spawn failure', async () => {
     const badShell = join(
       tmp,
       process.platform === 'win32' ? 'no-such-shell-xyz.exe' : 'no-such-shell-xyz',
     );
-    // Windows validates configured shell paths before spawning. Admit this
-    // deliberate missing-path fixture through that gate so node-pty, rather
-    // than the fallback ladder, remains the dependency under test.
     const host = createHost(BASE_ENV, (path) => path === badShell || existsSync(path));
     const bad = host.streamOf('bad');
     host.send({
@@ -332,8 +285,6 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-// Wedge backstop below the parent wrapper's independent deadline. Scenario
-// budgets remain the source of normal timeout failures and their diagnostics.
 const hardTimeout = setTimeout(
   () => {
     const passed = results.filter((result) => result.ok).length;

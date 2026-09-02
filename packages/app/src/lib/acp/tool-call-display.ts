@@ -1,37 +1,7 @@
-/**
- * The text and glyph a tool-call row shows in an agent transcript.
- *
- * Two jobs, in order:
- *
- * 1. **Recognise Open Knowledge's own MCP tools and say what they did.** The
- *    adapters put a bare tool identifier on the wire, so an OK write reads as
- *    `mcp__open-knowledge__write` — the reader learns nothing about which
- *    document moved. Each harness names it differently, and all three shapes
- *    are on the wire today: Claude sends `mcp__open-knowledge__write` with the
- *    tool's own arguments as `rawInput`; Codex sends `mcp.open-knowledge.write`
- *    with a `{ server, tool, arguments }` envelope; OK's own Pi extension sends
- *    `ok_write`, because Pi has no MCP namespacing and prefixes instead. So
- *    match the shape they share rather than any single spelling, then require
- *    the tool to be one OK actually serves — that is what keeps someone's own
- *    `ok_deploy` from claiming our name.
- *
- *    Cursor is the honest miss: it labels every MCP call "MCP: tool", carrying
- *    neither server nor tool name, so those rows fall through to (2).
- *
- * 2. **Everything else keeps the adapter's title**, which is already written
- *    for a reader, and takes its glyph from the ACP `kind` — the one
- *    structured signal the protocol guarantees on every call.
- */
-
 import { OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
 import { stringField, unwrapMcpInput } from '@/lib/acp/mcp-input';
 
-/**
- * Icon slot for a tool-call row. A superset of ACP's `ToolKind`: OK's own tools
- * earn distinctions the protocol has no kind for — a lint check and a link
- * lookup are both `other` on the wire.
- */
 export type ToolCallGlyph =
   | 'read'
   | 'edit'
@@ -52,24 +22,14 @@ export type ToolCallGlyph =
   | 'other';
 
 export interface ToolCallDisplay {
-  /** The row's visible text. */
   text: string;
   glyph: ToolCallGlyph;
 }
 
-/** Canonical in `core`, which the server's registry test pins to the live
-    registrations — so this surface and the tool set cannot drift apart. */
 const OPEN_KNOWLEDGE_TOOLS: ReadonlySet<string> = new Set(OPEN_KNOWLEDGE_MCP_TOOLS);
 
-/** Server aliases OK is registered under across the harnesses' config files. */
 const OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)$/;
 
-/**
- * `<optional mcp prefix><server><separator><tool>`, the shape every namespacing
- * harness produces. The tool group admits `_` so the two-word tools
- * (`preview_url`, `restore_version`) survive the split; the separator class
- * admits `_` too, and backtracking resolves the overlap.
- */
 const OPEN_KNOWLEDGE_TITLE = /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)[^a-z0-9]+([a-z_]+)$/;
 
 interface OpenKnowledgeCall {
@@ -88,15 +48,10 @@ function toolFromTitle(title: string): string | null {
 }
 
 function identifyOpenKnowledgeCall(title: string, rawInput: unknown): OpenKnowledgeCall | null {
-  // A `server` field names the MCP server outright. When it names someone
-  // else's, the call is theirs whatever the title looks like.
   const server = stringField(asRecord(rawInput), 'server');
   if (server !== null && !OPEN_KNOWLEDGE_SERVER.test(server.toLowerCase())) return null;
 
   const unwrapped = unwrapMcpInput(rawInput);
-  // Title before the unwrapped name: adapters that put the tool in the title
-  // pass their arguments bare, and an argument called `name` (a skill's, on
-  // `install`) would otherwise read as the tool name and lose the call.
   const tool = [toolFromTitle(title), unwrapped?.tool ?? null].find(
     (candidate): candidate is string => candidate !== null && OPEN_KNOWLEDGE_TOOLS.has(candidate),
   );
@@ -104,8 +59,6 @@ function identifyOpenKnowledgeCall(title: string, rawInput: unknown): OpenKnowle
   return { tool, args: unwrapped?.args ?? {} };
 }
 
-/** Paths under an argument, which OK accepts as a bare string, a `{ path }`, or
-    an array of either. */
 function pathsOf(value: unknown): string[] {
   if (typeof value === 'string') return value.trim() === '' ? [] : [value.trim()];
   if (Array.isArray(value)) return value.flatMap(pathsOf);
@@ -115,13 +68,6 @@ function pathsOf(value: unknown): string[] {
   return [];
 }
 
-/**
- * Argument names that carry the thing a tool acted on, most specific first.
- * `write` / `edit` / `delete` are polymorphic over document, folder, template
- * and asset; `resolve_conflict` names its target `file` as a bare string;
- * `move` names its source `from`; `install` and friends name their subject
- * with a bare `name`.
- */
 const TARGET_KEYS = [
   'document',
   'documents',
@@ -142,17 +88,12 @@ function targetPaths(args: Record<string, unknown>): string[] {
   return [];
 }
 
-/** OK doc names are extension-less, and that is how the app names them
-    everywhere else — a row saying `standup.md` would be the odd one out. */
 function docLabel(path: string): string {
   return path.replace(/\.mdx?$/i, '');
 }
 
-/** Past this the row is all one argument: the reader gets the shape of the
-    command and nothing useful after it. */
 const INLINE_MAX = 120;
 
-/** A free-text argument (a command, a query) flattened to fit one row. */
 function inlineText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const collapsed = value.replace(/\s+/g, ' ').trim();
@@ -163,7 +104,6 @@ function inlineText(value: unknown): string | null {
 function openKnowledgeDisplay(tool: string, args: Record<string, unknown>): ToolCallDisplay {
   const found = targetPaths(args);
   const first = found[0];
-  // A batch write names every document it touched; the row has room for a count.
   const subject: string | null =
     found.length > 1
       ? t`${plural(found.length, { one: '# document', other: '# documents' })}`
@@ -311,7 +251,6 @@ function openKnowledgeDisplay(tool: string, args: Record<string, unknown>): Tool
   }
 }
 
-/** ACP's own tool kinds, each to its own glyph. */
 const KIND_GLYPHS: Record<string, ToolCallGlyph> = {
   read: 'read',
   edit: 'edit',

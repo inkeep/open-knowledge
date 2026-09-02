@@ -2824,6 +2824,7 @@ msgstr "Cloning {repoName}..."
 msgid "Cloning..."
 msgstr "Cloning..."
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -4779,7 +4780,6 @@ msgid "Disconnecting"
 msgstr "Disconnecting"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/BugReportSendToast.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
@@ -7317,6 +7317,10 @@ msgstr "Invalid share URL."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "Invalid YAML"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
+msgstr "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's."
 
 #. placeholder {0}: prompt.cwd
 #. placeholder {1}: prompt.agentName

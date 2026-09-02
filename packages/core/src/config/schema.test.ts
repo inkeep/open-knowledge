@@ -184,9 +184,6 @@ describe('appearance.sidebar view toggles', () => {
 
 describe('appearance.language', () => {
   test('accepts every enumerated locale plus the system sentinel', () => {
-    // Enumerating the core tuple rather than a hand-written list is the point:
-    // a leaf that re-declared its own tags would drift the moment a locale is
-    // added, and a user's stored language would stop parsing.
     for (const locale of [...SUPPORTED_LOCALES, 'system']) {
       const parsed = ConfigSchema.parse({ appearance: { language: locale } });
       expect(parsed.appearance.language).toBe(locale);
@@ -199,9 +196,6 @@ describe('appearance.language', () => {
   });
 
   test('is absent rather than defaulted when unset', () => {
-    // No `.default('system')`: an unset language and an explicit 'system' both
-    // follow the OS, so writing a default would only add a config key nobody
-    // asked for. Mirrors `appearance.theme`.
     expect(ConfigSchema.parse({}).appearance.language).toBeUndefined();
   });
 });
@@ -262,9 +256,6 @@ describe('legacy upload.* keys remain non-authoritative', () => {
 
 describe('contentRules forward compatibility', () => {
   test('an unknown plugin slice survives parse instead of being stripped', () => {
-    // A NEWER OK version's plugin config (a direct child of `contentRules`) must
-    // round-trip through an older version's parse→write-back cycle, not silently
-    // disappear.
     const parsed = ConfigSchema.parse({
       contentRules: { 'future-linter': { enabled: true, level: 'strict' } },
     });
@@ -272,7 +263,6 @@ describe('contentRules forward compatibility', () => {
       enabled: true,
       level: 'strict',
     });
-    // The known slice still defaults alongside the unknown one (off by default).
     expect(parsed.contentRules.markdownlint).toEqual({ enabled: false });
   });
 });
@@ -332,17 +322,11 @@ describe('autoSync forward/backward compatibility (looseObject round-trip)', () 
       autoSync: { mode: 'pull', onboardingResolvedAt: '2026-01-01', inheritedFrom: 'root' },
     });
     expect(parsed.autoSync.mode).toBe('pull');
-    // looseObject retains keys the schema doesn't model (worktree-inherit flags,
-    // legacy onboarding stamps) so they round-trip on write-back.
     expect((parsed.autoSync as Record<string, unknown>).onboardingResolvedAt).toBe('2026-01-01');
     expect((parsed.autoSync as Record<string, unknown>).inheritedFrom).toBe('root');
   });
 
   test('an older mode-unaware schema reads a mode-only config as sync-off, never pushing', () => {
-    // A newer OK can write autoSync.mode into a config an older OK never learned
-    // about. The old schema (mode-unaware, enabled-only) must read that config as
-    // UNANSWERED and never silently enable push. Snapshot the pre-change schema +
-    // boot resolution so the guarantee is pinned even after the real schema moves.
     const legacyAutoSync = z
       .looseObject({
         enabled: z.boolean().nullable().default(null),
@@ -352,13 +336,10 @@ describe('autoSync forward/backward compatibility (looseObject round-trip)', () 
     const legacySchema = z.looseObject({ autoSync: legacyAutoSync });
 
     const parsed = legacySchema.parse({ autoSync: { mode: 'pull' } });
-    // The mode key is preserved (looseObject) but invisible to the old schema.
     expect((parsed.autoSync as Record<string, unknown>).mode).toBe('pull');
     expect(parsed.autoSync.enabled).toBeNull();
     expect(parsed.autoSync.default).toBeNull();
 
-    // Pre-change boot resolution: per-machine enabled wins, else committed
-    // default === true. With both null, sync is OFF and the engine never pushes.
     const legacyBootResolvesEnabled =
       parsed.autoSync.enabled !== null && parsed.autoSync.enabled !== undefined
         ? parsed.autoSync.enabled === true
@@ -367,16 +348,6 @@ describe('autoSync forward/backward compatibility (looseObject round-trip)', () 
   });
 
   test('a committed default:"pull" fails an older schema wholesale — the accepted skew cost', () => {
-    // `autoSync.mode` and `autoSync.default` have OPPOSITE forward-compat
-    // profiles. `mode` is a NEW key an old looseObject passes through silently;
-    // `default` is a KNOWN, type-checked leaf (boolean-only in the old schema),
-    // so a committed default:'pull' is rejected — and because it's a leaf of the
-    // whole config, that failure fails the ENTIRE parse, so a mode-unaware app
-    // boots on schema defaults for that file. This whole-config reset is the
-    // deliberately-accepted cost of the single-knob config design: the
-    // no-silent-push guarantee still holds (the fallback default is null → off),
-    // and the residual is that a skewed collaborator falls back to defaults
-    // until they update. Pin the asymmetry so the two keys stay documented.
     const legacyAutoSync = z
       .looseObject({
         enabled: z.boolean().nullable().default(null),
@@ -385,14 +356,9 @@ describe('autoSync forward/backward compatibility (looseObject round-trip)', () 
       .default({ enabled: null, default: null });
     const legacySchema = z.looseObject({ autoSync: legacyAutoSync });
 
-    // The new `mode` key parses cleanly via looseObject (invisible to the old
-    // schema)...
     expect(legacySchema.safeParse({ autoSync: { mode: 'pull' } }).success).toBe(true);
-    // ...but a committed `default: 'pull'` is rejected, failing the whole parse.
     expect(legacySchema.safeParse({ autoSync: { default: 'pull' } }).success).toBe(false);
 
-    // The all-defaults fallback a rejecting app boots on has `default: null`, so
-    // boot resolution is OFF — no silent push on the skewed version.
     const legacyDefaults = legacySchema.parse({});
     expect(legacyDefaults.autoSync.default).toBeNull();
   });
@@ -403,11 +369,8 @@ describe('server.* (canonical listener/exposure surface)', () => {
     const config = ConfigSchema.parse({});
     expect(config.server.bind).toEqual(['127.0.0.1']);
     expect(config.server.allowExternal).toBe(false);
-    // No schema default: unset means dynamic locally / platform PORT env in
-    // images.
     expect(config.server.port).toBeUndefined();
     expect(config.server.externalUrl).toBeUndefined();
-    // Derived defaults resolve in resolveServerRuntimeConfig, not here.
     expect(config.server.openBrowser).toBeUndefined();
     expect(config.server.idleShutdown).toBeUndefined();
   });
@@ -431,9 +394,6 @@ describe('server.* (canonical listener/exposure surface)', () => {
   });
 
   test('bind is registered project-local so a committed value is ignored (clone-safety)', () => {
-    // Per-machine listener knob: a committed non-loopback bind must never break
-    // a teammate who clones and runs locally, so it lives in .ok/local, not the
-    // shared .ok/config.yml. mergeLayered keys off this scope to drop it.
     const meta = getLeafFieldMeta(ConfigSchema, ['server', 'bind']);
     expect(meta?.scope).toBe('project-local');
     expect(meta?.defaultScope).toBe('project-local');

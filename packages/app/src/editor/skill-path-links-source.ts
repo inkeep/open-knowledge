@@ -1,13 +1,3 @@
-/**
- * Source-mode counterpart of the WYSIWYG skill-path affordance
- * (`extensions/skill-path-links.ts`): in a skill doc's raw markdown, an
- * inline-code span whose WHOLE content is bundle-path-shaped
- * (`references/…` / `scripts/…`) gets a link affordance, and clicking it opens
- * the bundle file through the same scope-aware skill-file route. Decoration
- * only — the document bytes are untouched, and both surfaces share the ONE
- * `BUNDLE_PATH_RE` / `skillDocTarget` so they can never disagree on what
- * counts as a path.
- */
 import { syntaxTree } from '@codemirror/language';
 import type { EditorState, Extension, Range } from '@codemirror/state';
 import {
@@ -27,8 +17,6 @@ import {
   skillDocTarget,
 } from './extensions/skill-path-links';
 
-/** Pure builder (exported for unit tests, mirrors source-polish's pattern):
- *  decorates the INNER text of matching InlineCode nodes, never the backticks. */
 function namesAsSet(): ReadonlySet<string> | null {
   const snapshot = getSkillNameSnapshot();
   return snapshot === null ? null : new Set(snapshot.keys());
@@ -41,8 +29,6 @@ export function buildSkillPathDecorations(
 ): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const tree = syntaxTree(state);
-  // `/skill-name` prose references (outside code spans): mirror the WYSIWYG
-  // classification — installed links, unknown slug renders missing.
   if (knownSkillNames != null) {
     const codeSpans: Array<{ from: number; to: number }> = [];
     for (const { from, to } of ranges) {
@@ -144,8 +130,6 @@ export function createSkillPathLinksSourceExtension(docName: string): Extension 
   );
   const click = EditorView.domEventHandlers({
     mousedown(event) {
-      // The path rides the decoration's data attribute, so a mark split across
-      // highlight token boundaries still carries the full path on each piece.
       const refEl = (event.target as HTMLElement | null)?.closest?.('[data-skill-ref]');
       const slug = refEl instanceof HTMLElement ? refEl.dataset.skillRef : undefined;
       if (slug !== undefined) {
@@ -154,8 +138,6 @@ export function createSkillPathLinksSourceExtension(docName: string): Extension 
         if (hit !== undefined) {
           window.location.hash = skillRefNavHashForHit(slug, hit);
         } else {
-          // Name we cannot resolve: open the dock so the reader can look for it,
-          // rather than route to the retired Skills home.
           requestSkillsDockExpanded();
         }
         return true;

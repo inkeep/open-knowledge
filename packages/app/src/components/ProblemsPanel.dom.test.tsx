@@ -1,12 +1,3 @@
-/**
- * Behavioral tests for ProblemsPanel: renders a row per diagnostic, shows the
- * empty state, and on row click dispatches a LINT_NAV_EVENT plus banks a
- * pending lint intent so the source editor can jump now or on its next
- * activation. Project scope runs the audit on demand (never on mount), caches
- * the result across scope flips, re-fetches only through the refresh
- * affordance, and click-navigates to the offending doc by hash.
- */
-
 import type { LintDiagnostic, ValidationAuditResponse } from '@inkeep/open-knowledge-core';
 import {
   act,
@@ -23,12 +14,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 import type { LintNavDetail } from './ProblemsPanel';
 
-// Both lingui macro specifiers alias to ONE shim module under the vitest dom
-// config, so two mock registrations race for a single resolved module id and
-// only one factory survives. The factories must be the same superset object —
-// a specifier-shaped split (t on core, components on react) loses whichever
-// half the race drops (observed: useLingui vanishing when the core factory
-// won).
 const linguiMacroMock = {
   t: renderLinguiTemplate,
   msg: renderLinguiTemplate,
@@ -44,7 +29,6 @@ vi.doMock('@lingui/core/macro', () => linguiMacroMock);
 vi.doMock('@lingui/react/macro', () => linguiMacroMock);
 
 let auditCalls = 0;
-/** Mirrors the client's exported sentinel; the mock below replaces the module. */
 const AUDIT_SUPERSEDED = 'audit-superseded' as const;
 let runLintAuditImpl: () => Promise<ValidationAuditResponse | null | typeof AUDIT_SUPERSEDED> =
   async () => null;
@@ -63,7 +47,6 @@ const toastInfo = vi.fn((_message: string) => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastError, success: toastSuccess, info: toastInfo },
 }));
-// Captured so a test can fire a config change the way a rule toggle does.
 const lintConfigListeners = new Set<() => void>();
 function emitLintConfigChangedForTest(): void {
   for (const listener of lintConfigListeners) listener();
@@ -83,7 +66,6 @@ vi.doMock('@/editor/lint-config-client', () => ({
   fetchEffectiveLintConfig: async () => null,
   writeMarkdownlintRule: async () => ({ ok: false, errorDetail: null }),
 }));
-// The panel's project scope now consumes the unified audit plane.
 vi.doMock('@/editor/validation-audit-client', () => ({
   AUDIT_SUPERSEDED,
   runValidationAudit: () => {
@@ -92,8 +74,6 @@ vi.doMock('@/editor/validation-audit-client', () => ({
   },
   useDocLinkFindings: () => ({ status: 'loaded', findings: [] }),
 }));
-// Page-list context for the dead-link "Create page" one-shot. `addPage` is the
-// only member the panel touches.
 const addPageCalls: string[] = [];
 vi.doMock('@/components/PageListContext', () => ({
   useOptionalPageList: () => ({ addPage: (docName: string) => addPageCalls.push(docName) }),
@@ -114,7 +94,6 @@ vi.doMock('@/lib/create-page', () => ({
   },
 }));
 
-/** Minimal lint-config payload with the plugin toggles the panel reads. */
 function lintConfigWith(plugins: { markdownlint: boolean; frontmatter: boolean }): unknown {
   return {
     effective: {
@@ -131,20 +110,12 @@ function lintConfigWith(plugins: { markdownlint: boolean; frontmatter: boolean }
 }
 
 const { ProblemsPanel, LINT_NAV_EVENT } = await import('./ProblemsPanel');
-// Dynamic like the panel above, not a static import: the store binds the mocked
-// `sonner` only if it loads after the registrations, and a hoisted static import
-// would bind the real one.
 const { __resetProjectFixSweepForTests } = await import('@/lib/project-fix-sweep-store');
-// The real registry, deliberately unmocked: the tests assert the banked intent
-// through its public consume API — the same call the source editor replays.
 const { consumePendingSourceNavigation, clearPendingSourceNavigationsForTest } = await import(
   '@/editor/source-editor-navigation'
 );
-// The real bus, deliberately unmocked: the scope tests raise a request exactly
-// the way the file tree's problem badge does.
 const { consumePendingDocPanelRequest, requestDocPanelTab } = await import('./doc-panel-events');
 
-/** Diagnostic at a 1-based line/column (the display convention these tests assert). */
 function diag(over: Partial<LintDiagnostic> & { line?: number; column?: number }): LintDiagnostic {
   const { line = 3, column = 1, ...rest } = over;
   return {
@@ -164,7 +135,6 @@ function auditResult(over: Partial<ValidationAuditResponse> = {}): ValidationAud
   return { files: [], fileCount: 3, errorCount: 0, warningCount: 0, warnings: [], ...over };
 }
 
-/** A dead-link diagnostic as the links validator reports it on the wire. */
 function linkDiag(
   over: Partial<LintDiagnostic> & { line?: number } = {},
 ): LintDiagnostic & { linkTarget: string } {
@@ -174,15 +144,12 @@ function linkDiag(
       code: 'dead-link',
       message: 'Link target "ghost" does not resolve to an existing document.',
       ...over,
-      // The wire's `source` is any validator id; the in-process type is narrower,
-      // so route around it for the fixture.
       source: 'links' as LintDiagnostic['source'],
     }),
     linkTarget: 'ghost',
   };
 }
 
-/** Wire-loose local-target evidence (open-enum strings), as the audit projects it. */
 type LocalTargetEvidence = {
   href: string;
   targetKind: 'document' | 'file' | 'unknown';
@@ -194,12 +161,6 @@ type LocalTargetEvidence = {
   definition?: { line: number; label: string };
 };
 
-/**
- * A `links` finding carrying local-target evidence — the shape the audit plane
- * projects for a missing file, image, unresolvable, or reference-style target.
- * `linkTarget` is threaded only for an eligible missing document (create-page
- * intent); files, images, and unresolvable targets never carry it in production.
- */
 function localTargetDiag(args: {
   line?: number;
   message: string;
@@ -246,9 +207,6 @@ beforeEach(() => {
   toastSuccess.mockClear();
   toastInfo.mockClear();
   lintConfigListeners.clear();
-  // The sweep is a session singleton now, and this config isolates per FILE,
-  // not per test — without this a sweep left running by one test would refuse
-  // the next test's start.
   __resetProjectFixSweepForTests();
 });
 
@@ -257,38 +215,18 @@ afterEach(() => {
   clearPendingSourceNavigationsForTest();
   __resetProjectFixSweepForTests();
   window.location.hash = '';
-  // Production expiry owns abandoned requests; the explicit drain keeps this
-  // synchronous test boundary deterministic even under fake timers.
   consumePendingDocPanelRequest('problems');
 });
 
-/**
- * Production mounts the panel under main.tsx's root TooltipProvider. The action
- * row's Auto-fix / Fix all with AI buttons always carry tooltips, so every
- * render here needs one — Radix throws without an ancestor provider.
- */
 function render(ui: ReactElement) {
   return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
-/**
- * Open a collapsed project-scope file group. Groups mount collapsed, so a test
- * that reaches into a group's diagnostic rows must first click its header — the
- * file-path label lives inside the CollapsibleTrigger button.
- */
 function expandGroup(filePath: string) {
   const header = screen.getByText(filePath);
   fireEvent.click(header.closest('button') ?? header);
 }
 
-/**
- * The sweep's screen-reader progress region: a role=status live region whose
- * text is the running "Fixing N of M files" count. Matched by that text so it is
- * never confused with the audit-loading skeleton, which is also role=status but
- * announces the audit rather than the sweep (the two are mutually exclusive by
- * construction, but querying on the text keeps the helper honest regardless).
- * Returns undefined when no sweep is running.
- */
 function sweepLiveRegion(): HTMLElement | undefined {
   return screen
     .queryAllByRole('status')
@@ -346,13 +284,11 @@ describe('ProblemsPanel', () => {
     projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: true });
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     const trigger = screen.getByTestId('problems-active-plugins');
-    // The pill itself carries only the count — names live in the tooltip.
     expect(trigger.textContent).toContain('2 plugins');
     expect(trigger.textContent).not.toContain('markdownlint');
     fireEvent.focus(trigger);
     const tooltip = await screen.findByTestId('problems-active-plugins-tooltip');
     expect(tooltip.textContent).toContain('Checked by: markdownlint, Frontmatter schemas');
-    // Plugins are on, so the ordinary empty state (not the no-plugins one) shows.
     expect(screen.getByText('No problems found.')).toBeTruthy();
     expect(screen.queryByTestId('problems-no-plugins')).toBeNull();
   });
@@ -380,8 +316,6 @@ describe('ProblemsPanel', () => {
   test('link findings still render with zero plugins enabled (links validate regardless)', () => {
     projectLintConfigData = lintConfigWith({ markdownlint: false, frontmatter: false });
     render(<ProblemsPanel docName="notes" diagnostics={[linkDiag()]} />);
-    // The no-plugins hint only replaces the EMPTY list — a populated plane
-    // (broken links) must never be hidden behind it.
     expect(screen.queryByTestId('problems-no-plugins')).toBeNull();
     expect(screen.getByText(/does not resolve/)).toBeTruthy();
   });
@@ -438,7 +372,6 @@ describe('ProblemsPanel', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onFix={onFix} />);
     const fixButtons = screen.getAllByRole('button', { name: /Fix markdownlint\/MD010/ });
     expect(fixButtons).toHaveLength(1);
-    // The unfixable row has no Fix button.
     expect(screen.queryByRole('button', { name: /Fix markdownlint\/MD025/ })).toBeNull();
     fixButtons[0]?.click();
     expect(onFix).toHaveBeenCalledTimes(1);
@@ -475,8 +408,6 @@ describe('ProblemsPanel', () => {
     );
     const button = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
-    // The label sizes the click before it happens: only the fixable diagnostic
-    // counts, not the total problem count.
     expect(button.textContent).toContain('(1)');
     button.click();
     expect(onAutoFix).toHaveBeenCalledTimes(1);
@@ -499,8 +430,6 @@ describe('ProblemsPanel', () => {
       <ProblemsPanel docName="notes" diagnostics={[fixable, unfixable]} onAskAi={onAskAi} />,
     );
     const askButtons = screen.getAllByTestId('problems-ask-ai');
-    // One per row — the unfixable row gets it too (AI matters most where no
-    // deterministic fix exists).
     expect(askButtons).toHaveLength(2);
     askButtons[1]?.click();
     expect(onAskAi).toHaveBeenCalledTimes(1);
@@ -529,7 +458,6 @@ describe('ProblemsPanel', () => {
     const { unmount } = render(<ProblemsPanel docName="notes" diagnostics={[diag({})]} />);
     expect(screen.queryByTestId('problems-auto-fix')).toBeNull();
     unmount();
-    // Empty state renders no action row at all.
     render(<ProblemsPanel docName="notes" diagnostics={[]} onAutoFix={vi.fn(() => {})} />);
     expect(screen.queryByTestId('problems-auto-fix')).toBeNull();
   });
@@ -555,8 +483,6 @@ describe('ProblemsPanel', () => {
       />,
     );
     const aiButton = screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement;
-    // The two buttons are "the mechanical subset" (1) and "the whole list" (2),
-    // not two halves of a partition.
     expect(screen.getByTestId('problems-auto-fix').textContent).toContain('(1)');
     expect(aiButton.textContent).toContain('(2)');
     expect(aiButton.disabled).toBe(false);
@@ -572,8 +498,6 @@ describe('ProblemsPanel', () => {
       />,
     );
     screen.getByTestId('problems-fix-with-ai').click();
-    // Scope only: the prompt names it and the agent reads its own list, so a
-    // stale snapshot never travels with the hand-off.
     expect(onFixWithAi.mock.calls).toEqual([['doc']]);
   });
 
@@ -597,8 +521,6 @@ describe('ProblemsPanel', () => {
         onFixWithAi={vi.fn(() => {})}
       />,
     );
-    // Mike's case inverted: no Auto-fix affordance at all, but the panel still
-    // offers an enabled action rather than looking inert.
     expect(screen.queryByTestId('problems-auto-fix')).toBeNull();
     expect((screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement).disabled).toBe(false);
   });
@@ -614,8 +536,6 @@ describe('ProblemsPanel', () => {
     );
     const button = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    // The tooltip describes the wrapper span (a disabled button emits no
-    // pointer events), so the name is all a screen-reader user gets.
     expect(button.getAttribute('aria-label')).toContain('no problems here have an automatic fix');
   });
 
@@ -627,12 +547,9 @@ describe('ProblemsPanel', () => {
         onAutoFix={vi.fn(() => {})}
       />,
     );
-    // The tooltip hangs off the wrapper span (a disabled button emits no
-    // pointer events), so focus it rather than the control.
     fireEvent.focus(screen.getByTestId('problems-auto-fix').parentElement as HTMLElement);
     const tip = await screen.findByTestId('problems-auto-fix-tip');
     expect(tip.textContent).toContain('None of these problems have an automatic fix');
-    // Pointing at a button that was never rendered sends the user hunting.
     expect(tip.textContent).not.toMatch(/Fix all with AI/);
   });
 
@@ -658,7 +575,6 @@ describe('ProblemsPanel', () => {
     render(<ProblemsPanel docName="notes" diagnostics={diagnostics} />);
     const buttons = screen.getAllByRole('button');
     expect(buttons).toHaveLength(2);
-    // Lower line sorts first.
     expect(buttons[0]?.textContent).toContain('MD010');
     expect(buttons[1]?.textContent).toContain('MD012');
   });
@@ -695,11 +611,7 @@ describe('ProblemsPanel', () => {
       />,
     );
     const tags = screen.getAllByTestId('problems-source-tag');
-    // Each chip is the producing validator's own name, not a shared "lint"
-    // label — so two different validators read as two distinct chips.
     expect(tags.map((tag) => tag.textContent)).toEqual(['markdownlint', 'frontmatter', 'links']);
-    // The chip carries the producer, so the subline drops the duplicate prefix
-    // and shows the bare rule code.
     const row = screen.getByRole('button', { name: /Hard tabs/ });
     expect(row.textContent).toContain('MD010 · line 2');
     expect(row.textContent).not.toContain('markdownlint/MD010');
@@ -715,16 +627,11 @@ describe('ProblemsPanel', () => {
       }),
     );
     render(<ProblemsPanel docName="notes" diagnostics={[...repeated, diag({ line: 2 })]} />);
-    // One collapsed group for the repeat, one plain row for the singleton.
     const groups = screen.getAllByTestId('problems-duplicate-group');
     expect(groups).toHaveLength(1);
     expect(groups[0]?.textContent).toContain('3 instances');
-    // Collapsed by default: the occurrences are not in the tree yet.
     expect(screen.queryByTestId('problems-duplicate-instances')).toBeNull();
-    // The message appears once, not three times.
     expect(screen.getAllByText('Frontmatter property is missing')).toHaveLength(1);
-    // The collapsed header's subline shows the bare rule code — a group spans
-    // many lines, so it names none of them.
     expect(groups[0]?.textContent).toContain('required');
     expect(groups[0]?.textContent).not.toMatch(/line \d/);
   });
@@ -749,8 +656,6 @@ describe('ProblemsPanel', () => {
         .getByTestId('problems-duplicate-instances')
         .querySelectorAll('button');
       expect(occurrences).toHaveLength(2);
-      // Each occurrence keeps the message in its accessible name so it still
-      // reads as a whole finding out of list context.
       expect(occurrences[1]?.getAttribute('aria-label')).toBe('Hard tabs at line 9');
       fireEvent.click(occurrences[1] as HTMLElement);
       expect(received).toEqual({
@@ -780,7 +685,6 @@ describe('ProblemsPanel', () => {
       });
     const onFix = vi.fn(() => {});
     render(<ProblemsPanel docName="notes" diagnostics={[fixAt(4), fixAt(9)]} onFix={onFix} />);
-    // Collapsed, the group header carries no per-occurrence Fix.
     expect(screen.queryByTestId('problems-fix')).toBeNull();
     fireEvent.click(
       screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
@@ -803,13 +707,10 @@ describe('ProblemsPanel', () => {
         onAskAi={onAskAi}
       />,
     );
-    // Collapsed, the group header carries no per-occurrence Ask AI.
     expect(screen.queryByTestId('problems-ask-ai')).toBeNull();
     fireEvent.click(
       screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
     );
-    // One Ask AI per expanded occurrence — the grouped path renders the same
-    // per-occurrence actions as an ungrouped row.
     expect(screen.getAllByTestId('problems-ask-ai')).toHaveLength(2);
   });
 
@@ -839,15 +740,11 @@ describe('ProblemsPanel', () => {
         diagnostics={[deadLinkTo(2, 'alpha'), deadLinkTo(5, 'beta')]}
       />,
     );
-    // Same source and code (`links`/`dead-link`), different target: the key's
-    // target/message axis keeps them apart, so each keeps its own Create action.
     expect(screen.queryByTestId('problems-duplicate-group')).toBeNull();
     expect(screen.getAllByTestId('problems-create-page')).toHaveLength(2);
   });
 
   test('dead links to one target group, and each occurrence keeps its Create action', () => {
-    // Same source, code, target and message: the group key collapses them, so the
-    // Create action has to survive the grouped path, not just the plain-row one.
     render(
       <ProblemsPanel
         docName="notes"
@@ -855,16 +752,13 @@ describe('ProblemsPanel', () => {
       />,
     );
     const group = screen.getByTestId('problems-duplicate-group');
-    // Collapsed, the header offers no per-occurrence Create.
     expect(screen.queryByTestId('problems-create-page')).toBeNull();
     fireEvent.click(group.querySelector('button') as HTMLElement);
-    // One Create per expanded occurrence, each carrying its own target.
     expect(screen.getAllByTestId('problems-create-page')).toHaveLength(2);
   });
 
   test('a dead-link row offers the one-shot Create page action; lint rows do not', async () => {
     render(<ProblemsPanel docName="notes" diagnostics={[linkDiag({ line: 5 }), diag({})]} />);
-    // Exactly one Create button — the lint row gets none.
     const createButtons = screen.getAllByTestId('problems-create-page');
     expect(createButtons).toHaveLength(1);
 
@@ -872,7 +766,6 @@ describe('ProblemsPanel', () => {
     await waitFor(() =>
       expect(createPageCalls).toEqual([{ initialDir: '', suggestedName: 'ghost' }]),
     );
-    // The created page lands in the page list (same flow as the Links panel).
     expect(addPageCalls).toEqual(['ghost']);
   });
 
@@ -880,7 +773,6 @@ describe('ProblemsPanel', () => {
     render(
       <ProblemsPanel docName="notes" diagnostics={[linkDiag({})]} onAutoFix={vi.fn(() => {})} />,
     );
-    // A dead link is not deterministically fixable — the Auto-fix label counts 0.
     const button = screen.getByTestId('problems-auto-fix') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.textContent).toContain('(0)');
@@ -904,8 +796,6 @@ describe('ProblemsPanel', () => {
   test('clicking a row banks a pending lint intent for later source-mode activation', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[diag({ line: 7, column: 2 })]} />);
     fireEvent.click(screen.getByRole('button'));
-    // Banked even though no source editor consumed the event (WYSIWYG case):
-    // the next source-mode activation within the TTL replays it.
     expect(consumePendingSourceNavigation('notes')).toEqual({
       kind: 'lint',
       detail: { docName: 'notes', line: 7, column: 2, source: 'markdownlint' },
@@ -932,14 +822,12 @@ describe('ProblemsPanel — project scope', () => {
       });
 
     render(<ProblemsPanel docName="notes" diagnostics={[diag({ line: 1 })]} />);
-    // Mounting the panel in doc scope never runs the audit.
     expect(auditCalls).toBe(0);
 
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
     expect(auditCalls).toBe(1);
 
-    // Per-file groups render collapsed: headers with counts, contents unmounted.
     expect(screen.getByText('notes.md')).toBeTruthy();
     const groups = screen.getAllByTestId('problems-audit-group');
     expect(groups).toHaveLength(2);
@@ -947,12 +835,9 @@ describe('ProblemsPanel — project scope', () => {
     expect(groups[0]?.querySelector('[data-testid="problems-audit-file-count"]')?.textContent).toBe(
       '2',
     );
-    // A diagnostic message lives inside a collapsed group, so it is not mounted.
     expect(screen.queryByText('Heading increment')).toBeNull();
-    // Expanding the group mounts its rows.
     expandGroup('guides/setup.md');
     expect(screen.getByText('Heading increment')).toBeTruthy();
-    // The summary carries the audit-wide error/warning counts.
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('0 errors');
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('3 warnings');
   });
@@ -977,7 +862,6 @@ describe('ProblemsPanel — project scope', () => {
 
     const tags = screen.getAllByTestId('problems-source-tag');
     expect(tags.map((tag) => tag.textContent)).toEqual(['markdownlint', 'links']);
-    // The rollup summary carries the merged plane's counts.
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('1 error');
     expect(screen.getByTestId('problems-audit-summary').textContent).toContain('1 warning');
   });
@@ -999,8 +883,6 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
 
-    // The per-file badge counts problems (not collapsed rows) on the header,
-    // before the group is opened.
     expect(screen.getByTestId('problems-audit-file-count').textContent).toBe('3');
     expandGroup('guides/setup.md');
     expect(screen.getAllByTestId('problems-duplicate-group')).toHaveLength(1);
@@ -1011,8 +893,6 @@ describe('ProblemsPanel — project scope', () => {
     runLintAuditImpl = async () => auditResult({ fileCount: 2 });
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     fireEvent.click(screen.getByTestId('panel-scope-project'));
-    // The tooltip only opens once the audit lands — the button is disabled
-    // (and so not hoverable) while it runs.
     await waitFor(() =>
       expect((screen.getByTestId('problems-audit-refresh') as HTMLButtonElement).disabled).toBe(
         false,
@@ -1040,7 +920,6 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() =>
       expect(createPageCalls).toEqual([{ initialDir: '', suggestedName: 'ghost' }]),
     );
-    // A loaded snapshot is stale truth after the create — the panel re-audits.
     await waitFor(() => expect(auditCalls).toBe(2));
   });
 
@@ -1055,7 +934,6 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-doc'));
     expect(screen.getByText('No problems found.')).toBeTruthy();
     fireEvent.click(screen.getByTestId('panel-scope-project'));
-    // Re-activation shows the cached snapshot without a new fetch.
     expect(screen.getByText('first.md')).toBeTruthy();
     expect(auditCalls).toBe(1);
 
@@ -1146,8 +1024,6 @@ describe('ProblemsPanel — project scope', () => {
           source: 'markdownlint',
         },
       });
-      // The in-doc nav event stays quiet on cross-doc clicks. The banked,
-      // document-scoped intent replays after the target editor activates.
       expect(navEvents).toBe(0);
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
@@ -1181,8 +1057,6 @@ describe('ProblemsPanel — project scope', () => {
       fireEvent.click(screen.getByTestId('panel-scope-project'));
       await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
 
-      // Open the file group, then the collapsed duplicate group inside it, then
-      // click the SECOND occurrence.
       expandGroup('guides/setup.md');
       fireEvent.click(
         screen.getByTestId('problems-duplicate-group').querySelector('button') as HTMLElement,
@@ -1193,9 +1067,6 @@ describe('ProblemsPanel — project scope', () => {
       expect(occurrences).toHaveLength(2);
       fireEvent.click(occurrences[1] as HTMLElement);
 
-      // Cross-doc nav banks the intent by hash; the banked line is the clicked
-      // occurrence (9), not the group's first (4) — the click carries its own
-      // diagnostic through the project-scope onNavigate wrapper.
       expect(window.location.hash).toBe('#/guides/setup');
       expect(consumePendingSourceNavigation('guides/setup')).toEqual({
         kind: 'lint',
@@ -1206,7 +1077,6 @@ describe('ProblemsPanel — project scope', () => {
           source: 'frontmatter',
         },
       });
-      // Cross-doc clicks stay off the in-doc event (it carries no docName).
       expect(navEvents).toBe(0);
     } finally {
       window.removeEventListener(LINT_NAV_EVENT, listener);
@@ -1263,16 +1133,10 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
 
-    // Counts fixable problems across the audit (a.md + nested/c.md), not files
-    // and not the unfixable b.md diagnostic.
     expect(screen.getByTestId('problems-auto-fix').textContent).toContain('(2)');
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
-    // Only the two files carrying fixable diagnostics are swept, extension-less.
     await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'nested/c']));
-    // The sweep ends in a fresh audit fetch (initial activation + re-audit).
     await waitFor(() => expect(auditCalls).toBe(2));
-    // A sweep can finish with nobody watching the counter, so completion is
-    // announced rather than inferred from the count landing on N/N.
     expect(toastSuccess).toHaveBeenCalledTimes(1);
     expect(String(toastSuccess.mock.calls[0]?.[0])).toContain('2 files');
     expect(toastError).not.toHaveBeenCalled();
@@ -1291,8 +1155,6 @@ describe('ProblemsPanel — project scope', () => {
           { file: 'c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
         ],
       });
-    // Hold the first fix open so the sweep is genuinely mid-flight when Stop is
-    // pressed — otherwise it could finish before the click and pass vacuously.
     let releaseFirst: (() => void) | undefined;
     const firstInFlight = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -1307,28 +1169,19 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
-    // The Stop control exists only while a sweep is running.
     const stop = await screen.findByTestId('problems-cancel-fix');
     fireEvent.click(stop);
     releaseFirst?.();
 
-    // The sweep bails at the next file boundary: 'a' was already in flight, so
-    // it completes, but 'b' and 'c' are never posted.
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1));
     expect(fixLintDocCalls).toEqual(['a']);
     expect(String(toastInfo.mock.calls[0]?.[0])).toContain('already fixed stay fixed');
-    // A stop is not a failure — no error toast, and the spinner clears so the
-    // panel is usable again rather than stuck mid-sweep.
     expect(toastError).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId('problems-cancel-fix')).toBeNull());
-    // Re-audits after stopping so the remaining count is the honest one.
     await waitFor(() => expect(auditCalls).toBe(2));
   });
 
   test('a running sweep survives the panel unmounting and still reports how it ended', async () => {
-    // The Problems tab is rendered conditionally, so switching to Timeline
-    // unmounts this panel mid-sweep. That used to end the run silently, leaving
-    // the project half-fixed with nothing to explain it on return.
     const fixableEdit = {
       range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
       newText: '  ',
@@ -1341,8 +1194,6 @@ describe('ProblemsPanel — project scope', () => {
           { file: 'c.md', diagnostics: [diag({ fixes: [fixableEdit] })] },
         ],
       });
-    // Park the opening fix so the unmount lands while the sweep is genuinely
-    // mid-flight, rather than after it has already finished.
     let releaseFirst: (() => void) | undefined;
     const firstInFlight = new Promise<void>((resolve) => {
       releaseFirst = resolve;
@@ -1361,13 +1212,9 @@ describe('ProblemsPanel — project scope', () => {
     view.unmount();
     releaseFirst?.();
 
-    // Every file still gets fixed, and the completion toast reaches the user
-    // through the app-root Toaster even though no panel is mounted.
     await waitFor(() => expect(fixLintDocCalls).toEqual(['a', 'b', 'c']));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
     expect(toastError).not.toHaveBeenCalled();
-    // Nothing left to re-audit for: the panel that owned the plane is gone, so
-    // the only walk was its initial activation.
     expect(auditCalls).toBe(1);
   });
 
@@ -1402,7 +1249,6 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(toastInfo).toHaveBeenCalledTimes(1));
     expect(fixLintDocCalls).toEqual(['a']);
 
-    // The stop flag must reset, or the next sweep ends on its first boundary.
     fixLintDocCalls.length = 0;
     fixLintDocImpl = async () => ({
       ok: true as const,
@@ -1436,11 +1282,9 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('bad.md')).toBeTruthy());
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
-    // The failed file does not stop the sweep.
     await waitFor(() => expect(fixLintDocCalls).toEqual(['bad', 'good']));
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
     expect(String(toastError.mock.calls[0]?.[0])).toContain('1 of 2');
-    // The toast names the first casualty and the server's reason.
     const options = toastError.mock.calls[0]?.[1] as { description?: string } | undefined;
     expect(options?.description).toBe('bad.md — conflict');
   });
@@ -1452,8 +1296,6 @@ describe('ProblemsPanel — project scope', () => {
     };
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'busy.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
-    // The server refuses once for agent-session capacity (503 + the capacity
-    // URN), then accepts — the sweep must wait it out, not surface it as failed.
     const outcomes = [
       {
         ok: false,
@@ -1469,10 +1311,7 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('busy.md')).toBeTruthy());
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
-    // The same file is posted twice — the initial refusal and the retry that
-    // succeeds — proving the component forwards the 503/URN into the retry path.
     await waitFor(() => expect(fixLintDocCalls).toEqual(['busy', 'busy']));
-    // A retried-then-succeeded file is not a failure: no error toast.
     expect(toastError).not.toHaveBeenCalled();
   });
 
@@ -1490,7 +1329,6 @@ describe('ProblemsPanel — project scope', () => {
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
-    // Null detail → just the filename, no ` — ` suffix.
     const options = toastError.mock.calls[0]?.[1] as { description?: string } | undefined;
     expect(options?.description).toBe('bad.md');
   });
@@ -1503,7 +1341,6 @@ describe('ProblemsPanel — project scope', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('plain.md')).toBeTruthy());
-    // Loaded audit with zero fixable files keeps the button disabled.
     expect((screen.getByTestId('problems-auto-fix') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
     expect(fixLintDocCalls).toEqual([]);
@@ -1525,8 +1362,6 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('a.md')).toBeTruthy());
 
-    // The label still counts every problem across the audit, fixable or not —
-    // that number is the panel's own, not something handed to the agent.
     expect(screen.getByTestId('problems-fix-with-ai').textContent).toContain('(3)');
     fireEvent.click(screen.getByTestId('problems-fix-with-ai'));
     expect(onFixWithAi.mock.calls).toEqual([['project']]);
@@ -1537,8 +1372,6 @@ describe('ProblemsPanel — project scope', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} onFixWithAi={vi.fn(() => {})} />);
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByTestId('problems-audit-summary')).toBeTruthy());
-    // A clean project has no problems to hand over, so the button is absent
-    // rather than an enabled no-op.
     expect(screen.queryByTestId('problems-fix-with-ai')).toBeNull();
   });
 
@@ -1551,15 +1384,11 @@ describe('ProblemsPanel — project scope', () => {
     const button = screen.getByTestId('problems-auto-fix');
     fireEvent.focus(button.parentElement as HTMLElement);
     const tip = await screen.findByTestId('problems-auto-fix-tip');
-    // Zero problems means neither claim is true: nothing lacks a fix, and there
-    // is no AI hand-off to point at.
     expect(tip.textContent).not.toMatch(/None of these problems/);
     expect(tip.textContent).not.toMatch(/Fix all with AI/);
     expect(button.getAttribute('aria-label')).not.toContain(
       'no problems here have an automatic fix',
     );
-    // Pin the positive value too: the negative assertions above would also pass
-    // on an empty or drifted label, so they cannot tell "correct" from "gone".
     expect(button.getAttribute('aria-label')).toBe('Auto-fix — nothing to fix');
   });
 
@@ -1586,10 +1415,6 @@ describe('ProblemsPanel — project scope', () => {
       expect((screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement).disabled).toBe(true),
     );
 
-    // A finished sweep has to hand both affordances back, or the panel stays
-    // permanently inert after one auto-fix. `waitFor` is load-bearing rather
-    // than stylistic: the sweep closes with a re-audit, and during that reload
-    // the AI button is absent (its handler is withheld until the audit loads).
     releaseFix?.();
     await waitFor(() =>
       expect((screen.getByTestId('problems-fix-with-ai') as HTMLButtonElement).disabled).toBe(
@@ -1606,13 +1431,10 @@ describe('ProblemsPanel — project scope', () => {
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'other.md', diagnostics: [diag({}), diag({ line: 9 })] }] });
     render(<ProblemsPanel docName="notes" diagnostics={[diag({ line: 1 })]} />);
-    // Doc scope shows the doc's own diagnostic count in the panel header.
     expect(screen.getByText('1')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('other.md')).toBeTruthy());
-    // The header count belongs to doc scope; project scope drops it rather
-    // than mislabel project totals with the doc's number.
     expect(screen.queryByText('1', { selector: '[data-slot="panel-count"]' })).toBeNull();
 
     fireEvent.click(screen.getByTestId('panel-scope-doc'));
@@ -1626,8 +1448,6 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(auditCalls).toBe(1));
 
-    // A rule toggle invalidates the snapshot's config: serving it on would show
-    // problems for rules the project no longer has.
     emitLintConfigChangedForTest();
     await waitFor(() => expect(auditCalls).toBe(2));
   });
@@ -1639,8 +1459,6 @@ describe('ProblemsPanel — project scope', () => {
     emitLintConfigChangedForTest();
     emitLintConfigChangedForTest();
 
-    // Doc scope holds no project snapshot to invalidate, so a config change must
-    // not provoke a whole-project walk here.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(auditCalls).toBe(0);
   });
@@ -1648,15 +1466,12 @@ describe('ProblemsPanel — project scope', () => {
   test('a lint-config change does not resurrect a snapshot the panel never loaded', async () => {
     runLintAuditImpl = async () => null;
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
-    // Enter project scope and let the audit FAIL, so status is 'failed'.
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(auditCalls).toBe(1));
     await waitFor(() => expect(screen.getByText(/could not be completed/i)).toBeTruthy());
 
     emitLintConfigChangedForTest();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    // A failed run keeps its error until the user retries — the refresh
-    // affordance is the retry, not a config event.
     expect(auditCalls).toBe(1);
   });
 
@@ -1668,9 +1483,6 @@ describe('ProblemsPanel — project scope', () => {
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
     expect(auditCalls).toBe(1);
 
-    // The server abandons a walk whose config moved under it. The same config
-    // change drives the replacement, so the panel must neither render a failure
-    // nor sit on a spinner no later event clears.
     runLintAuditImpl = async () => AUDIT_SUPERSEDED;
     emitLintConfigChangedForTest();
     await waitFor(() => expect(auditCalls).toBe(2));
@@ -1690,10 +1502,6 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
 
-    // Refresh, and let the server abandon the walk. Nothing else is coming: the
-    // `lint-config` push that would carry a replacement has no reconnect replay,
-    // so the panel has to recover on its own or it sits on a spinner forever
-    // with its only retry affordance disabled.
     runLintAuditImpl = async () => AUDIT_SUPERSEDED;
     fireEvent.click(screen.getByLabelText('Re-run the project audit'));
     await waitFor(() => expect(auditCalls).toBe(2));
@@ -1703,12 +1511,10 @@ describe('ProblemsPanel — project scope', () => {
         (screen.getByLabelText('Re-run the project audit') as HTMLButtonElement).disabled,
       ).toBe(false),
     );
-    // The stale-but-real plane is still on screen, and no error was invented.
     expect(screen.getByText('guides/setup.md')).toBeTruthy();
     expect(screen.queryByText(/could not be completed/i)).toBeNull();
     expect(screen.queryByRole('status')).toBeNull();
 
-    // And the recovered affordance actually works.
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'after-retry.md', diagnostics: [diag({})] }] });
     fireEvent.click(screen.getByLabelText('Re-run the project audit'));
@@ -1716,8 +1522,6 @@ describe('ProblemsPanel — project scope', () => {
   });
 
   test('a first activation that is superseded offers the retry rather than spinning', async () => {
-    // Nothing has ever loaded, so there is no plane to fall back to — the panel
-    // must still surface a reachable retry instead of an endless skeleton.
     runLintAuditImpl = async () => AUDIT_SUPERSEDED;
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     fireEvent.click(screen.getByTestId('panel-scope-project'));
@@ -1742,8 +1546,6 @@ describe('ProblemsPanel — project scope', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('first.md')).toBeTruthy());
 
-    // Refresh into a walk the server will abandon, held open so a config change
-    // can start its replacement while it is still in flight.
     let releaseSuperseded: () => void = () => {};
     runLintAuditImpl = () =>
       new Promise((resolve) => {
@@ -1757,8 +1559,6 @@ describe('ProblemsPanel — project scope', () => {
     emitLintConfigChangedForTest();
     await waitFor(() => expect(screen.getByText('second.md')).toBeTruthy());
 
-    // The abandoned walk settles last. Its fallback is the plane from BEFORE the
-    // replacement ran, so landing it would roll the panel back to stale truth.
     releaseSuperseded();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByText('second.md')).toBeTruthy();
@@ -1767,7 +1567,6 @@ describe('ProblemsPanel — project scope', () => {
 });
 
 describe('ProblemsPanel — scoped tab requests', () => {
-  /** Put a freshly rendered panel into project scope with a settled plane. */
   async function showProjectScope() {
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({})] }] });
@@ -1802,9 +1601,6 @@ describe('ProblemsPanel — scoped tab requests', () => {
   test('scope and keyboard focus named before the panel existed reach it on mount', async () => {
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({})] }] });
-    // The request that names the Problems tab is what mounts this panel, so it
-    // goes out with nobody subscribed. Delivering only over the wire would drop
-    // the scope and leave the panel on its own default.
     act(() => requestDocPanelTab('problems', { scope: 'project', focus: 'panel' }));
 
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
@@ -1849,8 +1645,6 @@ describe('ProblemsPanel — scoped tab requests', () => {
     cleanup();
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
 
-    // Nothing latched, so this panel lands on its own default rather than
-    // re-running a scope the previous panel already answered.
     expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
   });
 
@@ -1859,9 +1653,6 @@ describe('ProblemsPanel — scoped tab requests', () => {
     const { unmount } = render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     unmount();
 
-    // A leaked subscription would run the scope change against the dead panel;
-    // asking for project scope is what makes that observable, because a first
-    // project activation fetches the audit plane.
     act(() => requestDocPanelTab('problems', { scope: 'project' }));
 
     expect(auditCalls).toBe(0);
@@ -1890,16 +1681,13 @@ describe('ProblemsPanel — project scope: collapse and expand-all', () => {
 
     const groups = screen.getAllByTestId('problems-audit-group');
     expect(groups).toHaveLength(2);
-    // Every group is closed, so no diagnostic rows are in the tree.
     for (const group of groups) expect(group.getAttribute('data-state')).toBe('closed');
     expect(screen.queryByText('Heading increment')).toBeNull();
     expect(screen.queryByTestId('problems-source-tag')).toBeNull();
-    // Yet each header still shows the file path and its problem count.
     expect(screen.getByText('notes.md')).toBeTruthy();
     expect(groups[0]?.querySelector('[data-testid="problems-audit-file-count"]')?.textContent).toBe(
       '1',
     );
-    // The reversal affordance is present and points at expanding.
     expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
       'Expand all file groups',
     );
@@ -1916,7 +1704,6 @@ describe('ProblemsPanel — project scope: collapse and expand-all', () => {
       expect(group.getAttribute('data-state')).toBe('open');
     expect(screen.getByText('Heading increment')).toBeTruthy();
     expect(screen.getByText('Hard tabs')).toBeTruthy();
-    // The one control now offers the reverse action.
     expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
       'Collapse all file groups',
     );
@@ -1943,9 +1730,7 @@ describe('ProblemsPanel — project scope: collapse and expand-all', () => {
     expect(setup?.getAttribute('data-state')).toBe('open');
     expect(notes?.getAttribute('data-state')).toBe('closed');
     expect(screen.getByText('Heading increment')).toBeTruthy();
-    // The other group's rows stay unmounted.
     expect(screen.queryByText('Hard tabs')).toBeNull();
-    // One of two open still reads as "not all expanded".
     expect(screen.getByTestId('problems-audit-expand-toggle').getAttribute('aria-label')).toBe(
       'Expand all file groups',
     );
@@ -1956,13 +1741,11 @@ describe('ProblemsPanel — project scope: collapse and expand-all', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} />);
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('No problems across 3 documents.')).toBeTruthy());
-    // Nothing to expand, so the control does not render.
     expect(screen.queryByTestId('problems-audit-expand-toggle')).toBeNull();
   });
 });
 
 describe('ProblemsPanel — project scope: sweep-progress live region', () => {
-  // A diagnostic carrying an auto-fix, so every file in these fixtures is swept.
   const fixableEdit = {
     range: { start: { line: 2, character: 0 }, end: { line: 2, character: 1 } },
     newText: '  ',
@@ -1971,7 +1754,6 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
   test('a role=status region announces the running count while sweeping and retires when it ends', async () => {
     runLintAuditImpl = async () =>
       auditResult({ files: [{ file: 'solo.md', diagnostics: [diag({ fixes: [fixableEdit] })] }] });
-    // Hold the one fix open so the sweep stays mid-flight to observe.
     let releaseFix: (() => void) | undefined;
     fixLintDocImpl = () =>
       new Promise<{ ok: true }>((resolve) => {
@@ -1981,29 +1763,19 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
     fireEvent.click(screen.getByTestId('panel-scope-project'));
     await waitFor(() => expect(screen.getByText('solo.md')).toBeTruthy());
 
-    // No sweep running: no sweep-progress region.
     expect(sweepLiveRegion()).toBeUndefined();
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
-    // While the sweep runs, a role=status live region announces the count.
     await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe('Fixing 0 of 1 files'));
     expect(sweepLiveRegion()?.getAttribute('role')).toBe('status');
 
     releaseFix?.();
-    // The region is gone once the sweep ends; the re-audit's own status skeleton
-    // carries no "Fixing" text, so it is not mistaken for the sweep region.
     await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
   });
 
   test('the announced count advances as the sweep progresses', async () => {
-    // A chunk-plus-one sweep publishes several interior flushes (one every
-    // sweepProgressInterval files) climbing toward the total; hold the last file
-    // so the final interior flush is a stable state to assert on rather than a
-    // single frame before the region retires.
     const total = SWEEP_PROGRESS_CHUNK + 1;
     const interval = sweepProgressInterval(total);
-    // The last flush before the parked final file lands on the highest interval
-    // multiple among the files that actually complete (all but the parked last).
     const lastInteriorFlush = Math.floor((total - 1) / interval) * interval;
     runLintAuditImpl = async () =>
       auditResult({
@@ -2023,7 +1795,6 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
     await waitFor(() => expect(screen.getByText('f0.md')).toBeTruthy());
 
     fireEvent.click(screen.getByTestId('problems-auto-fix'));
-    // Opens at zero, then climbs to the last interior flush once that many complete.
     await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe(`Fixing 0 of ${total} files`));
     await waitFor(
       () =>
@@ -2033,17 +1804,12 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
       { timeout: 10_000 },
     );
 
-    // The last file is requested (and parked) just after that flush; wait for it
-    // so releasing it actually completes the sweep rather than no-ops.
     await waitFor(() => expect(fixLintDocCalls.length).toBe(total));
     releaseLast?.();
     await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
   });
 
   test('the region announces at chunk granularity, not once per file', async () => {
-    // With the sub-chunk floor the interval here is two files, so completing an
-    // odd (non-boundary) file must NOT move the count — a per-file announcer
-    // would — while crossing the next interval boundary must.
     const total = 11;
     expect(sweepProgressInterval(total)).toBe(2);
     runLintAuditImpl = async () =>
@@ -2053,9 +1819,6 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
           diagnostics: [diag({ fixes: [fixableEdit] })],
         })),
       });
-    // Park the first three fixes so the sweep steps under the test's control
-    // across a non-boundary file (held) then an interval boundary (advances);
-    // the rest resolve at once so the sweep can finish.
     const parked: Array<() => void> = [];
     fixLintDocImpl = () =>
       new Promise<{ ok: true }>((resolve) => {
@@ -2070,32 +1833,19 @@ describe('ProblemsPanel — project scope: sweep-progress live region', () => {
     await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe(`Fixing 0 of ${total} files`));
     await waitFor(() => expect(fixLintDocCalls.length).toBe(1));
 
-    // Complete file 1, a non-boundary file. A per-file announcer would read
-    // "1 of 11" here — chunked, the count holds at zero until the flush.
     parked[0]?.();
     await waitFor(() => expect(fixLintDocCalls.length).toBe(2));
     expect(sweepLiveRegion()?.textContent).toBe(`Fixing 0 of ${total} files`);
 
-    // Complete file 2, crossing the interval boundary; now the count advances.
     parked[1]?.();
     await waitFor(() => expect(sweepLiveRegion()?.textContent).toBe(`Fixing 2 of ${total} files`));
 
-    // Release the rest: wait for file 3 to be requested (and parked) so its
-    // resolver exists, then release it — the remaining files resolve at once and
-    // the region retires when the sweep finishes.
     await waitFor(() => expect(fixLintDocCalls.length).toBe(3));
     parked[2]?.();
     await waitFor(() => expect(sweepLiveRegion()).toBeUndefined());
   });
 });
 
-/**
- * Local-target findings (files, images, reference-style, unresolvable) share the
- * one validation plane with lint and document dead-links. The panel reads their
- * kind from the assessment evidence — never the message text — so a missing file
- * or image reads apart from a missing document by glyph, and Create page (a
- * document-only recovery) never appears on a file, image, or unresolvable row.
- */
 describe('ProblemsPanel — local-target findings', () => {
   const fileLink = (line: number) =>
     localTargetDiag({
@@ -2136,7 +1886,6 @@ describe('ProblemsPanel — local-target findings', () => {
       />,
     );
     const tags = screen.getAllByTestId('problems-source-tag');
-    // Every producer keeps its own chip; the links validator owns four of them.
     expect(tags.map((tag) => tag.textContent)).toEqual([
       'markdownlint',
       'links',
@@ -2144,8 +1893,6 @@ describe('ProblemsPanel — local-target findings', () => {
       'links',
       'links',
     ]);
-    // The kind is a stable, non-color cue read from the assessment, not the text:
-    // a lint finding has none, then document, file, image, and unresolvable.
     expect(tags.map((tag) => tag.getAttribute('data-target-kind'))).toEqual([
       null,
       'document',
@@ -2162,7 +1909,6 @@ describe('ProblemsPanel — local-target findings', () => {
         diagnostics={[fileLink(3), imageEmbed(4), unresolvableLink(5), linkDiag({ line: 6 })]}
       />,
     );
-    // Only the missing document is eligible; the other three carry no create intent.
     const created = screen.getAllByTestId('problems-create-page');
     expect(created).toHaveLength(1);
   });
@@ -2197,8 +1943,6 @@ describe('ProblemsPanel — local-target findings', () => {
   });
 
   test('a stray create target on an image finding still surfaces no Create page', () => {
-    // The panel enforces the document-only invariant locally: even if the wire
-    // leaked a linkTarget onto an image, the evidence says image, so no Create.
     render(
       <ProblemsPanel
         docName="notes"
@@ -2234,13 +1978,11 @@ describe('ProblemsPanel — local-target findings', () => {
 
   test('keeps the finding message in the row accessible name and hides the kind glyph', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[imageEmbed(3)]} />);
-    // The kind reads from words, not color: the message is the row's accessible name.
     expect(
       screen.getByRole('button', {
         name: /Image target "assets\/logo.png" does not resolve to an existing file/,
       }),
     ).toBeTruthy();
-    // The glyph is decorative, so it never doubles the announcement.
     const glyph = screen.getByTestId('problems-source-tag').querySelector('svg');
     expect(glyph?.getAttribute('aria-hidden')).toBe('true');
   });
@@ -2266,7 +2008,6 @@ describe('ProblemsPanel — local-target findings', () => {
       .getAllByTestId('problems-source-tag')
       .map((tag) => tag.getAttribute('data-target-kind'));
     expect(kinds).toEqual(['document', 'file', 'image']);
-    // Only the missing document is repairable via Create in the project group.
     expect(screen.getAllByTestId('problems-create-page')).toHaveLength(1);
   });
 
@@ -2274,7 +2015,6 @@ describe('ProblemsPanel — local-target findings', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[imageEmbed(3), imageEmbed(8)]} />);
     const group = screen.getByTestId('problems-duplicate-group');
     expect(group.textContent).toContain('2 instances');
-    // The collapsed header still carries the image kind.
     expect(screen.getByTestId('problems-source-tag').getAttribute('data-target-kind')).toBe(
       'image',
     );
@@ -2283,7 +2023,6 @@ describe('ProblemsPanel — local-target findings', () => {
     expect(
       screen.getByTestId('problems-duplicate-instances').querySelectorAll('button'),
     ).toHaveLength(2);
-    // Neither occurrence gains a Create action on expand.
     expect(screen.queryByTestId('problems-create-page')).toBeNull();
   });
 });

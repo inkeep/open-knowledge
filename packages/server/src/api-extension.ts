@@ -1,11 +1,3 @@
-/**
- * HTTP API extension for Hocuspocus — agent write, file ops, and test reset endpoints.
- *
- * Implemented as a Hocuspocus onRequest extension so it works with both
- * the production Server (assembled by `createServer()` in `server-factory.ts`)
- * and the Vite dev plugin.
- */
-
 import { type SpawnOptions, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -335,7 +327,6 @@ import {
 } from './skill-projection.ts';
 import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
 
-/** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
 function bundleSelfIdentifiesAsPack(dir: string): boolean {
   try {
     const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
@@ -560,9 +551,6 @@ import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { resolveUiRedirectPort } from './ui-redirect-port.ts';
 import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
 
-// Lazy-init so the counter registers against a real meter post-initTelemetry
-// (not the pre-init no-op). Matches the httpDurationHist pattern in
-// http/api-pipeline.ts.
 let _hintEmittedCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null = null;
 function hintEmittedCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
   _hintEmittedCounter ||= getMeter().createCounter('ok.preview_attach.hint_emitted', {
@@ -572,10 +560,6 @@ function hintEmittedCounter(): ReturnType<ReturnType<typeof getMeter>['createCou
   return _hintEmittedCounter;
 }
 
-// Counter for `agent-patch` FM-intersecting calls. Bounded label set:
-// `result ∈ {'rejected','pre_deprecation_passthrough'}`. Today the handler
-// always rejects with 400 — the second label is reserved for a possible
-// passthrough mode during the deprecation window.
 let _agentPatchFmTouchCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
   null;
 function agentPatchFmTouchCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
@@ -599,11 +583,6 @@ function renameAttributionCounter(): ReturnType<ReturnType<typeof getMeter>['cre
   return _renameAttributionCounter;
 }
 
-// Content-divergence gate counters (Site A). `gate_fired_total` is the
-// denominator (every gated agent write); `content_divergence_total` the
-// numerator (writes whose converged Y.Text diverged from intent). The ratio is
-// the production divergence rate. Bounded label set:
-// handler ∈ {agent-write-md, agent-write-batch, agent-patch, rollback} + bounded divergence_type.
 let _agentWriteGateFiredCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
   null;
 function agentWriteGateFiredCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
@@ -630,14 +609,8 @@ function agentWriteContentDivergenceCounter(): ReturnType<
   return _agentWriteContentDivergenceCounter;
 }
 
-/** Bounded handler label for the content-divergence counters. */
 type DivergenceHandler = 'agent-write-md' | 'agent-write-batch' | 'agent-patch' | 'rollback';
 
-/**
- * Record a gated agent write: always bump the denominator; bump the numerator
- * (with the divergence type) when the gate fired. The single increment site
- * for all three handlers.
- */
 function recordContentDivergenceGate(
   handler: DivergenceHandler,
   divergence: AgentWriteContentDivergence | undefined,
@@ -651,51 +624,15 @@ function recordContentDivergenceGate(
   }
 }
 
-/**
- * Test-only: clear the lazy-initialized rename counter so a test that
- * registers a fresh meter provider via `metrics.setGlobalMeterProvider`
- * can capture subsequent counter increments. Production code never calls this.
- */
 export function __resetRenameTelemetryForTesting(): void {
   _renameAttributionCounter = null;
 }
 
-/**
- * On an auth-login `complete` event, resume a SyncEngine that parked in
- * `auth-error` so a reconnect restores sync without an app restart. The
- * credential helper reads the freshly stored token on the next git invocation,
- * but the engine won't retry on its own. Extracted so the wiring (the only
- * behavior that matters here) is unit-testable without a real device flow.
- *
- * Best-effort: a rejected promise is swallowed because sync status catches up on
- * the next cycle or restart. Non-`complete` events are ignored.
- */
-/**
- * Server-authoritative "a GitHub credential just landed" hook. A fresh sign-in
- * (OK device flow, gh browser flow, or PAT) can change TWO independent bits of
- * sync state, and healing only one silently under-recovers:
- *
- *   - a SyncEngine parked in `auth-error` (invalid / missing token) →
- *     `notifyCredentialsChanged()` un-parks it; and
- *   - a push-permission verdict of `denied` that paused the engine with
- *     `no-push-permission` while signed out → `refreshPushPermission()` re-probes
- *     so an now-pushable repo clears the pause and sync resumes.
- *
- * The second was the gap: connect never re-probed permission, so a repo that
- * probed `denied` while signed out stayed paused ("you don't have permission to
- * push") until an app restart, even after a successful reconnect. Both calls are
- * best-effort and idempotent — a lost signal just heals on the next cycle /
- * restart. Shared by the streaming (device/gh) and PAT sign-in paths.
- */
 function onAuthCredentialLanded(getSyncEngine?: () => SyncEngine | null): void {
   const engine = getSyncEngine?.();
   if (!engine) return;
-  void engine.notifyCredentialsChanged().catch(() => {
-    /* best-effort — sync status catches up next cycle / restart */
-  });
-  void engine.refreshPushPermission().catch(() => {
-    /* best-effort — the verdict refreshes on the next probe / restart */
-  });
+  void engine.notifyCredentialsChanged().catch(() => {});
+  void engine.refreshPushPermission().catch(() => {});
 }
 
 export function resumeSyncOnAuthEvent(
@@ -706,18 +643,6 @@ export function resumeSyncOnAuthEvent(
   onAuthCredentialLanded(getSyncEngine);
 }
 
-/**
- * Transaction origin for rollback (typed `PairedWriteOrigin`).
- *
- * `skipStoreHooks: false` — L1 persistence SHOULD fire after rollback so the
- * restored content reaches disk through the normal pipeline. The
- * file-watcher's registerWrite hash check prevents the self-write from
- * re-triggering reconciliation.
- *
- * `paired: true` — rollback atomically writes both XmlFragment and Y.Text
- * inside one `doc.transact()` block. `satisfies PairedWriteOrigin` gates the
- * marker at authoring time.
- */
 export const ROLLBACK_ORIGIN = {
   source: 'local' as const,
   skipStoreHooks: false,
@@ -743,21 +668,11 @@ export const MANAGED_RENAME_ORIGIN = {
 
 const log = getLogger('api');
 
-/** Validates a docName and builds a shadow-repo-safe path.
- * Uses the same traversal check as safeContentPath (reject `..` and null bytes)
- * but allows `/` for nested content directories (e.g. `test-content/test-doc`). */
 function safeDocPath(docName: string, contentRoot: string): { path: string } | { error: string } {
   if (!docName || docName.includes('..') || docName.includes('\0')) {
     return { error: 'Invalid document name.' };
   }
-  // Normalize: strip leading './' AND treat bare '.' as empty (git rejects
-  // both "./foo" and "./" pathspecs when operating against a bare repo).
   const normalized = contentRoot === '.' ? '' : contentRoot.replace(/^\.\//, '');
-  // Managed-artifact docs (skills/templates) are committed under their `.ok/...`
-  // key, not at `<docName>.md` — translate so version/diff/rollback git ops
-  // target the real file. Unversioned (global) skills + ordinary docs fall
-  // through to the default path: a global skill resolves to a path with no
-  // commits, yielding an empty timeline / 404 version rather than a new error.
   const managed = managedArtifactTimelinePaths(docName);
   if (managed.managed && managed.versioned) {
     return { path: normalized ? `${normalized}/${managed.filePath}` : managed.filePath };
@@ -767,15 +682,6 @@ function safeDocPath(docName: string, contentRoot: string): { path: string } | {
   return { path };
 }
 
-/**
- * Ordered tree-path candidates for resolving a doc's blob inside a commit at
- * restore time. Full-tree checkpoints (Save Version, auto-consolidation,
- * pre-rollback) hold the blob at the extension-full disk path; the silent
- * single-blob checkpoint trees `saveInMemoryCheckpoint` writes hold it at the
- * extension-less docName path. Probe extension-full first so a full-tree
- * checkpoint always matches its real path before the extension-less twin is
- * considered.
- */
 function docTreePathCandidates(docName: string, contentRoot: string): readonly string[] {
   const p = safeDocPath(docName, contentRoot);
   if ('error' in p) return [`${docName}.md`];
@@ -786,20 +692,8 @@ function docTreePathCandidates(docName: string, contentRoot: string): readonly s
 export { sanitizeFilename } from './filename-sanitize.ts';
 export { resolveUploadDestDir } from './services/assets.ts';
 
-/**
- * Shared errno table for disk-write failures (`storage-full` /
- * `storage-readonly` / `storage-error`) — the agent-write persistence-failure
- * surfaces below reuse the same mapping as the upload pipeline in
- * `http/file-ops-routes.ts` so the two disk-failure classifications cannot
- * drift. The numeric HTTP status differentiates transient-yet-retry (500)
- * from full-disk (507) per RFC 4918.
- */
 import { classifyUploadErrno, uploadStatusFor } from './upload-errors.ts';
 
-/**
- * Resolve a subdirectory path within a base directory, rejecting traversal attempts.
- * Throws if the resolved path escapes the base directory.
- */
 export function safeSubdir(baseDir: string, subdir: string): string {
   const resolved = resolve(baseDir, subdir);
   if (!isWithinDir(resolved, baseDir)) {
@@ -808,65 +702,23 @@ export function safeSubdir(baseDir: string, subdir: string): string {
   return resolved;
 }
 
-/**
- * The contentDir-relative path a skill's SKILL.md is INDEXED under, which is
- * NOT always where the bundle is mounted. Null when there is no such path
- * (unreadable, or the link escapes contentDir); callers compare against the
- * mounted path to decide whether the difference is worth reporting.
- *
- * A repo may keep its bundles in `plugins/<x>/skills/` and symlink them into
- * the editor dir agents read from. Both names reach the same inode, and the
- * document index holds one doc per inode under the resolved one, so the mounted
- * name is not openable: a tab there has no page behind it and the next
- * page-list sync prunes it.
- *
- * Resolved with `realpath` rather than the watcher's folder-alias index, which
- * is populated asynchronously after boot — the list must not answer differently
- * depending on how warm the watcher is, since clicking a skill right after
- * launch is exactly when it is cold. A target OUTSIDE contentDir has no
- * canonical content doc to point at, so it stays null.
- */
 export function indexedSkillContentPath(absolutePath: string, contentDir: string): string | null {
   let real: string;
   let realContentDir: string;
   try {
     real = realpathSync(absolutePath);
-    // Resolve the root too, or a project under a symlinked ancestor (on macOS
-    // every `/var` path is one) reads as "outside contentDir" and the whole
-    // redirect silently turns itself off.
     realContentDir = realpathSync(contentDir);
   } catch {
-    // Unreadable / dangling — the mounted path is all we can honestly report.
     return null;
   }
   if (!isWithinDir(real, realContentDir)) return null;
   return relative(realContentDir, real).split(sep).join('/');
 }
 
-/** State for {@link healUnservableSkillAdmission} — one per API extension. */
 export interface SkillAdmissionHealState {
   lastKey: string | null;
 }
 
-/**
- * An in-place skill dir is only servable once the content filter's allow-list
- * knows about it, and that list refreshes on rebuild — at boot, and in each
- * skill-writing handler. Anything else that puts a bundle on disk (an older
- * build that predates those rebuilds, an agent writing the files directly, a
- * branch switch) leaves a skill that LISTS but cannot be opened: there is no
- * page for it, so the editor falls back to a Files tab. Until now the only
- * cure was restarting the server.
- *
- * So heal on READ. The Skills sidebar refetches the list on open and on every
- * `files` signal, which makes this the one place that sees every such dir no
- * matter who wrote it — no new per-writer obligation, and a tenth handler
- * shipping without a rebuild degrades to one late refresh instead of a skill
- * nobody can open.
- *
- * Rebuilds at most once per distinct skill-dir set: a bundle excluded for a
- * legitimate reason (gitignored, so the user has said that path stays out of
- * git) must not re-walk the tree on every sidebar refresh.
- */
 export async function healUnservableSkillAdmission(
   paths: readonly string[],
   filter: {
@@ -884,20 +736,10 @@ export async function healUnservableSkillAdmission(
     await filter.rebuildIgnorePatterns();
     return true;
   } catch {
-    // Fail-soft, matching every other rebuild call site: a stale allow-list
-    // costs this skill its page until the next refresh, not the response.
     return false;
   }
 }
 
-/**
- * Synthesize an `assetExt` string for files surfaced by Show All Files mode
- * that fall outside the markdown / standard-asset extension set. Schema
- * requires `assetExt: z.string().min(1)`. Mapping:
- *   - `foo.ts` → `'ts'` (extname → strip leading dot)
- *   - `.gitignore` → `'gitignore'` (dotfile with no extname → use name minus dot)
- *   - `LICENSE` → `'file'` (extensionless non-dotfile → 'file' fallback sentinel)
- */
 function synthesizeShowAllAssetExt(name: string): string {
   const ext = extname(name);
   if (ext) return ext.slice(1).toLowerCase();
@@ -905,55 +747,22 @@ function synthesizeShowAllAssetExt(name: string): string {
   return 'file';
 }
 
-/**
- * Per-request ceiling on the entries `walkContentDirForShowAll` accumulates.
- * Read from `OK_SHOWALL_MAX_ENTRIES` on every call — never cached at module
- * load — so ops can retune the floor without a restart and tests can drive a
- * low cap. Non-positive / non-integer input falls back to the default. A
- * content dir pointed at a large repo can hold far more entries than the
- * sidebar can render, and the walk accumulates one object per entry, so the
- * cap is the cheap heap floor.
- */
 export const DEFAULT_SHOWALL_MAX_ENTRIES = 50_000;
 export function getShowAllMaxEntries(): number {
   const raw = process.env.OK_SHOWALL_MAX_ENTRIES;
   if (raw === undefined) return DEFAULT_SHOWALL_MAX_ENTRIES;
-  // `Number()` (not `parseInt`) so scientific notation like `1e5` lifts cleanly
-  // to 100000 instead of silently truncating to 1 at the first non-digit. The
-  // `isInteger` guard still rejects `1e-5`, `0.5`, `Infinity`, and `NaN`.
   const parsed = Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SHOWALL_MAX_ENTRIES;
 }
 
-/**
- * Per-build ceiling on the name-only `kind:'file'` tier of the search corpus.
- * Read from `OK_SEARCH_MAX_ENTRIES` on every build (never cached at module load)
- * so ops can retune without a restart and tests can drive a low cap. Non-positive
- * / non-integer input falls back to the default. Markdown content docs are NEVER
- * subject to this cap — only the all-files name tier, which is the part that grows
- * with a pathological repo. The corpus is materialized twice (server + client),
- * so this is the heap floor for the file tier. Mirrors `getShowAllMaxEntries`.
- */
 export const DEFAULT_SEARCH_MAX_ENTRIES = 50_000;
 export function getSearchMaxEntries(): number {
   const raw = process.env.OK_SEARCH_MAX_ENTRIES;
   if (raw === undefined) return DEFAULT_SEARCH_MAX_ENTRIES;
-  // `Number()` (not `parseInt`) so scientific notation like `1e5` lifts cleanly
-  // to 100000 instead of silently truncating to 1 at the first non-digit. The
-  // `isInteger` guard still rejects `1e-5`, `0.5`, `Infinity`, and `NaN`.
   const parsed = Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SEARCH_MAX_ENTRIES;
 }
 
-/**
- * Test-only observability for the Show All Files walk. `invocations` counts how
- * many times `walkContentDirForShowAll` ran — the document-list single-flight
- * dedupe collapses concurrent identical requests to one invocation, so this is
- * how a test proves N requests triggered exactly one walk. `aborts` counts
- * walks that bailed because their `signal` fired (abort-on-disconnect). Counters
- * are module-scoped because the walk function is; reset between tests with the
- * companion helper. Mirrors the `__resetRenameTelemetryForTesting` seam above.
- */
 let showAllWalkInvocations = 0;
 let showAllWalkAborts = 0;
 export function __getShowAllWalkStatsForTesting(): { invocations: number; aborts: number } {
@@ -967,94 +776,26 @@ export function __resetShowAllWalkStatsForTesting(): void {
 export interface StreamShowAllOpts {
   contentDir: string;
   contentFilter: ContentFilter;
-  /** Optional dir filter (contentDir-relative subtree to walk; null = whole tree). */
   dirFilter: string | null;
-  /** Hard ceiling on emitted entries; the walk stops once reached. */
   maxEntries: number;
-  /**
-   * Optional cancellation. When every caller waiting on this walk has
-   * disconnected, the document-list handler aborts this signal; the walk then
-   * bails at the next directory boundary rather than finishing a result nobody
-   * will read.
-   */
   signal?: AbortSignal;
-  /**
-   * Maximum directory depth to descend, relative to `dirFilter` (or contentDir
-   * when no filter). Omitted/`Infinity` = the full recursive Show All walk.
-   * `1` = the lazy per-directory contract: yield only the immediate
-   * children of the scoped dir, no recursion, and stamp each folder child with
-   * `hasChildren` so the client can render an expand affordance without walking
-   * the subtree.
-   */
   maxDepth?: number;
-  /**
-   * Admit `.ok` entries — minus `.ok/worktrees` and `.ok/local` — through the
-   * content filter's always-skip floor (see `ContentFilterReadOpts.showOk`).
-   * Backs `?showOk=true`; threaded into every filter consultation the walk
-   * and its `hasChildren` probe make.
-   */
   showOk?: boolean;
 }
 
 export interface WalkShowAllOpts extends StreamShowAllOpts {
-  /** Accumulator the buffered wrapper drains the generator into. */
   documents: DocumentListEntry[];
 }
 
-/**
- * Walk `contentDir` on-demand for the `?showAll=true` flag, `yield`ing one
- * `DocumentListEntry` at a time instead of accumulating an array. Streaming the
- * walk this way collapses the showAll serialization heap peak: the buffered
- * design held the listing three times live (accumulator + Zod-validated clone +
- * `JSON.stringify` string), but a consumer that writes each yielded entry to
- * the socket retains only one entry plus the traversal cursors.
- *
- * Emission is level-order (BFS): every admitted entry at depth N across the
- * whole tree yields before any entry at depth N+1, and a parent folder always
- * yields before its children. Hitting the `maxEntries` cap therefore drops
- * the deepest entries first — the top of the tree stays complete whenever the
- * cap covers the shallow levels.
- *
- * Uses `ContentFilter.{isExcluded,isDirExcluded}` with `bypassFilters:true` so
- * `.gitignored` and content-bearing `BUILTIN_SKIP_DIRS` (`dist/`, `build/`,
- * `coverage/`, …) surface. `.okignore` remains authoritative because it is the
- * user's explicit hide list. The `ALWAYS_SKIP_DIRS` floor still prunes
- * `.git/` / `node_modules/` / `.ok/` even under bypass (those trees are
- * unbounded and never hold user markdown — pruning them is the Show All Files
- * OOM guard); `showOk` re-admits `.ok` minus `worktrees`/`local`, the two
- * children that can be repo-scale. The un-bypassable STOP-rule gate keeps
- * synthetic `__system__` / `__config__` / `__user__` / `__local__` docs
- * hidden.
- *
- * Yields the union DocumentListEntry shape:
- *   - dirs → kind: 'folder' (with `path`)
- *   - `.md` / `.mdx` files → kind: 'document'
- *   - everything else → kind: 'asset' (with synthesized `assetExt` + `mediaKind`
- *     via `mediaKindForSidebarAssetExtension`; `referencedBy: []` since
- *     non-md/non-asset files have no `[[wiki-link]]` references)
- *
- * Returns `{ truncated }`: true when the `maxEntries` ceiling was hit and the
- * stream is a partial prefix. Per-directory read errors are silent-caught
- * (mirrors `populateDirCount` + `loadNestedIgnoreFiles` in `content-filter.ts`)
- * so a single broken symlink or permission failure doesn't abort the whole walk.
- */
 export async function* streamShowAllEntries(
   opts: StreamShowAllOpts,
 ): AsyncGenerator<DocumentListEntry, { truncated: boolean }, void> {
   const { contentDir, contentFilter, dirFilter, maxEntries, signal, showOk } = opts;
   const maxDepth = opts.maxDepth ?? Number.POSITIVE_INFINITY;
-  // One opts object for every filter consultation: the dir gates, the
-  // `hasChildren` probe, and the file backstop must agree on admission, or a
-  // revealed folder probes childless / yields rows its own dir gate pruned.
   const filterOpts = { bypassFilters: true, respectOkignore: true, showOk } as const;
   showAllWalkInvocations += 1;
-  // Running count of yielded entries — the streaming analogue of the buffered
-  // `documents.length` cap probe. Shared across the whole traversal so the
-  // entry ceiling is global, not per-directory.
   let emitted = 0;
   let truncated = false;
-  // Set when the walk bails on the abort signal; counted once after the walk
-  // completes so `aborts` reflects "this walk stopped early".
   let aborted = false;
 
   const passesDirFilter = (rel: string): boolean => {
@@ -1062,13 +803,6 @@ export async function* streamShowAllEntries(
     return rel === dirFilter || rel.startsWith(`${dirFilter}/`);
   };
 
-  // Resolve contentDir to its canonical form so we can compare descendants
-  // by realpath. Without this, a user-created symlink at `<contentDir>/foo
-  // -> /etc` would have `Dirent.isDirectory()` return true and recursion
-  // would enumerate `/etc`'s metadata into the API response — metadata
-  // disclosure of paths outside the project. The same realpath-based
-  // containment guard is the spine of `ok:shell:show-item-in-folder` and
-  // the trash-item IPC handler.
   let contentDirCanonical: string;
   try {
     contentDirCanonical = await realpath(contentDir);
@@ -1143,19 +877,11 @@ export async function* streamShowAllEntries(
     return (countsByExtensionlessDocName.get(extensionless) ?? 0) > 1 ? relPath : extensionless;
   };
 
-  // Cheap bounded probe for `hasChildren` on a leaf-depth folder (depth-1
-  // contract): readdir the folder and stop at the first admitted child, so the
-  // client can render an expand affordance without the server walking the
-  // subtree. Applies the same ALWAYS_SKIP_DIRS-floor / ignore gate the walk
-  // uses, so a folder containing only skipped entries reports hasChildren:false.
   async function probeHasChildren(absDir: string, relDir: string): Promise<boolean> {
     let entries: import('node:fs').Dirent[];
     try {
       entries = await readdir(absDir, { withFileTypes: true });
     } catch (err) {
-      // Log to match the sibling walk's readdir-failure convention — an
-      // EACCES/EPERM here silently reporting hasChildren:false (folder renders
-      // as a non-expandable leaf) is otherwise invisible to operators.
       log.warn({ dir: absDir, err }, `[document-list][showAll] probe readdir failed for ${absDir}`);
       return false;
     }
@@ -1163,17 +889,10 @@ export async function* streamShowAllEntries(
       const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
-        // Symlink-escape parity with the main walk: a child that is a symlink to
-        // a directory outside contentDir must not count as an admitted child
-        // (the walk refuses to descend into it), so the probe must refuse it too.
         try {
           const childCanonical = await realpath(join(absDir, entry.name));
           if (!isInsideContentDir(childCanonical)) continue;
         } catch (err) {
-          // Lazy expansion keys the expand affordance off this probe — a
-          // silently-wrong hasChildren:false renders the folder permanently
-          // childless with no operator trace (same convention as the readdir
-          // and main-walk realpath catches).
           log.warn(
             { path: `${absDir}/${entry.name}`, err },
             `[document-list][showAll] probe realpath failed for ${absDir}/${entry.name}`,
@@ -1189,16 +908,6 @@ export async function* streamShowAllEntries(
     return false;
   }
 
-  // Level-order (BFS) traversal via an explicit FIFO queue rather than DFS
-  // recursion: every admitted entry at depth N (across the whole tree) yields
-  // before any entry at depth N+1, so the `maxEntries` cap always cuts the
-  // deepest entries first instead of starving root-level siblings of whichever
-  // subtree readdir happened to enumerate first (readdir order is
-  // filesystem-dependent, so WHICH siblings survived a DFS cap was arbitrary).
-  // A parent folder still yields before its children — the folder while its
-  // parent directory is processed, its children once it is dequeued. The queue
-  // holds pending directory paths only (bounded by the emitted folder count,
-  // itself <= maxEntries), preserving the O(1)-entries streaming property.
   async function* walk(
     startAbsDir: string,
     startRelDir: string,
@@ -1207,14 +916,7 @@ export async function* streamShowAllEntries(
     const queue: Array<{ absDir: string; relDir: string; depth: number }> = [
       { absDir: startAbsDir, relDir: startRelDir, depth: startDepth },
     ];
-    // Head-index dequeue: `queue.length` re-evaluates each iteration, so
-    // directories pushed mid-loop extend the walk; `Array.shift` would be
-    // O(n) against the tens of thousands of directories the default cap
-    // admits.
     for (let head = 0; head < queue.length; head++) {
-      // Abort gate at the queue boundary: empty or fully-filtered directories
-      // never reach the per-entry check below, so without this a disconnected
-      // client's walk would keep issuing readdir across the queued breadth.
       if (signal?.aborted) {
         aborted = true;
         return;
@@ -1230,17 +932,10 @@ export async function* streamShowAllEntries(
       const variantCountsByDocName = await docVariantCounts(entries, absDir, relDir);
 
       for (const entry of entries) {
-        // Abort-on-disconnect: stop walking once the request's last waiter has
-        // gone. Checked at the same per-entry boundary as the entry cap so both
-        // bounds short-circuit before any further readdir/stat work.
         if (signal?.aborted) {
           aborted = true;
           return;
         }
-        // Bound the walk. A content dir pointed at a large repo can hold far
-        // more entries than the response can carry; without a ceiling the
-        // consumer is fed entries until the server heap is exhausted. Checking
-        // before any yield keeps the emitted count <= maxEntries exactly.
         if (emitted >= maxEntries) {
           truncated = true;
           return;
@@ -1248,19 +943,8 @@ export async function* streamShowAllEntries(
         const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
 
         if (entry.isDirectory()) {
-          // bypassFilters:true admits gitignored + content-bearing skip-dirs
-          // (dist/, build/), while respectOkignore:true keeps .okignore
-          // authoritative. The ALWAYS_SKIP_DIRS floor still prunes .git/,
-          // node_modules/, .ok/ here — the Show All Files OOM guard.
-          // showOk re-admits .ok minus worktrees/local for the tree reveal.
           if (contentFilter.isDirExcluded(relPath, filterOpts)) continue;
 
-          // Symlink-escape guard. `Dirent.isDirectory()` returns true for a
-          // symlink pointing at a directory; without canonical-path containment,
-          // a `<contentDir>/foo -> /etc` symlink would enumerate /etc into the
-          // response. Resolve the canonical target and refuse anything outside
-          // contentDir's realpath. Skip-with-log mirrors the file-watcher's
-          // existing symlink-escape protection.
           const dirAbsRaw = join(absDir, entry.name);
           let dirCanonical: string;
           try {
@@ -1285,23 +969,12 @@ export async function* streamShowAllEntries(
             try {
               folderStat = await stat(dirAbsRaw);
             } catch (err) {
-              // Stat failure is non-fatal: emit with modified='' as a graceful
-              // fallback so the dir still surfaces in the tree. Log the
-              // failure for diagnosability — symmetric with the file-stat
-              // sibling catch below, so EACCES/EPERM/ELOOP on a restricted
-              // subdir is visible in operator logs instead of silently
-              // returning empty-mtime folder entries.
               log.warn(
                 { path: dirAbsRaw, err },
                 `[document-list][showAll] stat failed for ${dirAbsRaw}`,
               );
             }
             emitted += 1;
-            // At leaf depth (the depth-1 lazy contract stops descending here),
-            // probe whether this folder has any admitted child so the client can
-            // show an expand affordance. On the full recursive walk the children
-            // are emitted directly, so the probe is skipped and hasChildren stays
-            // absent (the recursive showAll response never carries it).
             const atLeafDepth = depth >= maxDepth;
             const hasChildren = atLeafDepth
               ? await probeHasChildren(dirAbsRaw, relPath)
@@ -1319,24 +992,12 @@ export async function* streamShowAllEntries(
             };
           }
 
-          // Enqueue only while under the depth ceiling. depth-1 (maxDepth=1)
-          // yields a single level and enqueues nothing; the default walk has
-          // an infinite ceiling and visits the whole subtree level by level.
           if (depth < maxDepth) {
             queue.push({ absDir: dirAbsRaw, relDir: relPath, depth: depth + 1 });
           }
           continue;
         }
 
-        // Symlinked entries: a `Dirent` for a symlink reports neither
-        // isDirectory() nor isFile() (d_type is DT_LNK), so the directory branch
-        // above skips them and the `!isFile()` guard below would drop them.
-        // Resolve the target and surface symlinked directories (and files) so
-        // aliased folders appear in the tree. A symlinked directory is emitted as
-        // a folder but NOT enqueued — the full walk must never recurse into a
-        // symlink (cycles + symlink-farm blow-up); lazy expansion re-enters via
-        // `dir=<aliasPath>`, where readdir follows the link and lists the
-        // canonical's children under the alias prefix.
         if (entry.isSymbolicLink()) {
           const linkAbs = join(absDir, entry.name);
           let canonical: string;
@@ -1421,9 +1082,6 @@ export async function* streamShowAllEntries(
         }
 
         if (!entry.isFile()) continue;
-        // The file-level backstop mirrors the dir gate's admission (shared
-        // filterOpts): floor files can't actually reach here — the dir gate
-        // above already skipped .git/node_modules/(non-revealed) .ok.
         if (contentFilter.isExcluded(relPath, filterOpts)) continue;
         if (!passesDirFilter(relPath)) continue;
 
@@ -1439,8 +1097,6 @@ export async function* streamShowAllEntries(
         }
 
         if (isSupportedDocFile(entry.name)) {
-          // Markdown — classify as 'document'. The directory entry is the
-          // show-all source of truth for the file extension.
           const docName = showAllDocName(relPath, variantCountsByDocName);
           const docExt = extname(entry.name);
           emitted += 1;
@@ -1457,12 +1113,6 @@ export async function* streamShowAllEntries(
           continue;
         }
 
-        // Non-markdown — classify as 'asset' with synthesized assetExt.
-        // `mediaKindForSidebarAssetExtension` returns null for extensions with no sidebar
-        // viewer (e.g. .docx, .zip), and 'text' for .base/.canvas (text-viewer-fallback
-        // set) even though those extensions are absent from ASSET_EXTENSIONS (serve
-        // allowlist unchanged). No explicit ASSET_EXTENSIONS check needed; the function
-        // already encodes the full dispatch table.
         const assetExt = synthesizeShowAllAssetExt(entry.name);
         const mediaKind: InlineAssetMediaKind | null = mediaKindForSidebarAssetExtension(assetExt);
         emitted += 1;
@@ -1486,21 +1136,11 @@ export async function* streamShowAllEntries(
 
   const startAbs = dirFilter ? join(contentDir, dirFilter) : contentDir;
   const startRel = dirFilter ?? '';
-  // The scoped dir's own children are depth 1; `walk` stops enqueuing once
-  // `depth >= maxDepth`, so maxDepth=1 yields exactly one level.
   yield* walk(startAbs, startRel, 1);
   if (aborted) showAllWalkAborts += 1;
   return { truncated };
 }
 
-/**
- * Buffered adapter over `streamShowAllEntries`: drains the generator into the
- * caller's `documents` accumulator and returns the same `{ truncated }` outcome.
- * This is the single-flight path (`GET /api/documents?showAll=true` without an
- * NDJSON `Accept`) — it preserves the sortable, validate-once, single-JSON
- * response shape every non-streaming caller depends on. Streaming callers
- * consume `streamShowAllEntries` directly and never materialize this array.
- */
 export async function walkContentDirForShowAll(
   opts: WalkShowAllOpts,
 ): Promise<{ truncated: boolean }> {
@@ -1552,14 +1192,6 @@ function remapDocNameForRename(
   return `${toPath}${docName.slice(fromPath.length)}`;
 }
 
-/**
- * Validate a request `docName`, rejecting empty/missing values before they can
- * silently route to a fallback target. An empty docName previously fell through
- * to a hardcoded `test-doc`, so a write carrying no docName overwrote that doc
- * and still reported success — a silent wrong-target write (data-loss class).
- * Returns the non-empty name, or null after emitting a 400 (caller must
- * early-return).
- */
 function requireNonEmptyDocName(
   docName: string | undefined,
   res: ServerResponse,
@@ -1582,11 +1214,6 @@ function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, pat
   }
 
   const resolvedContentDir = resolve(contentDir);
-  // When kind is 'file': if the caller passed an explicit supported extension,
-  // use the path verbatim — this is how rename callers signal an extension
-  // change (toPath: "foo.mdx" renames foo.md → foo.mdx). Extension-less paths
-  // route through `docNameToRelativePath`, which consults the registered
-  // extension map so legacy callers keep the source's existing extension.
   const relativePath = kind === 'file' ? docNameToRelativePath(path) : path;
   const fullPath = resolve(resolvedContentDir, relativePath);
 
@@ -1620,10 +1247,6 @@ function docNameExistsWithAnySupportedExtension(contentDir: string, docName: str
   return resolveDocFilePath(contentDir, docName) !== null;
 }
 
-/**
- * Resolve a docName — extension-carrying or extension-less — to its on-disk
- * contentDir-relative path, or null when no supported file exists.
- */
 function resolveDocFilePath(contentDir: string, docName: string): string | null {
   if (isSupportedDocFile(docName)) {
     return existsSync(resolve(contentDir, docName)) ? docName : null;
@@ -1781,27 +1404,6 @@ function createCaseOnlyRenameTempPath(sourcePath: string): string {
   throw new Error('Unable to allocate temporary path for case-only rename');
 }
 
-/**
- * Write `content` to `filePath` only when it differs from the bytes already on
- * disk. The rename spine moves a file (placing the source's bytes at the
- * destination) and then writes the reconciled content; when that reconciled
- * content is byte-identical to what the move placed, the physical write is
- * redundant. Skipping the no-op write preserves the invariant that a
- * no-content-change rename writes the destination exactly once.
- *
- * This is a BYTE-EXACT guard (`current === content`), distinct from
- * persistence.ts's `markdownSemanticallyUnchanged`, which skips on SEMANTIC
- * (`normalizeBridge`-normalized) equality. The byte comparison is deliberate:
- * it under-skips relative to semantic equality, so it can only ever leave an
- * occasional redundant write, never suppress a needed one. Aligning it to
- * `normalizeBridge` would skip writes for byte-different-but-semantically-equal
- * content and leave stale bytes on disk.
- *
- * Callers MUST still `registerWrite` the path unconditionally: the move does
- * not `registerWrite` the destination, so the file-watcher's self-suppression
- * for it depends entirely on the caller's post-write `registerWrite`. This
- * guard wraps only the physical write.
- */
 function writeFileIfContentDiffers(filePath: string, content: string): void {
   const current = existsSync(filePath) ? readFileSync(filePath, 'utf-8') : null;
   if (current === content) return;
@@ -1853,12 +1455,6 @@ async function renameTrackedPathInGit(
 
   return await withParentLock(async () => {
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
-    // `ls-files` throws `GitError: fatal: not a git repository` when
-    // projectDir isn't a git checkout — normal in test tmpdirs and in Vite
-    // dev's isolated OK_TEST_CONTENT_DIR mode. Treat that as "not tracked"
-    // so the caller falls back to `fs.renameSync`. Any other git failure
-    // (permission denied, corrupted index) also falls through to fs rename
-    // rather than 500ing the /api/rename-path handler.
     let tracked = '';
     try {
       tracked = (await pg.raw('ls-files', '--', sourceRel)).trim();
@@ -1902,378 +1498,70 @@ async function renameTrackedPathInGit(
 }
 
 export interface ApiExtensionOptions {
-  /**
-   * The boot-built ingress policy. Drives the browser-Origin allowlists (the
-   * `/api/*` CORS gate + the local-op checks), the route-level Host gates,
-   * and the route-level peer gates through one object — the same one the WS
-   * upgrade path consults. Omitted (test rigs) ⇒ loopback-only defaults.
-   */
   ingressPolicy?: IngressPolicy;
   hocuspocus: Hocuspocus;
   durabilityState: DocumentDurabilityState;
   sessionManager: AgentSessionManager;
   contentDir: string;
-  /** Read and mutate the config + Git-attribute joint admission state. */
   getGeneratedIndexSettingsStatus?: () => GeneratedIndexSettingsStatus;
   setGeneratedIndexEnabled?: (enabled: boolean) => Promise<GeneratedIndexSettingsStatus>;
-  /**
-   * No-project ephemeral single-file mode. When `true`, the contentDir-tree
-   * write handlers (`PUT /api/folder-config`, `PUT /api/template`) are inert —
-   * they reject with 403. Belt-and-suspenders for (zero user-dir artifacts):
-   * single-file mode hides the Settings / folder chrome and unmounts MCP, so
-   * these handlers are already unreachable on the open+edit path, but the guard
-   * makes the no-write invariant structural rather than relying on the UI.
-   * The `__config__/okignore` config-doc write is guarded separately in
-   * `config-persistence.ts` via `ConfigPersistenceCtx.ephemeral`. Default
-   * `false`.
-   */
   ephemeral?: boolean;
-  /**
-   * Per-process UUID advertised via `GET /api/server-info` and the
-   * `__system__` CC1 `server-info` broadcast. Clients cache this value
-   * and claim it in the `expectedServerInstanceId` field of their auth
-   * token on every connect; the server rejects on mismatch. Part of the
-   * CRDT server-restart recovery defense.
-   */
   serverInstanceId: string;
-  /** Accessor for the watcher's in-memory file index. GET /api/documents reads from this. */
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
-  /**
-   * Reads the project attachment-placement value at request time. Omitted
-   * harnesses use the historical colocated default.
-   */
   getAttachmentFolderPath?: () => string;
-  /**
-   * All-files accessor — both `kind:'markdown'` and `kind:'file'`. The explicit
-   * opt-in for the handful of sites that genuinely want non-markdown files
-   * (the search-corpus build, `/api/documents`, folder synthesis). A caller
-   * coverage meta-test gates new consumers. Defaults to `getFileIndex` when
-   * omitted (test harnesses that only wire the markdown view), so the all-files
-   * tier is empty rather than crashing.
-   */
   getAllFilesIndex?: () => ReadonlyMap<string, FileIndexEntry>;
-  /**
-   * Monotonic file-index generation counter (`WatcherHandle.getFileIndexGeneration`).
-   * When wired, `workspaceSearchFingerprint` keys the corpus cache off this
-   * counter (O(1) per search) instead of re-serializing the whole all-files
-   * index. Omit in test harnesses that wire only the index accessors — the
-   * fingerprint then falls back to serializing the full all-files index, which
-   * is slower but keeps cache invalidation correct.
-   */
   getFileIndexGeneration?: () => number;
-  /**
-   * Typed mutator for the watcher's live file index. Wired to
-   * `WatcherHandle.mutateFileIndex`. Handlers that need post-write
-   * consistency (delete, trash-cleanup, rename, create-page, duplicate-path)
-   * call this synchronously so the next `/api/documents` read reflects the
-   * mutation before the file-watcher's own disk event lands. Replaces the
-   * `getFileIndex() + as Map<...> cast + updateFileIndex(...)`
-   * pattern, which silently dead-ended once `getFileIndex()` returned a
-   * snapshot. Omit in test harnesses that don't care about the synchronous
-   * purge — the file-watcher will reconcile asynchronously.
-   */
   mutateFileIndex?: (event: DiskEvent) => void;
-  /** Accessor for the watcher's in-memory folder index. GET /api/documents reads from this. */
   getFolderIndex?: () => ReadonlyMap<string, FolderIndexEntry>;
-  /**
-   * Registers the GET /api/documents referenced-asset cache invalidator with
-   * outer server components that can detect markdown reference changes.
-   */
   onReferencedAssetsCacheInvalidator?: (invalidate: () => void) => void;
-  /** Accessor for the alias map (alias docName → canonical docName). */
   getAliasMap?: () => ReadonlyMap<string, string>;
-  /** Accessor for directory-symlink alias edges (alias folder docName → canonical folder docName). */
   getFolderAliasIndex?: () => ReadonlyMap<string, string>;
-  /**
-   * Re-seed the watcher's file/folder/alias indexes from disk. Required by
-   * `POST /api/test-rescan-files` (only registered when `enableTestRoutes`),
-   * which is the dev-only rescue for the @parcel/watcher inotify race on
-   * Linux CI — see `WatcherHandle.rescanFromDisk` in `file-watcher.ts`.
-   */
   rescanFiles?: () => void | Promise<void>;
   localOpConcurrencyGuard?: ReturnType<typeof createConcurrencyGuard>;
-  /**
-   * When true, register test-only routes (`/api/test-reset`,
-   * `/api/test-rescan-backlinks`, `/api/test-rescan-files`). Defaults to
-   * `false` — these routes mutate server state in ways unsafe for
-   * multi-client use (reset wipes document content; rescan-* rebuild
-   * indexes from disk, dropping unpersisted in-memory state) and must
-   * never be exposed in production. Enable only in tests and local dev mode.
-   */
   enableTestRoutes?: boolean;
   shadowRef?: ShadowRef;
-  /** Force-flush the L2 git commit debounce (e.g. after rollback). */
   flushGitCommit?: () => Promise<void>;
-  /**
-   * Force-drain the contributor queue for the rename-log integration.
-   * Declared here so `server-factory.ts` typechecks; the rename-log wiring
-   * inside this file (handleRenamePath / applyManagedRename / handleHistory*)
-   * is NOT yet ported from origin/main.
-   */
   flushContributors?: () => Promise<void>;
-  /** Accessor for the current branch from the HEAD watcher. Returns null when unknown. */
   getCurrentBranch?: () => string | null;
-  /**
-   * Accessor for the latest disk-ack state vectors per document. Wired
-   * to `cc1Broadcaster.getLatestDiskAckSVsAsBase64()` in boot.
-   * Returned as part of `GET /api/server-info` so clients can recover
-   * the per-doc `lastDiskAckedSV` watermark on `__system__` reconnect
-   * without relying on stateless CC1 broadcasts (which have no replay).
-   * Empty `{}` is the cold-server case (no docs flushed yet); omitted
-   * when the broadcaster isn't available (e.g. plugin mode in dev
-   * server). Values are base64-encoded `Uint8Array` state vectors.
-   */
   getDiskAckSVs?: () => Record<string, string>;
-  /**
-   * Live `/collab` WebSocket client count — editor windows and agents alike.
-   * Disclosed on `GET /api/server-info` so a caller about to terminate this
-   * server can ask whether anything is using it. Omitted (field absent) when
-   * the boot path did not wire a counter; a reader must treat absence as
-   * "unknown", never as zero.
-   */
   getCollabClientCount?: () => number;
   contentRoot?: string;
   derivedDocumentIndex?: DerivedDocumentIndexApiPort;
-  // `comments` joins main's narrowed channel union: the comment views are
-  // derived from document text the same way files and lint-config are, and the
-  // panel refetches off this signal.
   signalChannel?: (channel: 'files' | 'lint-config' | 'comments') => void;
-  /**
-   * Optional seam for the document-lifecycle hooks that comments care about.
-   * Both callers (the settle extension, the file watcher) are constructed
-   * before the comment service exists, so they read this at call time.
-   */
   commentDocHooksRef?: { current: CommentDocHooks | null };
-  /**
-   * Optional. When present, agent write handlers publish per-write attribution
-   * entries on `__system__` awareness (`agentFocus` map) with writeKind +
-   * currentDoc — the signal that drives browser push-navigation to the doc the
-   * agent just wrote. Distinct from `agentPresenceBroadcaster` below, which
-   * publishes sustained session state.
-   */
   agentFocusBroadcaster?: AgentFocusBroadcaster;
-  /**
-   * Optional. When present, agent write handlers publish presence entries on
-   * `__system__` awareness (`agentPresence` map) so clients can render the
-   * multi-agent presence bar and follow the active agent. Omit to disable
-   * presence broadcasts entirely (e.g. in tests that don't care).
-   */
   agentPresenceBroadcaster?: AgentPresenceBroadcaster;
-  /**
-   * Optional. Called after every successful agent write (write /
-   * edit). The handler is expected to be cheap and idempotent —
-   * the CLI uses it to open the browser on the first agent edit per session.
-   */
   onAgentWrite?: () => void;
-  /**
-   * Getter for the active SyncEngine instance (may be null when dormant or if
-   * no remote was detected). Called per-request so it always reflects current state.
-   */
   getSyncEngine?: () => SyncEngine | null;
-  /**
-   * CLI argv prefix used to spawn subprocesses for /api/local-op/* relay endpoints.
-   * Defaults to ['open-knowledge'] (assumes CLI is on PATH).
-   * Pass [process.execPath, process.argv[1]] from the CLI start command to use
-   * the exact runtime that started this server.
-   *
-   * Example: [process.execPath, '/path/to/packages/cli/src/cli.ts'] in dev,
-   *          ['open-knowledge'] in production.
-   */
   localOpCliArgs?: string[];
-  /**
-   * Keepalive cadence for the streaming auth flows, in ms. Production uses the
-   * 15s default; tests override it so the heartbeat is observable inside a
-   * normal test budget without faking timers around a real HTTP stream.
-   */
   authStreamHeartbeatMs?: number;
-  /**
-   * Path to the project's parent git working tree (i.e. the repo root, not
-   * the shadow git dir). Used for upload tmp-file placement, git-relative
-   * path resolution for managed renames (`renameTrackedPathInGit`), and the
-   * managed-rename recovery journal (`withManagedRenameRecovery`).
-   * Save-version and rollback do NOT mutate the parent git repo.
-   */
   projectDir?: string;
-  /**
-   * SSRF-guarded fetch used by `POST /api/link-preview` for both the page and
-   * the favicon. Defaults to the real `guardedFetch` chokepoint; tests inject a
-   * fake that returns chosen bytes so the route → parse → cache → envelope
-   * wiring can be exercised without real network egress. Production never sets
-   * it, so the guard is always the real one.
-   */
   linkPreviewFetch?: GuardedFetch;
-  /**
-   * Fresh-read getter for the project-local `linkPreviews.enabled` egress
-   * opt-in — the same per-request fresh-read contract as
-   * `getSemanticSimilarityFloor`, so a runtime Settings toggle applies to the
-   * next hover without a restart. FAIL-CLOSED: when omitted, or when the read
-   * throws, `POST /api/link-preview` treats previews as disabled and performs
-   * no outbound fetch — the renderer-side gate is a UX optimization, never the
-   * enforcement point.
-   */
   getLinkPreviewsEnabled?: () => boolean;
-  /**
-   * Fresh-read collector for `GET /api/config/diagnostics` — reads the user,
-   * committed-project, and project-local config files on each call so an edit
-   * is reflected without a restart. Omitted in test harnesses that don't wire
-   * config; the handler then reports an empty diagnostics set.
-   */
   getConfigDiagnostics?: () => ConfigDiagnosticsReport;
-  /**
-   * Basename-index resolver for `![[photo.png]]` wiki-embed refs. Threaded
-   * into every server-side `mdManager.parseWithFallback` call (managed-rename
-   * body rewrite, rollback content apply) so the resulting PM image/link
-   * carries the resolved src/href.
-   */
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  /**
-   * Paired-intake derive-loss reporter, threaded into every
-   * `reconcileDiskBeforeAgentWrite` call so the L1 reconcile's
-   * FILE_WATCHER_ORIGIN ingest carries the same `detect` wiring the file
-   * watcher's own path does. A GETTER, not a value: the reporter is built later
-   * in server init (after the loss ring) than this extension is constructed, and
-   * is absent entirely when the `bridge.lossDetector` kill-switch is off.
-   */
   getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
-  /**
-   * Getter for the server's principal record. Called at request time so
-   * deferred async init propagates. Returns null if principal has not
-   * yet been loaded or loading failed.
-   */
   getPrincipal?: () => Principal | null;
-  /**
-   * Override `os.homedir()` for global-scope skill resolution. Global
-   * skills live at `<home>/.ok/skills/` and (when install lands) project into
-   * `<home>/.{host}/skills/`. Defaults to `os.homedir()`; tests pass a tempdir
-   * so global-scope writes don't touch the real user home.
-   */
   homeDirOverride?: string;
-  /** Saved-theme store lock acquisition budget. Defaults to the core helper's 5s. */
   savedThemeLockTimeoutMs?: number;
-  /**
-   * ACP agent catalog (registry-driven). When present, `GET /api/acp/catalog`
-   * serves the featured + full agent lists the thread-launch UI renders.
-   * Omitted in harnesses that don't exercise agent threads — the route then
-   * answers 404.
-   */
   acpRegistry?: AcpRegistry;
-  /** Custom-agent source for the catalog (machine-local `.ok/local` file). */
   loadAcpCustomAgents?: () => Promise<CustomAgentEntry[]>;
-  /** Test seam for server-host CLI detection surfaced in the ACP catalog. */
   acpHarnessAvailability?: () => Promise<AcpHarnessAvailability>;
-  /**
-   * Active ContentFilter (the same instance threaded into the file watcher).
-   * When present, `POST /api/rename-path` rejects destinations excluded by
-   * `.gitignore` / `.okignore` rules so renames cannot land outside the
-   * watched scope. Omit in tests where admission checks aren't relevant.
-   */
   contentFilter?: ContentFilter;
-  /**
-   * OS-scheme install probe used by `GET /api/installed-agents` (web-host
-   * parity for the Electron `ok:shell:detect-protocol` IPC — see
-   * `handoff-api.ts`). When omitted, the platform's default probe is used
-   * (`osascript` / `reg query` / `xdg-mime`). Tests inject a deterministic
-   * fake so the endpoint doesn't shell out.
-   */
   installedAgentsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
-  /**
-   * Explicit document unload hook. `createServer()` suppresses Hocuspocus's
-   * automatic unload-on-disconnect to avoid reload + IDB duplication, so API
-   * paths that intentionally retire a document must opt into unload here.
-   */
   forceUnloadDocument?: (document: Document) => Promise<void>;
-  /**
-   * Resolves when async server init (shadow repo, file watcher seed)
-   * completes. `handleDocumentList` and any other handler whose response
-   * depends on the watcher's in-memory file/folder index awaits this before
-   * reading, so a renderer that connects before the seed walk finishes
-   * does not see a false-empty `documents: []` response (and therefore the
-   * "No files yet" / "Welcome to your LLM brain" cold-start flash). Optional
-   * for unit tests that construct the extension directly without a server
-   * factory wiring.
-   */
   ready?: Promise<void>;
-  /**
-   * Per-process LRU cache shared with `removalRedirectGuard` in
-   * `server-factory.ts`. Populated here at the rename-spine end and at
-   * `handleDeletePath`; invalidated at `/api/create-page` after sync-write.
-   * Optional so test harnesses that don't spin up the auth extension can
-   * still construct the api-extension without ceremony.
-   */
   recentlyRemovedDocs?: RecentlyRemovedDocs;
-  /**
-   * Closure-captured snapshot of `Y.Text('source').toString()` for a loaded
-   * doc, returning `null` when the doc is not currently loaded server-side.
-   * Threaded from `server-factory.ts` (where it lives alongside the bridge
-   * + persistence wiring) so `handleSyncConflictContent` (now in
-   * `http/sync-routes.ts`) can serve the
-   * `?source=ytext` override with the canonical
-   * `prependFrontmatter(stripFrontmatter(ytext))` recompose. Optional —
-   * when omitted, the `?source=ytext` branch falls back to `git show :2:`
-   * so existing test harnesses without the closure keep working.
-   */
   serializeDoc?: (docName: string) => string | null;
-  /**
-   * Evict a managed-artifact doc's last-known-good cache entry. Threaded from
-   * `server-factory.ts` (where `persistence.managedArtifactCtx.lkgCache` lives).
-   * Called on the document-teardown spine (`captureAndCloseDocuments`) so a
-   * deleted skill/template is fully forgotten: the LKG cache is the verbatim
-   * bytes last written to disk, and `storeManagedArtifactDoc` short-circuits a
-   * write whose content equals the LKG. Without this eviction, a same-name
-   * re-create that happens to author IDENTICAL bytes would be classed a no-op
-   * and never re-land on disk (the deleted file stays gone). Optional — test
-   * harnesses without the managed-artifact persistence ctx omit it; it is a
-   * no-op for ordinary (non-managed) docs since they hold no LKG entry.
-   */
   evictManagedArtifactLkg?: (docName: string) => void;
-  /**
-   * Semantic-search service. When present, enabled, and keyed, an opt-in
-   * `POST /api/search` (`semantic: true`) fuses a vector signal into the
-   * `full_text` ranking and the first such search lazily kicks off a background
-   * corpus embed. Omitted in tests that don't exercise semantic search — its
-   * absence is exactly the flag-OFF lexical path (byte-identical to baseline).
-   */
   semanticSearch?: SemanticSearchService;
-  /**
-   * Resolve the project-local `search.semantic.similarityFloor` (the cosine noise
-   * gate), read FRESH per search so a runtime config edit takes effect without a
-   * restart — same fresh-read contract as the enable flag. Returns undefined when
-   * unset, so core applies its model-calibrated default. Omitted in tests.
-   */
   getSemanticSimilarityFloor?: () => number | undefined;
-  /**
-   * Absolute path of the embeddings secrets file (`~/.ok/secrets.yml`) — the
-   * key-presence read in `/api/semantic-status` and the set/clear handlers write
-   * here. Injectable so handler tests redirect it to a temp home; defaults to
-   * the real path when omitted.
-   */
   embeddingsSecretsFile?: string;
-  /**
-   * Resolve the project-local `search.semantic.*` provider knobs, read FRESH so
-   * the Test-connection probe hits whatever is currently persisted — the same
-   * contract as the embedder loader, so a probe and a real embed can never
-   * disagree about which endpoint is configured. Omitted in tests that don't
-   * exercise the probe (the route then reports `no_key`-style unavailability).
-   */
   readSemanticProviderConfig?: () => ResolvedSemanticConfig;
-  /**
-   * Resolve the project's base `contentRules` config (project scope), read FRESH
-   * per request so a config edit takes effect without a restart. The lint
-   * endpoints inject the native `.markdownlint.*` rules over this base.
-   * Omitted in tests → falls back to `DEFAULT_LINTER_CONFIG`.
-   */
   getLinterBaseConfig?: () => LinterConfig;
-  /**
-   * Fresh-per-request broken-link posture (`validation.links`). Omitted in
-   * tests → falls back to the default ('warning').
-   */
   getLinksValidationSetting?: () => LinksValidationSetting;
 }
 
-/**
- * Extract all ATX headings (# … ######) from a Markdown document.
- * Frontmatter is stripped before scanning so `title:` YAML lines are ignored.
- */
 export function extractHeadings(content: string): HeadingEntry[] {
   const { body } = stripFrontmatter(content);
 
@@ -2297,15 +1585,6 @@ export function isSafeDocName(docName: string): boolean {
   );
 }
 
-/**
- * Default `mutateFileIndex` fallback: apply a DiskEvent to the live all-files
- * map. A pure write accessor — it mutates the map keyed by docName and never
- * reads or hands a `kind:'file'` entry to a markdown-assuming consumer, so it
- * is safe to authorize as an all-files call site. Production wires the
- * watcher's own generation-bumped mutator instead; this covers harnesses that
- * pass only the accessor closure. The default accessor is a markdown-only
- * snapshot, so the write must target the live backing map, not a throwaway.
- */
 function applyDiskEventToLiveAllFilesIndex(
   event: DiskEvent,
   getAllFilesIndex: () => ReadonlyMap<string, FileIndexEntry>,
@@ -2316,15 +1595,8 @@ function applyDiskEventToLiveAllFilesIndex(
   }
 }
 
-/**
- * Document-lifecycle events comment threads have to follow. Both are fired from
- * subsystems built before the comment service exists, so they arrive through a
- * ref rather than a direct dependency.
- */
 export interface CommentDocHooks {
-  /** The doc's content settled — re-anchor its threads. */
   changed: (docName: string) => void;
-  /** The doc is gone — its threads go with it. */
   deleted: (docName: string) => void;
 }
 
@@ -2333,21 +1605,13 @@ export function createApiExtension(
 ): Extension & { nativeApi: NativeApiHandle; localApi: LocalApiDispatch } {
   const { durabilityState } = options;
   const ingressPolicy = options.ingressPolicy ?? buildIngressPolicy({});
-  // Every local-op call site in this factory inherits the policy's admitted
-  // set through this shadow — one choke point, zero per-site churn.
   const checkLocalOpSecurity = (
     req: IncomingMessage,
     res: ServerResponse,
     opts: { handler: string },
   ): boolean => checkLocalOpSecurityBase(req, res, { ...opts, policy: ingressPolicy });
-  // Same shadow for the route-level Host gates (principal, workspace, metrics,
-  // the write-path gates): every admitted public name (bind literals,
-  // declared externalUrl, legacy tunnel host) is as legitimate as a loopback
-  // name — the mount's admit gate already vetted the surface.
   const isAllowedWorkspaceHostHeader = (host: string | undefined): boolean =>
     isHostAdmitted(host, ingressPolicy);
-  // Route-level peer gates ride the policy too: loopback always passes;
-  // `server.allowExternal` is the sanctioned relaxation.
   const isRoutePeerAdmitted = (remoteAddress: string | undefined): boolean =>
     isPeerAdmitted(remoteAddress, ingressPolicy);
   const {
@@ -2359,13 +1623,7 @@ export function createApiExtension(
     serverInstanceId,
     getFileIndex,
     getAttachmentFolderPath,
-    // Defaults to the markdown-only view when a caller (test harness) wires only
-    // `getFileIndex`; production wires the real all-files accessor in server-factory.
     getAllFilesIndex = getFileIndex,
-    // Production wires the watcher's generation-bumped mutator; this fallback
-    // covers harnesses that pass only the accessor closure. The write must
-    // target the live backing map (the default accessor is a markdown-only
-    // snapshot) — see applyDiskEventToLiveAllFilesIndex.
     mutateFileIndex = (event: DiskEvent) =>
       applyDiskEventToLiveAllFilesIndex(event, getAllFilesIndex),
     getFileIndexGeneration,
@@ -2417,10 +1675,6 @@ export function createApiExtension(
     getLinkPreviewsEnabled,
     getConfigDiagnostics,
   } = options;
-  // Every server-side `files` signal means content changed somewhere - doc
-  // writes, watcher events, installs. The skills caches must not outlive that:
-  // content-derived list fields (Modified flags, drift, built-in
-  // materialization) have no other invalidation edge for non-lifecycle writes.
   const signalChannel: typeof rawSignalChannel = rawSignalChannel
     ? (channel) => {
         if (channel === 'files') bumpSkillsCatalogGen();
@@ -2428,14 +1682,8 @@ export function createApiExtension(
       }
     : undefined;
 
-  // Concurrency guard: at most 1 in-flight request per local-op endpoint
   const localOpGuard = localOpConcurrencyGuard ?? createConcurrencyGuard();
 
-  // The document/pages native route group is constructed HERE, well above the
-  // route-table tail, because its returned `invalidateReferencedAssetsCache`
-  // is called from the write spines below (create/delete/rename) — the same
-  // position its cache cluster occupied before the lift. Deps are options or
-  // hoisted function declarations, so early construction is safe.
   const documentRoutes = createDocumentRoutes({
     hocuspocus,
     contentDir,
@@ -2513,20 +1761,10 @@ export function createApiExtension(
     }
   }
 
-  // Per-scheme cache + in-flight dedup for GET /api/installed-agents.
-  // Factory is called once per createApiExtension() so the cache lives for
-  // the lifetime of the server (cleared on server restart).
   const installedAgentsCache = createInstalledAgentsProbe({
     probe: installedAgentsProbe ?? createOsProbe(process.platform),
   });
 
-  // Disk path for a doc name. Managed-artifact docs (skills/templates) live
-  // under `.ok/` outside the content tree, so they resolve through the
-  // escape-guarded `managedArtifactAbsPath` (projectDir defaults to contentDir);
-  // every other doc maps to `<contentDir>/<docName><ext>`. Returns null on a
-  // malformed / escaping name so read callers fall back to the raw doc name.
-  // This is the single docName→disk-path resolver — every reader (titles,
-  // metadata, page-headings) routes through it so skills stay reachable.
   function resolveDocPath(docName: string): string | null {
     if (isManagedArtifactDocName(docName)) {
       try {
@@ -2548,66 +1786,39 @@ export function createApiExtension(
     return filePath;
   }
 
-  // Comments (v1) — anchored threads stored under
-  // `<contentDir>/.ok/local/comments/`, machine-local and never committed.
-  // App-only HTTP surface (agents reach comments through dispatch, not MCP).
-  // Constructed here rather than by the routes map so the rename walk below can
-  // call `commentService.renameDoc(...)`. The store's directory is created
-  // lazily on first write, so constructing without awaiting is safe.
   const commentService = new CommentService({
     store: new CommentThreadStore(resolve(contentDir, OK_DIR, LOCAL_DIR), log),
     index: new CommentIndex(),
     getDocBody: (docName) => {
-      // Prefer the live CRDT body; fall back to disk. Offsets are measured
-      // against the body text (everything after the frontmatter).
       try {
         const doc = hocuspocus.documents.get(docName);
         if (doc) return stripFrontmatter(doc.getText('source').toString()).body;
-      } catch {
-        /* fall through to disk */
-      }
+      } catch {}
       try {
         const filePath = resolveDocPath(docName);
         if (filePath && existsSync(filePath)) {
           return stripFrontmatter(readFileSync(filePath, 'utf-8')).body;
         }
-      } catch {
-        /* unreadable — treat as absent */
-      }
+      } catch {}
       return null;
     },
-    // Property threads address a frontmatter key — and optionally a path into
-    // its value, and optionally a passage inside that. All of it re-finds
-    // against the parsed record. Same live-CRDT-then-disk order as the body read
-    // above, and the same null contract: null means the document could not be
-    // read, which leaves thread state alone rather than orphaning it. A doc with
-    // no frontmatter at all is an empty record — readable, just empty.
     getDocFrontmatter: (docName: string): Record<string, unknown> | null => {
       try {
         const doc = hocuspocus.documents.get(docName);
         if (doc) return parseFrontmatterRecord(doc.getText('source').toString()) ?? {};
-      } catch {
-        /* fall through to disk */
-      }
+      } catch {}
       try {
         const filePath = resolveDocPath(docName);
         if (filePath && existsSync(filePath)) {
           return parseFrontmatterRecord(readFileSync(filePath, 'utf-8')) ?? {};
         }
-      } catch {
-        /* unreadable — treat as absent */
-      }
+      } catch {}
       return null;
     },
   });
 
-  // A doc's threads follow its lifecycle.
   if (options.commentDocHooksRef) {
     options.commentDocHooksRef.current = {
-      // Settling a change re-anchors them, so a deleted passage reads as
-      // orphaned instead of staying healthy-looking until someone tries to send
-      // it. Only a state change is broadcast — the sweep runs on every settle
-      // and is silent when nothing crossed.
       changed: (docName: string) => {
         void commentService
           .refindDoc(docName)
@@ -2618,10 +1829,6 @@ export function createApiExtension(
             log.warn({ err, docName }, '[comments] re-anchor after document change failed');
           });
       },
-      // The document is gone, so its comments go with it. Every delete route
-      // reaches disk, so the watcher sees all of them and this one hook covers
-      // in-app deletes, the desktop trash flow, and a file removed outside the
-      // app alike.
       deleted: (docName: string) => {
         void commentService
           .deleteDoc(docName)
@@ -2645,16 +1852,6 @@ export function createApiExtension(
     }
   }
 
-  /**
-   * Admission-gated title read for link-graph endpoints (forward-links, hubs,
-   * link-graph). Wiki-link targets are user-authored strings — a link in an
-   * indexed doc may name a target that is itself excluded from the content
-   * scope by `.gitignore` / `.okignore`. Reading the on-disk title for those
-   * excluded targets would leak the title (a heading authored after the file
-   * was excluded) through endpoints that are otherwise scoped to admitted
-   * content. Fall back to the docName, matching the contract for missing
-   * targets.
-   */
   function readPageTitleForLinkedDocName(docName: string, admitted: Set<string>): string {
     if (!admitted.has(docName)) return docName;
     return readPageTitleForDocName(docName);
@@ -2686,9 +1883,7 @@ export function createApiExtension(
           return { cluster, category, tags };
         }
       }
-    } catch {
-      /* fall through to disk */
-    }
+    } catch {}
     try {
       const filePath = resolveDocPath(docName);
       if (!filePath || !existsSync(filePath)) return EMPTY_METADATA;
@@ -2701,12 +1896,6 @@ export function createApiExtension(
     }
   }
 
-  /**
-   * Admission-gated frontmatter read — pair to `readPageTitleForLinkedDocName`.
-   * Link-graph nodes can include wiki-link targets that resolve to docs
-   * excluded by `.gitignore` / `.okignore`; serving their cluster / category /
-   * tags would leak frontmatter from outside the content scope.
-   */
   function readFrontmatterMetadataForLinkedDocName(
     docName: string,
     admitted: Set<string>,
@@ -2715,13 +1904,6 @@ export function createApiExtension(
     return readFrontmatterMetadataForDocName(docName);
   }
 
-  /**
-   * Soft orphan-hint: when a written doc has zero backlinks AND a hub
-   * candidate exists in its folder tree, attach a hint suggesting the hub.
-   * Returns `undefined` when any prerequisite is unavailable (no
-   * relationship index wired, target not in index, has backlinks, or no candidate).
-   * Non-throwing — a hint-computation failure must not fail the write.
-   */
   async function computeOrphanHints(
     docName: string,
   ): Promise<Array<{ type: 'orphan'; parentCandidates: string[]; message: string }> | undefined> {
@@ -2729,9 +1911,6 @@ export function createApiExtension(
     try {
       const backlinks = await derivedDocumentIndex.getBacklinks(docName);
       if (backlinks.length > 0) return undefined;
-      // This runs on every write — if hub-candidate walking becomes pathological
-      // on very large file indexes, we want an observable signal. 5ms is well
-      // above the typical <1ms cost for a small-to-medium repo.
       const start = performance.now();
       const candidates = findHubCandidates(docName, getFileIndex());
       const elapsed = performance.now() - start;
@@ -2760,15 +1939,6 @@ export function createApiExtension(
     return getAliasMap?.().get(docName) ?? docName;
   }
 
-  /**
-   * Return the number of live browser/editor connections currently subscribed
-   * to the given Hocuspocus document. Zero means the agent is writing to a
-   * room nobody is watching. Under the once-per-session preview-attach
-   * contract, this is a per-doc diagnostic — the hint threshold is
-   * `getSystemSubscriberCount()` (transport-presence on `__system__`).
-   *
-   * Never throws: a Hocuspocus introspection failure is silent (returns 0).
-   */
   function getSubscriberCount(docName: string): number {
     try {
       const doc = hocuspocus.documents.get(docName);
@@ -2778,18 +1948,6 @@ export function createApiExtension(
     }
   }
 
-  /**
-   * Return the number of live connections to the `__system__` Y.Doc — the
-   * shared awareness channel every editor tab subscribes to. Zero means no
-   * editor is attached to this server anywhere; non-zero means at least one
-   * tab is watching (and will follow agent writes via `AgentFocusBroadcaster`).
-   *
-   * This is the correct signal for the once-per-session preview-attach hint:
-   * the per-doc count flips on every new doc even when the user's tab is open
-   * and following, which would produce spurious "attach" hints.
-   *
-   * Never throws.
-   */
   function getSystemSubscriberCount(): number {
     try {
       const doc = hocuspocus.documents.get(SYSTEM_DOC_NAME);
@@ -2799,26 +1957,6 @@ export function createApiExtension(
     }
   }
 
-  /**
-   * Fire-and-forget L1 → L2 flush for a single document.
-   *
-   * L1 (CRDT → disk): per-document debounce flush so concurrent human edits on
-   * other documents are undisturbed.
-   * L2 (disk → git): chained after L1 resolves to guarantee disk content is
-   * up-to-date before the shadow-repo commit.
-   *
-   * Reserved for rare, semantically anchored actions (rename, rollback, undo)
-   * whose commit must land promptly — a rename's log entries stay unanchored
-   * until its shadow commit exists. High-frequency agent write handlers use
-   * {@link flushDocToDisk} instead so their L2 commits coalesce on the
-   * persistence debounce rather than paying a whole-corpus tree build per
-   * write; `handleHistory` drains any pending commit before reading, so
-   * history reads still observe every completed write.
-   *
-   * The returned promise is intentionally not awaited by callers — the HTTP
-   * response fires immediately after the CRDT transaction; persistence is
-   * best-effort background work.
-   */
   function flushDocToGit(docName: string, label: string): void {
     const debounceId = `onStoreDocument-${docName}`;
     const l1 = hocuspocus.debouncer.isDebounced(debounceId)
@@ -2829,13 +1967,6 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * Fire-and-forget L1-only flush: force the per-document disk store without
-   * forcing the L2 shadow commit. The store path always arms the L2 debounce
-   * timer, so the commit still lands — coalesced with every other write in the
-   * window instead of one full tree build per agent write. No-op when the
-   * handler already awaited `flushDiskAndDetectOutcome` (nothing debounced).
-   */
   function flushDocToDisk(docName: string, label: string): void {
     const debounceId = `onStoreDocument-${docName}`;
     if (!hocuspocus.debouncer.isDebounced(debounceId)) return;
@@ -2844,38 +1975,11 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * Force the debounced L1 disk store for `docName` to run now and await it,
-   * then report whether it failed. Hocuspocus's `storeDocumentHooks` swallows
-   * store errors (logs "stays in memory", keeps the doc in RAM), so
-   * `executeNow`'s promise resolves even when the bytes never reached disk —
-   * `takeStoreFailure` reads the failure the persistence layer recorded
-   * out-of-band. Returns null when the store reached disk (or no failure
-   * channel is wired). The caller surfaces a non-success response on a
-   * non-null result so a write can never report success against a disk that
-   * rejected it.
-   */
   type FlushOutcome = { kind: 'failure'; failure: StoreFailure } | { kind: 'divergence' } | null;
 
-  /**
-   * Force-flush this doc's debounced store, then read the out-of-band outcome
-   * channels so every awaited-flush handler can branch uniformly:
-   *   - `failure`    — the atomic disk write threw (ENOSPC / EACCES / EROFS …);
-   *     content stays in memory only. → `respondPersistenceFailure`.
-   *   - `divergence` — the L3 backstop detected disk diverged from the reconciled
-   *     base, aborted the overwrite, and ingested disk (disk won); the agent's
-   *     edit was NOT applied. → `respondDiskDivergence`.
-   *   - `null`       — the store reached disk.
-   * The two non-null outcomes are mutually exclusive for one flush: L3 returns
-   * before the atomic write, so a divergence revert never also records a failure.
-   */
   async function flushDiskAndDetectOutcome(docName: string): Promise<FlushOutcome> {
     const debounceId = `onStoreDocument-${docName}`;
     if (hocuspocus.debouncer.isDebounced(debounceId)) {
-      // Mark this as an agent-write-triggered store so the L3 backstop's gate
-      // fires (Hocuspocus passes a null transaction origin for agent
-      // DirectConnection writes, so the origin can't gate it). `storeDocumentNow`
-      // read-and-clears the marker.
       durabilityState.markAgentWriteStore(docName);
       await hocuspocus.debouncer.executeNow(debounceId);
     }
@@ -2885,15 +1989,6 @@ export function createApiExtension(
     return null;
   }
 
-  /**
-   * Map a recorded {@link StoreFailure} to a storage problem type + status and
-   * emit it. Reuses the shared `classifyUploadErrno` / `uploadStatusFor` errno
-   * table (ENOSPC/EDQUOT → 507 storage-full; EROFS/EACCES/EPERM → 500
-   * storage-readonly; else → 500 storage-error) so the agent-write disk-failure
-   * surface can never drift from the upload pipeline's mapping. The CRDT copy
-   * stays in memory; the response reflects disk truth so the caller does not
-   * record a false success.
-   */
   function respondPersistenceFailure(
     res: ServerResponse,
     failure: StoreFailure,
@@ -2909,13 +2004,6 @@ export function createApiExtension(
     );
   }
 
-  /**
-   * Emit the L3 disk-divergence error. 409 Conflict: the document
-   * changed on disk after the agent's edit was prepared, so the store aborted the
-   * overwrite (disk won) and the agent's edit was NOT applied. The agent should
-   * re-read and retry — the edit was discarded, not double-applied, so a retry
-   * re-applies exactly once via the L1 reconcile.
-   */
   function respondDiskDivergence(res: ServerResponse, handler: string): void {
     errorResponse(
       res,
@@ -2926,15 +2014,6 @@ export function createApiExtension(
     );
   }
 
-  /**
-   * Build the success-path `disk-edit-reconciled` warning when
-   * L1 reconciled a divergent out-of-band disk edit before the agent's edit
-   * landed on top. The write SUCCEEDED and both edits are on disk — this is the
-   * observational nudge to re-read for the combined result. Returns undefined
-   * when nothing was reconciled (the common no-divergence path). `intendedBytes`
-   * = the base the agent thought it was editing; `actualBytes` = the divergent
-   * disk content that was folded in; `byteDelta` = the divergence magnitude.
-   */
   function buildReconcileWarning(
     reconcile: ReconcileBeforeWriteResult,
   ): DiskEditReconciledWarning | undefined {
@@ -2952,18 +2031,7 @@ export function createApiExtension(
     };
   }
 
-  // Content-scope exclusion for a docName, mirroring the file-watcher's markdown
-  // admission gate (`isExcluded`, the gitignore/okignore predicate it applies
-  // before indexing a file). Used to keep the backlink-graph union and the
-  // write-path file-index registration content-scope-symmetric with the watcher
   // (precedent #55): a doc the watcher would refuse to index must not slip into
-  // the admitted set by another door, or its on-disk title/frontmatter leaks
-  // through the link/title endpoints. String-only (no realpath/symlink syscalls
-  // — this runs per forward-key on a hot path); the extension mirrors
-  // `resolveContentEntryPath`'s `docNameToRelativePath` default so `.md`/`.mdx`
-  // ignore patterns match. A managed-artifact docName lives outside contentDir
-  // and is admitted separately, so a wrong relPath here only ever fails open
-  // (admit).
   function isDocNameContentExcluded(docName: string): boolean {
     if (!contentFilter) return false;
     const relPath = docNameToRelativePath(docName);
@@ -2978,13 +2046,6 @@ export function createApiExtension(
         admitted.add(alias);
       }
     }
-    // Managed skill docs are link-axis participants — a doc that links to one
-    // must resolve it as a known doc (title, not a dead link rendered as the raw
-    // `__skill__/...` name). They live outside getFileIndex() (tree-excluded), so
-    // enumerate them from disk here. The names match what the backlink index
-    // normalizes link targets to. Templates need no enumeration: they are content
-    // docs now, so getFileIndex() already carries them. Best-effort: a scan
-    // failure just narrows the set, it never fails the link endpoint.
     try {
       for (const scope of ['project', 'global'] as const) {
         const skillsRoot =
@@ -2998,19 +2059,6 @@ export function createApiExtension(
     } catch (err) {
       log.warn({ err }, '[collectAdmittedDocNames] managed-artifact enumeration failed');
     }
-    // Union the backlink graph's indexed-doc set, the additive second existence
-    // oracle. `getFileIndex()` is the async file-watcher's view and lags (or
-    // permanently drops a create FSEvent for a file written into a freshly-made
-    // subdir — see file-watcher.ts). `state.forward` is updated in-process by
-    // onStoreDocument, so a just-persisted doc lands here immediately. Without
-    // this union the link/title consumers disagree with the dead-link endpoint,
-    // which already folds in this same set (BacklinkIndex.getDeadLinks). The
-    // content-scope gate keeps it symmetric with the watcher: a forward node that
-    // is gitignore/okignore-excluded (e.g. an agent wrote to an excluded path,
-    // which the graph indexes but the watcher won't) must NOT become admitted, or
-    // its title/frontmatter would leak through the link/title endpoints. Already-
-    // admitted names (file index, managed artifacts) skip the gate — cheap and
-    // they're known in-scope.
     for (const docName of (await derivedDocumentIndex?.getIndexedDocNames()) ?? []) {
       if (admitted.has(docName)) continue;
       if (!isDocNameContentExcluded(docName)) admitted.add(docName);
@@ -3124,18 +2172,6 @@ export function createApiExtension(
     );
   }
 
-  // Content-scoped existence oracle for non-doc outbound targets. The watcher
-  // inventory is authoritative once an entry is indexed. The confined disk
-  // fallback preserves immediate write advisories during the short window
-  // between a native file creation and its watcher event, while applying the
-  // same ignore and realpath-escape gates before admitting that file.
-  // Folder-existence oracle for write-time link validation: the watcher's
-  // folder index is every non-excluded directory (including empty and
-  // asset-only ones) — the same inventory the client's folder navigation
-  // unions in, so an existing folder target is not reported broken here
-  // while the editor chip resolves it. `computeWriteAdvisoryLinks` unions
-  // this with the admitted docs' ancestors, which cover CRDT-live docs the
-  // watcher has not indexed yet.
   function createLinkedFolderExists(): (folderPath: string) => boolean {
     const folderIndex = getFolderIndex?.();
     if (!folderIndex) return () => false;
@@ -3161,9 +2197,6 @@ export function createApiExtension(
       try {
         return isWithinDir(realpathSync(candidate), canonicalContentDir);
       } catch (err) {
-        // ENOENT is the expected TOCTOU race (deleted between existsSync and
-        // realpathSync) and needs no note; anything else (EACCES, ELOOP) would
-        // otherwise report a persistently absent file with no diagnostic.
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
           log.debug(
             { err, candidate },
@@ -3175,22 +2208,7 @@ export function createApiExtension(
     };
   }
 
-  // Synchronously register a just-persisted agent-write doc into the file index,
-  // mirroring `/api/create-page`. The file-watcher normally adds it on the next
-  // FSEvent, but @parcel/watcher can permanently drop the create event for a
-  // file written into a freshly-created subdir — the recursive inotify subwatch
-  // is registered async after the directory's IN_CREATE, so a rapid follow-up
-  // write races the registration and its event is lost (see file-watcher.ts).
-  // The doc then stays missing from the file index until a restart re-seeds from
-  // disk. `updateFileIndex` is an idempotent upsert keyed by docName, so a later
-  // watcher event for the same file just re-sets the same entry. Best-effort and
-  // post-write: the CRDT copy already exists regardless of the file index.
-  //
   // Mirrors the watcher's admission gate (precedent #55): a content-scope-excluded
-  // doc (the write handlers don't reject those — they only block reserved system/
-  // config names) must NOT be registered, exactly as the watcher would skip it.
-  // Otherwise an agent write to a gitignore/okignore'd path would leak its title
-  // through the admitted set the link/title endpoints read.
   function registerWrittenDocInFileIndex(docName: string, content: string): void {
     if (isDocNameContentExcluded(docName)) return;
     mutateFileIndex?.({
@@ -3218,16 +2236,8 @@ export function createApiExtension(
     };
   }
 
-  // Managed rename mutates overlapping backlink sets across many docs, so serialize it.
   const runSerialized = createSerializedRunner();
 
-  // RFC 9457 title convention — every `errorResponse(...)` site in this file
-  // ends its title with a period. Error class messages are declarative
-  // fragments without trailing punctuation; this helper sentence-shapes them
-  // before they reach `errorResponse()`. Used by `toManagedRenamePublicError`
-  // (rename/rollback common branches) AND directly at the
-  // `ManagedRenameCollisionError` catch site (which can't go through that
-  // helper because it carries the `colliding` extension payload).
   const withPeriod = (s: string): string => (s.endsWith('.') ? s : `${s}.`);
 
   function toManagedRenamePublicError(error: unknown): {
@@ -3309,16 +2319,6 @@ export function createApiExtension(
       }
     }
 
-    // Mark every loaded doc as no-longer-tracking-disk BEFORE any teardown.
-    // Ordering is load-bearing: closing a doc's last connection makes
-    // Hocuspocus force-flush a pending debounced store (and unload never
-    // cancels an armed debounce timer, nor does the delete purge
-    // deferred-store or straggler agent-session stores) — each of those
-    // late stores serializes the still-populated Y.Doc and rewrites the
-    // path this teardown is about to remove. `storeDocumentNow`'s
-    // lifecycle guard skips them all once the marker is set; the raw
-    // Y.Map set (no transact) mirrors the watcher reconcile's sibling
-    // convention in server-factory.ts.
     for (const docName of docNames) {
       const document = hocuspocus.documents.get(docName);
       if (!document) continue;
@@ -3334,10 +2334,6 @@ export function createApiExtension(
     for (const docName of docNames) {
       const document = hocuspocus.documents.get(docName);
       durabilityState.deleteReconciledBase(docName);
-      // Forget the managed-artifact LKG too (no-op for ordinary docs). The LKG
-      // is the verbatim bytes last persisted; leaving it set lets an identical-
-      // content re-create after a delete be classed a no-op and never re-land on
-      // disk. Evicting here keeps it symmetric with reconciledBase eviction.
       evictManagedArtifactLkg?.(docName);
       if (!document) continue;
       hocuspocus.closeConnections(docName);
@@ -3355,7 +2351,6 @@ export function createApiExtension(
       const filePath = safeContentPath(toDocName, contentDir);
       const liveContent = liveContents.get(fromDocName);
       if (typeof liveContent === 'string') {
-        // Skip the write when the move already placed the correct bytes.
         writeFileIfContentDiffers(filePath, liveContent);
       }
 
@@ -3558,24 +2553,6 @@ export function createApiExtension(
     return { rewrittenDocs, derivedMutations };
   }
 
-  /**
-   * Enumerate the managed docNames physically present under a folder by
-   * walking disk, NOT the in-memory file index. The file index is populated
-   * asynchronously by the chokidar watcher and lags on-disk truth right after
-   * a `write` create — so folder rename used to see an empty index,
-   * report `renamed: []`, skip inbound-link rewriting, and still move the
-   * directory (orphaning every link into it). Disk is the authoritative
-   * source for what the folder move carries; this matches how single-doc
-   * rename trusts the caller's path rather than the index.
-   *
-   * Side effect: registers each doc's on-disk extension via
-   * `registerDocExtension` (same as the watcher's `add` handler). Without it,
-   * a `.mdx` doc the index never registered would resolve through
-   * `getDocExtension`'s `.md` default — `readCurrentDocumentContent` would read
-   * a non-existent `.md` path and the spine would throw
-   * `ManagedRenameMissingDocumentError`, or a link rewrite would write a `.md`
-   * sibling of the moved `.mdx` (split-brain).
-   */
   const listManagedDocNamesUnderFolderFromDisk = (sourcePathRoot: string): string[] =>
     listManagedDocNamesUnderFolder(sourcePathRoot, {
       contentDir,
@@ -3887,22 +2864,8 @@ export function createApiExtension(
             throw new BacklinkIndexRequiredError();
           }
 
-          // Existence + stat + affected-doc enumeration all live inside the
-          // serialized critical section so a concurrent file watcher event
-          // (external mv add) or in-flight write to the source folder cannot
-          // land between enumeration and the disk move and produce a "ghost"
-          // file that the recovery journal doesn't know about. POSIX
-          // rename(2) does not fail-loud on overwrite, so the lock is the
-          // only backstop against silent data loss.
           const sourcePathRoot = resolveContentEntryPath(contentDir, kind, fromPath);
           const destinationPathRoot = resolveContentEntryPath(contentDir, kind, toPath);
-          // Handles the case where the client sends an explicit extension that
-          // matches the source's existing one (e.g. `toPath: "foo.md"` when
-          // the file is already `foo.md`) — `fromPath !== toPath` textually
-          // but the on-disk paths resolve to the same file. Treat as no-op,
-          // mirroring the extension-less `fromPath === toPath` short-circuit
-          // in the handler. Returning empty arrays here propagates as
-          // `{ ok: true, renamed: [], rewrittenDocs: [] }` to the caller.
           if (sourcePathRoot === destinationPathRoot) {
             return { renamed: [], renamedAssets: [], rewrittenDocs: [] };
           }
@@ -3928,15 +2891,6 @@ export function createApiExtension(
               : [];
           span.setAttribute('rename.affected_assets', renamedAssets.length);
 
-          // Downstream code keys on extension-less docNames for ordinary
-          // files, but same-stem `.md` / `.mdx` siblings stay
-          // extension-qualified so the operation targets the selected file.
-          // Folder rename enumerates descendant docs from DISK rather than
-          // the in-memory file index:
-          // the index lags on-disk truth after a fresh `write`, which
-          // made folder rename report `renamed: []` and skip link rewriting
-          // while still moving the directory. Disk is the authoritative set of
-          // what the move carries.
           const affectedDocNames =
             kind === 'file'
               ? [docNameForFileOperationPath(contentDir, fromPath)]
@@ -3953,9 +2907,6 @@ export function createApiExtension(
           span.setAttribute('rename.affected_docs', affectedDocs.length);
 
           if (affectedDocs.length === 0) {
-            // Empty or asset-only folder rename: no documents move, but
-            // assets inside the folder may still need markdown references
-            // updated after the folder itself moves.
             const pendingAssetRewrites = collectAssetReferenceRewritesForMappings(renamedAssets);
             assertRewriteTargetsNotConflicted(pendingAssetRewrites.map((entry) => entry.docName));
             if (kind === 'folder') {
@@ -4003,16 +2954,6 @@ export function createApiExtension(
           for (const docName of [...renameMap.keys(), ...backlinkSources]) {
             if (snapshotContents.has(docName)) continue;
 
-            // For backlink sources (non-renamed docs that link to a rename
-            // target): require a real on-disk file. A Y.Doc may be in
-            // memory for a docName that has no disk file (e.g.,
-            // `openDirectConnection` was triggered by a hover or pre-warm
-            // on a redlink). Treating in-memory-only Y.Docs as legitimate
-            // backlink sources here would funnel them into the
-            // `rewriteDocNames` loop and `writeManagedRenameDocumentToDisk`
-            // would materialize a phantom file — `tracedMkdirSync` +
-            // `tracedWriteFileSync` create whatever path it's handed.
-            // Treat as missing and let the index purge the stale entry.
             if (!renameMap.has(docName)) {
               const filePath = resolveContentEntryPath(contentDir, 'file', docName);
               if (!existsSync(filePath)) {
@@ -4021,23 +2962,6 @@ export function createApiExtension(
               }
             }
 
-            // L1 reconcile-before-apply for rename: the rename
-            // serializes the LOADED CRDT to the new path (`captureAndCloseDocuments`
-            // → `syncRenamedDocsToDisk`) and link-rewrites loaded backlink sources
-            // to disk — both via `tracedWriteFileSync`, which BYPASSES the
-            // `storeDocumentNow` store hook, so the L3 backstop cannot guard
-            // rename. A loaded-but-stale CRDT (disk edited out-of-band since load)
-            // would therefore clobber the newer on-disk edit. Ingest disk into the
-            // loaded doc here — before the snapshot, the disk move, and the
-            // recovery envelope — so the rename carries disk truth and the
-            // recovery journal snapshots it. Synchronous (no microtask boundary
-            // inside the serialized critical section). No-op when not loaded /
-            // not diverged. resolveEmbed is intentionally omitted here (unlike
-            // the four content handlers): this reconcile protects content bytes,
-            // not embed display attributes — the raw embed reference round-trips
-            // losslessly through the rename re-serialize and re-resolves on the
-            // next normal load/reconcile. The extension-level resolveEmbed is
-            // also shadowed by this function's own options param.
             reconcileDiskBeforeAgentWrite(
               durabilityState,
               hocuspocus,
@@ -4127,40 +3051,6 @@ export function createApiExtension(
               });
             }
 
-            // `captureAndCloseDocuments` sends an application-level
-            // `CloseMessage` frame to every connected provider for the
-            // affected docNames; the client's `'close'` handler responds with
-            // a fresh `sendToken()`, which the server processes through
-            // `onAuthenticate` → `removalRedirectGuard` on the next event-loop
-            // turn. That forced reconnect imposes two ordering constraints,
-            // both satisfied before the close below:
-            //
-            //   1. The LRU must already reflect the rename. If we populated
-            //      it AFTER the close, the re-auth could land while the cache
-            //      is still empty (the close→sendToken round-trip overlaps the
-            //      spine's subsequent `await`s) and the active tab would be
-            //      silently admitted to the stale source docName instead of
-            //      redirected.
-            //   2. The destination file must already exist on disk. The guard
-            //      redirects the reconnecting client to the new docName, which
-            //      fires `persistence.onLoadDocument(newDocName)`. That hook
-            //      early-returns when the file is absent, leaving a live empty
-            //      Y.Doc that nothing re-imports once the move lands — the
-            //      editor and every later reader then see an empty doc even
-            //      though disk holds the original body. So the disk move runs
-            //      here, before the close, not after it.
-            //
-            // On rename failure, `withManagedRenameRecovery` rolls the disk
-            // back but does NOT clear the cache. `removalRedirectGuard`
-            // trusts the rename cache absolutely (no file-existence
-            // self-clean for the `renamed` kind — that path is only for
-            // `deleted`), so the stale entry still redirects the client to
-            // the now-absent target. The next handshake the client makes
-            // against the target admits (no cache entry for the target,
-            // so the chain walk terminates and the connection is allowed
-            // through) and either finds the file if a retry succeeded or
-            // loads an empty doc that resyncs on reload: a bounded UX cost
-            // (see `removal-redirect-guard.ts`).
             if (recentlyRemovedDocs) {
               for (const { from, to } of affectedDocs) {
                 if (isSystemDoc(from) || isConfigDoc(from)) continue;
@@ -4193,13 +3083,6 @@ export function createApiExtension(
 
             const liveContents = await captureAndCloseDocuments([...renameMap.keys()], 'renamed');
 
-            // Test-only crash-injection seam. Production builds with
-            // NODE_ENV !== 'test' AND OK_TEST_RENAME_FAULT unset elide the
-            // branch. The two injection windows verify the
-            // disk-move → log-append → journal-clear ordering invariant: a
-            // crash at either window must leave the system in a consistent
-            // state — the recovery journal rolls disk back; any orphan log
-            // entry is swept on next boot.
             if (
               process.env.NODE_ENV === 'test' &&
               process.env.OK_TEST_RENAME_FAULT === 'pre-append'
@@ -4207,28 +3090,11 @@ export function createApiExtension(
               throw new Error('OK_TEST_RENAME_FAULT=pre-append');
             }
 
-            // Rename-log emit. Happens AFTER the disk move and AFTER the
-            // recovery journal is on disk, so a crash here leaves the
-            // journal as the rollback authority. `commitSha: ''` enters the
-            // lazy-population window — `commitToWipRefInner`'s post-success
-            // hook backfills it from this drain's writer commit. Anonymous
-            // renames attribute to the openknowledge-service writer.
             if (shadowRef?.current) {
               const shadow = shadowRef.current;
-              // Extension-only renames change disk state while preserving the logical docName.
-              // The rename log records logical docName moves and rejects self-pairs.
-              // Compare on the extension-stripped docName: a same-stem sibling makes
-              // `docNameForFileOperationPath` keep the destination extension-qualified
-              // (`a` -> `a.mdx` when `a.md` exists), so a raw `from !== to` no longer
-              // recognizes the self-pair and would log a phantom rename.
               const loggableAffectedDocs = affectedDocs.filter(
                 ({ from, to }) => stripDocExtension(from) !== stripDocExtension(to),
               );
-              // Body is fully synchronous (file appends + contributor
-              // bookkeeping). withSpanSync avoids inserting a microtask
-              // boundary inside the recovery envelope, where pending
-              // file-watcher parcel events would otherwise race the
-              // per-doc disk-sync loop and resurrect the source path.
               if (loggableAffectedDocs.length > 0) {
                 withSpanSync(
                   'rename.appendLog',
@@ -4257,29 +3123,8 @@ export function createApiExtension(
                         kind,
                         actor: actorWriter,
                       };
-                      // An append failure (ENOSPC, EACCES, EROFS — `<gitdir>/ok/`
-                      // shares a filesystem with content) MUST abort the rename.
-                      // Swallowing it would leave (post-rename disk, no log
-                      // entry): the recovery envelope clears the journal on
-                      // success because nothing throws, so disk stays renamed
-                      // even though the rename history record is missing.
-                      // Re-throw so the journal stays on disk and next-boot
-                      // recovery rolls disk back.
                       appendRenameLogEntry(shadow.gitDir, logEntry, renameLogIndex, shadow);
                       entriesAppended += 1;
-                      // Thread `previous_paths` through the contributor
-                      // pipeline so the L2 drain emits it on the writer's
-                      // `OkActorEntry`.
-                      //
-                      // Anonymous renames MUST also record a contributor entry
-                      // attributed to the service writer. Without it,
-                      // `pendingContributors` won't include
-                      // `openknowledge-service`, so when the drain also has
-                      // agent activity the per-writer fan-out commits only the
-                      // agent and the service-writer backfill never runs — the
-                      // empty-`commitSha` log entry becomes an orphan that the
-                      // next-boot `sweepLazyPopOrphans` silently drops, losing
-                      // the rename history.
                       if (options?.actor) {
                         recordContributor(
                           to,
@@ -4310,17 +3155,6 @@ export function createApiExtension(
               }
             }
 
-            // Pre-register destination extensions so loop 2's
-            // `resolveContentEntryPath` and `safeContentPath` produce the
-            // correct on-disk paths. For an extension-change rename
-            // (`foo.md` → `foo.mdx`), inheriting from the source's recorded
-            // extension would point at the no-longer-extant `.md` path; for
-            // a same-extension cross-folder rename, the destination docName
-            // has no recorded extension yet and would default to `.md`,
-            // miscomputing `.mdx` source paths. Forget the source mapping
-            // so a renamed-then-recreated source doesn't inherit a stale
-            // extension. The file watcher would converge to the same state
-            // asynchronously — this just makes loop 2 see it synchronously.
             const explicitDestExt: string | null =
               kind === 'file' && isSupportedDocFile(toPath) ? extname(toPath) : null;
             for (const { from, to } of affectedDocs) {
@@ -4367,13 +3201,6 @@ export function createApiExtension(
                 newDocumentName: toDocName,
                 markdown: renamedSource.markdown,
               });
-              // Comment threads follow the doc. Awaited, so the rename cannot
-              // report done while cover sheets are still being rewritten — an
-              // in-flight rewrite leaves a window where a racing read sees the
-              // old docName. Still non-fatal: the in-memory index is updated
-              // synchronously inside renameDoc and a failed cover-sheet write is
-              // rebuilt from disk at boot, so a failure here must not take the
-              // rename down with it.
               try {
                 await commentService.renameDoc(fromDocName, toDocName);
               } catch (err) {
@@ -4388,12 +3215,6 @@ export function createApiExtension(
             }
             await recordDerivedMutationsBestEffort(derivedMutations, 'document-rename');
 
-            // Second crash-injection seam — fires AFTER the log append +
-            // AFTER the per-doc sync loop, BEFORE the implicit
-            // `clearManagedRenameJournal` at the end of the recovery
-            // envelope. Validates that an orphan log entry left by a crash
-            // is swept by the boot-time `sweepLazyPopOrphans` pass once the
-            // outer recovery rolls disk back.
             if (
               process.env.NODE_ENV === 'test' &&
               process.env.OK_TEST_RENAME_FAULT === 'pre-journal-clear'
@@ -4445,13 +3266,6 @@ export function createApiExtension(
     };
   }
 
-  /**
-   * Build actor-tuple metadata for threading through recordContributor →
-   * ContributorEntry → OkActorEntry. Populates:
-   *   - principalId from getPrincipal() (stable UUID per local install)
-   *   - agentType derived from clientName
-   *   - clientName / clientVersion / label passed through from request body
-   */
   function buildAgentActor(args: {
     clientName: string | undefined;
     clientVersion?: string;
@@ -4473,29 +3287,6 @@ export function createApiExtension(
     };
   }
 
-  /**
-   * Shape of the `summary` field appended to a handler's success JSON response
-   * when the caller provided a summary. Absent from the response entirely when
-   * the caller did not supply a summary (including empty string, which is
-   * treated as absent per `normalizeSummary`).
-   *
-   * `hint` is nested inside `summary` (not a sibling top-level key) so the
-   * truncation message always travels with the field it explains — this
-   * prevents naming collisions at the response root and tightens the coupling
-   * between `truncatedFrom` and the human-readable explanation. The alias
-   * itself is owned by `agent-write-summary.ts` (imported at module top) so
-   * the native route handlers that echo it cannot drift structurally.
-   */
-
-  /**
-   * Pure response-shape derivation from a normalized summary — NO side effects.
-   * Returns the fields the handler appends to its success JSON when the caller
-   * supplied a summary. `undefined` return values mean "omit the corresponding
-   * response key entirely."
-   *
-   * The hint is nested inside `response.hint` when truncation fires — callers
-   * that want the top-level text line read the value via `response?.hint`.
-   */
   function summaryResponseFields(normalized: NormalizedSummary): {
     response?: SummaryResponse;
     stored: string | undefined;
@@ -4514,29 +3305,10 @@ export function createApiExtension(
     return { response: { value: normalized.value }, stored: normalized.value };
   }
 
-  /**
-   * Strip truncation-specific fields from a `SummaryResponse`. Used by the
-   * rename / rollback default-substitution path: when the server generates a
-   * default like "Renamed X → Y" and that default itself overflows the cap,
-   * the agent did not submit the long string — so `truncatedFrom` and the
-   * "Summary truncated from ..." hint would misattribute blame to the caller.
-   * The stored value is still the truncated form (so the timeline bullet fits),
-   * but the diagnostic metadata is silenced in the response.
-   */
   function stripDefaultPathTruncation(response: SummaryResponse): SummaryResponse {
     return { value: response.value };
   }
 
-  /**
-   * Fire the adoption + truncation counters for a summary that is about to be
-   * persisted. Call AFTER the contribution is guaranteed to land (i.e. not on
-   * 404/409 early-returns) so adoption rate reflects successful writes.
-   *
-   * `fromDefault` suppresses the `summariesTruncated` increment when the
-   * truncation came from a server-generated default (rename / rollback default
-   * substitution). The agent had no control over those strings, so counting
-   * them toward the truncation metric would muddy the "agent behavior" signal.
-   */
   function countNormalizedSummary(normalized: NormalizedSummary, fromDefault = false): void {
     if (normalized.kind !== 'value') return;
     incrementSummariesProvided();
@@ -4622,13 +3394,6 @@ export function createApiExtension(
     }
   }
 
-  /**
-   * Contributor `docs` key for a non-doc `.ok/` artifact, so a folder-scoped
-   * timeline query resolves it. Mirrors `checkTemplateConflictGate`'s (now in
-   * `http/folder-template-routes.ts`) `<folder>/.ok/templates/<name>` shape;
-   * folder frontmatter keys to
-   * `<folder>/.ok/frontmatter`; a folder itself keys to its own path.
-   */
   function okArtifactKey(
     kind: 'template' | 'folder-frontmatter' | 'folder' | 'skill',
     folder: string,
@@ -4637,26 +3402,11 @@ export function createApiExtension(
     const base = folder.replace(/\/$/, '');
     const prefix = base === '' ? '' : `${base}/`;
     if (kind === 'template') return `${prefix}.ok/templates/${name}`;
-    // A skill's key is its CONTENT-DOC name — the real bundle dir + `/SKILL`,
-    // which is what `/api/history` filters contributors on. Hardcoding the
-    // retired `.ok/skills/<name>` store shape made every edit / move / duplicate
-    // / bundle-file write fail the OkActor match, so those commits never showed
-    // in the skill's own history. `projectSkillDirRel` resolves in-place first
-    // and falls back to the store only for a resident not yet drained.
     if (kind === 'skill') return `${projectSkillDirRel(String(name))}/SKILL`;
     if (kind === 'folder-frontmatter') return `${prefix}.ok/frontmatter`;
     return base === '' ? '.' : base;
   }
 
-  /**
-   * Attribute a write to a non-doc `.ok/` artifact (template / folder
-   * frontmatter / folder-create) to the acting agent/principal so it surfaces
-   * in the folder timeline. Unlike `attributeRenameWriteToActor`, it does NOT
-   * call `flushDocToGit` — these artifacts have no Y.Doc. The caller drives the
-   * shadow commit via `flushContributors`, whose `buildWipTree` sweeps the
-   * working tree (including `.ok/`). Anonymous / invalid-summary actors record
-   * nothing (mirrors the rename branch).
-   */
   function attributeOkArtifactWrite(
     actor: ReturnType<typeof extractActorIdentity>,
     artifactKey: string,
@@ -4677,43 +3427,7 @@ export function createApiExtension(
     );
   }
 
-  /**
-   * Drive a shadow commit + contributor flush after a non-doc `.ok/` mutation.
-   * Non-doc artifacts have no Y.Doc, so nothing else triggers the persistence
-   * drain — without this the attributed contributor would sit unflushed (or be
-   * mis-attributed to an unrelated later doc write). Best-effort: a flush
-   * failure is logged, never fatal to the mutation that already succeeded.
-   */
-  // Interactive write handlers must NOT hold their response on this flush:
-  // the shadow-git staging walk scales with the content tree and measured
-  // 27-48s on monorepo-sized roots - a create that "never auto-opens" is a
-  // create whose response is still staging git state. The chain keeps flushes
-  // serialized so version boundaries survive; a handler that needs the
-  // PREVIOUS write committed before ITS write lands (the create-then-edit
-  // coalescing hazard) drains the chain first - milliseconds in the common
-  // case, and the cost lands only on back-to-back writers.
-  // Skill lifecycle ops used to kick an immediate (already-deferred) full
-  // ignore rebuild - but the walk floods the single-threaded event loop with
-  // readdir/stat completions on monorepo roots, starving the very responses
-  // the deferral was protecting (profiled live: readdir+stat dominated a 30s
-  // create). The sync allow-list swap already admits the dir for SERVING;
-  // the walk only re-admits it for the FILE WATCHER, which tolerates a
-  // settle delay. One trailing rebuild after the burst quiets: interactive
-  // work stays smooth and external-edit pickup self-heals in ~15s. Real
-  // ignore-RULE changes still rebuild immediately via the ignore-watcher.
-  // The detected-skill catalog enumeration stat-walks every bundle across all
-  // harness homes SYNCHRONOUSLY - ~37k files under ~/.claude/plugins on a
-  // real machine - and the client refetches the list on every skills-changed
-  // signal, so uncached back-to-back requests pile sync walks onto the event
-  // loop (profiled live inside a 24s create). Generation + short TTL: any
-  // skill mutation bumps the generation, and even a missed bump is capped at
-  // TTL staleness.
   let skillsCatalogGen = 0;
-  // Same shape for the FULL /api/skills payload: the handler stamp-walks every
-  // in-place bundle synchronously (129 dirs on a worktree-heavy monorepo), the
-  // client refetches on every skills-changed signal, and those bursts queue
-  // ahead of whatever mutation is in flight - measured as 25s creates with a
-  // renderer attached vs 92ms without one.
   let skillsListCache: { at: number; gen: number; fp: string; body: unknown } | null = null;
   let installedCatalogCache: {
     at: number;
@@ -4748,13 +3462,6 @@ export function createApiExtension(
     deferredIgnoreRebuildTimer = setTimeout(() => {
       deferredIgnoreRebuildTimer = null;
       void contentFilter?.rebuildIgnorePatterns().catch(() => {});
-      // Two minutes, not seconds: the rebuild's completion cascades into
-      // derived-view rebuilds (backlink full re-read of the corpus), and any
-      // fuse short enough to land between two interactive ops makes the
-      // SECOND op pay for the first one's cascade - measured repeatedly as
-      // 20-40s ops on a monorepo root. Skill ops never change ignore RULES;
-      // this walk only re-admits the new dir to the file watcher, and the
-      // managed-artifact watcher covers skill-dir edits in the meantime.
     }, 120_000);
   }
   let okArtifactFlushChain: Promise<void> = Promise.resolve();
@@ -4769,10 +3476,6 @@ export function createApiExtension(
     try {
       await flushContributors();
     } catch (flushErr) {
-      // The contributor commit clears the in-memory queue only on success, so a
-      // failed flush leaves this write's attribution queued for the next
-      // mutation's flush to retry. If no later mutation follows, it is lost —
-      // best-effort by design, never fatal to the mutation that already landed.
       log.warn(
         { context, err: flushErr },
         `[${context}] flushContributors failed; attribution stays queued for the next flush`,
@@ -4784,14 +3487,11 @@ export function createApiExtension(
     AgentWriteRequestSchema,
     async (_req, res, body) => {
       try {
-        // `withValidation` already enforces docName safety + body shape.
         const rawDocName = requireNonEmptyDocName(body.docName, res, 'agent-write');
         if (rawDocName === null) return;
         const docName = resolveAlias(rawDocName);
 
-        // Identity extraction precedes every SEMANTIC error emission below
         // (precedent #24). Body-shape errors emitted by `withValidation` are
-        // anonymous because no Y.Doc mutation is attempted.
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
 
@@ -4813,10 +3513,6 @@ export function createApiExtension(
           clientName,
         });
 
-        // L1 reconcile-before-apply: ingest a newer out-of-band
-        // disk edit before this legacy content write lands, matching the other
-        // content handlers. Separate FILE_WATCHER_ORIGIN transact before the
-        // agent's session.origin transact below.
         const agentWriteReconcile = reconcileDiskBeforeAgentWrite(
           durabilityState,
           hocuspocus,
@@ -4832,14 +3528,7 @@ export function createApiExtension(
         const { response: summaryResponse, stored: storedSummary } =
           summaryResponseFields(normalizedSummary);
 
-        // Disarmed in `finally` so a write that produces no Y.Text delta (or
-        // throws before its transact) never leaves an armed observer behind to
-        // capture a later same-session write under this call's stale key.
         let disposeEffectCapture: (() => void) | undefined;
-        // setPresence lives INSIDE the try so the pairing with touchMode('idle')
-        // in `finally` is atomic — any throw between setPresence and transact
-        // (even future code added here) flips the badge back to idle rather
-        // than wedging it on 'editing'.
         try {
           const icon = iconFromClientName(clientName);
           const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -4851,10 +3540,6 @@ export function createApiExtension(
             mode: 'writing',
             ts: Date.now(),
           });
-          // Arm the origin-keyed effect observer BEFORE the write transact so the
-          // agent's own YTextEvent.delta is captured. Keyed on `session.origin`,
-          // so the pre-drain flush below (OBSERVER_SYNC_ORIGIN) passes through
-          // uncaptured instead of filing the user's keystroke as an agent effect.
           disposeEffectCapture = captureEffect(
             session.dc.document.getText('source'),
             agentId,
@@ -4862,11 +3547,7 @@ export function createApiExtension(
             colorSeed,
             clientName,
           );
-          // Pre-drain a non-overlapping pending keystroke into Y.Text before the
-          // write's own transact (own observer-origin transact — not the agent's
-          // undo frame) so the compose below rides it into the body.
           agentWritePreDrain(session.dc.document, `${content}\n`, 'append');
-          // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
             applyAgentMarkdownWrite(
@@ -4907,9 +3588,6 @@ export function createApiExtension(
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
 
-        // Await the L1 disk store so a swallowed persistence failure OR an L3
-        // disk-divergence revert surfaces as an error instead of a false success
-        // Mirrors agent-write-md.
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'agent-write');
@@ -4922,10 +3600,6 @@ export function createApiExtension(
         flushDocToDisk(docName, 'agent-write');
         onAgentWrite?.();
 
-        // Success body is flat — no `{ ok: true }` wrapper. Clients
-        // discriminate via HTTP status (`if (!res.ok)`), then safeParse
-        // against `AgentWriteSuccessSchema`. `successResponse` runs the same
-        // schema server-side as defense-in-depth.
         const agentWriteWarning = buildReconcileWarning(agentWriteReconcile);
         successResponse(
           res,
@@ -4934,8 +3608,6 @@ export function createApiExtension(
           {
             timestamp,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            // `warnings` is the unified advisory channel; the single-valued
-            // `warning` is its deprecated alias, kept emitting in parallel.
             ...(agentWriteWarning
               ? { warning: agentWriteWarning, warnings: [agentWriteWarning] }
               : {}),
@@ -4947,21 +3619,11 @@ export function createApiExtension(
           respondDocInConflict(res, e, 'agent-write');
           return;
         }
-        // Live catch. `agent-write` appends, so it inherits `existingFm` and
-        // can never trip the malformed-FM gate's first arm
-        // (`finalFm !== existingFm`). It DOES reach the second arm: appending
-        // content that opens with a `---` fence pair to a document with no
-        // frontmatter and an empty body places that pair at byte 0, where the
-        // composed document would re-read it as its frontmatter region. Not
-        // dead code — deleting it turns that refusal into a 500.
         if (e instanceof FrontmatterMalformedError) {
           respondFrontmatterMalformed(res, e, 'agent-write');
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          // DoS guard: the per-server session cap was hit. 503 so SDK
-          // consumers know to retry-after — distinct from a write that
-          // actually executed and failed downstream.
           errorResponse(
             res,
             503,
@@ -4988,10 +3650,6 @@ export function createApiExtension(
         const position = body.position ?? 'append';
         const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'agent-write-md');
         if (effectiveDocName === null) return;
-        // Collapse an extension-qualified spelling before it reaches the room
-        // or the file index. Without this a write addressed as `notes.md`
-        // leaves a second index row for the one file it actually wrote, and
-        // that row then shadows the real one for later lookups.
         const resolvedDocName = canonicalDocName(resolveAlias(effectiveDocName));
 
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
@@ -5008,14 +3666,6 @@ export function createApiExtension(
           return;
         }
 
-        // Explicit-extension create: persistence materializes the file via
-        // `getDocExtension` (defaults to `.md`). Pre-register the caller's
-        // requested extension so a `.mdx` create lands as `.mdx` rather than
-        // the default — same synchronous pre-registration the rename path uses
-        // for an extension change. Gated on the doc being brand-new: for an
-        // existing doc the recorded extension wins, since switching it would
-        // write a sibling file and orphan the original. Idempotent with the
-        // file-watcher's later `create` registration (same canonical ext).
         if (
           body.extension !== undefined &&
           !docNameExistsWithAnySupportedExtension(contentDir, resolvedDocName)
@@ -5032,10 +3682,6 @@ export function createApiExtension(
           clientName,
         });
 
-        // L1 reconcile-before-apply: ingest a newer out-of-band
-        // disk edit before the agent edit lands, so stale loaded CRDT state
-        // can't clobber it. Runs its own FILE_WATCHER_ORIGIN transact BEFORE
-        // the agent's session.origin transact below — never nested.
         const writeMdReconcile = reconcileDiskBeforeAgentWrite(
           durabilityState,
           hocuspocus,
@@ -5045,11 +3691,6 @@ export function createApiExtension(
           getBridgeLossReporter?.(),
         );
 
-        // Off-thread parse precompute (parse-pool): parse the projected
-        // post-write bytes on a worker BEFORE entering the transact so a
-        // large-doc parse does not block concurrent requests. Advisory —
-        // the byte-identity guard in bridge-intake discards it if the doc
-        // moved during this await.
         const writeMdEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
           : undefined;
@@ -5062,20 +3703,10 @@ export function createApiExtension(
 
         const timestamp = new Date().toISOString();
 
-        // Site A content-divergence captured from the in-transact gate.
-        // Surfaced as the response's `warning` field; structured-log on fire
-        // for production observability.
         let writeDivergence: AgentWriteContentDivergence | undefined;
 
-        // Disarmed in `finally` so a write that produces no Y.Text delta (or
-        // throws before its transact) never leaves an armed observer behind to
-        // capture a later same-session write under this call's stale key.
         let disposeEffectCapture: (() => void) | undefined;
 
-        // setPresence lives INSIDE the try so the pairing with touchMode('idle')
-        // in `finally` is atomic — any throw between setPresence and transact
-        // (even future code added here) flips the badge back to idle rather
-        // than wedging it on 'editing'.
         try {
           const icon = iconFromClientName(clientName);
           const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -5087,10 +3718,6 @@ export function createApiExtension(
             mode: 'writing',
             ts: Date.now(),
           });
-          // Arm the origin-keyed effect observer BEFORE the write transact so the
-          // agent's own YTextEvent.delta is captured. Keyed on `session.origin`,
-          // so the pre-drain flush below (OBSERVER_SYNC_ORIGIN) passes through
-          // uncaptured instead of filing the user's keystroke as an agent effect.
           disposeEffectCapture = captureEffect(
             session.dc.document.getText('source'),
             agentId,
@@ -5098,10 +3725,7 @@ export function createApiExtension(
             colorSeed,
             clientName,
           );
-          // Pre-drain a non-overlapping pending keystroke into Y.Text before the
-          // write's transact so the compose below rides it into the body.
           agentWritePreDrain(session.dc.document, body.markdown, position);
-          // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
             writeDivergence = applyAgentMarkdownWrite(
@@ -5155,11 +3779,6 @@ export function createApiExtension(
           agentPresenceBroadcaster?.touchMode(agentId, 'idle');
         }
 
-        // Force the L1 disk store now and report disk truth: a swallowed
-        // persistence failure (ENOSPC / EACCES / EROFS, etc.) must surface as
-        // an error rather than a false "Written successfully". The CRDT copy
-        // stays in memory regardless. On success this also drains the L1
-        // debounce, so the `flushDocToGit` below only fires the L2 git commit.
         const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'agent-write-md');
@@ -5172,9 +3791,6 @@ export function createApiExtension(
 
         flushDocToDisk(resolvedDocName, 'agent-write-md');
 
-        // Focus (attribution) on __system__ awareness. Focus drives browser
-        // push-navigation to the doc the agent just wrote (writeKind); presence
-        // is separately maintained via setPresence/touchMode pairs above.
         agentFocusBroadcaster?.setFocus(agentId, {
           agentName,
           currentDoc: resolvedDocName,
@@ -5183,31 +3799,14 @@ export function createApiExtension(
         });
         onAgentWrite?.();
 
-        // Orphan-hint nudge: if this doc now has zero backlinks and a
-        // plausible hub exists in its folder tree, suggest the hub. Soft —
-        // agent can ignore. Silent when no relationship index is wired.
         const hints = await computeOrphanHints(resolvedDocName);
 
-        // The converged post-write source (frontmatter region + body), read
-        // once and reused for both the mermaid render check and the broken-
-        // link validation below.
         const writtenSource = session.dc.document.getText('source').toString();
 
-        // Close the dropped-FSEvent gap at the source: register this doc into
-        // the file index now rather than waiting on the watcher (see helper).
         registerWrittenDocInFileIndex(resolvedDocName, writtenSource);
 
-        // Advisory render validation on the post-write state (covers
-        // append/prepend composition and pre-existing broken fences alike).
         const renderWarnings = await validateMermaidFences(writtenSource, resolvedDocName);
 
-        // Write-time outbound-link validation. Computed synchronously from
-        // the just-written source bytes the handler already holds — NOT from
-        // the BacklinkIndex, whose agent-write update is 100ms-debounced and so
-        // still stale here. Report-only: a broken link never rejects or rewrites
-        // the write (authoring a doc before its target exists is legitimate).
-        // The just-written doc is added to the admitted set so a valid self-link
-        // isn't falsely flagged before the file-watcher indexes it on disk.
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
         const brokenLinks = computeWriteAdvisoryLinks(
@@ -5221,11 +3820,6 @@ export function createApiExtension(
         const subscriberCount = getSubscriberCount(resolvedDocName);
         const systemSubscriberCount = getSystemSubscriberCount();
 
-        // Once-per-session attach hint counter: fires when no editor is attached
-        // to `__system__` (transport-presence = false). Labels are bounded-
-        // cardinality — writer-kind
-        // is always `agent` at this call site (`handleAgentWriteMd`), and
-        // `resolveAgentType` is a 6-valued enum. No raw session IDs or names.
         if (systemSubscriberCount === 0) {
           hintEmittedCounter().add(1, {
             'shadow.writer': 'agent',
@@ -5233,15 +3827,9 @@ export function createApiExtension(
           });
         }
 
-        // Success body is flat — no `{ ok: true }` wrapper.
         const writeMdWarning = buildReconcileWarning(writeMdReconcile);
         const writeMdDivergenceEntry =
           writeDivergence !== undefined ? toContentDivergenceWarning(writeDivergence) : undefined;
-        // Unified advisory channel: every advisory this write produced,
-        // discriminated by `kind`. Unlike the deprecated single-valued
-        // `warning` below, nothing masks anything — on the rare divergence +
-        // reconcile double-fault both entries surface, and mermaid render
-        // warnings ride alongside.
         const writeMdAdvisories = [
           ...(writeMdDivergenceEntry ? [writeMdDivergenceEntry] : []),
           ...(writeMdWarning ? [writeMdWarning] : []),
@@ -5261,21 +3849,12 @@ export function createApiExtension(
             systemSubscriberCount,
             ...(hints ? { hints } : {}),
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            // Deprecated single `warning` slot, kept emitting for one
-            // deprecation window. Two sources, content-divergence
-            // (composed ≠ converged) taking precedence over β's disk-edit-
-            // reconciled: in the common case they're mutually exclusive (β
-            // reconciles in a prior transact, so the primitive still composes
-            // faithfully and the in-transact gate stays silent); on the rare
-            // double-fault read `warnings`, which carries both.
             ...(writeMdDivergenceEntry
               ? { warning: writeMdDivergenceEntry }
               : writeMdWarning
                 ? { warning: writeMdWarning }
                 : {}),
             ...(writeMdAdvisories.length > 0 ? { warnings: writeMdAdvisories } : {}),
-            // Always present (even `[]`) — the positive "all outbound links
-            // resolve" confirmation the agent reads in the same response .
             brokenLinks,
           },
           { handler: 'agent-write-md' },
@@ -5290,9 +3869,6 @@ export function createApiExtension(
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          // DoS guard: per-server session cap was hit. 503 so SDK
-          // consumers know to retry-after — distinct from a write that
-          // actually executed and failed downstream.
           errorResponse(
             res,
             503,
@@ -5312,44 +3888,6 @@ export function createApiExtension(
     { handler: 'agent-write-md', method: 'POST' },
   );
 
-  /**
-   * `POST /api/agent-write-batch` — N document writes in one HTTP call, for
-   * bulk create/import flows that would otherwise pay one round-trip plus the
-   * full per-write advisory suite per document.
-   *
-   * Semantics per entry are identical to `handleAgentWriteMd`: same
-   * `applyAgentMarkdownWrite` spine under the entry doc's per-session frozen
-   * origin (no new CRDT write path, no second undo surface — each doc's
-   * UndoManager sees the write exactly as a single-call write), same
-   * reserved-name gate re-checked per doc, same L1 reconcile-before-apply,
-   * same per-doc awaited disk store so an ENOSPC-class failure or an L3
-   * disk-divergence revert reports as that entry's error, never a false
-   * success.
-   *
-   * What a batch amortizes relative to N single calls:
-   *   - one HTTP round-trip, one identity extraction, one presence
-   *     set/idle pair and one focus broadcast instead of N;
-   *   - one `collectAdmittedDocNames()` file-index scan feeding every
-   *     entry's broken-link validation;
-   *   - one coalesced L2 shadow commit via the store path's existing commit
-   *     debounce (per-doc L1 stores arm the same timer — the batch never
-   *     forces per-doc commits, mirroring the single-write coalescing
-   *     contract pinned by `agent-write-commit-coalescing.test.ts`);
-   *   - the search corpus stays fingerprint-invalidated (mtime-keyed cache in
-   *     `getWorkspaceSearchCorpus`), so N writes cost one rebuild on the next
-   *     search, not N eager invalidations.
-   *
-   * The per-doc mermaid render validation, lint pass, and orphan hints are
-   * deliberately NOT run here — their per-write cost is what a batch exists
-   * to avoid. Callers who want those advisories use the single-write
-   * endpoint; `brokenLinks` (cheap once the admitted set is shared) is kept
-   * per entry.
-   *
-   * Outcomes are per-entry and independent (partial success by design; no
-   * atomic mode): `results[i]` answers `docs[i]`, failures carry the same
-   * closed URN vocabulary as the single-write endpoints, and the batch
-   * response is HTTP 200 whenever the request itself was well-formed.
-   */
   const handleAgentWriteBatch = withValidation(
     AgentWriteBatchRequestSchema,
     async (_req, res, body) => {
@@ -5359,11 +3897,6 @@ export function createApiExtension(
 
         const timestamp = new Date().toISOString();
 
-        // Handler-internal result shapes; the wire contract is enforced at
-        // emit time by `successResponse`'s safeParse against
-        // `AgentWriteBatchSuccessSchema` (the `.loose()` index signatures the
-        // z.infer types carry don't unify with interface-typed helpers like
-        // `BrokenOutboundLink`).
         interface BatchErrorResult {
           status: 'error';
           docName: string;
@@ -5389,12 +3922,6 @@ export function createApiExtension(
           error: { type, title, ...(detail !== undefined ? { detail } : {}) },
         });
 
-        /** Failure translation mirroring the single-write catch arms — same
-         *  URN per error class, demoted from a wire-level response to a
-         *  per-entry result so siblings keep processing. The conflict /
-         *  malformed-FM branches re-emit the structured refusal events whose
-         *  single-site emission normally lives in the `respond*` helpers, so
-         *  the grouped-by-handler refusal counters see batch refusals too. */
         const classifyEntryFailure = (docName: string, e: unknown): BatchErrorResult => {
           if (e instanceof DocInConflictError) {
             console.warn(
@@ -5412,10 +3939,6 @@ export function createApiExtension(
             );
           }
           if (e instanceof FrontmatterMalformedError) {
-            // Same event and same detail composition as the single-doc
-            // surface. Reading `parseError` directly here is what made a
-            // byte-0 promotion refusal count as a YAML parse error on this
-            // path alone and drop its placement hint.
             logFrontmatterRefusal(e, 'agent-write-batch');
             return entryError(
               docName,
@@ -5453,10 +3976,6 @@ export function createApiExtension(
         const results: (BatchResult | undefined)[] = new Array(body.docs.length);
         const pending: PendingEntry[] = [];
 
-        // One presence set/idle pair for the whole batch — per-entry
-        // setPresence would spam `__system__` awareness N times for one
-        // logical operation. The focus broadcast at the end navigates
-        // followers to the last written doc.
         try {
           const icon = iconFromClientName(clientName);
           const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -5469,8 +3988,6 @@ export function createApiExtension(
             ts: Date.now(),
           });
 
-          // Apply phase: entries in array order, so duplicate docNames behave
-          // like sequential writes to that doc.
           for (let i = 0; i < body.docs.length; i++) {
             const entry = body.docs[i];
             const resolvedDocName = resolveAlias(entry.docName);
@@ -5510,8 +4027,6 @@ export function createApiExtension(
                 getBridgeLossReporter?.(),
               );
 
-              // Off-thread parse precompute — same advisory pattern as the
-              // single-write handler (byte-identity guard in bridge-intake).
               const entryEmbedResolver = options.resolveEmbed
                 ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
                 : undefined;
@@ -5523,10 +4038,6 @@ export function createApiExtension(
               );
 
               let writeDivergence: AgentWriteContentDivergence | undefined;
-              // Arm the origin-keyed effect observer BEFORE the write transact so
-              // the agent's own YTextEvent.delta is captured. Per-entry scope: the
-              // disposer runs right after this entry's transact so an entry whose
-              // compose is a no-op cannot capture the NEXT entry's delta.
               const disposeEntryEffectCapture = captureEffect(
                 session.dc.document.getText('source'),
                 agentId,
@@ -5534,13 +4045,8 @@ export function createApiExtension(
                 colorSeed,
                 clientName,
               );
-              // Pre-drain a non-overlapping pending keystroke into Y.Text before
-              // this entry's transact so the compose below rides it into the
-              // body. Its own observer-origin transact — never nested inside the
-              // agent's, which would capture the flush into the undo frame.
               agentWritePreDrain(session.dc.document, entry.markdown, entry.position ?? 'append');
               try {
-                // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
                 session.dc.document.transact(() => {
                   const beforeBlocks = snapshotBlocks(session.dc.document);
                   writeDivergence = applyAgentMarkdownWrite(
@@ -5600,10 +4106,6 @@ export function createApiExtension(
             }
           }
 
-          // Flush phase: one awaited L1 disk store per unique doc, after every
-          // CRDT write has applied — disk truth per entry without interleaving
-          // store cycles between writes. Each store arms the shared L2 commit
-          // debounce; the batch never forces a per-doc shadow commit.
           const flushErrors = new Map<string, BatchErrorResult['error'] | undefined>();
           for (const p of pending) {
             if (flushErrors.has(p.docName)) continue;
@@ -5628,11 +4130,6 @@ export function createApiExtension(
             }
           }
 
-          // Advisory phase: broken-link validation from the just-written
-          // source bytes, with the O(corpus) admitted-set scan paid once for
-          // the whole batch. Every flushed batch doc joins the admitted set
-          // first so intra-batch links (doc A -> doc B written in the same
-          // call) validate regardless of entry order.
           const admittedForLinks = await collectAdmittedDocNames();
           for (const p of pending) {
             if (flushErrors.get(p.docName) === undefined) admittedForLinks.add(p.docName);
@@ -5712,24 +4209,6 @@ export function createApiExtension(
     { handler: 'agent-write-batch', method: 'POST' },
   );
 
-  /**
-   * `POST /api/frontmatter-patch` — JSON Merge Patch (RFC 7396) for the YAML
-   * region of `Y.Text('source')`. Mirrors `handleAgentWriteMd`'s session +
-   * presence pattern, but composes the FM region directly via `applyPatchToFm`
-   * instead of routing through `composeAndWriteRawBody`'s body re-parse.
-   *
-   * Per-key validation runs atomically: any `FrontmatterValueSchema` failure
-   * rejects the WHOLE patch with HTTP 400 + per-key `fieldErrors`, leaving
-   * the Y.Doc unchanged.
-   *
-   * Origin: `session.origin` (per-session `PairedWriteOrigin` from
-   * `agent-sessions.ts`). `paired: true` short-circuits Observer A/B because
-   * the splice touches only the FM region of `Y.Text`; the body bytes are
-   * preserved verbatim and Observer B's already-in-sync gate fires when no
-   * body shift occurs.
-   *
-   * Telemetry: emits `ok.frontmatter_patch` span via `withSpanSync`.
-   */
   const handleFrontmatterPatch = withValidation(
     FrontmatterPatchRequestSchema,
     async (_req, res, body) => {
@@ -5764,10 +4243,6 @@ export function createApiExtension(
           clientName,
         });
 
-        // L1 reconcile-before-apply: ingest a newer out-of-band
-        // disk edit before this FM patch lands, so the patch runs against the
-        // live (disk-reflecting) frontmatter, not a stale loaded copy. Separate
-        // FILE_WATCHER_ORIGIN transact BEFORE the agent's session.origin transact.
         const fmReconcile = reconcileDiskBeforeAgentWrite(
           durabilityState,
           hocuspocus,
@@ -5777,21 +4252,10 @@ export function createApiExtension(
           getBridgeLossReporter?.(),
         );
 
-        // Optimistic off-thread parse precompute (parse-pool): apply the FM
-        // patch to a PRE-transact snapshot and parse the guessed full bytes
-        // on a worker. The in-transact applyPatchToFm below stays
-        // authoritative; the byte-identity guard in bridge-intake discards
-        // a stale guess. No embed resolver here, mirroring the inline call
-        // below.
         const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
 
         const timestamp = new Date().toISOString();
 
-        // `applyPatchToFm` is a total function returning FmEditResult — its
-        // own validation pass covers every key against FrontmatterValueSchema
-        // atomically (no Y.Doc mutation on failure). Compute the next fenced
-        // bytes INSIDE the transact so a concurrent body edit between read
-        // and write is captured by the splice's byte-range delete/insert.
         let editError: import('@inkeep/open-knowledge-core').FmEditError | undefined;
         let applied = false;
         let bodyMutated = false;
@@ -5834,33 +4298,9 @@ export function createApiExtension(
                 }
 
                 if (result.nextFenced !== currentFenced) {
-                  // Route through the sanctioned `composeAndWriteRawBody`
                   // primitive (precedent #38, bridge-intake.ts) so paired-
-                  // write semantics survive — even though this patch only
-                  // mutates the YAML region. composeAndWriteRawBody runs
-                  // `applyFastDiff` against currentYText, which collapses
-                  // to a minimal byte-range edit when only the FM region
-                  // shifted, and re-derives the XmlFragment from the
-                  // (unchanged) body. paired-write-enforcement.test.ts
-                  // requires this routing for session.origin transacts.
-                  //
-                  // When this patch CREATES the fence on a doc that had none
-                  // (`currentFenced === ''`), `nextFenced` ends in `---\n` and
-                  // `currentBody` is the untouched body starting at its first
-                  // byte (e.g. `# Heading`), so a bare concat yields
-                  // `---\n# Heading` with no blank line after the fence. Insert
-                  // exactly one blank-line separator so a freshly created fence
-                  // matches the spacing of a doc that always had frontmatter
-                  // (there the blank line lives inside `currentBody` and
-                  // round-trips via `detectFmRegion`). Skip when the body is
-                  // empty (FM-only doc) or already starts with a newline.
                   const needsFenceSeparator =
                     currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
-                  // Same boundary as the panel binding's commit funnel, same
-                  // primitive: emptying the region on a document whose body
-                  // opens with a rule pair would hand those bytes to the next
-                  // partition. Verified end-to-end at `/api/frontmatter-patch`
-                  // because this path reaches disk.
                   const newFull = composeWithDerivedFrontmatter(
                     result.nextFenced,
                     (needsFenceSeparator ? '\n' : '') + currentBody,
@@ -5884,10 +4324,6 @@ export function createApiExtension(
         }
 
         if (editError) {
-          // Atomic rejection — no Y.Doc mutation happened. Per-key fieldErrors
-          // surfaced so the MCP tool can render a `key: reason` map. The
-          // `satisfies never` at the default-case exit catches any new
-          // FmEditError kind added in core that hasn't been wired here.
           let fieldErrors: Record<string, string>;
           switch (editError.kind) {
             case 'invalid_value':
@@ -5949,12 +4385,6 @@ export function createApiExtension(
           );
           incrementAgentWriteCalls();
           countNormalizedSummary(normalizedSummary);
-          // Await the L1 disk store so a swallowed persistence failure surfaces
-          // as an error instead of a false success. Mirrors agent-write-md. Gated
-          // on an actual body mutation: a no-op patch (a key set to its current
-          // value) schedules no store, so `takeStoreFailure` could otherwise read
-          // an unrelated prior write's residue (its precondition is a preceding
-          // force-flush of THIS doc).
           if (bodyMutated) {
             const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
             if (flushOutcome?.kind === 'failure') {
@@ -5989,18 +4419,11 @@ export function createApiExtension(
 
         const fmWarning = buildReconcileWarning(fmReconcile);
 
-        // Close the dropped-FSEvent gap at the source (see helper). A frontmatter
-        // patch leaves the body unchanged, but re-registering a doc the watcher
-        // dropped restores it to the file index just the same.
         registerWrittenDocInFileIndex(
           resolvedDocName,
           session.dc.document.getText('source').toString(),
         );
 
-        // Write-time outbound-link validation. A frontmatter patch leaves
-        // the body unchanged, so this reflects the doc's current body links —
-        // surfacing the same `brokenLinks` signal on every `edit` path keeps
-        // the contract uniform rather than returning a misleading empty `[]`.
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(resolvedDocName);
         const brokenLinks = computeWriteAdvisoryLinks(
@@ -6020,8 +4443,6 @@ export function createApiExtension(
             systemSubscriberCount,
             appliedKeys,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            // `warnings` is the unified advisory channel; the single-valued
-            // `warning` is its deprecated alias, kept emitting in parallel.
             ...(fmWarning ? { warning: fmWarning, warnings: [fmWarning] } : {}),
             brokenLinks,
           },
@@ -6078,12 +4499,6 @@ export function createApiExtension(
           clientName,
         });
 
-        // L1 reconcile-before-apply: ingest a newer out-of-band
-        // disk edit before this patch lands, so the find/replace runs against
-        // the live (disk-reflecting) content. If the out-of-band edit changed
-        // the `find` target, the patch harmlessly no-ops (existing not-found
-        // result). Separate FILE_WATCHER_ORIGIN transact BEFORE the agent's
-        // session.origin transact below.
         const patchReconcile = reconcileDiskBeforeAgentWrite(
           durabilityState,
           hocuspocus,
@@ -6093,12 +4508,6 @@ export function createApiExtension(
           getBridgeLossReporter?.(),
         );
 
-        // Optimistic off-thread parse precompute (parse-pool): splice the
-        // find/replace against a PRE-transact snapshot and parse the guessed
-        // post-patch bytes on a worker. The in-transact splice below stays
-        // the single authoritative compose — if the doc moved during this
-        // await the recomposed bytes differ and the byte-identity guard in
-        // bridge-intake discards the guess (inline parse, prior behavior).
         const patchEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
           : undefined;
@@ -6131,17 +4540,8 @@ export function createApiExtension(
         let staleTarget = false;
         let fmIntersect = false;
         let fmPromoted = false;
-        // Site A content-divergence captured from the in-transact gate.
-        // Surfaced as the response's `warning` field on successful patches.
         let patchDivergence: AgentWriteContentDivergence | undefined;
-        // Disarmed in `finally` so a patch that finds no match (and therefore
-        // produces no Y.Text delta) never leaves an armed observer behind to
-        // capture a later same-session write under this call's stale key.
         let disposeEffectCapture: (() => void) | undefined;
-        // setPresence lives INSIDE the try so the pairing with touchMode('idle')
-        // in `finally` is atomic — any throw between setPresence and transact
-        // (even future code added here) flips the badge back to idle rather
-        // than wedging it on 'editing'.
         try {
           const icon = iconFromClientName(clientName);
           const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -6153,9 +4553,6 @@ export function createApiExtension(
             mode: 'writing',
             ts: Date.now(),
           });
-          // Arm the origin-keyed effect observer BEFORE the write transact so the
-          // agent's own YTextEvent.delta is captured, never a foreign-origin write
-          // that lands between arming and the transact.
           disposeEffectCapture = captureEffect(
             session.dc.document.getText('source'),
             agentId,
@@ -6163,17 +4560,8 @@ export function createApiExtension(
             colorSeed,
             clientName,
           );
-          // Use per-session origin, not shared AGENT_WRITE_ORIGIN (STOP rule)
           session.dc.document.transact(() => {
-            // Read current authoritative state from Y.Text — the user's
-            // intended source-form bytes (Y.Text-is-truth contract,
             // precedent #38). Searching `serialize(fragment)` would compute
-            // offsets against canonical bytes (`__foo__` → `**foo**`,
-            // `:---:` → `:-:`, ATX trailing hashes dropped, etc.), so an
-            // agent that read the doc through any user-bytes surface (exec,
-            // file watcher, MCP) and now patches with `find: "__foo__"`
-            // would silently fail-to-match. Reading ytext directly closes
-            // that gap.
             const ytextSnapshot = session.dc.document.getText('source').toString();
             const { frontmatter: currentFm, body: currentBody } = stripFrontmatter(ytextSnapshot);
             const currentFull = prependFrontmatter(currentFm, currentBody);
@@ -6190,11 +4578,6 @@ export function createApiExtension(
               } else {
                 staleTarget = true;
               }
-              // Bounded-cardinality telemetry: only event name + numeric
-              // lengths + doc.name. Useful for detecting downstream tools
-              // that compute offsets against canonical bytes (the pre-
-              // contract `serialize(fragment)` shape) instead of user
-              // source bytes (the post-contract `ytext.toString()` shape).
               console.warn(
                 JSON.stringify({
                   event: 'agent-patch-find-mismatch',
@@ -6208,18 +4591,6 @@ export function createApiExtension(
               return;
             }
 
-            // The FM-intersection check, and the ONLY one. `pos <
-            // currentFm.length` is necessary and sufficient: the FM region is
-            // contiguous at doc start, so a match starting before its end byte
-            // overlaps it and a match at or after cannot. Catches both the
-            // yaml-shaped find copied out of the FM block and the plain-word
-            // find (e.g. `draft`) that happens to first-match inside it —
-            // without refusing those same strings when they live in the body.
-            // A string-shape precheck used to reject any find containing a
-            // line-anchored `---` or a `key: value` line before reading the
-            // doc at all; it refused body thematic breaks and prose, and the
-            // agent's only recourse was a whole-document `write` that clobbers
-            // concurrent writers.
             if (pos < currentFm.length) {
               fmIntersect = true;
               return;
@@ -6228,31 +4599,11 @@ export function createApiExtension(
             const newFull =
               currentFull.slice(0, pos) + replace + currentFull.slice(pos + find.length);
 
-            // Frontmatter-PROMOTION check, the mirror of the intersection
-            // check above. A document with no FM has no region to protect by
-            // position, so a match at byte 0 whose `replace` opens a `---`
-            // fence pair silently turns the agent's body text into the
-            // document's frontmatter region — creating frontmatter through the
-            // one surface whose whole contract is "body only". Refuse it: this
-            // handler already tells agents that frontmatter edits go through
-            // `edit({ document: { path, frontmatter } })`, and a find/replace
-            // that CREATES frontmatter is a frontmatter edit.
             if (currentFm === '' && stripFrontmatter(newFull).frontmatter !== '') {
               fmPromoted = true;
               return;
             }
 
-            // The promotion guard above is what keeps this splice honest: every
-            // payload that survives it recomposes with its FM region byte-
-            // identical to `currentFm`, so stripping it back off here cannot
-            // drop anything. `applyAgentMarkdownWrite` then reads the current
-            // FM from the YAML region of Y.Text and keeps it intact for the
-            // body-only payload — `finalFm === existingFm` still always holds
-            // from this handler. `'patch'` (NOT `'replace'`) routes the write
-            // through the INCREMENTAL primitive, so this surgical find/replace
-            // produces a minimal item-preserving Y.Text delta instead of an
-            // atomic whole-doc overwrite — replace stays atomic, the edit body
-            // find/replace stays surgical.
             const { body: newBody } = stripFrontmatter(newFull);
             const beforeBlocks = snapshotBlocks(session.dc.document);
             patchDivergence = applyAgentMarkdownWrite(
@@ -6290,9 +4641,6 @@ export function createApiExtension(
             );
           }
           if (!notFound && !staleTarget && !fmIntersect && !fmPromoted) {
-            // Only count + record when the patch actually applied. The
-            // adoption-rate denominator excludes 404/409 + FM-intersect 400
-            // so the metric reflects successful writes, not total attempts.
             const { stored: storedSummary } = summaryResponseFields(normalizedSummary);
             recordContributor(
               docName,
@@ -6351,8 +4699,6 @@ export function createApiExtension(
           return;
         }
 
-        // Await the L1 disk store so a swallowed persistence failure surfaces as
-        // an error instead of a false success. Mirrors agent-write-md.
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'agent-patch');
@@ -6365,8 +4711,6 @@ export function createApiExtension(
 
         flushDocToDisk(docName, 'agent-patch');
 
-        // Focus (attribution) on __system__ awareness. Presence is separately
-        // maintained via setPresence/touchMode pairs above.
         agentFocusBroadcaster?.setFocus(agentId, {
           agentName,
           currentDoc: docName,
@@ -6378,7 +4722,6 @@ export function createApiExtension(
         const subscriberCount = getSubscriberCount(docName);
         const systemSubscriberCount = getSystemSubscriberCount();
 
-        // Once-per-session attach hint counter (matches handleAgentWriteMd).
         if (systemSubscriberCount === 0) {
           hintEmittedCounter().add(1, {
             'shadow.writer': 'agent',
@@ -6388,19 +4731,12 @@ export function createApiExtension(
 
         const { response: summaryResponse } = summaryResponseFields(normalizedSummary);
 
-        // The converged post-edit source, read once and reused for the mermaid
-        // render check and the broken-link validation below.
         const patchedSource = session.dc.document.getText('source').toString();
 
-        // Close the dropped-FSEvent gap at the source (see helper).
         registerWrittenDocInFileIndex(docName, patchedSource);
 
-        // Advisory render validation on the post-edit state (matches
-        // handleAgentWriteMd; also surfaces pre-existing broken fences).
         const renderWarnings = await validateMermaidFences(patchedSource, docName);
 
-        // Write-time outbound-link validation — synchronous, from the
-        // just-edited source bytes; see handleAgentWriteMd for the full why.
         const admittedForLinks = await collectAdmittedDocNames();
         admittedForLinks.add(docName);
         const brokenLinks = computeWriteAdvisoryLinks(
@@ -6410,11 +4746,9 @@ export function createApiExtension(
           createLinkedFileExists(),
         );
 
-        // Success body is flat — no `{ ok: true }` wrapper.
         const patchWarning = buildReconcileWarning(patchReconcile);
         const patchDivergenceEntry =
           patchDivergence !== undefined ? toContentDivergenceWarning(patchDivergence) : undefined;
-        // Unified advisory channel — see agent-write-md.
         const patchAdvisories = [
           ...(patchDivergenceEntry ? [patchDivergenceEntry] : []),
           ...(patchWarning ? [patchWarning] : []),
@@ -6433,15 +4767,12 @@ export function createApiExtension(
             subscriberCount,
             systemSubscriberCount,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            // Deprecated single slot; content-divergence over disk-edit-
-            // reconciled — see agent-write-md.
             ...(patchDivergenceEntry
               ? { warning: patchDivergenceEntry }
               : patchWarning
                 ? { warning: patchWarning }
                 : {}),
             ...(patchAdvisories.length > 0 ? { warnings: patchAdvisories } : {}),
-            // Always present (even `[]`) — see agent-write-md .
             brokenLinks,
           },
           { handler: 'agent-patch' },
@@ -6451,22 +4782,11 @@ export function createApiExtension(
           respondDocInConflict(res, e, 'agent-patch');
           return;
         }
-        // Symmetry-only catch: `agent-patch` strips FM before forwarding to
-        // `applyAgentMarkdownWrite` (a body-only `position: 'patch'`), so
-        // `finalFm === existingFm` always holds and the malformed-FM gate
-        // never fires from this handler today. Mirroring the other two
-        // write surfaces' catches makes the maintenance contract uniform —
-        // a future change that lets agent-patch carry FM bytes would get
-        // the typed envelope automatically instead of falling through to
-        // a 500.
         if (e instanceof FrontmatterMalformedError) {
           respondFrontmatterMalformed(res, e, 'agent-patch');
           return;
         }
         if (e instanceof AgentSessionCapacityError) {
-          // DoS guard: per-server session cap was hit. 503 so SDK
-          // consumers know to retry-after — distinct from a patch that
-          // actually executed and failed downstream.
           errorResponse(
             res,
             503,
@@ -6486,27 +4806,10 @@ export function createApiExtension(
     { handler: 'agent-patch', method: 'POST' },
   );
 
-  /**
-   * POST /api/agent-undo — agent undo via per-session Y.UndoManager.
-   *
-   * Body: { docName?, connectionId, scope?: 'last' | 'session' | 'file' | 'count', count? }
-   *   connectionId — the session's agentId (matches sessionManager key)
-   *   scope — 'last' undoes the top UM stack item; 'session'/'file' undoes all;
-   *           'count' pops the `count` newest items (scoped "undo to edit N").
-   *
-   * Fires applyAgentUndo under session.undoOrigin (paired: true) — Observer
-   * A/B short-circuit; XmlFragment-authoritative composition updates both CRDTs.
-   */
   const handleAgentUndo = withValidation(
     AgentUndoRequestSchema,
     async (_req, res, body) => {
       try {
-        // Extract identity from body so shadow-repo attribution threads
-        // through the undo write the same way it does through agent-write
-        // / agent-write-md / agent-patch. `agentId` is the broadcaster-map
-        // key (prefixed via `toBroadcasterKey`) — use it for
-        // setPresence/touchMode so cleanup via the keepalive WS close
-        // handler finds the entry.
         const rawDocName = requireNonEmptyDocName(body.docName, res, 'agent-undo');
         if (rawDocName === null) return;
         const docName = resolveAlias(rawDocName);
@@ -6527,9 +4830,6 @@ export function createApiExtension(
 
         const { connectionId } = body;
 
-        // 'file' scope is a thin alias for 'session' (all bursts on this file's
-        // session). 'count' pops the N newest frames — the undo-timeline's
-        // scoped "undo to edit N" range; `count` rides through to applyAgentUndo.
         let scope: 'last' | 'session' | 'count';
         let count: number | undefined;
         if (body.scope === 'count') {
@@ -6554,13 +4854,6 @@ export function createApiExtension(
 
         const session = await sessionManager.getSession(docName, connectionId);
 
-        // Publish presence on __system__ (map-valued, keyed by agentId)
-        // instead of the per-doc awareness — the per-doc awareness has ONE
-        // shared clientID across N concurrent agents and would stomp.
-        //
-        // setPresence lives INSIDE the try so the pairing with touchMode('idle')
-        // in `finally` is atomic — any throw between setPresence and the undo
-        // transact flips the badge back to idle rather than wedging it on 'writing'.
         let undone = false;
         try {
           const icon = iconFromClientName(clientName);
@@ -6573,9 +4866,6 @@ export function createApiExtension(
             mode: 'writing',
             ts: Date.now(),
           });
-          // XmlFragment-authoritative undo via per-session UM.
-          // applyAgentUndo wraps um.undo() + composition in one transact under
-          // session.undoOrigin (paired: true) so Observer A/B short-circuit.
           undone = applyAgentUndo(
             session,
             scope,
@@ -6584,9 +4874,6 @@ export function createApiExtension(
               : undefined,
             count,
           );
-          // Record attribution for the undo write so the shadow-repo L2 drain
-          // fans it out under this session's writer-id. Skip when the UM stack
-          // was empty — a no-op undo has no mutation to attribute.
           if (undone) {
             recordContributor(
               docName,
@@ -6602,12 +4889,6 @@ export function createApiExtension(
         }
 
         if (undone) {
-          // Await the L1 disk store so a swallowed persistence failure OR an L3
-          // disk-divergence revert surfaces as an error instead of a false
-          // success. undo has no L1 reconcile (reconcile-rewrite
-          // would invalidate the UM stack), so L3 is its only disk-authority
-          // guard. On a divergence revert the undo's effect is
-          // discarded (disk wins); the agent re-reads + retries.
           const flushOutcome = await flushDiskAndDetectOutcome(docName);
           if (flushOutcome?.kind === 'failure') {
             respondPersistenceFailure(res, flushOutcome.failure, 'agent-undo');
@@ -6627,7 +4908,6 @@ export function createApiExtension(
           ts: Date.now(),
         });
 
-        // Success body is flat — no `{ ok: true }` wrapper.
         successResponse(
           res,
           200,
@@ -6650,19 +4930,11 @@ export function createApiExtension(
     { handler: 'agent-undo', method: 'POST' },
   );
 
-  /**
-   * GET /api/agent-activity?agentId=<connId>
-   * Returns per-file + per-burst stats for one agent's session(s).
-   * Exempt from extractAgentIdentity — read-only, no CRDT mutation.
-   */
   const handleAgentActivity = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
       try {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        // `validateAgentId` enforces AGENT_ID_RE (same shape as every mutating
-        // POST handler) — consistent identity shape across all surfaces per
-        // `packages/server/src/agent-id.ts`'s "three-surfaces" rule.
         const agentId = validateAgentId(url.searchParams.get('agentId'));
         if (agentId === null) {
           errorResponse(
@@ -6689,13 +4961,6 @@ export function createApiExtension(
     { handler: 'agent-activity', method: 'GET', skipBodyParse: true },
   );
 
-  /**
-   * GET /api/agent-burst-diff?agentId=<connId>&docName=<path>&keptCount=<n>
-   * Returns whole-page unified-diff text for a file *version* — the original
-   * (pre-agent) doc vs. the doc with the first `keptCount` edits applied. So
-   * keptCount 0 is the empty/original file and keptCount N is the current doc.
-   * Exempt from extractAgentIdentity — read-only, no CRDT mutation.
-   */
   const handleAgentBurstDiff = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -6721,8 +4986,6 @@ export function createApiExtension(
           });
           return;
         }
-        // Same docName validator every mutating POST handler uses — parity with
-        // the rest of the API surface (path traversal, reserved names).
         if (!isSafeDocName(rawDocName)) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
             handler: 'agent-burst-diff',
@@ -6758,7 +5021,6 @@ export function createApiExtension(
           return;
         }
 
-        // Typed accessor — no `(as any).sessions` bypass.
         const session = sessionManager.getLiveSession(docName, agentId);
         if (!session) {
           errorResponse(
@@ -6772,7 +5034,6 @@ export function createApiExtension(
         }
 
         const um = session.um;
-        // keptCount ranges 0 (original) .. undoStack.length (now, all edits).
         if (keptCount > um.undoStack.length) {
           errorResponse(
             res,
@@ -6792,11 +5053,6 @@ export function createApiExtension(
           ytext,
           docName,
         );
-        // `generatedAt` is the server's wall clock at response time (used for
-        // client-side cache staleness). The StackItem's capture timestamp is
-        // already carried in `/api/agent-activity`'s `bursts[].ts` — no need
-        // to duplicate it here. `diff`/`before`/`after` are body-only; the
-        // frontmatter travels as the structural `properties` delta.
         successResponse(
           res,
           200,
@@ -6815,20 +5071,6 @@ export function createApiExtension(
     { handler: 'agent-burst-diff', method: 'GET', skipBodyParse: true },
   );
 
-  /**
-   * POST /api/test-flush-git — await the L2 git-commit pipeline to settle.
-   *
-   * Agent-write handlers fire `flushDocToDisk` FIRE-AND-FORGET and leave the
-   * L2 shadow commit to the persistence debounce, so a test that needs the
-   * WIP commit durable can only poll the timeline against a wall-clock
-   * budget — and under CI load the serial git-subprocess chain (global
-   * one-commit-in-flight mutex in persistence.ts) blows any fixed budget.
-   * This route lets tests AWAIT the actual commit completion instead of
-   * racing it: it drains the pending L2 debounce timer and any in-flight
-   * commit before responding. Callers should flush-then-check inside their
-   * poll loop — the fire-and-forget chain may not have scheduled L2 yet on
-   * the first iteration.
-   */
   const handleTestFlushGit = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
@@ -6851,34 +5093,14 @@ export function createApiExtension(
     async (req, res) => {
       try {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        // Collapse an extension-qualified spelling onto the document it names.
-        // The room lookup below is a direct read, so without this a caller
-        // asking for `notes.md` is answered from a room that never converged
-        // with the `notes` room backing the same file.
         const docName = canonicalDocName(
           resolveAlias(url.searchParams.get('docName') ?? 'test-doc'),
         );
 
-        // Path traversal guard — reuse the canonical validator from persistence.ts.
-        // Throws `Invalid document name: ${docName}` for names that escape contentDir;
-        // we translate that to a 400 response. Keeping the guard in one place (not
-        // re-implementing the startsWith check inline) ensures handleTestReset stays
-        // in lock-step with persistence's onLoadDocument / onStoreDocument validators.
         let filePath: string;
         try {
           filePath = safeContentPath(docName, contentDir);
         } catch (err) {
-          // Log the original error (safeContentPath produces messages like
-          // `Invalid document name: ${docName}` which are useful for diagnosing
-          // unexpected failures beyond the standard path-traversal case — e.g.,
-          // encoding errors from resolve(), null-byte truncation, etc.) but
-          // still return a sanitized, uniform 400 message to the client so
-          // filesystem details never leak through the API boundary.
-          // Structured Pino log carries the extra `docName` context that
-          // `errorResponse(... { cause: err })` alone would not — the
-          // user-supplied path is the diagnostic handle ops need to
-          // correlate this 400 with which test/run produced it. Match
-          // the agent-write handlers' pattern (`log.error({ err, … }, …)`).
           log.error({ err, docName }, '[test-reset] safeContentPath rejected docName');
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
             handler: 'test-reset',
@@ -6890,9 +5112,6 @@ export function createApiExtension(
         await sessionManager.closeAll(docName);
         hocuspocus.closeConnections(docName);
 
-        // Force-flush any pending onStoreDocument debounced work before unload.
-        // Without this, unloadDocument silently no-ops if the debouncer is active
-        // (Hocuspocus.shouldUnloadDocument returns false when isDebounced is true).
         const debounceId = `onStoreDocument-${docName}`;
         if (hocuspocus.debouncer.isDebounced(debounceId)) {
           await hocuspocus.debouncer.executeNow(debounceId);
@@ -6900,26 +5119,9 @@ export function createApiExtension(
 
         const doc = hocuspocus.documents.get(docName);
         if (doc) await (forceUnloadDocument ?? hocuspocus.unloadDocument.bind(hocuspocus))(doc);
-        // Truncates the doc file to '' BY DESIGN — reset means empty. A test
-        // or probe that reads the on-disk bytes after `client.cleanup()` (which
-        // calls this route) observes the truncation, not data loss; read the
-        // file BEFORE cleanup, or detach the provider directly instead.
         writeFileSync(filePath, '', 'utf-8');
         await derivedDocumentIndex?.testOnly?.resetDocumentForTest(docName);
 
-        // Also reset the project-root .okignore synthetic doc + on-disk file
-        // unless the caller explicitly opts out. Without this, patterns added
-        // by one test (via Settings or FileTree right-click) leak into the
-        // next test's view of `__config__/okignore`, breaking assertions
-        // that read `getByTestId('settings-okignore-row-input').first()`.
-        // The opt-out (`?reset-okignore=false`) exists for the rare test that
-        // intentionally seeds okignore state and needs it to survive reset.
-        //
-        // Strategy: clear the live Y.Text in place rather than unload+reload.
-        // The Settings UI keeps a CRDT connection open across page navigations
-        // within a Playwright test, so an unload would race the still-open
-        // connection (which would just re-load the doc with stale state).
-        // Clearing the Y.Text broadcasts a delta to any connected client.
         const resetOkignoreParam = url.searchParams.get('reset-okignore');
         const resetOkignore = resetOkignoreParam !== 'false';
         if (resetOkignore) {
@@ -6934,8 +5136,6 @@ export function createApiExtension(
                 }, CONFIG_VALIDATION_REVERT_ORIGIN);
               }
             }
-            // Truncate the on-disk `.okignore` so subsequent cold loads (after
-            // the doc unloads on idle) start from an empty file too.
             if (existsSync(okignorePath)) {
               writeFileSync(okignorePath, '', 'utf-8');
             }
@@ -6959,23 +5159,6 @@ export function createApiExtension(
     { handler: 'test-reset', method: 'POST', skipBodyParse: true },
   );
 
-  /**
-   * Test-only rescue hatch for the @parcel/watcher + inotify race on Linux.
-   *
-   * Under CI CPU contention, `@parcel/watcher` can drop `create` events for
-   * files written into freshly-created subdirectories (the recursive subwatch
-   * is registered asynchronously after the IN_CREATE for the directory, so
-   * rapid follow-up file writes race the registration). That leaves the
-   * backlink index out of sync with the content directory on disk, which the
-   * backlink-dependent integration tests (e.g. `agent-focus-wiring.test.ts`
-   * orphan-hint shape) cannot otherwise recover from.
-   *
-   * This endpoint forces an authoritative relationship-index rescan from disk,
-   * resync from the filesystem that covers dropped events. It is NOT suitable
-   * for production: rebuild wipes any in-memory backlink state not yet
-   * debounced to disk (e.g. a live agent-write awaiting persistence). Gated
-   * behind `enableTestRoutes` for that reason.
-   */
   const handleTestRescanBacklinks = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
@@ -7008,28 +5191,6 @@ export function createApiExtension(
     { handler: 'test-rescan-backlinks', method: 'POST', skipBodyParse: true },
   );
 
-  /**
-   * Test-only rescue hatch for the @parcel/watcher + inotify race on Linux —
-   * file-index counterpart of `/api/test-rescan-backlinks`.
-   *
-   * Under CI CPU contention, `@parcel/watcher` can drop `create` events for
-   * files written into freshly-created subdirectories (the recursive subwatch
-   * is registered asynchronously after the IN_CREATE for the directory, so
-   * rapid follow-up file writes race the registration). That leaves
-   * `/api/documents` and the in-memory file index silently out of sync with
-   * the content directory on disk. Tests using `awaitFileWatcherIndexed`
-   * cannot otherwise recover from this state and time out after 45s.
-   *
-   * This endpoint invokes `WatcherHandle.rescanFromDisk()`, which re-runs
-   * the startup seed walk. The walk is additive via `Map.set` — entries
-   * already present keep their inode/aliases; missing entries get inserted.
-   * In-flight write-tracker entries are preserved.
-   *
-   * Gated behind `enableTestRoutes` for the same reason as
-   * `/api/test-rescan-backlinks` — re-seeding from disk in production could
-   * mask legitimate event loss as a silent recovery, hiding bugs that
-   * deserve investigation.
-   */
   const handleTestRescanFiles = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
@@ -7070,10 +5231,6 @@ export function createApiExtension(
     SaveVersionRequestSchema,
     async (_req, res, body) => {
       try {
-        // Thread agent identity FIRST so the attribution-sweep ordering check
-        // is satisfied: any errorResponse below this point is post-identity.
-        // Shadow availability + writer-id validation are semantic checks that
-        // would otherwise route through `openknowledge-service` attribution.
         const saveVersionBody = body as unknown as Record<string, unknown>;
         const {
           rawAgentId: svRawAgentId,
@@ -7084,10 +5241,6 @@ export function createApiExtension(
 
         const shadow = shadowRef?.current;
         if (!shadow) {
-          // 503 (not 400): shadow-repo unavailability is a server-side
-          // startup state, not a client request error. Mirrors the
-          // sync-not-active precedent — clients can branch
-          // on status for retry strategy (503 → retry later).
           errorResponse(
             res,
             503,
@@ -7098,7 +5251,6 @@ export function createApiExtension(
           return;
         }
 
-        // Parse optional writers from already-validated body.
         const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
         let writers: WriterIdentity[] = [];
 
@@ -7127,8 +5279,6 @@ export function createApiExtension(
           }
         }
 
-        // Agent-scoped writer (MCP checkpoint tool path); the service applies
-        // the explicit > agent-scoped > fold-everything precedence.
         const agentWriter =
           svRawAgentId !== undefined
             ? {
@@ -7166,7 +5316,6 @@ export function createApiExtension(
     { handler: 'save-version', method: 'POST' },
   );
 
-  // ── POST /api/rollback ────────────────────────────────────────────────────
   const handleRollback = withValidation(
     RollbackRequestSchema,
     async (_req, res, body) => {
@@ -7179,9 +5328,6 @@ export function createApiExtension(
         return;
       }
 
-      // Conflict-aware refusal. Rollback would route through
-      // `replaceRawBody` and overwrite Y.Text — that's a structural
-      // mutation that must not race the conflict-resolution machinery.
       // The check fires post-identity (precedent #24) and pre-mutation.
       const targetDoc = hocuspocus.documents.get(body.docName);
       if (targetDoc && isDocInConflict(targetDoc)) {
@@ -7193,14 +5339,8 @@ export function createApiExtension(
         return;
       }
 
-      // Server-mode availability check. Identity is extracted first so the
-      // attribution-sweep ordering invariant holds: any errorResponse below
-      // this point is post-identity. The emit is still anonymous on the
-      // wire because identity is captured but never echoed.
       const shadow = shadowRef?.current;
       if (!shadow) {
-        // 503 (not 400): shadow-repo unavailability is a server-side state,
-        // matching the sync-not-active / shadow-not-configured precedent.
         errorResponse(
           res,
           503,
@@ -7225,10 +5365,6 @@ export function createApiExtension(
 
       const t0 = Date.now();
       try {
-        // Resolve the doc's path at this commit, walking the rename chain
-        // newest→oldest with cycle bound. The current name is probed
-        // unbounded; predecessor names require commitSha ∈ ancestors(seeds(R))
-        // to exclude post-rename name-reuse contamination.
         const renameLogIndex = getOrLoadRenameLogIndex(shadow.gitDir);
         const ancestorCache = createAncestorShaSetCache();
         const branch = getCurrentBranch?.() ?? 'main';
@@ -7255,13 +5391,11 @@ export function createApiExtension(
         const markdown = await sg.raw('show', `${commitSha}:${historicalPath}`);
         const timestamp = new Date().toISOString();
 
-        // snapshot current state before the destructive rollback
         await safetyCheckpoint(shadow, resolvedContentRoot, {
           action: 'rollback',
           context: { docName, targetSha: commitSha },
         });
 
-        // Apply to live Y.Doc via updateYFragment (L1 persistence fires normally)
         const document = hocuspocus.documents.get(docName);
         if (!document) {
           errorResponse(
@@ -7274,32 +5408,11 @@ export function createApiExtension(
           return;
         }
 
-        // Rollback routes through the `replaceRawBody` sibling primitive
         // (precedent #38 — Y.Text-is-truth) which performs the full ytext
-        // overwrite (`delete(0, len) + insert(0, markdown)`) FIRST and then
-        // derives fragment via `parseWithFallback + updateYFragment`. The
-        // overwrite (rather than DMP-incremental) signals "non-incremental
-        // replacement" to `Y.UndoManager` so users cannot undo past the
-        // rollback and recover content they explicitly discarded. The
-        // primitive does NOT call `doc.transact` — the caller wraps for
-        // atomicity AND per-session frozen origin object identity (precedent
-        // #24, paired-write enforcement).
         const rollbackEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
           : undefined;
-        // Off-thread parse precompute: `markdown` (the target-version bytes)
-        // is fixed before this point, so unlike the compose-based writes the
-        // precompute can never go stale — the byte-identity guard always
-        // matches. A failed precompute degrades to the inline parse.
         const rollbackPrecomputed = await precomputeParse(markdown, rollbackEmbedResolver);
-        // Site A content-divergence gate for rollback — computed INSIDE the
-        // transact, matching the write/patch gate. `ytext.toString()` here sees
-        // `replaceRawBody`'s atomic post-state before observer settlement fires
-        // on transact close, so a divergence signals a primitive regression
-        // rather than a post-transact canonicalization artifact. `replaceRawBody`
-        // writes `markdown` (the target-version bytes) verbatim, so byte-equality
-        // is the contract; the converged bytes ride back on the warning's
-        // `currentState` so the agent recovers without a re-read.
         let rollbackDivergence: AgentWriteContentDivergence | undefined;
         document.transact(() => {
           replaceRawBody(document, markdown, rollbackEmbedResolver, rollbackPrecomputed);
@@ -7327,20 +5440,6 @@ export function createApiExtension(
         }
         recordContentDivergenceGate('rollback', rollbackDivergence);
 
-        // NOTE: we deliberately do NOT call `setReconciledBase(docName, markdown)`
-        // here. Setting the base before `onStoreDocument` has fired would trip the
-        // "skip write when serialized === currentBase" guard at
-        // `persistence.ts:onStoreDocument` and drop the L1 disk write entirely
-        // — which also skips the following `scheduleGitCommit()`, orphaning any
-        // `recordContributor(...)` entry we add below into the next unrelated
-        // write's L2 commit.
-        // Letting `onStoreDocument` fire naturally writes disk AND updates the
-        // reconciled base, which is the correct order.
-
-        // 4-way actor switch: agent records contributor with optional default
-        // summary; principal records with the rollback subject; anonymous
-        // skips recordContributor entirely (never default-attribute);
-        // invalid-summary already returned above.
         let summaryResponse: SummaryResponse | undefined;
         switch (actor.kind) {
           case 'agent': {
@@ -7397,15 +5496,6 @@ export function createApiExtension(
         }
         renameAttributionCounter().add(1, { kind: 'rollback', attribution_kind: actor.kind });
 
-        // Force-flush L1 (onStoreDocument debounce) then L2 (git commit) so the
-        // restored version + attribution appear in the timeline within ~100ms
-        // rather than waiting for the natural ~4s L1+L2 debounce stack.
-        // Rollback intentionally keeps the prompt `flushDocToGit` helper —
-        // unlike the high-frequency agent-write handlers, which use
-        // `flushDocToDisk` and let the commit ride the debounce — rather than
-        // a raw `flushGitCommit()` which no-ops when no L2 timer is set yet.
-        // Await the L1 disk store so a swallowed persistence failure surfaces
-        // as an error instead of a false success. Mirrors agent-write-md.
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'rollback');
@@ -7424,10 +5514,6 @@ export function createApiExtension(
           'rollback',
         );
 
-        // Only broadcast agent-focus push-nav when the caller explicitly
-        // identified as an agent. UI-driven Restore (principal or anonymous)
-        // must not trigger a cross-client push-nav as if an agent did the
-        // rollback.
         if (actor.kind === 'agent') {
           agentFocusBroadcaster?.setFocus(actor.writerId, {
             agentName: actor.displayName,
@@ -7437,11 +5523,6 @@ export function createApiExtension(
           });
         }
 
-        // Deliberately NO mermaid render entries here (unlike agent-write-md /
-        // agent-patch): a rollback restores a known historical state the
-        // caller explicitly selected — any broken fence in it predates the
-        // restore and isn't this writer's authoring mistake to fix. The next
-        // body write/edit to the doc surfaces it through the normal channel.
         const rollbackDivergenceEntry =
           rollbackDivergence !== undefined
             ? toContentDivergenceWarning(rollbackDivergence)
@@ -7454,8 +5535,6 @@ export function createApiExtension(
             restoredFrom: commitSha,
             timestamp,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            // `warnings` is the unified advisory channel; the single-valued
-            // `warning` is its deprecated alias, kept emitting in parallel.
             ...(rollbackDivergenceEntry
               ? { warning: rollbackDivergenceEntry, warnings: [rollbackDivergenceEntry] }
               : {}),
@@ -7463,8 +5542,6 @@ export function createApiExtension(
           { handler: 'rollback' },
         );
       } catch (e) {
-        // Generic title — raw `e.message` can leak FS paths / library internals.
-        // The underlying message is forwarded to Pino via `cause` for ops triage.
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to roll back.', {
           handler: 'rollback',
           cause: e,
@@ -7476,9 +5553,6 @@ export function createApiExtension(
 
   const assetService = createAssetService({
     contentDir,
-    // `isPathIgnored` rather than `isExcluded` so the sibling-asset heuristic
-    // does not reject legitimate cross-directory references. Exclusion is
-    // reported as not-found: the wire shape stays identical to a missing file.
     isPathIgnored: (relativePath) => contentFilter?.isPathIgnored(relativePath) ?? false,
     getAttachmentFolderPath,
   });
@@ -7520,13 +5594,6 @@ export function createApiExtension(
         try {
           await pipeline(createReadStream(canonicalPath), res);
         } catch (streamError) {
-          // `writeHead(200)` ran above so `res.headersSent` is always true
-          // here — the only correct cleanup is to destroy the socket so
-          // the client sees a connection-level failure rather than a
-          // truncated 200 with no error signal. Log structured before
-          // destroying so a silent stream failure can still be triaged
-          // from telemetry (the client-facing destruction is the only
-          // wire signal it gets).
           log.error(
             {
               event: 'api.asset.pipeline-failed',
@@ -7550,36 +5617,7 @@ export function createApiExtension(
     { handler: 'asset', method: 'GET', skipBodyParse: true },
   );
 
-  /**
-   * Sibling of `handleAsset` for the in-editor `TextViewer` ("Open with
-   * built-in text editor" affordance). The asset endpoint gates on
-   * `ASSET_EXTENSIONS` + a per-extension MIME mapping — that's load-
-   * bearing for the inline-render path (every entry there has been
-   * privilege-reviewed against the stored-XSS class). The text viewer,
-   * by contrast, fetches the file via XHR and renders the bytes through
-   * a sandboxed CodeMirror — `Content-Disposition` doesn't matter and
-   * the extension allowlist would only block legitimate inspection of
-   * arbitrary text-shaped files (`.yaml`, `.csv`, `.ini`, dotfiles like
-   * `.DS_Store`, the long tail).
-   *
-   * Security posture: same path-safety (`realpath` + `isWithinContentDir`)
-   * as `handleAsset`. The differences:
-   *   - NO `ASSET_EXTENSIONS` admission gate — any extension is OK.
-   *   - NO `.gitignore` / `.okignore` ignore-filter — the user reaches
-   *     this endpoint only by clicking "Open with built-in text editor"
-   *     on a file they can already see in the sidebar (which is gated
-   *     on `showAll` for ignored files), so re-applying the filter here
-   *     blocks the legitimate "I know it's hidden, I want to read it"
-   *     workflow that surfaced `.DS_Store` / dotfiles / build artifacts.
-   *     Path-safety (no escape from contentDir) remains the load-bearing
-   *     check.
-   *   - 1 MB cap on the response body so a stray multi-GB log file
-   *     can't OOM the browser viewer.
-   *   - Forces `Content-Type: text/plain; charset=utf-8` regardless of
-   *     the file's MIME (we control the viewer; mis-typed bytes are
-   *     irrelevant because the bytes are never executed).
-   */
-  const TEXT_VIEW_MAX_BYTES = 1_048_576; // 1 MiB
+  const TEXT_VIEW_MAX_BYTES = 1_048_576;
   const handleAssetText = withValidation(
     EmptyRequestSchema,
     async (req, res) => {
@@ -7675,14 +5713,9 @@ export function createApiExtension(
     recordDerivedMutationsBestEffort,
   });
 
-  // ─── Local-op relay endpoints (/api/local-op/*) ─────────────────────────────
-  // loopback + origin + path safety + URL allowlist + concurrency=1 + 10-min timeout
-
   const LOCAL_OP_CLONE_KEY = '/api/local-op/clone';
   const LOCAL_OP_OK_INIT_KEY = '/api/local-op/ok-init';
-  /** Wall-clock timeout for clone subprocess (10 min). */
   const LOCAL_OP_TIMEOUT_MS = 10 * 60 * 1000;
-  /** Max time to wait for a spawned server's lock file to show a port > 0. */
   const LOCAL_OP_OPEN_TIMEOUT_MS = 45_000;
   const LOCAL_OP_STDERR_ONLY_OPTIONS: { stdio: ['ignore', 'ignore', 'pipe'] } = {
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -7691,25 +5724,6 @@ export function createApiExtension(
     stdio: 'ignore',
   };
 
-  /**
-   * POST /api/local-op/clone
-   *
-   * Body: { url: string, dir: string }
-   * Spawns: open-knowledge clone --json --dir <dir> <url>
-   * Streams: NDJSON lines via chunked HTTP.
-   *
-   * Pre-stream errors (security gate, method, body shape, URL/path safety,
-   * concurrency) emit RFC 9457 problem+json via `errorResponse(...)`.
-   * Mid-stream errors (clone subprocess failure, timeout, server-start
-   * chain) emit `{ type: 'error', problem: ProblemDetails }` events through
-   * `streamingProblemEvent(...)`. The streaming protocol's outer
-   * `type` field stays the kind discriminator (`progress | complete |
-   * error`); the URN problem identifier lives nested under `problem.type`.
-   *
-   * CLI events are intercepted: complete events are swallowed and
-   * synthesized post-server-start; CLI error events are wrapped in the
-   * typed envelope so every mid-stream error has a `problem` payload.
-   */
   const HANDLE_LOCAL_OP_CLONE = 'local-op-clone';
   const handleLocalOpClone = withValidation(LocalOpCloneRequestSchema, handleLocalOpCloneInner, {
     handler: HANDLE_LOCAL_OP_CLONE,
@@ -7723,7 +5737,6 @@ export function createApiExtension(
   ): Promise<void> {
     const { url, dir, branch } = body;
 
-    // Semantic checks (post-shape): protocol allowlist + path safety.
     if (!isAllowedGitUrl(url)) {
       errorResponse(
         res,
@@ -7745,7 +5758,6 @@ export function createApiExtension(
       return;
     }
 
-    // Concurrency guard: reject concurrent requests to this endpoint.
     if (!localOpGuard.tryAcquire(LOCAL_OP_CLONE_KEY)) {
       errorResponse(
         res,
@@ -7757,8 +5769,6 @@ export function createApiExtension(
       return;
     }
 
-    // Start chunked NDJSON response — past this point, errors emit inline
-    // streaming events via `streamingProblemEvent(...)`, not `errorResponse`.
     res.writeHead(200, {
       'Content-Type': 'application/x-ndjson',
       'Transfer-Encoding': 'chunked',
@@ -7766,19 +5776,8 @@ export function createApiExtension(
       'Cache-Control': 'no-cache',
     });
 
-    // HTTP-side mid-stream error writer. Wraps raw CLI `{type:'error',
-    // message}` events in the canonical RFC 9457 streaming envelope
-    // `{type:'error', problem: ProblemDetails}` so consumers can safeParse
-    // uniformly. The IPC pathway forwards the raw shape per its bridge
-    // contract; HTTP transport's `CloneEvent` union accepts both.
     const writeStreamError = createStreamingErrorWriter(res, HANDLE_LOCAL_OP_CLONE);
 
-    // The CLI emits `{type:'complete', dir}` on success, but the browser
-    // client expects `{type:'complete', port}`. We intercept the CLI's
-    // complete event, boot a server at the cloned dir, then emit a
-    // rewritten complete with the port. CLI `error` events are wrapped in
-    // a typed `problem` envelope; non-terminal `progress` events flow
-    // through unchanged.
     let cloneCompleteDir: string | null = null;
 
     const flow = runCloneSubprocess({
@@ -7794,49 +5793,24 @@ export function createApiExtension(
         }
         if (event.type === 'error') {
           if (event.message) {
-            // Redact PAT-style URL credentials before logging — git
-            // stderr echoes the clone URL verbatim on failure (e.g.
-            // `fatal: unable to access 'https://x-access-token:ghp_...@...'`),
-            // and structured logs may be shipped to an aggregation
-            // backend where PATs become durable + queryable. The wire
-            // envelope is already sanitized via `classifyCloneError`
-            // below; the log line needs the same hygiene.
             log.warn(
               { stderr: redactShareSubprocessStderr(event.message), url, dir },
               '[local-op/clone] clone failed',
             );
           }
-          // stderr previously rode only as `cause` (Pino-only)
-          // and never reached the wire envelope, so the toast collapsed
-          // to the generic title. `classifyCloneError` maps recognized
-          // git error shapes (404 / 403 / auth) to access-specific
-          // titles and threads the sanitized, length-capped stderr
-          // through to `detail` for unrecognized shapes too.
           const classification = classifyCloneError(event.message ?? '');
           writeStreamError(500, 'urn:ok:error:clone-failed', classification.title, {
             detail: classification.detail || undefined,
-            // `cause` rides into Pino via `streamingProblemEvent`'s
-            // `err: options.cause` serializer (Pino's `stdSerializers.err`
-            // surfaces `err.message`). Redact before constructing the
-            // Error so PAT-style credentials don't survive in structured
-            // logs — same hygiene as the warn-log above.
             cause: event.message
               ? new Error(redactShareSubprocessStderr(event.message))
               : undefined,
           });
           return;
         }
-        // progress events flow through unchanged. Three-way guard +
-        // try-catch mirrors `createStreamingErrorWriter`'s race-window
-        // defense — between the guard check
-        // and the write a TCP RST could destroy the socket and cause
-        // ERR_STREAM_DESTROYED. Lost progress event is not crashworthy.
         if (!res.writableEnded && !res.destroyed) {
           try {
             res.write(`${JSON.stringify(event)}\n`);
-          } catch {
-            /* socket destroyed between guard and write — event lost */
-          }
+          } catch {}
         }
       },
     });
@@ -7845,19 +5819,9 @@ export function createApiExtension(
       try {
         await flow.done;
         if (cloneCompleteDir && !res.writableEnded && !res.destroyed) {
-          // Chain into server-start so the client can redirect. Three-way
-          // guard (writableEnded + destroyed) closes the TCP-RST-during-await
-          // window where a client disconnect between `flow.done` resolving
-          // and the next `res.write` would surface as `ERR_STREAM_DESTROYED`
-          // unhandled rejection. Mirrors `createStreamingErrorWriter`'s
-          // pattern.
           const result = await startServerAtDirAndGetPort(cloneCompleteDir);
           if (!res.writableEnded && !res.destroyed) {
             if ('port' in result) {
-              // `dir` is the absolute, tilde-expanded path to the cloned
-              // repo. Web clients ignore it and redirect via `port`; the
-              // Electron Navigator uses it to spawn a new editor window
-              // instead of navigating the launcher to a dev-server URL.
               res.write(
                 `${JSON.stringify({ type: 'complete', port: result.port, dir: cloneCompleteDir })}\n`,
               );
@@ -7872,11 +5836,6 @@ export function createApiExtension(
           }
         }
       } catch (err) {
-        // Catch the race-window throw (`res.write` after socket destroyed,
-        // or any other unexpected post-flow rejection). Without this catch
-        // the rejection becomes unhandled and disappears from telemetry.
-        // If the stream is still writable, surface as a typed streaming
-        // error event; otherwise log structured for triage.
         if (!res.writableEnded && !res.destroyed) {
           writeStreamError(
             500,
@@ -7896,7 +5855,6 @@ export function createApiExtension(
       }
     })();
 
-    // Cancel the subprocess if the client disconnects.
     res.on('close', () => {
       flow.cancel();
     });
@@ -7905,38 +5863,18 @@ export function createApiExtension(
   const SERVER_WITHOUT_UI_ERROR =
     'A server is already running for this directory without a web UI (started with `--only server`, or from a build without the bundled editor). Restart it with plain `ok start` from an install that includes the web UI.';
 
-  /**
-   * Ensure a live project server at `dir` and return its browser-navigable
-   * port. Resolution goes through `resolveUiRedirectPort` — `server.lock`'s
-   * `ui` capability is the only source — so this surface agrees with
-   * `resolveUiInfo` on what "no UI" means.
-   *
-   * Three cases:
-   *   1. a live UI origin resolves → reuse its port.
-   *   2. definitive no-UI (`--only server` holder, or a degraded API-only boot) → error.
-   *   3. Nothing live → spawn `ok start` detached (it serves the shell by
-   *      default) and poll for a bound ui-capable port.
-   *
-   * NOTE: The CLI's `start` command has no `--content-dir` flag — it derives
-   * the content dir from cwd + config. So we spawn with `cwd: dir` instead
-   * of passing a flag.
-   */
   async function startServerAtDirAndGetPort(
     dir: string,
   ): Promise<{ port: number } | { error: string }> {
     const absDir = resolve(expandTilde(dir));
     const lockDir = getLocalDir(absDir);
 
-    // Cases 1 + 2: something is already live — reuse its port, or refuse on
-    // a definitive no-UI topology.
     const existing = resolveUiRedirectPort(lockDir);
     if (existing === 'no-ui') return { error: SERVER_WITHOUT_UI_ERROR };
     if (existing !== null) return { port: existing };
 
     const [cmd, ...baseArgs] = localOpCliArgs;
 
-    // Case 3: spawn `ok start` detached at `absDir` (it serves the shell by
-    // default) and poll `server.lock` for a bound ui-capable port.
     const spawnAndAwaitServer = async (): Promise<{ port: number } | { error: string }> => {
       const child = spawn(
         cmd,
@@ -7945,9 +5883,6 @@ export function createApiExtension(
           ...LOCAL_OP_STDERR_ONLY_OPTIONS,
           cwd: absDir,
           detached: true,
-          // Explicit `interactive` — `OK_LOCK_KIND` may be inherited from a
-          // surrounding MCP-spawn parent and we don't want a user-driven
-          // clone relay to mark its child server as `mcp-spawned`.
           env: { ...process.env, OK_LOCK_KIND: 'interactive' },
         }),
       );
@@ -7968,20 +5903,12 @@ export function createApiExtension(
         earlyExitCode = code ?? -1;
         earlyExitSignal = signal ?? null;
       });
-      // A failed `spawn` (ENOENT: binary not found, EACCES: not executable)
-      // emits `error` and NEVER `exit`. Without this handler `earlyExitCode`
-      // stays null, the loop polls the full timeout, and the early-exit
-      // branch — including its lock re-check for a concurrent winner — never
-      // fires, so a broken install reads as a timeout. Trip the early-exit
-      // path on the next poll tick instead.
       child.on('error', (err) => {
         spawnErrorMessage = err.message;
         earlyExitCode = -1;
         log.error({ cwd: absDir, err }, '[local-op/clone] failed to spawn child');
       });
 
-      // `unref` so the child survives past the parent. Do it after attaching
-      // the stderr listener so we still capture its output.
       child.unref();
 
       const deadline = Date.now() + LOCAL_OP_OPEN_TIMEOUT_MS;
@@ -7992,22 +5919,11 @@ export function createApiExtension(
         if (state !== null) return { port: state };
         if (earlyExitCode !== null) {
           const stderr = Buffer.concat(stderrChunks).toString('utf-8').trim();
-          // Name the real cause: spawn failure, signal kill, or exit code — so
-          // `code -1` (a non-POSIX sentinel) never appears unqualified. Stored as
-          // a string (not the Error object) so the closure-mutated `let` is only
-          // ever stringified, never property-accessed (TS narrows it to `never`).
           const cause = spawnErrorMessage
             ? `spawn failed: ${spawnErrorMessage}`
             : earlyExitSignal
               ? `killed by ${earlyExitSignal}`
               : `code ${earlyExitCode}`;
-          // TOCTOU collision-fallback: the spawn can lose a race to a
-          // concurrent start (the MCP-shim autostart, a second preview-open)
-          // that acquired `server.lock` between our liveness check and the
-          // child's own acquisition; the child exits (typically a
-          // ProcessLockCollisionError) while the winner keeps serving. Key
-          // off the observable signature — child exited AND a live lock now
-          // exists — and redirect to the winner instead of failing the pane.
           const winner = resolveUiRedirectPort(lockDir);
           if (winner === 'no-ui') return { error: SERVER_WITHOUT_UI_ERROR };
           if (winner !== null) return { port: winner };
@@ -8025,46 +5941,6 @@ export function createApiExtension(
     return spawnAndAwaitServer();
   }
 
-  /**
-   * POST /api/local-op/ok-init
-   *
-   * Body: { projectPath: string }
-   *
-   * Scaffolds `.ok/config.yml` (+ `.ok/.gitignore` + project-root
-   * `.okignore`) inside a freshly-picked git worktree so the share-receive
-   * consent dialog can opt the user into a CLI-managed worktree that
-   * was never opened in OK.
-   *
-   * Gates (in order):
-   *   1. Absolute-path discipline (`isAbsolute`) — refuse relative paths.
-   *   2. `realpathSync` collapse — every path comparison from here uses
-   *      the canonical realpath so symlinked anchors collapse to the
-   *      same identity that `listGitWorktrees` emits.
-   *   3. Home-dir containment (`isSafeLocalPath`) — refuse with
-   *      `dir-outside-home` when the canonical path resolves outside the
-   *      user's home directory, matching every sibling local-op endpoint.
-   *      Checked on the canonical path so a symlinked anchor can't slip a
-   *      scaffold write past the gate.
-   *   4. `resolveGitDirDetailed` — refuse with `not-a-git-worktree` if
-   *      `.git` is absent/inaccessible/malformed at projectPath. Both
-   *      `'directory'` (main checkout) and `'linked'` (worktree) are
-   *      accepted — that's the whole point.
-   *   5. Idempotency: if `isProjectRoot(realpath)` already true, return
-   *      `{ok: true}` without rewriting `config.yml`. Preserves user
-   *      customizations the same way `writeIfMissing` does.
-   *   6. Scaffold via `initContent` — wrapped in `withParentLock` so the
-   *      writes serialize against any concurrent git mutation on the
-   *      same project (e.g., a `runCheckoutFlow` in flight).
-   *
-   * Idempotent + readonly-by-default: scaffold writes use the
-   * `tracedWriteFileSync`-backed `writeIfMissing` from `init-project.ts`
-   * so the endpoint never clobbers user customizations on retry.
-   *
-   * Returns: `{ok: true, projectPath: <realpath>}` on success,
-   * `{ok: false, reason: 'not-a-git-worktree' | 'init-failed', message}`
-   * on logical failure (both HTTP 200). Protocol errors (malformed body,
-   * unexpected exception) use the standard RFC 9457 problem+json envelope.
-   */
   const HANDLE_LOCAL_OP_OK_INIT = 'local-op-ok-init';
   const handleLocalOpOkInit = withValidation(
     LocalOpOkInitRequestSchema,
@@ -8103,10 +5979,6 @@ export function createApiExtension(
         return;
       }
 
-      // Security: the canonical path must be within the user home dir.
-      // Checked on the realpath (not the raw projectPath) so a symlinked
-      // anchor pointing outside home can't slip a scaffold write past the
-      // gate. Mirrors the sibling /api/local-op/clone containment check.
       if (!isSafeLocalPath(canonicalPath)) {
         errorResponse(
           res,
@@ -8141,10 +6013,6 @@ export function createApiExtension(
         return;
       }
 
-      // Idempotency: if `.ok/config.yml` already exists, return ok without
-      // rewriting. This is the writeIfMissing semantic of initContent surfaced
-      // earlier so callers don't see two `[ok-init] action=init …` log lines
-      // for a no-op call.
       if (isProjectRoot(canonicalPath)) {
         log.warn(
           { project: basename(canonicalPath), result: 'already-initialized' },
@@ -8172,8 +6040,6 @@ export function createApiExtension(
       }
 
       try {
-        // Serialize against concurrent git operations on the same project
-        // (e.g., a checkout flow racing scaffold writes).
         await withParentLock(async () => {
           initContent(canonicalPath);
         });
@@ -8213,11 +6079,6 @@ export function createApiExtension(
     },
   );
 
-  // ─── Auth relay endpoints (/api/local-op/auth/*) ────────────────────────────
-  // Loopback + origin security enforced on all four endpoints.
-  // Each endpoint has its own concurrency key to allow parallel auth operations
-  // (e.g., status check while login is in progress).
-
   const LOCAL_OP_AUTH_LOGIN_KEY = '/api/local-op/auth/login';
   const LOCAL_OP_AUTH_STATUS_KEY = '/api/local-op/auth/status';
   const LOCAL_OP_AUTH_REPOS_KEY = '/api/local-op/auth/repos';
@@ -8225,65 +6086,18 @@ export function createApiExtension(
   const LOCAL_OP_AUTH_PAT_KEY = '/api/local-op/auth/pat';
   const LOCAL_OP_AUTH_GH_LOGIN_KEY = '/api/local-op/auth/gh-login';
 
-  /**
-   * Wall-clock bound for the short, non-interactive auth CLI probes
-   * (`auth status`, `auth signout`). Deliberately NOT `LOCAL_OP_TIMEOUT_MS`
-   * (10 min, sized for clone) — these spawn no device flow and normally
-   * return in milliseconds; the bound only exists to cut loose a wedged
-   * keychain read or a stalled GitHub API call (`auth status` round-trips to
-   * GitHub via octokit with no client timeout of its own; gh detection
-   * carries its own 5s bound).
-   */
   const LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS = 30_000;
 
-  /**
-   * Keepalive cadence for the two streaming auth flows. Between `verification`
-   * and `complete` the device flow writes nothing for as long as the user takes
-   * to authorize — up to the code's ~15-minute life — and a loopback connection
-   * carrying zero bytes is exactly what an idle-connection reaper severs
-   * (AV/EDR SSL-inspection agents, VPN local proxies, some tab-backgrounding).
-   * A periodic no-op line keeps bytes flowing. `{ type: 'ping' }` is not an
-   * `AuthEvent`: consumers skip it, it never terminates the stream, and it does
-   * not touch the code's expiry.
-   */
   const AUTH_STREAM_HEARTBEAT_MS = authStreamHeartbeatMs ?? 15_000;
 
-  /**
-   * Wall-clock cap on a device-flow child, deliberately longer than the generic
-   * `LOCAL_OP_TIMEOUT_MS`. GitHub issues codes with `expires_in: 899` (~15 min)
-   * and the UI now counts down to that real deadline, so a 10-minute SIGTERM
-   * would kill the flow while the code on the user's screen is still good. The
-   * CLI's own poller gives up first at `expired_token`; this is only a backstop.
-   */
   const AUTH_DEVICE_FLOW_TIMEOUT_MS = 16 * 60 * 1000;
 
-  /**
-   * Default host for the auth relay endpoints when the request omits `host`.
-   * Read per-request (not cached): the origin remote can change over the
-   * server's lifetime.
-   */
   const defaultAuthHost = (): string => originGitHubHost(projectDir ?? contentDir);
 
-  // In-flight controllers for the two streaming auth flows (device-flow login and
-  // gh-login). A disconnect or fresh start frees/displaces the slot synchronously
-  // instead of waiting for the cancelled child to exit. Object identity is the
-  // ownership token: only the current owner releases its slot, so a displaced/
-  // disconnected flow can never free a successor's. Held in `{ current }` refs so
-  // the shared `streamAuthFlow` helper below can mutate them by reference.
-  // Mirrors the IPC twin's `authInFlight` (desktop/src/main/ipc/local-op.ts).
   type StreamingAuthController = { done: Promise<void>; cancel(): void };
   const authLoginInFlight: { current: StreamingAuthController | null } = { current: null };
   const authGhLoginInFlight: { current: StreamingAuthController | null } = { current: null };
 
-  /**
-   * Shared streaming envelope for the auth flows. The flows themselves differ —
-   * device-flow login runs OK's `auth login` (github.com-only OAuth app, token →
-   * OK's store) while gh-login runs `gh auth login --web` (gh's OAuth app, works
-   * on GHES, token → gh keyring → tier A) — so the caller supplies `makeFlow`.
-   * Everything else is identical and lives here once: the concurrency slot with
-   * displace-on-restart, NDJSON streaming, the idle keepalive, disconnect
-   * detach, sync-resume, and the ownership-guarded slot release.
-   */
   function streamAuthFlow(cfg: {
     res: ServerResponse;
     handler: string;
@@ -8299,11 +6113,6 @@ export function createApiExtension(
     if (!localOpGuard.tryAcquire(guardKey)) {
       const stale = inFlight.current;
       if (!stale) {
-        // Structurally unreachable: the slot key and `inFlight.current` are
-        // assigned with no `await` between them, so a held slot always has a
-        // controller. Log at `error` (a distinct event, not a normal-concurrency
-        // 429) so a refactor breaking that coupling is diagnosable, then 429 as
-        // the loud fallback rather than silently re-owning an unidentifiable slot.
         console.error(
           JSON.stringify({
             event: 'ok-local-op:auth-flow-slot-no-controller',
@@ -8318,10 +6127,6 @@ export function createApiExtension(
         });
         return;
       }
-      // A missed/late disconnect left a stale flow holding the slot. Displace it
-      // (SIGTERM the child so it can't keep polling and write an unconfirmed
-      // token), then re-own the slot below. Logged at `warn` so a missed
-      // disconnect is greppable before users hit a stuck slot.
       stale.cancel();
       inFlight.current = null;
       console.warn(
@@ -8340,24 +6145,18 @@ export function createApiExtension(
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-cache',
     });
-    // Wrap raw `error` events in the RFC 9457 streaming envelope.
     const writeStreamError = createStreamingErrorWriter(res, handler);
 
-    // Three-way guard + try-catch matches the writer's race-window defense; a
-    // lost progress event is not crashworthy.
     const writeLine = (line: string): void => {
       if (res.writableEnded || res.destroyed) return;
       try {
         res.write(line);
-      } catch {
-        /* socket destroyed between guard and write — line lost */
-      }
+      } catch {}
     };
 
     let heartbeat: ReturnType<typeof setInterval> | null = setInterval(() => {
       writeLine(`${JSON.stringify({ type: 'ping' })}\n`);
     }, AUTH_STREAM_HEARTBEAT_MS);
-    // A keepalive must never be the reason the process stays up.
     heartbeat.unref();
     const stopHeartbeat = (): void => {
       if (heartbeat === null) return;
@@ -8372,47 +6171,13 @@ export function createApiExtension(
         });
         return;
       }
-      // On `complete`, resume a SyncEngine parked in `auth-error` so a reconnect
-      // restores sync without an app restart. Server-authoritative: works
-      // regardless of which UI surface ran the sign-in — and, since the flow now
-      // outlives its client connection, regardless of whether anyone is still
-      // listening when the token lands.
       resumeSyncOnAuthEvent(event, getSyncEngine);
       writeLine(`${JSON.stringify(event)}\n`);
     });
     inFlight.current = flow;
 
-    // A transport disconnect is NOT a cancel, and must not kill the flow.
-    //
-    // On loopback the stream gets severed by things the user never sees — an
-    // AV/EDR inspection agent, a VPN local proxy, a backgrounded tab. Killing
-    // the child there turns a blip into an unrecoverable sign-in: the user
-    // finishes authorizing on github.com and no token is ever stored, with no
-    // way back except starting over for a fresh code. So a disconnect only
-    // stops the writer; the flow runs on to its own timeout (or the code's
-    // expiry) and a reconnecting client picks the outcome up from
-    // `POST /api/local-op/auth/status`.
-    //
-    // What the old kill-on-disconnect protected — don't land a token after the
-    // user backed out — rides on an EXPLICIT signal instead: `POST
-    // /api/local-op/auth/cancel` when the modal closes, or displacement by a
-    // fresh start. That is the lifetime model the IPC twin has always had
-    // (`handleAuthStart` in desktop/src/main/ipc/local-op.ts), where a vanished
-    // renderer never killed the flow either and only `:cancel` did; HTTP was
-    // the outlier purely because a socket close was the only signal it had.
-    //
-    // The slot stays HELD here. Releasing it on disconnect would let a
-    // concurrent start spawn a second device-flow child alongside the live one;
-    // a genuine restart still gets in via the stale-slot displacement above.
     const onClientClose = () => {
       stopHeartbeat();
-      // Log only a GENUINE detach — a flow left running with nobody attached.
-      // An explicit cancel already cleared the slot synchronously before the
-      // client's socket closed, and a displaced flow no longer owns it either,
-      // so this identity check is what separates "an intermediary cut us off"
-      // from routine teardown. Without it this fires on every normal cancel and
-      // the signal is worthless. Completion needs no check: `flow.done.finally`
-      // removes this listener before ending the response.
       if (inFlight.current !== flow) return;
       console.warn(
         JSON.stringify({
@@ -8425,19 +6190,13 @@ export function createApiExtension(
     };
     res.on('close', onClientClose);
 
-    // `flow.done` cannot reject (`proc.done` only resolves; the onEvent callback
-    // is throw-safe), so `.finally` needs no IIFE-level try/catch. The release is
-    // ownership-guarded: a displaced/cancelled flow that already freed or
-    // handed off the slot must not release a successor's when its child exits.
     void flow.done.finally(() => {
       stopHeartbeat();
       res.off('close', onClientClose);
       if (!res.writableEnded && !res.destroyed) {
         try {
           res.end();
-        } catch {
-          /* socket destroyed between guard and end — already closed */
-        }
+        } catch {}
       }
       if (inFlight.current === flow) {
         inFlight.current = null;
@@ -8446,20 +6205,6 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * POST /api/local-op/auth/login
-   *
-   * Body: { host?: string }
-   * Spawns: auth login --json [--host <host>]
-   * Streams: NDJSON lines (verification + complete events) via chunked HTTP.
-   * The device-flow subprocess manages its own timeout.
-   *
-   * Streaming endpoint: pre-stream errors emit
-   * `application/problem+json`; mid-stream errors emit a typed event
-   * `{ type: 'error', problem: ProblemDetails }`. The CLI's own
-   * `{ type: 'error', message }` events are intercepted and wrapped so the
-   * client always sees the canonical streaming envelope.
-   */
   const HANDLE_LOCAL_OP_AUTH_LOGIN = 'local-op-auth-login';
   const handleLocalOpAuthLogin = withValidation(
     LocalOpAuthHostRequestSchema,
@@ -8494,16 +6239,6 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * POST /api/local-op/auth/gh-login
-   *
-   * Body: { host?: string }
-   * Runs `gh auth login --hostname <host> --web` and streams the same
-   * verification / complete / error NDJSON as the device flow. gh's OAuth app is
-   * preregistered on GHES (OpenKnowledge's isn't), so this gives enterprise hosts
-   * a browser sign-in; gh stores the token in its keyring and OK reads it via
-   * tier A. 400 if gh isn't installed (the UI falls back to the PAT panel).
-   */
   const HANDLE_LOCAL_OP_AUTH_GH_LOGIN = 'local-op-auth-gh-login';
   const handleLocalOpAuthGhLogin = withValidation(
     LocalOpAuthHostRequestSchema,
@@ -8511,8 +6246,6 @@ export function createApiExtension(
       const host = body.host ?? defaultAuthHost();
       const ghPath = await cachedGhBinaryPath();
       if (ghPath === null) {
-        // Precondition failure — the UI falls back to the PAT panel. Reuse the
-        // auth-failed URN (the detail names the specific cause).
         errorResponse(
           res,
           400,
@@ -8547,33 +6280,9 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * POST /api/local-op/auth/cancel
-   *
-   * Body: { channel?: 'login' | 'gh-login' }
-   * Explicit, user-initiated stop for a streaming sign-in — the intent signal
-   * that a transport disconnect deliberately is not (see `streamAuthFlow`).
-   * SIGTERMs the device-flow child so it can't land a token the user backed out
-   * of, and frees the concurrency slot synchronously so a reopen right behind
-   * the cancel isn't 429'd during the SIGTERM-to-exit window.
-   *
-   * Idempotent by construction: the client fires this on modal close without
-   * knowing whether a flow is still running, so "nothing in flight" is a 200,
-   * not an error.
-   *
-   * Deliberately has no `localOpGuard` slot of its own, unlike its sibling
-   * local-op endpoints. Those guard a subprocess spawn; this one spawns
-   * nothing and does no IO, so the body runs to completion with no `await` in
-   * it — two concurrent cancels cannot interleave, and the second reads a
-   * null slot and no-ops. A guard here would buy nothing and add a failure
-   * mode that inverts the endpoint's purpose: a 429'd cancel leaves the flow
-   * running, which is precisely what the caller asked to stop.
-   */
   const HANDLE_LOCAL_OP_AUTH_CANCEL = 'local-op-auth-cancel';
   const handleLocalOpAuthCancel = withValidation(
     LocalOpAuthCancelRequestSchema,
-    // Wrapped so an unexpected throw still lands as a typed 500. The body
-    // itself has no failure mode — hence no `errorResponse` of its own.
     catchErrors(
       async (_req, res, body) => {
         const target =
@@ -8583,11 +6292,6 @@ export function createApiExtension(
         const flow = target.inFlight.current;
         if (flow) {
           flow.cancel();
-          // Free the slot rather than waiting for the SIGTERM'd child to exit,
-          // so a reopen right behind the cancel isn't 429'd during that window.
-          // Ownership-guarded by construction: we clear the same reference we
-          // just read, and the cancelled flow's own `done.finally` re-checks
-          // identity, so its late exit can't free a successor's slot.
           target.inFlight.current = null;
           localOpGuard.release(target.guardKey);
         }
@@ -8609,13 +6313,6 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * POST /api/local-op/auth/status
-   *
-   * Body: { host?: string }
-   * Spawns: auth status --json [--host <host>]
-   * Returns: the single NDJSON line as parsed JSON.
-   */
   const HANDLE_LOCAL_OP_AUTH_STATUS = 'local-op-auth-status';
   const handleLocalOpAuthStatus = withValidation(
     LocalOpAuthHostRequestSchema,
@@ -8646,29 +6343,13 @@ export function createApiExtension(
               env: { ...process.env },
             }),
           );
-          // Settle AT the timer, not at 'close' — the package-wide timeout-kill
-          // shape (illustrative precedents: `rename-log.ts`, `acp/archive.ts`,
-          // `acp/login-shell-path.ts`; mirrored by `spawnShareSubprocess` in
-          // `http/share-routes.ts`, whose docblock asserts this mirror).
-          // Settlement must not depend on the child cooperating ('close' waits
-          // on shared stdio; SIGKILL cannot reap uninterruptible sleep), and
-          // the timeout must reject rather than resolve partial stdout: the
-          // downstream JSON parse would fall back to `{ authenticated: false }`,
-          // a wrong-result "not logged in" UX for an authenticated user.
-          // Surfaces as 500 `auth-failed` via the outer catch + Pino log, and
-          // frees the localOpGuard slot in the outer `finally`.
           let settled = false;
           const killTimer = setTimeout(() => {
             if (settled) return;
             settled = true;
             try {
               child.kill('SIGKILL');
-            } catch {
-              // child may already be dead
-            }
-            // Tear the pipes down at settle: a D-state child (or a grandchild
-            // holding the write-ends) can keep streaming into our buffers
-            // after the response has already 500'd — destroy bounds that.
+            } catch {}
             child.stdout.destroy();
             child.stderr.destroy();
             reject(
@@ -8694,9 +6375,6 @@ export function createApiExtension(
           });
         });
 
-        // The CLI may emit non-JSON log lines on stdout before the terminal
-        // event (e.g. keychain probe messages on older builds). Find the last
-        // parseable JSON line and return that.
         const lines = output
           .split('\n')
           .map((l) => l.trim())
@@ -8706,13 +6384,8 @@ export function createApiExtension(
           try {
             parsed = JSON.parse(lines[i] as string);
             break;
-          } catch {
-            /* skip non-JSON line */
-          }
+          } catch {}
         }
-        // `ghAvailable` tells the UI whether to offer "Sign in with gh" (the
-        // browser path that works on GHES where OK's device flow can't). Machine
-        // property, not per-host; cached so this frequent probe doesn't re-shell.
         const ghAvailable = (await cachedGhBinaryPath()) !== null;
         if (parsed !== null) {
           successResponse(
@@ -8732,9 +6405,6 @@ export function createApiExtension(
           );
         }
       } catch (err) {
-        // Fixed-vocabulary detail — raw err.message can carry filesystem paths,
-        // git stderr, or errno strings. Pino logs preserve full diagnostics via
-        // `cause` for server-side triage; the wire body stays bounded.
         errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Auth status check failed.', {
           handler: HANDLE_LOCAL_OP_AUTH_STATUS,
           cause: err,
@@ -8751,18 +6421,6 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * POST /api/local-op/auth/pat
-   *
-   * Body: { host?: string, token: string }
-   * Spawns: auth pat --json --host <host> --token-stdin (token via stdin).
-   * Returns: { host, login } on success; 400 auth-failed with a bounded reason
-   * on a rejected token / TLS / network error.
-   *
-   * The enterprise sign-in path — a GHES host stores a PAT because the OAuth
-   * device flow only works on github.com. The token is written to the child's
-   * stdin, never argv/env.
-   */
   const HANDLE_LOCAL_OP_AUTH_PAT = 'local-op-auth-pat';
   const handleLocalOpAuthPat = withValidation(
     LocalOpAuthPatRequestSchema,
@@ -8783,10 +6441,6 @@ export function createApiExtension(
       try {
         const result = await runPatSubprocess({ cliArgs: localOpCliArgs, host, token: body.token });
         if (result.ok) {
-          // A stored PAT is a credential change just like a device/gh sign-in —
-          // re-probe so a repo paused with 'no-push-permission' while signed out
-          // resumes without an app restart. The streaming paths get this via
-          // resumeSyncOnAuthEvent; PAT is a plain POST, so call it directly.
           onAuthCredentialLanded(getSyncEngine);
           successResponse(
             res,
@@ -8796,9 +6450,6 @@ export function createApiExtension(
             { handler: HANDLE_LOCAL_OP_AUTH_PAT },
           );
         } else {
-          // A rejected token / cert / network failure is client-actionable, not
-          // a server fault. `result.error` is bounded (the CLI's structured
-          // describeAuthFailure message), safe to surface.
           errorResponse(res, 400, 'urn:ok:error:auth-failed', result.error, {
             handler: HANDLE_LOCAL_OP_AUTH_PAT,
           });
@@ -8820,18 +6471,6 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * POST /api/local-op/auth/repos
-   *
-   * Body: { host?: string }
-   * Spawns: auth repos --json [--host <host>]
-   * Streams: NDJSON via chunked HTTP.
-   *
-   * Streaming endpoint: pre-stream errors emit
-   * `application/problem+json`; mid-stream errors emit a typed event
-   * `{ type: 'error', problem: ProblemDetails }`. CLI `error` events are
-   * intercepted and wrapped to keep the streaming envelope canonical.
-   */
   const HANDLE_LOCAL_OP_AUTH_REPOS = 'local-op-auth-repos';
   const handleLocalOpAuthRepos = withValidation(
     LocalOpAuthHostRequestSchema,
@@ -8868,7 +6507,6 @@ export function createApiExtension(
       'Cache-Control': 'no-cache',
     });
 
-    /** Write a typed mid-stream error event. */
     const writeStreamError = createStreamingErrorWriter(res, HANDLE_LOCAL_OP_AUTH_REPOS);
 
     const [cmd, ...baseArgs] = localOpCliArgs;
@@ -8885,22 +6523,12 @@ export function createApiExtension(
       }),
     );
 
-    // The timer is a SETTLE branch (same latch discipline as the auth-status
-    // spawn): a child wedged past any signal must not leave the stream open
-    // and the guard slot held until the client happens to disconnect. SIGKILL
-    // is fire-and-forget hygiene; the stdio teardown bounds buffering from a
-    // D-state child or a grandchild holding the pipe write-ends. Repos keeps
-    // the 10-minute LOCAL_OP_TIMEOUT_MS its siblings dropped to 30s: `auth
-    // repos` paginates every repository visible to the token under GitHub
-    // rate limits, which legitimately runs minutes on large accounts.
     const killTimer = setTimeout(() => {
       if (settled) return;
       settled = true;
       try {
         child.kill('SIGKILL');
-      } catch {
-        // child may already be dead
-      }
+      } catch {}
       child.stdout.destroy();
       child.stderr.destroy();
       if (!res.writableEnded) {
@@ -8924,11 +6552,8 @@ export function createApiExtension(
         let evt: { type?: unknown; message?: unknown } | null = null;
         try {
           evt = JSON.parse(line) as { type?: unknown; message?: unknown };
-        } catch {
-          /* non-JSON line — ignore */
-        }
+        } catch {}
         if (evt && evt.type === 'error') {
-          // Wrap CLI's untyped error into the canonical streaming envelope.
           const detail = typeof evt.message === 'string' ? evt.message : undefined;
           writeStreamError(
             500,
@@ -8938,13 +6563,10 @@ export function createApiExtension(
           );
           continue;
         }
-        // Three-way guard + try-catch — see clone handler progress write.
         if (!res.writableEnded && !res.destroyed) {
           try {
             res.write(`${line}\n`);
-          } catch {
-            /* socket destroyed between guard and write — line lost */
-          }
+          } catch {}
         }
       }
     });
@@ -8953,13 +6575,6 @@ export function createApiExtension(
       log.debug({ msg: chunk.toString('utf-8').trim() }, '[local-op/auth/repos] stderr');
     });
 
-    // `localOpGuard.release()` lives INSIDE the `settled` guard at every
-    // exit branch (timeout, child close, child error, client disconnect) so
-    // the concurrency guard is released at most once. Releasing outside the
-    // guard would double-release when one branch fires after another —
-    // most reliably reproduced by client disconnect mid-subprocess, where
-    // res.on('close') fires first, then the killed child triggers
-    // child.on('close') with the now-stale settled flag still suppressed.
     child.on('close', (code) => {
       clearTimeout(killTimer);
       if (!settled) {
@@ -8981,7 +6596,6 @@ export function createApiExtension(
       if (!settled) {
         settled = true;
         if (!res.writableEnded) {
-          // Fixed-vocabulary detail — see clone-failed catch site.
           writeStreamError(
             500,
             'urn:ok:error:auth-failed',
@@ -8994,13 +6608,6 @@ export function createApiExtension(
       }
     });
 
-    // Kill the child if the client disconnects so `auth repos` doesn't keep
-    // an open HTTPS connection to GitHub's API in the background after the
-    // browser tab closes. Mirrors the disconnect-cleanup pattern in
-    // handleLocalOpClone (flow.cancel) and handleLocalOpAuthLogin
-    // (res.on('close', onClientClose)). The `settled` flag check makes
-    // this idempotent against the child.on('close') / child.on('error')
-    // branches that may have already cleaned up.
     res.on('close', () => {
       if (!settled) {
         settled = true;
@@ -9011,13 +6618,6 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * POST /api/local-op/auth/signout
-   *
-   * Body: { host?: string }
-   * Spawns: auth signout [--host <host>]
-   * Returns: {} (flat success)
-   */
   const HANDLE_LOCAL_OP_AUTH_SIGNOUT = 'local-op-auth-signout';
   const handleLocalOpAuthSignout = withValidation(
     LocalOpAuthHostRequestSchema,
@@ -9048,22 +6648,13 @@ export function createApiExtension(
               env: { ...process.env },
             }),
           );
-          // Settle AT the timer — same latch as the auth-status spawn above.
-          // The previous shape (SIGTERM-only timer, settle only on 'close')
-          // carried two defects: a wedged child never emits 'close', so the
-          // promise never settles and the `finally` never releases the guard
-          // slot (permanent 429); and with no timed-out flag, a child that
-          // DID close after the SIGTERM resolved as success. No stdio
-          // teardown needed — this spawn ignores all three streams.
           let settled = false;
           const killTimer = setTimeout(() => {
             if (settled) return;
             settled = true;
             try {
               child.kill('SIGKILL');
-            } catch {
-              // child may already be dead
-            }
+            } catch {}
             reject(
               new Error(
                 `auth signout subprocess timed out after ${LOCAL_OP_AUTH_SUBPROCESS_TIMEOUT_MS}ms`,
@@ -9095,7 +6686,6 @@ export function createApiExtension(
           },
         );
       } catch (err) {
-        // Fixed-vocabulary detail — see HANDLE_LOCAL_OP_AUTH_STATUS catch site.
         errorResponse(res, 500, 'urn:ok:error:auth-failed', 'Auth signout failed.', {
           handler: HANDLE_LOCAL_OP_AUTH_SIGNOUT,
           cause: err,
@@ -9111,16 +6701,6 @@ export function createApiExtension(
         checkLocalOpSecurity(req, res, { handler: HANDLE_LOCAL_OP_AUTH_SIGNOUT }),
     },
   );
-
-  // ─── POST /api/local-op/auth/set-identity ──────────────────────────────────
-  // Writes git user.name + user.email scoped to the checkout `projectDir`
-  // points at: per-worktree config on a linked worktree (enabling
-  // `extensions.worktreeConfig` if needed), repo-local config otherwise. The
-  // worktree fork prevents silent rewrites of the main checkout's identity
-  // when OK is launched from a `git worktree add`-ed directory.
-  // On success, nudges the sync engine to re-probe the identity chain
-  // so the UI unresolved-nudge clears immediately instead of waiting for the
-  // next push cycle.
 
   const LOCAL_OP_AUTH_SET_IDENTITY_KEY = '/api/local-op/auth/set-identity';
 
@@ -9151,13 +6731,9 @@ export function createApiExtension(
 
       try {
         writeGitIdentity(projectDir, name, email);
-        // Fire-and-forget: the sync engine re-probes + signals CC1 'sync-status'
-        // so the unresolved nudge clears in the UI without waiting on the push timer.
         void getSyncEngine?.()
           ?.refreshIdentity()
-          .catch(() => {
-            /* best-effort — status will catch up on next push cycle */
-          });
+          .catch(() => {});
         successResponse(
           res,
           200,
@@ -9168,7 +6744,6 @@ export function createApiExtension(
           },
         );
       } catch (err) {
-        // Fixed-vocabulary detail — see HANDLE_LOCAL_OP_AUTH_STATUS catch site.
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Set-identity failed.', {
           handler: HANDLE_LOCAL_OP_AUTH_SET_IDENTITY,
           cause: err,
@@ -9185,30 +6760,9 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * `POST /api/install-skill` — build `openknowledge.skill` and open it via
-   * the OS file association so Claude Desktop's native install dialog takes
-   * over. Web-host counterpart of the Electron `okDesktop.skill.buildAndOpen`
-   * bridge — both delegate to `buildAndOpenSkill` in `skill-install.ts`.
-   *
-   * Loopback-only via `checkLocalOpSecurity` — the handler spawns child
-   * processes (`open` / `start` / `xdg-open`) and writes to the user's
-   * `~/Downloads`, which is squarely state-mutating.
-   *
-   * Request body (optional JSON): `{ noOpen?: boolean, out?: string }`.
-   * Response: the `BuildAndOpenSkillResult` shape verbatim.
-   */
   const handleInstallSkill = withValidation(
     InstallSkillRequestSchema,
     async (_req, res, body) => {
-      // `out` flows into `path.resolve()` + `mkdir({recursive: true})` +
-      // `spawn('cmd', ['/c', 'start', '""', skillPath])` on Windows. Confine
-      // to $HOME consistent with the sibling local-op handler
-      // (`handleLocalOpClone`). Stays as post-validation business logic rather
-      // than a `.refine()` on the schema so the URN remains the more accurate
-      // `invalid-request` (the schema-shape `.refine()` rejection would also
-      // route through `urn:ok:error:invalid-request` but with a generic
-      // field-path message instead of this domain-specific title).
       if (body.out !== undefined && !isSafeLocalPath(body.out)) {
         errorResponse(
           res,
@@ -9229,8 +6783,6 @@ export function createApiExtension(
           handler: 'install-skill',
         });
       } catch (err) {
-        // Generic title — raw `err.message` can leak FS paths / library internals.
-        // The underlying message is forwarded to Pino via `cause` for ops triage.
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to install skill.', {
           handler: 'install-skill',
           cause: err,
@@ -9273,24 +6825,6 @@ export function createApiExtension(
       });
       return null;
     }
-    // Canonical containment on top of the lexical prefix check above, which a
-    // symlinked directory defeats (`notes -> /outside` keeps every lexical
-    // check green while the write lands outside the root). One gate here
-    // covers both consumer families — the folder-template routes AND the
-    // folder-mode history arm — because the writers behind it
-    // (`applyFolderFrontmatterPatch`, the template write/delete/move helpers)
-    // mkdir and write under the validated folder without re-checking.
-    // The asserts anchor on the components the writers actually TOUCH:
-    // `<folder>/.ok` and `<folder>/.ok/templates`, not just the folder —
-    // `assertNoSymlinkEscape` returns as soon as its argument realpaths
-    // in-root and never inspects components below it, so asserting the folder
-    // alone admits a planted `<folder>/.ok -> /outside` link. Anchoring on
-    // `.ok` subsumes the folder (the ENOENT walk passes through it), and both
-    // deeper asserts are free when the dirs don't exist yet.
-    // Reserved-prefix folders (`.ok`, `.git`, `.ok/skills/<name>`) are
-    // deliberately admitted here, unlike the file-ops family: the writers
-    // append the `.ok/{frontmatter.yml,templates/<pinned-name>.md}` leaf
-    // themselves, so nothing load-bearing is reachable through them.
     try {
       const okDir = resolve(candidateAbs, '.ok');
       assertNoSymlinkEscape(okDir, resolvedContentDir);
@@ -9303,8 +6837,6 @@ export function createApiExtension(
         });
         return null;
       }
-      // Raw realpath errno or a missing content root: a server fault, not the
-      // caller's path — same split as every other containment consumer.
       errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to validate path.', {
         handler,
         cause: err,
@@ -9314,16 +6846,6 @@ export function createApiExtension(
     return { folderRel, resolvedContentDir };
   }
 
-  /**
-   * Conflict-aware refusal for the skill CONTENT-doc writers. A PROJECT skill's
-   * `SKILL.md` and its `.md` references are real CRDT content docs (skills-as-
-   * content), so a mutation against one whose `lifecycle.status === 'conflict'`
-   * must refuse exactly like the sibling content-write handlers — the CRDT
-   * paired-write path (`composeAndWriteRawBody`) would otherwise clobber a
-   * doc the user is mid-resolving. Global skills + scripts are fs-direct (not
-   * CRDT docs), so they never carry a lifecycle Y.Map and the gate is a no-op.
-   * Returns `true` when the gate fired (caller short-circuits).
-   */
   function checkSkillDocConflictGate(
     docName: string,
     handler: string,
@@ -9337,35 +6859,15 @@ export function createApiExtension(
     return false;
   }
 
-  // Generic frontmatter splitter for managed `.md` files (SKILL.md, etc.):
-  // returns the parsed YAML frontmatter object + the body. Distinct from core's
-  // `parseTemplateFile`, which parses the single-block TEMPLATE format
-  // (`template:` identity → TemplateModel). Skills carry plain `{name,
-  // description}` frontmatter, so they need this generic parse, not the
-  // template model.
   const parseFrontmatterDoc = (
     raw: string,
   ): { frontmatter: Record<string, unknown>; body: string } => {
     const { body } = stripFrontmatter(raw);
-    // Malformed / missing / non-mapping frontmatter degrades to an empty
-    // record — callers still get the FM-stripped body.
     return { frontmatter: parseFrontmatterRecord(raw) ?? {}, body };
   };
 
-  // ─── Skills (`/api/skill`, `/api/skills`) ──────────────────────
-  //
-  // Skills are fs-direct `.ok/skills/<name>/` artifacts (SKILL.md + optional
-  // references/scripts), NON-CRDT, addressed by scope + name (no per-folder
-  // leaf-to-root walk — a skill's name is its whole identity). They reuse the
-  // template artifact spine: server-routed, actor-attributed, shadow-repo
-  // committed via `attributeOkArtifactWrite` + `commitOkArtifactWrite`.
-  // Project scope only this slice; global scope (a user-level store)
-  // is gated on the not-yet-built device-sync mechanism and refused with a
-  // teaching error rather than silently writing to an unmanaged path.
   const SKILLS_LIST_CAP = 500;
 
-  // The shape check on its own, for callers that classify a name per row rather
-  // than answering the request with a 400 (bulk verbs).
   function isValidSkillName(name: string): boolean {
     return Boolean(name) && name.length <= 64 && SKILL_NAME_REGEX.test(name);
   }
@@ -9383,7 +6885,6 @@ export function createApiExtension(
     return true;
   }
 
-  /** Parse the `scope` query param (defaults to `project`); 400s on a bad value. */
   function parseSkillScope(
     raw: string | null,
     res: ServerResponse,
@@ -9403,9 +6904,6 @@ export function createApiExtension(
     return parsed.data;
   }
 
-  // User home for global-scope skills (override in tests). Global skills
-  // live at `<home>/.ok/skills/`; the user-level install marker is
-  // `<home>/.ok/local/installed-skills.json` (readInstalledSkills(skillsHome)).
   const skillsHome = homeDirOverride ?? homedir();
   const skillInstallOps = createSkillInstallOpsService({
     contentDir,
@@ -9413,32 +6911,12 @@ export function createApiExtension(
     effectiveInstallMode,
   });
 
-  /**
-   * Resolve a skill scope to its absolute `.ok/skills` store root. Project
-   * skills live at `<contentDir>/.ok/skills` (git-committed, shared via the
-   * project repo); global skills at `<home>/.ok/skills` (user-global,
-   * local per-machine). Global skills are fs-direct and UNVERSIONED — there
-   * is no user-level shadow repo, so global writes skip the project shadow
-   * commit (the caller gates on scope).
-   */
   function resolveSkillsRoot(scope: 'project' | 'global'): string {
     return scope === 'global'
       ? resolve(skillsHome, '.ok', 'skills')
       : resolve(contentDir, '.ok', 'skills');
   }
 
-  /**
-   * Absolute bundle dir for a skill READ. Store retirement: the IN-PLACE
-   * editor-dir canonical wins at both scopes; the legacy `.ok/skills` store is
-   * only a fallback for a resident not yet drained. Null when neither exists.
-   *
-   * A name can be held by several distinct-CONTENT bundles in different host
-   * dirs — they are different skills, not copies. `host` picks one of them;
-   * without it the scan's by-name default (first same-name row) answers, so a
-   * host-less read stays deterministic instead of following content-hash order.
-   * A `host` that holds no such bundle resolves to null rather than falling
-   * back to a different skill.
-   */
   function resolveSkillDirForRead(
     scope: 'project' | 'global',
     name: string,
@@ -9452,14 +6930,10 @@ export function createApiExtension(
         );
         return row ? resolve(skillsHome, row.dir) : null;
       }
-      // Global mirrors project: the IN-PLACE (native user-dir) canonical wins;
-      // the legacy store is a fallback until its last resident migrates.
       const native = resolveGlobalNativeSkillDir(skillsHome, name);
       if (native !== null) return native;
       return existsSync(join(store, 'SKILL.md')) ? store : null;
     }
-    // Project: the IN-PLACE canonical wins — a same-name store dir is a
-    // placement of the same skill, not its identity (mirrors the list rule).
     const inPlace = scanInPlaceSkills(contentDir).find(
       (s) => s.name === name && (host === undefined || s.hosts.includes(host)),
     );
@@ -9468,35 +6942,6 @@ export function createApiExtension(
     return existsSync(join(store, 'SKILL.md')) ? store : null;
   }
 
-  /**
-   * contentDir-relative bundle dir (POSIX) for a PROJECT skill — the in-place
-   * canonical when the skill isn't in the `.ok/skills` store. Feeds the
-   * shadow-restore + reimport write paths so Update/Revert operate on the
-   * skill's real dir.
-   */
-  /**
-   * The effective install mode for NEW fan-out of a skill: recorded per-skill
-   * preference first, then the default.
-   *
-   * The default is SYMLINK — one real folder plus links keeps a repo's git
-   * history free of N duplicate copies of every skill. But it applies ONLY when
-   * the skill has nothing to reclassify: a skill that already sits in several
-   * editor dirs as copies, with no recorded preference, predates the default,
-   * and a set-exact fan-out in link mode would silently convert every one of
-   * those copies. `otherOccurrences` is the count of installed locations besides
-   * the skill's own source folder — when it is zero, no existing location can be
-   * mutated, so the new default is free to apply.
-   */
-  /**
-   * One translation of `restoreSkillVersion`'s failure union to a response.
-   * Restore and revert are the same rollback with different entry points, and
-   * they carried byte-identical copies of this table.
-   */
-  /**
-   * Actor identity for the DELETE handlers. DELETE carries no body, so identity
-   * and summary ride the query string; this rebuilds the shape
-   * `extractActorIdentity` expects. Three handlers had byte-identical copies.
-   */
   function extractActorIdentityFromQuery(
     url: URL,
     principal: typeof getPrincipal,
@@ -9516,18 +6961,6 @@ export function createApiExtension(
     );
   }
 
-  /**
-   * How a skill should be re-projected into its host dirs.
-   *
-   * An ACQUIRED skill (one imported from a source, recorded in
-   * `skills-lock.json`) projects as copies: its source can move or vanish with
-   * the import, and a symlink to it dangles on clone or in CI. An authored
-   * skill projects as symlinks — one real folder, no duplicated bytes.
-   *
-   * Install derived this; rename and cross-scope move hardcoded `'symlink'`,
-   * so renaming an imported skill silently converted every host back to a
-   * symlink and reintroduced exactly the dangle the copy rule exists to avoid.
-   */
   function projectionModeFor(scope: 'project' | 'global', name: string): 'symlink' | 'copy' {
     const base = scope === 'project' ? projectDir : skillsHome;
     if (!base) return 'symlink';
@@ -9535,7 +6968,6 @@ export function createApiExtension(
       const lock = readSkillsLock(join(base, ...SKILLS_LOCK_REL));
       return lock.skills[name] !== undefined ? 'copy' : 'symlink';
     } catch {
-      // Unreadable lockfile: origin unknown, so keep the authored default.
       return 'symlink';
     }
   }
@@ -9563,14 +6995,6 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * Move a provenance entry between scopes. Returns whether there was one to
-   * move, so the caller can skip the follow-up hash/baseline refresh.
-   *
-   * The destination write lands before the source removal: if the second write
-   * fails the entry exists in both lockfiles (harmless duplicate provenance)
-   * rather than in neither (the skill silently stops being reimportable).
-   */
   async function transferSkillLockEntry(
     fromScope: 'project' | 'global',
     toScope: 'project' | 'global',
@@ -9583,8 +7007,6 @@ export function createApiExtension(
     if (!entry) return false;
 
     const movedEntry = { ...entry };
-    // Global is unversioned — it has no shadow repo, so a baseline ref from the
-    // project side would point at a commit the destination cannot restore.
     if (toScope === 'global') delete movedEntry.baselineRef;
     await mutateSkillsLock(toPath, (lock) => ({
       ...lock,
@@ -9631,20 +7053,6 @@ export function createApiExtension(
     errorResponse(res, status, typeUri, result.error, { handler, detail: result.code });
   }
 
-  /**
-   * The form a NEW location should take: the one the skill's existing locations
-   * already use, and a symlink when it has none to follow.
-   *
-   * This used to key off the COUNT of existing locations — link while a skill
-   * lived in exactly one place, copy once it lived in two — so the form a
-   * location got depended on how many installs happened to precede it. Adding
-   * three locations produced a symlink then two copies, and the divergence
-   * badges appeared and vanished as the expected form flipped underneath them.
-   *
-   * Symlink is the default because it duplicates no bytes and cannot drift; a
-   * skill whose locations are all copies keeps getting copies, so a new one
-   * matches its siblings rather than silently mixing forms.
-   */
   function effectiveInstallMode(
     scope: 'project' | 'global',
     name: string,
@@ -9653,7 +7061,6 @@ export function createApiExtension(
     const prefBase = scope === 'project' ? projectDir : skillsHome;
     const recorded = prefBase ? readSkillInstallModeRaw(prefBase, name) : undefined;
     if (recorded) return recorded;
-    // The source is a real folder, never a link — judge by the others.
     const others = existing.hosts.length - 1;
     if (others <= 0) return 'link';
     return existing.linkedHosts.some((h) => existing.hosts.includes(h)) ? 'link' : 'copy';
@@ -9666,37 +7073,15 @@ export function createApiExtension(
       : `${LEGACY_SKILL_STORE_ROOT}/${name}`;
   }
 
-  // OK's built-in skills are NOT authored under `.ok/skills`; they are
-  // force-installed into the editor host dirs (`.claude/skills/<name>/`,
-  // `.cursor/skills/<name>/`, …) — the `open-knowledge` project skill under the
-  // project root, and the `open-knowledge-discovery` / `open-knowledge-write-skill`
-  // user-global skills under `<home>`. Surface them in the skills index READ-ONLY
-  // so users see exactly what their agents load.
   const BUILTIN_PROJECT_SKILL_NAME = BUNDLE_SKILL_NAME.project;
 
-  /**
-   * Resolve a built-in skill's on-disk projection across the editor host dirs
-   * under `base` (the project root for the project skill, `<home>` for the
-   * user-global ones), preferring Claude (the first entry in
-   * `PROJECT_SKILL_EDITOR_IDS`). Returns the chosen skill dir + its `SKILL.md` +
-   * every host id it is projected into + the `base`-relative path, or null when
-   * no host copy exists yet.
-   */
   function resolveBuiltinSkillDir(
     base: string,
     name: string,
-    /**
-     * Which host dir to read from. A built-in can diverge across hosts exactly
-     * like any other skill (a stale `.agents` copy beside a current `.claude`
-     * one), and each is its own row — so without this both rows would serve
-     * whichever dir the editor-id order happens to reach first.
-     */
     host?: string,
   ): { dir: string; skillMd: string; hosts: string[]; relPath: string } | null {
     const hosts: string[] = [];
     let chosenDir: string | null = null;
-    // The `.agents` hub is a first-class host but carries no editor id, so it is
-    // absent from PROJECT_SKILL_EDITOR_IDS and has to be probed on its own.
     const roots: Array<{ id: string; root: string }> = [
       ...PROJECT_SKILL_EDITOR_IDS.map((editorId) => ({
         id: editorId as string,
@@ -9721,12 +7106,6 @@ export function createApiExtension(
     };
   }
 
-  /**
-   * Shape a lockfile entry into the API `origin` object (repo source + resolved
-   * marketplace URL + auto-update flag). Pure over `entry`; shared by the skills
-   * list handler and the built-in list entry. `pluginProvider`/`ref` stay on the
-   * lockfile entry and are not re-exposed (the plugin label derives from `source`).
-   */
   function skillOriginFor(entry: SkillsLock['skills'][string]) {
     const marketplaceUrl = pluginRepositoryUrl(entry.source, entry.pluginProvider);
     return {
@@ -9739,17 +7118,6 @@ export function createApiExtension(
     };
   }
 
-  /**
-   * Synthesize the skills.sh lock entry for one of OK's built-in bundle skills.
-   * Built-ins seed from the app bundle, but their canonical upstream is the
-   * deterministic `inkeep/open-knowledge-skills` repo — so, exactly like a
-   * pre-provenance starter pack (`retrofitPackLockEntry`), we synthesize the
-   * entry on demand from the installed content rather than storing one at seed
-   * time. Drives the repo link + the manual "update available" flow. Its
-   * `autoUpdate: false` makes updates MANUAL-only: a pulled/shared project never
-   * silently re-pulls a built-in. Returns null for any non-built-in name or when
-   * the skill isn't installed on disk.
-   */
   function synthBuiltinLockEntry(base: string, name: string): SkillsLock['skills'][string] | null {
     if (!isInternalBundleSkillName(name)) return null;
     const resolved = resolveBuiltinSkillDir(base, name);
@@ -9770,17 +7138,6 @@ export function createApiExtension(
     };
   }
 
-  /**
-   * Skills a HARNESS PLUGIN already ships, indexed by name, with the plugin's
-   * own content hash.
-   *
-   * The cross-harness enumeration is the expensive scan (it walks every plugin
-   * cache on the machine), and `/api/skills` is hot — Mike's bug-bash bundle
-   * shows 148 calls in one session. Plugin caches only change when the user runs
-   * a plugin update, so this memoizes for `PLUGIN_INDEX_TTL_MS` rather than
-   * rescanning per request. A stale window costs an origin that is one version
-   * behind for a few seconds; rescanning per request costs the list.
-   */
   const PLUGIN_INDEX_TTL_MS = 30_000;
   let pluginIndex: { at: number; identity: string; byName: Map<string, PluginUpstream> } | null =
     null;
@@ -9795,12 +7152,6 @@ export function createApiExtension(
       return pluginIndex.byName;
     let byName = new Map<string, PluginUpstream>();
     try {
-      // Enumeration and hashing are the IO; the join itself is pure and lives in
-      // core, where it can be tested without a plugin cache on disk.
-      // Deliberately NOT scoped to the project: a copy of a plugin's skill is a
-      // copy of that plugin wherever the copy sits, and the registry keys
-      // project-scoped installs by absolute checkout path, so scoping left a
-      // second clone of the same repo with no upstream for any of its copies.
       byName = pluginUpstreamsByName(
         enumerateInstalledSkillsCached(
           homeDirOverride !== undefined ? { home: homeDirOverride } : {},
@@ -9808,46 +7159,16 @@ export function createApiExtension(
         (home) => parseSkillDir(home)?.contentHash,
       );
     } catch (err) {
-      // A broken plugin cache must not take the skills list down with it — the
-      // list is the feature, the origin is an enrichment.
       log.warn({ err }, 'plugin upstream index failed; origins will be omitted');
     }
     pluginIndex = { at: now, identity, byName };
     return byName;
   }
 
-  /**
-   * Synthesize the lock entry a skill WOULD have if its plugin copy had been
-   * imported through OK.
-   *
-   * A repo that fans plugin skills into `.agents/skills/` has already performed
-   * the copy OK calls "edit a copy" — 83 of them in this monorepo — but nothing
-   * recorded where they came from, so every one of them reads as hand-authored.
-   * This is the same move `synthBuiltinLockEntry` makes for OK's own bundles:
-   * derive the provenance rather than write it, so no file is created and no
-   * claim outlives the evidence.
-   *
-   * Matched by NAME, deliberately. Content cannot carry the LINK: the moment
-   * someone edits their copy it stops matching, which is exactly when "you have
-   * diverged from the plugin" needs saying. Divergence itself is decided against
-   * the machine-local first-seen baseline (`plugin-skill-baseline.ts`), not
-   * against the plugin's bytes — the fan-out legitimately rewrites content on
-   * the way, so the plugin's own hash flags copies nobody edited.
-   */
-  /** The plugin bundle's current content hash for `name`, or null when no
-   *  plugin ships it — the upstream half of the Modified baseline pair. */
   function pluginUpstreamHash(name: string, identity: string): string | null {
     return pluginSkillsByName(identity).get(name)?.contentHash ?? null;
   }
 
-  /**
-   * The plugin identity of a skill that IS a plugin's skill — its bundle dir
-   * resolves to the plugin's own home (a directory-sourced marketplace serving
-   * in place). Null for a COPY of a plugin skill (different dir, same name),
-   * which is the origin/`synthPluginLockEntry` case instead. The distinction is
-   * the difference between "this is the plugin" and "this came from the
-   * plugin", and conflating them would make a skill its own upstream.
-   */
   function pluginSelfIdentity(
     name: string,
     identity: string,
@@ -9864,9 +7185,6 @@ export function createApiExtension(
       name: upstream.plugin,
       marketplace: upstream.marketplace,
       provider: upstream.provider,
-      // The marketplace repo, when the provider knows it — without it the
-      // plugin group row for identity-served skills had no "View plugin" while
-      // every lock-origin plugin group did.
       ...(upstream.repositoryUrl ? { url: upstream.repositoryUrl } : {}),
     };
   }
@@ -9878,71 +7196,30 @@ export function createApiExtension(
   ): SkillsLock['skills'][string] | null {
     const upstream = pluginSkillsByName(identity).get(name);
     if (!upstream) return null;
-    // The skill IS the plugin (in-place directory marketplace): it has no
-    // upstream, it is what everything else would be upstream OF. An origin here
-    // would claim the skill was imported from itself.
     if (skillAbsDir !== undefined) {
       try {
         if (realpathSync(skillAbsDir) === realpathSync(upstream.home)) return null;
-      } catch {
-        // Unresolvable dir: fall through — worst case is an origin on a broken
-        // bundle, which the list already surfaces as unreadable.
-      }
+      } catch {}
     }
     let importedAt: string;
     try {
       importedAt = statSync(join(upstream.home, 'SKILL.md')).mtime.toISOString();
     } catch (err) {
-      // A partially-corrupt plugin cache: the origin still renders, but its
-      // date is the epoch — log so that reads as a broken cache, not a bug here.
       log.warn({ err, home: upstream.home }, 'plugin bundle unreadable; origin dated epoch');
       importedAt = new Date(0).toISOString();
     }
     return {
-      // The plugin-cache DIR, not a display name — because that is what a real
-      // import from a plugin records as its source, and three consumers already
-      // key off that shape: the sidebar's provenance bucket recognises it as a
-      // PLUGIN group (so the copy lands in the same group as the plugin's own
-      // residents, with the plugin glyph, instead of minting a second group
-      // under an unrecognised label), `use-skill-origin` derives its "From the
-      // {plugin} plugin" wording from it, and the update path can resolve it.
       source: upstream.home,
       skill: name,
       contentHash: upstream.contentHash,
-      // NO `localHash`, so this origin never drives the Modified indicator.
-      //
-      // The plugin's bytes look like the obvious baseline, but a copy is rarely
-      // byte-identical to what it came from: a repo that fans plugin skills into
-      // `.agents/skills/` legitimately rewrites frontmatter and injects a
-      // provenance banner on the way. Measured against this monorepo, every one
-      // of those copies compares as diverged — so a plugin-derived `localHash`
-      // would flag 83 skills as Modified that nobody modified. A transformation
-      // applied on copy is indistinguishable from a user's edit at the byte
-      // level, and "you changed this" is the wrong thing to say when they did
-      // not. Naming the upstream is the claim the evidence supports.
-      // Never auto-pull. The harness owns plugin updates, and a repo that syncs
-      // these has its own updater — two writers for one file is how they fight.
       autoUpdate: false,
       importedAt,
     };
   }
 
-  /**
-   * `SKILL.md` of the bundle OK ships for `name`. Null in three cases: the name
-   * is not a built-in; the bundle cannot be located (a broken install — the
-   * caller then lists nothing rather than inventing a row); or `scope` is given
-   * and disagrees with the tier the bundle declares, which is how a cross-scope
-   * install is refused. Callers that only need to DESCRIBE a bundle omit
-   * `scope`; callers that are about to WRITE one must pass it.
-   */
   function shippedBundleSkillMd(name: string, scope?: 'project' | 'global'): string | null {
     const id = BUNDLE_IDS.find((bundleId) => BUNDLE_SKILL_NAME[bundleId] === name);
     if (id === undefined) return null;
-    // Each bundle declares the scope it belongs at: `open-knowledge` is
-    // project-local, `discovery` + `write-skill` are user-global. Materializing
-    // one at the other scope makes a SECOND copy of a skill that already exists
-    // — the agent then loads it twice and the sidebar lists it twice, once under
-    // PROJECT and once under GLOBAL. Only the listing side may ask scope-free.
     if (scope !== undefined && BUNDLE_SCOPE[id] !== (scope === 'global' ? 'user' : 'project')) {
       return null;
     }
@@ -9951,32 +7228,11 @@ export function createApiExtension(
       const md = resolve(dir, 'SKILL.md');
       return existsSync(md) ? md : null;
     } catch (err) {
-      // A missing bundle asset dir is a broken install — the caller lists
-      // nothing, which is unsupportable without a trail saying why.
       log.warn({ name, err }, `[skills] bundle asset dir unresolved for built-in ${name}`);
       return null;
     }
   }
 
-  /**
-   * The managed, read-only skills-list entry for a built-in bundle skill.
-   *
-   * Read from its on-disk projection under `base` when one exists. When NONE
-   * does, the entry is still emitted, sourced from the bundle OK ships, with
-   * `installed: false` and no hosts: a built-in the user removed everywhere used
-   * to vanish from this list, which took with it the only row they could install
-   * it back from. The lifecycle verbs are ordinary for these skills, so their row
-   * has to survive being uninstalled the same way any other skill's does.
-   *
-   * `path`/`absolutePath` then point at the shipped bundle, which is where the
-   * content genuinely is — the read + preview surfaces already resolve a built-in
-   * by directory, and there is no in-project doc to name until it is installed.
-   *
-   * Marked `managed: true` so the UI labels it and disables mutation; the
-   * write/rename/delete APIs refuse it independently. An `origin` (skills.sh repo
-   * link + manual update path) is attached from the synthesized built-in lock
-   * entry, which needs an installed copy to hash and so is absent until then.
-   */
   function builtinSkillListEntry(
     base: string,
     name: string,
@@ -10000,14 +7256,8 @@ export function createApiExtension(
     try {
       const { frontmatter } = parseFrontmatterDoc(readFileSync(skillMd, 'utf-8'));
       if (typeof frontmatter.description === 'string') description = frontmatter.description;
-    } catch {
-      // Malformed SKILL.md: still list it (without a description) so it's visible.
-    }
+    } catch {}
     const synthEntry = synthBuiltinLockEntry(base, name);
-    // Costed like any other bundle. Omitting it here is what made these rows the
-    // one place a skill's context price was invisible, and it is why the
-    // settings blocks had to read the desktop bridge for a number this endpoint
-    // already had every other input for.
     const parsed = parseSkillDir(dirname(skillMd));
     return {
       name,
@@ -10023,15 +7273,6 @@ export function createApiExtension(
     };
   }
 
-  /**
-   * Refuse an EDIT of one of OK's runtime skills (`open-knowledge`,
-   * `open-knowledge-discovery`, `open-knowledge-write-skill`) — the app's own
-   * agent contract. Read-only is an EDIT gate only: a silent local edit would
-   * invisibly fork the contract, so content changes arrive exclusively via
-   * checkpointed reimport/seed. Lifecycle verbs (delete / move / install /
-   * uninstall) are ORDINARY for these skills; the same call doubles as the
-   * squat guard on CREATE/rename-to. Fork-to-own covers variants.
-   */
   function rejectReservedBuiltinSkill(name: string, res: ServerResponse, handler: string): boolean {
     if (!isInternalBundleSkillName(name)) return false;
     errorResponse(
@@ -10044,59 +7285,25 @@ export function createApiExtension(
     return true;
   }
 
-  /**
-   * POSIX store-relative path for a skill file. Project skills are reported
-   * relative to `contentDir` (→ `.ok/skills/<name>/SKILL.md`); global skills
-   * relative to `<home>` (same `.ok/skills/...` suffix) so the path reads the
-   * same regardless of scope.
-   */
   function skillRelPath(abs: string, scope: 'project' | 'global'): string {
     const base = scope === 'global' ? skillsHome : contentDir;
     return relative(base, abs).split(/[\\/]/).filter(Boolean).join('/');
   }
 
-  /**
-   * The host-dir base for a skill's install surface: the project root (project
-   * scope) or the user home (global scope). `projectSkill`/`reverseProjectSkill`
-   * resolve `.{host}/skills/<name>` against it, and the install marker lives at
-   * `<base>/.ok/local/`. Single source for the install/uninstall scope→base map.
-   */
   function skillInstallBase(scope: 'project' | 'global'): string | undefined {
     return scope === 'global' ? skillsHome : projectDir;
   }
 
-  /**
-   * Remove a skill's editor-host projections + drop its install-marker entry,
-   * leaving the source intact. Shared by DELETE (full removal) and the uninstall
-   * endpoint. Returns true when an install record existed.
-   *
-   * IN-PLACE guard: when the skill has no `.ok/skills` store source,
-   * its editor-dir occurrences ARE the skill — the canonical and any fork are
-   * REAL dirs a blanket reverse-projection would rm -rf. Route those through
-   * `removeInPlaceSkillCopies`, which removes only lossless occurrences
-   * (symlinks / same-hash copies) and never the canonical or a differing dir.
-   */
   async function uninstallSkillFromHostDirs(
     base: string,
     name: string,
     scope: 'project' | 'global',
-    /**
-     * `purge`: leave NOTHING at this scope. A cross-scope move has already put
-     * the bytes at the destination, so the hub-consolidation an uninstall
-     * performs below is wrong here — it kept a copy in `.agents/skills`, which
-     * the next scan re-detected as a second skill of the same name at the scope
-     * the user just moved away from.
-     */
     opts: { purge?: { contentHash: string } } = {},
   ): Promise<boolean> {
     const installed = await removeSkillInstall(base, name);
     const scanBaseForPurge = scope === 'project' ? contentDir : skillsHome;
     if (opts.purge !== undefined) {
       reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
-      // Content-guarded: only THIS skill's occurrences go. Two same-named
-      // bundles with different bytes are two distinct skills by design
-      // (`conflictHosts`), and deleting the other one because this one moved
-      // away destroys a bundle its owner never touched.
       for (const dir of removableSkillOccurrenceDirs(
         scanBaseForPurge,
         scope,
@@ -10114,16 +7321,6 @@ export function createApiExtension(
       if (entry) {
         const scanBase = scope === 'project' ? contentDir : skillsHome;
         const canonical = resolve(scanBase, entry.dir);
-        // Uninstall consolidates to the vendor-neutral `.agents` hub: the skill
-        // survives THERE and every EDITOR projection is removed. Protecting the
-        // scan's precedence canonical instead would keep whichever editor won the
-        // election on install (`.claude` outranks `.agents`) and remove the hub —
-        // the reverse of an uninstall (the user's "uninstall" would leave the
-        // skill sitting in the editor). If the hub lacks a copy (install set-exact
-        // moved the skill into the editor), materialize it from the canonical so
-        // the skill is never deleted by an uninstall. We never INVENT
-        // `.agents` — a project with no hub root falls back to keeping the
-        // canonical (a hub-less skill just stays put).
         const hubRoot = resolve(scanBase, '.agents', 'skills');
         const hubDir = join(hubRoot, name);
         if (existsSync(hubRoot) && !existsSync(join(hubDir, 'SKILL.md'))) {
@@ -10147,24 +7344,10 @@ export function createApiExtension(
         return installed !== null;
       }
     }
-    // Reverse-project across ALL skill-surface host dirs, NOT just the marker's
-    // recorded hosts. The marker can be stale or absent (e.g. after a cross-scope
-    // move, or when the source was removed out-of-band) while orphan/dangling
-    // projection symlinks remain on disk. Cleaning the full set — combined with
-    // `reverseProjectSkill`'s dangling-symlink removal — guarantees no projection
-    // survives a delete/move. `reverseProjectSkill` is a no-op per host that
-    // has nothing to remove, so over-covering is safe.
     reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
     return installed !== null;
   }
 
-  /**
-   * Enumerate `<skillsRoot>/<name>/SKILL.md` entries for the Skills panel.
-   * Reads each skill's frontmatter for `description`; a malformed/absent
-   * frontmatter still lists (description omitted) so the panel can surface it
-   * so it can be fixed. Non-skill-named dirs are skipped. Bounded by
-   * `SKILLS_LIST_CAP`.
-   */
   function resolveSkillsList(
     skillsRoot: string,
     scope: 'project' | 'global',
@@ -10192,10 +7375,6 @@ export function createApiExtension(
     try {
       entries = readdirSync(skillsRoot, { withFileTypes: true });
     } catch (err) {
-      // An EACCES / I/O failure here returns an empty list indistinguishable
-      // from "no skills" — log it so the failure is observable rather than
-      // silently presenting a zero-skill library. Contract unchanged: the
-      // handler still returns the (empty) list rather than erroring.
       getLogger('skills').warn(
         { err, skillsRoot, scope },
         'failed to read skills root — returning empty skills list',
@@ -10215,9 +7394,7 @@ export function createApiExtension(
       try {
         const { frontmatter } = parseFrontmatterDoc(readFileSync(skillMd, 'utf-8'));
         if (typeof frontmatter.description === 'string') description = frontmatter.description;
-      } catch {
-        // Malformed SKILL.md — list it without a description so it can be fixed.
-      }
+      } catch {}
       skills.push({
         name: entry.name,
         ...(description !== undefined ? { description } : {}),
@@ -10229,15 +7406,6 @@ export function createApiExtension(
     return { skills, truncated };
   }
 
-  /**
-   * The `.gitignore` line that re-includes a skill bundle's SKILLS ROOT.
-   *
-   * Whole directory, never the one bundle: git cannot re-include a file whose
-   * parent directory is excluded, and the common rule (`.claude/*`) excludes
-   * `.claude/skills` itself — so `!/.claude/skills/<name>/` silently does
-   * nothing while looking exactly like a fix. Verified in
-   * `api-extension.test.ts`.
-   */
   function trackInGitLine(skillDirRel: string): string {
     const root = dirname(skillDirRel);
     return `!/${root.split(sep).join('/')}/`;
@@ -10266,10 +7434,6 @@ export function createApiExtension(
         }
         const inPlace = scanInPlaceSkills(contentDir).find((s) => s.name === body.name);
         const mountedDirRel = inPlace?.dir ?? `${LEGACY_SKILL_STORE_ROOT}/${body.name}`;
-        // Resolve through any symlink first: the rule has to name the directory
-        // git is actually excluding, which for an aliased bundle is the
-        // canonical one, not the mount. A negation for the mount would verify
-        // as ineffective and be reverted — correct, but useless to the user.
         const indexedFileRel =
           indexedSkillContentPath(resolve(contentDir, mountedDirRel, 'SKILL.md'), contentDir) ??
           `${mountedDirRel}/SKILL.md`;
@@ -10279,8 +7443,6 @@ export function createApiExtension(
         const gitignoreRel = '.gitignore';
         const gitignoreAbs = resolve(contentDir, gitignoreRel);
 
-        // Already admitted: nothing to do, and saying so beats writing a rule
-        // that changes nothing.
         if (contentFilter && !contentFilter.isPathIgnored(skillFileRel)) {
           successResponse(
             res,
@@ -10305,8 +7467,6 @@ export function createApiExtension(
         const before = existsSync(gitignoreAbs) ? readFileSync(gitignoreAbs, 'utf-8') : null;
         const lines = (before ?? '').split('\n');
         if (lines.some((l) => l.trim() === line)) {
-          // The rule is present but the path is still ignored — appending a
-          // duplicate would not change that. Report rather than no-op silently.
           errorResponse(
             res,
             409,
@@ -10321,12 +7481,6 @@ export function createApiExtension(
         bumpSkillsCatalogGen();
         await contentFilter?.rebuildIgnorePatterns();
 
-        // VERIFY, then keep or revert. A negation rule is not universally
-        // sufficient — an ancestor excluded as a directory (`.claude/`, not
-        // `.claude/*`) cannot be re-included from below — so the only honest
-        // way to report success is to ask the filter again. Leaving a rule
-        // behind that did not work would be the same class of silent lie this
-        // whole endpoint exists to end.
         if (contentFilter?.isPathIgnored(skillFileRel)) {
           if (before === null) rmSync(gitignoreAbs, { force: true });
           else writeFileSync(gitignoreAbs, before, 'utf-8');
@@ -10341,10 +7495,6 @@ export function createApiExtension(
           );
           return;
         }
-        // Every other handler that rebuilds the filter broadcasts; without it
-        // the newly admitted skill sits unindexed in the UI until an unrelated
-        // refresh — the same "it's right there and won't open" this endpoint
-        // exists to end.
         signalChannel?.('files');
         successResponse(
           res,
@@ -10359,22 +7509,12 @@ export function createApiExtension(
     { handler: 'skill-track-in-git', method: 'POST' },
   );
 
-  // Per-extension state for the read-side allow-list heal in the list handler.
   const skillAdmissionHeal: SkillAdmissionHealState = { lastKey: null };
 
   const handleSkillsList = withValidation(
     EmptyRequestSchema,
     catchErrors(
       async (_req, res) => {
-        // Cache hit still runs a CHEAP in-place rescan (5-60ms): a skill dir
-        // written straight to disk by an external writer must list without any
-        // API mutation having bumped the generation - the no-restart admission
-        // contract skills-list-admission.test.ts pins. PEEK, never swap: the
-        // admission heal below fires off the PRE-swap excluded state, and
-        // swapping here would silently defuse it.
-        // Editor-home detection folds in too: a bare `mkdir .github/skills`
-        // changes the offered install targets without emitting any signal, and
-        // the probes are a handful of existsSync calls.
         const inPlaceFp =
           (contentFilter?.peekFreshInPlaceSkillDirsFingerprint() ?? '') +
           '\u0001' +
@@ -10384,20 +7524,10 @@ export function createApiExtension(
             .map((h) => h.editorId)
             .join(',') +
           '\u0001' +
-          // GLOBAL host-dir bundles fold in too: the desktop bridge (and any
-          // external tool) installs into `~/.claude/skills` & co without any
-          // HTTP mutation, so no generation bump ever fires for those writes.
-          // The one client refetch they trigger lands inside the cache TTL and
-          // then nothing re-asks - the row read stale forever (the desktop
-          // skills-studio smoke pins this).
           scanGlobalInPlaceSkills(skillsHome)
             .map((s) => s.dir)
             .sort()
             .join(',');
-        // A moved fingerprint means external on-disk state changed; the
-        // enumeration cache keys on the generation alone, so bump it or the
-        // rebuilt response below would still be assembled from the stale
-        // enumeration.
         if (skillsListCache !== null && skillsListCache.fp !== inPlaceFp) {
           bumpSkillsCatalogGen();
         }
@@ -10412,59 +7542,15 @@ export function createApiExtension(
           });
           return;
         }
-        // Union both scopes: project skills (`<contentDir>/.ok/skills`, git-
-        // shared) + global skills (`<home>/.ok/skills`, user-level). Each is
-        // enriched from ITS OWN install marker — the project marker at
-        // `<projectDir>/.ok/local/`, the user marker at `<home>/.ok/local/`.
         const projectSkillsRoot = resolveSkillsRoot('project');
         const project = resolveSkillsList(projectSkillsRoot, 'project');
         const globalSkills = resolveSkillsList(resolveSkillsRoot('global'), 'global');
-        // Editors the install menu may OFFER per scope on THIS machine — both
-        // scopes now gate on the SAME rule: the editor's home already exists.
-        // Global uses `detectUserSkillHosts`, project `detectProjectSkillEditors`.
-        // Offering an undetected editor either no-ops and reverts the checkmark,
-        // or worse, succeeds by creating a dotdir for a tool the user does not
-        // have — which OK's own detection then reports as installed.
-        //
-        // "Install creates the dir, so all are installable" describes the
-        // behaviour; it does not justify it. Both scopes gate.
-        //
-        // Probed against `projectDir`, not `contentDir`, because that is what
-        // `skillInstallBase('project')` resolves to — so this gate asks about the
-        // same base the install it gates will actually write into. The sibling
-        // gate on `folders[]` below uses `contentDir` instead, matching the scan
-        // it filters. The two coincide unless `content.dir` names a subdirectory
-        // of the project.
         const projectInstallableEditors: string[] = projectDir
           ? detectProjectSkillEditors(projectDir)
           : [];
         const globalInstallableEditors: string[] = detectUserSkillHosts(skillsHome).map(
           (h) => h.editorId,
         );
-        // Probed against `projectDir`, not `contentDir`, for the same reason the
-        // sibling gate above states: that is what `skillInstallBase('project')`
-        // resolves to, so this must ask about the base the install it gates will
-        // actually write into. They differ when `content.dir` names a subdir.
-        //
-        // ONE predicate, TWO bases — each consumer probes the base it writes
-        // into. The install menu consumes this flag and installs to
-        // `skillInstallBase('project')` = `projectDir`; the Folders surface and
-        // the folder verbs write under `contentDir` and probe that. The two
-        // coincide unless `content.dir` names a subdirectory of the project.
-        //
-        // Where they diverge, only the `HUB_READER_EDITORS` branch is
-        // base-independent, so the split is narrow: `<contentDir>/.agents`
-        // present with no reader installed and no `<projectDir>/.agents` gives
-        // Folders an `absent` hub row while the menu gets `hubOffered: false`.
-        // ACCEPTED rather than papered over — probing one base for both would
-        // make one of the two gates answer about a directory its own writes
-        // never touch, which is the failure the sibling comment above documents.
-        //
-        // What is NOT accepted is the old split: the menu keying off a skill
-        // ALREADY living under `.agents/`, so a reader-activated hub showed in
-        // Settings and was absent from the menu the docs pointed at — with the
-        // hub not a link target until it exists, that left no non-circular way
-        // to make the first placement.
         const projectHubOffered: boolean = projectDir
           ? isActivatedSkillRoot(projectDir, 'project', AGENTS_SKILLS_ROOT, skillsHome)
           : false;
@@ -10476,9 +7562,6 @@ export function createApiExtension(
         );
         const projectInstalled = projectDir ? readInstalledSkills(projectDir).skills : {};
         const globalInstalled = readInstalledSkills(skillsHome).skills;
-        // Import provenance (project skills only — the global store is unversioned
-        // and has no lockfile). Read once so the "Imported from …" row + "Update
-        // from source" action have the source without a per-skill lookup.
         const lock: SkillsLock | null = projectDir
           ? (parseSkillsLock(
               existsSync(join(projectDir, ...SKILLS_LOCK_REL))
@@ -10497,22 +7580,10 @@ export function createApiExtension(
             const hosts = record?.hosts ?? [];
             const entry = withOrigin ? lock?.skills[skill.name] : undefined;
             const origin = entry ? skillOrigin(entry) : undefined;
-            // Locally modified since install: current on-disk hash diverges from the
-            // recorded write-time baseline. Only decidable when `localHash` was
-            // recorded (post-baseline installs). This is a greenfield feature —
-            // skills imported before it read as clean (no baseline, so neither
-            // Modified nor Revert applies), which keeps Modified and Revert gated on
-            // the SAME `localHash`/`baselineRef` that only post-feature imports carry.
             const modified =
               entry?.localHash !== undefined &&
               localSkillHash(projectSkillsRoot, skill.name) !== entry.localHash;
-            // Revert restores from the shadow-repo `baselineRef`; only offer it when
-            // one was recorded (git project). A non-git project records `localHash`
-            // but no `baselineRef`, so it can show Modified yet not Revert.
             const revertable = entry?.baselineRef !== undefined;
-            // `installed` = has ≥1 host, NOT merely marker-present. A marker with
-            // zero hosts (e.g. a rename whose editors all vanished) is source-only, not
-            // an installed skill — the install handler also drops empty markers.
             return {
               ...skill,
               installed: hosts.length > 0,
@@ -10522,22 +7593,7 @@ export function createApiExtension(
               ...(revertable ? { revertable: true } : {}),
             };
           });
-        // In-place editor-dir skills: one entry per registry canonical,
-        // at its REAL path (`.claude/skills/<name>/SKILL.md`, …). For PROJECT
-        // scope the IN-PLACE canonical wins a name collision with a `.ok/skills`
-        // store dir — after the boot migration a project store dir sharing an
-        // in-place name is a user placement (or stray copy) of the SAME skill,
-        // and letting the store win hijacked the skill's identity (hosts
-        // vanished). Built-ins are appended separately below. Import lifecycle
-        // (origin / Modified / Revert) reads the same lockfile as store
-        // skills; `modified` compares the canonical bundle's `parseSkillDir`
-        // hash against the recorded `localHash`.
-        // Machine-local custom placements (copies/symlinks the user placed at
-        // arbitrary paths) — disclosed on the project entries' path lists.
         const placements = projectDir ? readSkillPlacements(projectDir) : {};
-        // DRIFT: a recorded location whose on-disk form (copy vs symlink) no
-        // longer matches what OK last wrote there = another tool rewrote it.
-        // EXTERNAL: locations the user handed off — reported, never touched.
         const placementFlags = (
           baseDir: string,
           list: ReturnType<typeof readSkillPlacements>[string] | undefined,
@@ -10546,12 +7602,6 @@ export function createApiExtension(
           const drift: string[] = [];
           for (const p of list ?? []) {
             const abs = resolve(baseDir, p.path);
-            // The skill's OWN folder is never a placement: it is the thing the
-            // others project from. A record can outlive the source moving here
-            // (it was a link or copy before it became the source), and reading
-            // that stale record as drift flags the source itself as "changed
-            // outside" on a project nobody has touched. The skill-wide convert
-            // loop already skips the canonical dir for the same reason.
             if (canonicalAbs !== undefined && abs === resolve(canonicalAbs)) continue;
             let isLink = false;
             try {
@@ -10560,16 +7610,10 @@ export function createApiExtension(
               continue;
             }
             if ((isLink ? 'link' : 'copy') === p.mode) continue;
-            // A link that RESOLVES to the skill's own canonical dir is a healthy,
-            // known form regardless of who rewired it (folder link↔per-skill link
-            // conversions land here) — never "changed outside" noise. It stays
-            // flagged only when it points somewhere else (or dangles).
             if (isLink && canonicalAbs !== undefined) {
               try {
                 if (realpathSync(abs) === realpathSync(canonicalAbs)) continue;
-              } catch {
-                // dangling / unresolvable — fall through to the flag
-              }
+              } catch {}
             }
             drift.push(p.path);
           }
@@ -10577,24 +7621,9 @@ export function createApiExtension(
         };
         const projectAliases = projectDir ? scanHostRootAliases(contentDir, 'project') : {};
         const projectAliasRoots = aliasedSourceRoots(projectAliases, 'project');
-        // Placement receipts recorded under a now-aliased root describe bytes
-        // that physically live in the alias TARGET — hiding them keeps the
-        // aliased folder from resurfacing as a fake location (and keeps every
-        // mutation surface off the alias). The records stay in the ledger:
-        // un-aliasing the folder brings them back unchanged.
         const underRoots = (path: string, roots: ReadonlySet<string>): boolean =>
           [...roots].some((r) => path === r || path.startsWith(`${r}/`));
-        // Ledger records under STANDARD editor roots are form receipts for
-        // editor rows (leave-behind links, drift expectations) — they feed the
-        // drift flags but are NOT custom placements: emitting them as
-        // such duplicated every editor row as a folder mark on the pill.
-        // Same identity `/api/skills/installed` scans under, so an upstream this
-        // list attributes is one that endpoint would also report — a linked
-        // worktree resolves to its parent checkout, where the plugin installs
-        // are actually keyed.
         const detectedIdentity = resolveProjectIdentity(projectDir ?? contentDir);
-        // One read + at most one write per enumeration — the baseline file is a
-        // cache, and this endpoint is hot.
         const pluginBaselines = openPluginBaselines(contentDir);
         const stdRootsProject = standardSkillRoots('project');
         const stdRootsGlobal = standardSkillRoots('global');
@@ -10605,18 +7634,7 @@ export function createApiExtension(
           (list ?? []).filter(
             (pl) => ![...aliasRoots].some((r) => pl.path === r || pl.path.startsWith(`${r}/`)),
           );
-        // The lockfile and the placement ledger are keyed by NAME, but a name can
-        // be held by several distinct-content bundles. There is no reliable way
-        // to tell which one a lock entry describes (a hand-edited bundle failing
-        // `localHash` looks exactly like a same-named bundle that was never ours),
-        // so lock-derived state binds to the by-name default row only. The others
-        // read as untracked. Attributing it to every same-named row would put a
-        // Revert button on a skill whose baseline belongs to a different one.
         const projectNameSeen = new Set<string>();
-        // The repo's own marketplace manifest is the second identity source:
-        // the registry join above is keyed by absolute checkout path, so a
-        // second clone of the same repo has no records there and its in-repo
-        // plugin skills would read as hand-authored.
         const repoPlugins = readRepoMarketplacePlugins(contentDir);
         const repoPluginIdentity = (dir: string) => {
           const p = repoMarketplacePluginFor(repoPlugins, dir);
@@ -10633,15 +7651,7 @@ export function createApiExtension(
           ? scanInPlaceSkills(contentDir).map((s) => {
               const tracked = !projectNameSeen.has(s.name);
               projectNameSeen.add(s.name);
-              // Neither built-ins nor plugin-derived copies have a stored
-              // lockfile entry, so both synthesize one: the built-in gets its
-              // skills.sh repo link, and a copy of a plugin's skill gets the
-              // plugin as its upstream. Order matters — a built-in is OK's own
-              // bundle and must not be re-attributed to a plugin that happens to
-              // ship the same name.
               const skillAbsDir = resolve(contentDir, s.dir);
-              // Identity beats provenance: a skill that IS a plugin's skill
-              // carries the plugin, never an origin.
               const selfPlugin = tracked
                 ? (pluginSelfIdentity(s.name, detectedIdentity, skillAbsDir) ??
                   repoPluginIdentity(skillAbsDir))
@@ -10653,9 +7663,6 @@ export function createApiExtension(
                     synthPluginLockEntry(s.name, detectedIdentity, skillAbsDir))
                   : undefined;
               const origin = entry ? skillOrigin(entry) : undefined;
-              // A recorded lock entry carries its own baseline; a plugin-derived
-              // one has none, so divergence is decided against the machine-local
-              // first-seen pair instead ("changed since OK started watching").
               const modified =
                 entry?.localHash !== undefined
                   ? s.contentHash !== entry.localHash
@@ -10706,38 +7713,21 @@ export function createApiExtension(
                 ...(origin ? { origin } : {}),
                 ...(modified ? { modified: true } : {}),
                 ...(entry?.baselineRef !== undefined ? { revertable: true } : {}),
-                // Runtime skills: ordinary entries, read-only CONTENT (the
-                // app's agent contract — edits arrive via reimport only).
                 ...(isInternalBundleSkillName(s.name) ? { managed: true as const } : {}),
               };
             })
           : [];
-        // GLOBAL in-place skills: user-home editor-dir canonicals, listed
-        // like any global skill but at their REAL (`~`-relative) paths. The
-        // `~/.ok/skills` store wins a name collision (migration pending), and
-        // built-ins are appended separately below. No origin/Modified/Revert —
-        // the global tier has no lockfile and is unversioned.
         const globalPlacements = readSkillPlacements(skillsHome);
-        // Global provenance (store retirement): seeded runtime skills + global
-        // imports record `~/.ok/skills-lock.json` — surface origin + Modified
-        // exactly like project entries. No `revertable` (no user shadow repo).
         const globalLock = readSkillsLock(join(skillsHome, ...SKILLS_LOCK_REL));
         const globalAliases = scanHostRootAliases(skillsHome, 'global');
         const globalAliasRoots = aliasedSourceRoots(globalAliases, 'global');
-        // Global mirrors project: IN-PLACE wins a name collision — a same-name
-        // store dir is a legacy resident awaiting migration, not the identity.
         const globalInPlaceNames = new Set(scanGlobalInPlaceSkills(skillsHome).map((s) => s.name));
         globalSkills.skills = globalSkills.skills.filter((s) => !globalInPlaceNames.has(s.name));
-        // Same name-keyed-ledger rule as the project tier: lock + placement state
-        // binds to the by-name default row, the rest read as untracked.
         const globalNameSeen = new Set<string>();
         const globalInPlace = scanGlobalInPlaceSkills(skillsHome).map((s) => {
           const tracked = !globalNameSeen.has(s.name);
           globalNameSeen.add(s.name);
           const placementsForRow = tracked ? globalPlacements[s.name] : undefined;
-          // Doc-identity qualifier for a NON-default same-named bundle: same
-          // authority as the watcher's reverse mapping (the precedence probe),
-          // so the doc the row opens and the doc its file events feed agree.
           const defaultDir = resolveGlobalNativeSkillDir(skillsHome, s.name);
           const hostQualifier =
             defaultDir !== null && resolve(skillsHome, s.dir) !== resolve(defaultDir)
@@ -10779,10 +7769,6 @@ export function createApiExtension(
             ...(isInternalBundleSkillName(s.name) ? { managed: true as const } : {}),
             ...(() => {
               if (!tracked) return {};
-              // Same two synthesized fallbacks as the project site: a built-in
-              // carries its skills.sh origin, a copy of a plugin's skill carries
-              // the plugin. The repo-manifest identity is project-only: a global
-              // skill is not tree-local, so no repo can serve it in place.
               const globalAbsDir = resolve(skillsHome, s.dir);
               const selfPluginGlobal = pluginSelfIdentity(s.name, detectedIdentity, globalAbsDir);
               if (selfPluginGlobal !== null) return { plugin: selfPluginGlobal };
@@ -10808,13 +7794,6 @@ export function createApiExtension(
             })(),
           };
         });
-        // Append OK's built-in skills (read from their on-disk editor
-        // projections, e.g. `.claude/skills/<name>/`) as managed, read-only
-        // entries, unless a real authored skill of the same name already exists
-        // in that scope (the reserved-name gate normally prevents this, but a
-        // pre-existing one wins to avoid a duplicate row). Both are needed because
-        // the detected-skills scan filters OK's reserved `open-knowledge*` names,
-        // so without this surfacing the built-ins would be invisible.
         const inPlaceNamesEarly = new Set(inPlace.map((e) => e.name));
         const projectBuiltin =
           projectDir &&
@@ -10822,9 +7801,6 @@ export function createApiExtension(
           !inPlaceNamesEarly.has(BUILTIN_PROJECT_SKILL_NAME)
             ? builtinSkillListEntry(projectDir, BUILTIN_PROJECT_SKILL_NAME, 'project')
             : null;
-        // The user-global built-ins (`open-knowledge-discovery`,
-        // `open-knowledge-write-skill`), force-installed under `<home>/.{host}/skills`
-        // and reclaimed on launch.
         const globalInPlaceNamesEarly = new Set(globalInPlace.map((e) => e.name));
         const globalBuiltins = USER_GLOBAL_BUNDLE_IDS.map((id) => BUNDLE_SKILL_NAME[id])
           .filter(
@@ -10844,22 +7820,12 @@ export function createApiExtension(
           ...globalBuiltins,
         ];
         pluginBaselines.flush();
-        // A project skill dir can be a SYMLINK to a canonical dir elsewhere in
-        // the content tree. Report BOTH: `path` is where the bundle is mounted
-        // (what install / reveal / host wiring reasons about), `canonicalPath`
-        // is the name the document index actually holds, which is the only one
-        // that opens. Global entries are home-relative, not content paths.
         const enriched = {
           skills: listed.map((entry) => {
             const canonicalPath =
               entry.scope === 'project' && entry.absolutePath
                 ? indexedSkillContentPath(entry.absolutePath, contentDir)
                 : null;
-            // Bundle file PATHS ride the list (no content reads, and the list
-            // response cache above absorbs the walks) so the sidebar tree can
-            // nest each skill's files without a per-skill `GET /api/skill`
-            // fan-out — N of those saturated the browser's request pool on
-            // every skills-changed signal and queued imports/opens behind them.
             const filePaths = entry.absolutePath
               ? listSkillBundledFilePaths(dirname(entry.absolutePath))
               : [];
@@ -10868,16 +7834,6 @@ export function createApiExtension(
               canonicalPath === null || canonicalPath === entry.path
                 ? withFiles
                 : { ...withFiles, canonicalPath };
-            // Listed but NOT admitted: a gitignored bundle is deliberately kept
-            // out of the document index, so it has no doc to open. Say so here
-            // rather than letting the click produce an empty tab.
-            //
-            // Judged on the path the client will actually OPEN, not the mounted
-            // one: for a symlinked bundle those differ, and asking about the
-            // wrong one gets it backwards both ways — a mount under a gitignored
-            // dir whose canonical is tracked opens fine yet would be refused,
-            // and the reverse would offer a `.gitignore` line for a directory
-            // that is not the one doing the excluding.
             const openedPath = canonicalPath ?? entry.path;
             return entry.scope === 'project' && contentFilter?.isPathIgnored(openedPath) === true
               ? { ...withCanonical, ignored: true }
@@ -10885,21 +7841,11 @@ export function createApiExtension(
           }),
           truncated: project.truncated || globalSkills.truncated,
         };
-        // Heal a stale in-place allow-list on the way out: a dir written by
-        // anything that skipped the rebuild lists here but has no page, so the
-        // skill opens into a Files fallback until the server restarts. The
-        // rebuild's re-scan lands asynchronously, so the skill becomes openable
-        // on the next refresh rather than in this response.
         const healed = await healUnservableSkillAdmission(
           inPlace.map((e) => e.path),
           contentFilter ?? null,
           skillAdmissionHeal,
         );
-        // The heal awaited a pattern rebuild, so the `ignored` flags computed
-        // during the build above may already be stale - a bundle gitignored
-        // moments ago must report `ignored: true` in THIS response, not the
-        // next one (the immediate-admission contract the admission tests pin).
-        // Only the ig-derived flag can change; recompute it in place.
         const responseBody = !healed
           ? enriched
           : {
@@ -10940,11 +7886,6 @@ export function createApiExtension(
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-get');
         if (scope === null) return;
 
-        // The built-in `open-knowledge*` skills live in the editor host dirs,
-        // not `.ok/skills`, so serve their on-disk installed copy read-only so
-        // the Skills UI can open + display exactly what agents load. The project
-        // built-in resolves under the project root, the user-global ones (served
-        // at `scope: 'global'`) under `<home>`.
         if (isInternalBundleSkillName(name)) {
           const base = scope === 'global' ? skillsHome : projectDir;
           const builtin = base
@@ -10978,8 +7919,6 @@ export function createApiExtension(
             return;
           }
         }
-        // Optional host: which same-named bundle to read. Omitted resolves to
-        // the by-name default, so existing callers are unaffected.
         const host = url.searchParams.get('host') ?? undefined;
         const skillDirAbs = resolveSkillDirForRead(scope, name, host);
         if (skillDirAbs === null) {
@@ -11003,17 +7942,12 @@ export function createApiExtension(
               name,
               scope,
               path: skillRelPath(skillMd, scope),
-              // Project the on-disk frontmatter onto the strict {name, description}
-              // shape; a malformed file falls back to the dir name + empty desc so
-              // the editor can load and fix it rather than 500.
               frontmatter: {
                 name: typeof frontmatter.name === 'string' ? frontmatter.name : name,
                 description:
                   typeof frontmatter.description === 'string' ? frontmatter.description : '',
               },
               body,
-              // Bundled files (scripts/, reference/, assets) inlined as read-only
-              // text so the editor can browse a skill as the folder it is.
               files: readSkillBundledFiles(skillDirAbs),
             },
           },
@@ -11031,31 +7965,11 @@ export function createApiExtension(
 
   async function seedSkillDerivedViews(docName: string, markdown: string): Promise<void> {
     if (!derivedDocumentIndex || isLinkIndexExcludedDoc(docName)) return;
-    // Refresh the content-filter's in-place skill allow-list FIRST. The index
-    // admits a doc via `contentFilter.isExcluded`, and a skill dir only enters
-    // that allow-list on `rebuildIgnorePatterns()` — which an API write does not
-    // otherwise trigger. So a just-created skill was judged excluded, and the
-    // seed DELETED it from the index instead of indexing it: its links never got
-    // extracted and nothing pointed at its references until an unrelated rescan.
     if (contentFilter) {
-      // The synchronous allow-list swap is what admits the new skill dir; the
-      // FULL rebuild is a whole-content-tree walk that took seconds-to-minutes
-      // on monorepo-sized roots and was holding the create response hostage
-      // (every skill op queued behind it once walks overlapped). The client no
-      // longer needs the awaited walk: opens resolve by the write's own path
-      // and re-verify a stale ignored flag against a fresh list, so the walk
-      // self-heals off-path.
       bumpSkillsCatalogGen();
       contentFilter.refreshInPlaceSkillDirs();
       scheduleDeferredIgnoreRebuild();
     }
-    // Best-effort like every other derived-index mutation: the skill is already
-    // on disk and committed by now, so a shutdown-time index error must not turn
-    // a successful write into a 500 the caller retries.
-    // Actually best-effort: the derived-index command queue serializes behind
-    // any in-flight full ingest (boot, watcher re-ingest), which measured 20s+
-    // on monorepo roots - the freshness of search/links for this one doc is
-    // not worth holding the create response.
     void recordDerivedDocumentBestEffort(docName, markdown, 'skill-put');
   }
 
@@ -11075,16 +7989,7 @@ export function createApiExtension(
         }
         if (!validateSkillName(body.name, res, 'skill-put')) return;
         if (rejectReservedBuiltinSkill(body.name, res, 'skill-put')) return;
-        // Deliberately NOT draining the flush chain here: on a live server the
-        // chain routinely holds a monorepo-scale shadow staging job (25-90s
-        // measured), and draining it made every create pay for it. The
-        // serialized chain still orders commits; the rapid create-then-edit
-        // coalescing window this loses is narrow and recoverable, a half-minute
-        // create is neither.
 
-        // Compose + validate the SKILL.md bytes server-side (OK
-        // builds name+description). The body itself is then written through the
-        // CRDT doc, not straight to disk.
         const composed = composeSkillContent({
           name: body.name,
           body: typeof body.body === 'string' ? body.body : '',
@@ -11102,11 +8007,6 @@ export function createApiExtension(
         const putBase = body.scope === 'project' ? contentDir : skillsHome;
         const existingAbs = resolveSkillDirForRead(body.scope, body.name);
         if (existingAbs === null) {
-          // CREATE (store retirement): a NEW skill is born IN-PLACE at the
-          // scope's default skill home — versioned, listed, and read at its
-          // real path from day one; the store gains no new residents. Same
-          // fs-direct spine as import (the live re-scan admits the new dir,
-          // after which it IS a content doc).
           const homeRel = resolveDefaultSkillHomeRel(putBase, body.scope);
           if (homeRel === null) {
             errorResponse(
@@ -11136,23 +8036,11 @@ export function createApiExtension(
             return;
           }
           if (body.scope === 'project') {
-            // Attribute under the skill's CONTENT-DOC name (`<dir>/SKILL`), the
-            // key `/api/history` filters contributors on — an EDIT records it via
-            // its content-doc write, but a fs-direct CREATE records only what we
-            // pass here. Passing the bare dir (`<dir>`) meant the create's commit
-            // failed the OkActor match and never showed in the skill's history
-            // (so the created version couldn't be restored to), even though the
-            // commit itself is a reachable ancestor of every edit.
             attributeOkArtifactWrite(
               actor,
               `${homeRel}/${body.name}/SKILL`,
               `skill-create: ${homeRel}/${body.name}/SKILL.md`,
             );
-            // scheduled on the serialized flush chain (fire-and-forget; the chain keeps commits ordered): authoring
-            // writes are versions. Two rapid PUTs (create then edit) with a
-            // deferred flush coalesce into ONE commit, folding the create into
-            // the edit — the timeline loses the version boundary and the
-            // create snapshot stops being a restore target.
             scheduleOkArtifactFlush('skill-put');
           }
           await seedSkillDerivedViews(
@@ -11175,26 +8063,15 @@ export function createApiExtension(
           );
           return;
         }
-        // EDIT — write through the skill's REAL doc: an in-place project
-        // skill's content doc lives at its editor-dir path; a store-backed one
-        // keeps `.ok/skills/<name>/SKILL`; a global skill keeps the managed
-        // doc (it resolves store-or-native itself).
         const created = false;
         const dirRel = relative(putBase, existingAbs).split(sep).join('/');
         const relPath = `${dirRel}/SKILL.md`;
         const docName =
           body.scope === 'project' ? `${dirRel}/SKILL` : skillLiveDocName(body.scope, body.name);
 
-        // Refuse if the content doc is mid-conflict — same gate as the sibling
-        // content-write handlers (a project SKILL.md is a CRDT content doc).
         if (checkSkillDocConflictGate(docName, 'skill-put', res)) return;
 
         // CRDT write (precedent #24 / #38): route the full SKILL.md through the
-        // doc's `Y.Text('source')` via the sanctioned paired-write primitive
-        // under the per-session frozen origin. Persistence serializes
-        // Y.Text verbatim to `.ok/skills/<name>/SKILL.md`. Identity for the
-        // session mirrors the other content handlers (extractAgentIdentity);
-        // shadow-commit attribution uses the actor (agent OR principal) above.
         const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
           body as unknown as Record<string, unknown>,
         );
@@ -11207,11 +8084,6 @@ export function createApiExtension(
           composeAndWriteRawBody(session.dc.document, composed.content, 'agent');
         }, session.origin);
 
-        // Force the debounced store so the file is on disk before the shadow
-        // commit git-adds it. Surfaces a swallowed disk failure as an error.
-        // On CREATE the doc is brand-new, so its store debounce isn't scheduled
-        // at this sync point -- `force` waits for it so SKILL.md is durable
-        // before we respond (a fast create->rename must not 404 on `existsSync`).
         const flushOutcome = await flushDiskAndDetectOutcome(docName);
         if (flushOutcome?.kind === 'failure') {
           respondPersistenceFailure(res, flushOutcome.failure, 'skill-put');
@@ -11222,29 +8094,14 @@ export function createApiExtension(
           return;
         }
 
-        // Project skills are versioned via the project shadow repo; global
-        // skills live at `<home>/.ok/skills` (outside any project git) and are
-        // unversioned — skip the attribution + shadow commit for them.
         if (body.scope === 'project') {
           attributeOkArtifactWrite(
             actor,
             okArtifactKey('skill', '', body.name),
             `${created ? 'skill-create' : 'skill-edit'}: ${relPath}`,
           );
-          // scheduled on the serialized flush chain (fire-and-forget; the chain keeps commits ordered): authoring
-          // writes are versions. Two rapid PUTs (create then edit) with a
-          // deferred flush coalesce into ONE commit, folding the create into
-          // the edit — the timeline loses the version boundary and the
-          // create snapshot stops being a restore target.
           scheduleOkArtifactFlush('skill-put');
         }
-        // Seed the derived views from the bytes we just wrote. The live-derived
-        // index refreshes on a debounce after a change hook, which an API write
-        // like this one does not reliably reach — so a skill written purely
-        // through the API could sit unindexed, its SKILL.md links producing
-        // neither a backlink nor a dead link. Same synchronous refresh the lint
-        // path does, and idempotent: any later debounced pass re-applies the
-        // same bytes.
         await seedSkillDerivedViews(docName, composed.content);
         signalChannel?.('files');
         successResponse(
@@ -11264,14 +8121,6 @@ export function createApiExtension(
     { handler: 'skill-put', method: 'PUT' },
   );
 
-  /**
-   * The skill's EFFECTIVE root for lifecycle verbs (delete/rename/move):
-   * the parent of its real dir (in-place-first via `resolveSkillDirForRead`),
-   * falling back to the legacy store root when the skill doesn't exist (the
-   * 404 path stays a 404). Also removes same-hash copies/links across the
-   * other roots first (lossless-guarded) so a lifecycle verb on the canonical
-   * never strands orphan occurrences.
-   */
   function effectiveSkillRoot(
     scope: 'project' | 'global',
     name: string,
@@ -11309,11 +8158,6 @@ export function createApiExtension(
         if (!validateSkillName(name, res, 'skill-delete')) return;
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-delete');
         if (scope === null) return;
-        // Optional host: delete THIS same-named bundle (the one the clicked
-        // row shows), not the by-name default. A host-scoped delete is
-        // surgical — no copy sweep, no store-zombie sweep, no uninstall
-        // fan-out: those all resolve by name and would tear down the DEFAULT
-        // bundle's placements, which the user did not ask to touch.
         const host = url.searchParams.get('host') ?? undefined;
         const { root: skillsRoot, dirRel, realDir } = effectiveSkillRoot(scope, name, host);
         if (host !== undefined && realDir === null) {
@@ -11324,8 +8168,6 @@ export function createApiExtension(
           return;
         }
 
-        // DELETE is query-param transport — read identity + summary from the
-        // query string into a synthetic body for `extractActorIdentity`.
         const actor = extractActorIdentityFromQuery(url, getPrincipal);
         if (actor.kind === 'invalid-summary') {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
@@ -11334,12 +8176,6 @@ export function createApiExtension(
           return;
         }
 
-        // Tear down the live skill doc (if open) BEFORE removing the dir, so its
-        // persistence branch can't re-store (resurrect) the file on a later
-        // unload. Project skills are content docs (`.ok/skills/<name>/SKILL`),
-        // NOT `__skill__/project/<name>` — closing the wrong doc leaves the open
-        // content doc to resurrect the just-deleted source, which is what made
-        // the project↔global round-trip drop the skill. No-op when unopened.
         await captureAndCloseDocuments(
           scope === 'project'
             ? [...new Set([`${dirRel}/SKILL`, skillLiveDocName(scope, name)])]
@@ -11347,17 +8183,8 @@ export function createApiExtension(
           'deleted-upstream',
         );
 
-        // Same-hash copies/links across the other roots go first (lossless-
-        // guarded) — deleting the canonical must not strand them. Skipped for
-        // a host-scoped delete: that removes one divergent bundle only.
         if (host === undefined) sweepSkillOccurrences(scope, name);
         const result = applySkillDelete({ skillsRoot, name });
-        // Delete is TOTAL — the skill dies everywhere (locked decision). When
-        // the canonical lived in a native dir, a legacy `.ok/skills` store
-        // resident of the same name is a placement of the SAME skill (the
-        // in-place-wins list rule) — leaving it resurrected the row as a
-        // zombie. Remove it too; a failure surfaces as a warning, never a
-        // silent survivor.
         const storeRoot = resolveSkillsRoot(scope);
         if (
           host === undefined &&
@@ -11388,8 +8215,6 @@ export function createApiExtension(
           );
           return;
         }
-        // Project source removal is attributed + shadow-committed; global
-        // skills are unversioned (no project shadow repo), so skip it for them.
         if (result.existed) {
           if (scope === 'project') {
             attributeOkArtifactWrite(actor, dirRel, `skill-delete: ${dirRel}`);
@@ -11398,12 +8223,6 @@ export function createApiExtension(
           }
           signalChannel?.('files');
         }
-        // Uninstall (reverse-projection folds into delete): if this skill was
-        // installed, remove its host-dir projections and drop the marker entry.
-        // Runs even when the source delete was a no-op so an orphaned
-        // installation is still cleaned up. Best-effort — the source delete
-        // already succeeded. Global skills uninstall from the user-global host
-        // dirs + user marker (`<home>`); project skills from the project's.
         const uninstallBase = skillInstallBase(scope);
         if (host === undefined && uninstallBase) {
           await uninstallSkillFromHostDirs(uninstallBase, name, scope);
@@ -11446,8 +8265,6 @@ export function createApiExtension(
           body.scope,
           body.fromName,
         );
-        // A same-name occurrence in ANY root blocks the rename (registry-wide),
-        // not just the rename root — otherwise the renamed skill forks.
         if (resolveSkillDirForRead(body.scope, body.toName) !== null) {
           errorResponse(
             res,
@@ -11459,14 +8276,6 @@ export function createApiExtension(
           return;
         }
 
-        // Capture the FULL editor host set BEFORE any teardown — the sweep below
-        // removes the old-name copies, and the install marker alone under-reports
-        // an in-place skill's hosts (created/imported in place, or an older
-        // marker). Union marker + scan + folder-symlink alias audience so the
-        // rename re-projects the NEW name into every editor the old name occupied;
-        // otherwise it lands only on the canonical root and silently drops
-        // .claude/.cursor/etc — leaving a stale copy of the old name in the other
-        // editors (, the same class as's scope move).
         const moveBase = skillInstallBase(body.scope);
         const priorInstall = moveBase
           ? readInstalledSkills(moveBase).skills[body.fromName]
@@ -11492,11 +8301,6 @@ export function createApiExtension(
           ]),
         ];
 
-        // Tear down the live source skill doc (if open) BEFORE the git-mv
-        // relocates its dir — otherwise its persistence branch would re-store at
-        // the now-stale fromName path, resurrecting the moved-away skill. Project
-        // skills are content docs, not `__skill__/project/<name>`. The
-        // destination doc loads fresh from disk on next open.
         await captureAndCloseDocuments(
           body.scope === 'project'
             ? [...new Set([`${fromDirRel}/SKILL`, skillLiveDocName(body.scope, body.fromName)])]
@@ -11504,8 +8308,6 @@ export function createApiExtension(
           'renamed',
         );
 
-        // Old-name copies/links across other roots are removed FIRST (lossless-
-        // guarded) — a rename must not leave orphan occurrences of the old name.
         sweepSkillOccurrences(body.scope, body.fromName);
         const result = await applySkillMove({
           skillsRoot,
@@ -11547,12 +8349,6 @@ export function createApiExtension(
           return;
         }
 
-        // A skill's identity is its directory name, so renaming the dir leaves
-        // the moved SKILL.md's `name:` frontmatter stale (== fromName) — which
-        // makes the skill invalid (name≠dir). Always rewrite the relocated
-        // SKILL.md so `name` tracks the new directory; layer any caller-supplied
-        // body/description edit on top (atomic move+edit). Unlike a template
-        // move, this rewrite is mandatory, not optional.
         let contentEditError: { code: string; message: string } | null = null;
         const movedSkillMd = resolve(skillsRoot, body.toName, 'SKILL.md');
         let parsedBody = '';
@@ -11563,10 +8359,7 @@ export function createApiExtension(
           if (typeof parsed.frontmatter.description === 'string') {
             parsedDescription = parsed.frontmatter.description;
           }
-        } catch {
-          // Unreadable moved file — the rewrite below will fail loudly via the
-          // applySkillWrite validation rather than silently wiping content.
-        }
+        } catch {}
         const writeBody = typeof body.body === 'string' ? body.body : parsedBody;
         const writeDescription =
           body.frontmatter !== undefined ? body.frontmatter.description : parsedDescription;
@@ -11578,10 +8371,6 @@ export function createApiExtension(
         });
         if (!rewrite.ok) contentEditError = rewrite.error;
 
-        // Carry inbound `/fromName` refs, the way a document rename carries its
-        // inbound links. Runs BEFORE the reindex below so the moved skill's own
-        // re-read picks up the rewritten bytes in one pass. Never fatal: the
-        // rename already landed on disk, and failing here would strand it.
         let refRewrites: SkillRefRewrite[] = [];
         if (!contentEditError) {
           try {
@@ -11599,24 +8388,7 @@ export function createApiExtension(
           }
         }
 
-        // A move git-mv's the dir on disk and rewrites only SKILL.md fs-direct,
-        // so the relocated SKILL.md + every `.md` reference are absent from the
-        // link/tag graph at their new doc names until a manual rescan. For a
-        // project skill, re-drive each relocated `.md` content doc through the
-        // CRDT content path so it re-indexes, and drop the stale old-name
-        // entries. Global skills live outside the project graph (not content
-        // docs), so they have nothing to re-index.
         if (body.scope === 'project' && !contentEditError) {
-          // In-place skill admission is a registry ALLOW-LIST of exact bundle
-          // dirs. The SWAP is synchronous — the client re-opens the renamed doc
-          // the moment this responds, and an unadmitted target would drop it
-          // from tags/backlinks/search. Everything ELSE (the full nested-ignore
-          // rebuild whose onAfterRebuild reconciles the watcher index, then the
-          // targeted re-index against the refreshed admission) is derived state
-          // that self-heals — it runs after the response instead of costing the
-          // rename ~1.7s on a big project. Ordering inside the chain preserved:
-          // rebuild before re-index, or we re-index against the pre-rename
-          // world.
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
           void reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName)
@@ -11627,9 +8399,6 @@ export function createApiExtension(
 
         const fromKeyPath = skillRelPath(resolve(skillsRoot, body.fromName), body.scope);
         const toKeyPath = skillRelPath(resolve(skillsRoot, body.toName), body.scope);
-        // Project renames are attributed + shadow-committed (history-preserving
-        // git mv); global skills are unversioned — the relocate above already
-        // did a plain disk rename, so just skip the shadow attribution.
         const renamedLocalHash = localSkillHash(skillsRoot, body.toName);
         await rekeySkillLockEntry(body.scope, body.fromName, body.toName, {
           localHash: renamedLocalHash,
@@ -11641,10 +8410,6 @@ export function createApiExtension(
             `skill-rename: ${fromKeyPath} -> ${toKeyPath}`,
             [{ from: fromKeyPath, to: toKeyPath }],
           );
-          // Flush + revert-baseline off-path: the shadow commit costs a corpus
-          // stat walk, and the baselineRef it yields only arms Revert — which
-          // can light up a beat after the rename lands. Ordering inside the
-          // chain preserved (flush, then read the head it produced).
           void (async () => {
             try {
               await commitOkArtifactWrite('skill-move');
@@ -11661,14 +8426,6 @@ export function createApiExtension(
           })();
         }
 
-        // Carry install state across the rename. The source dir is now at
-        // `toName`; re-project the new name into every editor the old name
-        // occupied (`priorHosts`, captured PRE-sweep from marker ∪ scan ∪ alias
-        // audience), drop the stale `fromName` marker, and record the `toName`
-        // marker. NOT gated on a marker existing — a scan-only in-place skill has
-        // none but still occupies real editor dirs, and without this the rename
-        // lands only on the canonical root and strands the old name elsewhere
-        //. Mirrors how delete folds in uninstall.
         if (moveBase) {
           await removeSkillInstall(moveBase, body.fromName);
           reverseProjectSkill(
@@ -11735,15 +8492,6 @@ export function createApiExtension(
     { handler: 'skill-move', method: 'POST' },
   );
 
-  // `POST /api/skill/edit-external` — register a detected (unmanaged) skill for
-  // in-place editing. The body carries the skill's own enumerated dir
-  // (`CatalogSkill.home`); we realpath it, confirm it holds a SKILL.md, and
-  // register it so the returned `__extskill__/<name>` doc autosaves back to the
-  // real harness file (containment-guarded in `external-skill-registry.ts`). No
-  // copy, no symlink, no `.ok/` — that's the Manage upgrade, not this. Loopback-
-  // gated (it arms an out-of-contentDir write path). Exempt from the attribution
-  // + conflict-gate sweeps: it authors no CRDT content (the writes happen later
-  // through persistence, classified `file-system`), it only arms the registry.
   const handleSkillEditExternal = withValidation(
     SkillEditExternalRequestSchema,
     async (_req, res, body) => {
@@ -11785,14 +8533,6 @@ export function createApiExtension(
     },
   );
 
-  // `POST /api/skill/move-scope` — relocate a skill across scopes (project ↔
-  // global), server-side atomic. Replaces the old client copy+delete dance,
-  // which wrote the destination through the CRDT content-doc path while a stale
-  // live doc was open — the bridge MERGED old+new instead of replacing, so a
-  // global↔project round-trip DOUBLED the SKILL.md body. Here the whole bundle
-  // dir is copied verbatim (binaries included) with both live docs closed, the
-  // source is removed, and install projections are transferred — one request,
-  // no merge window.
   const handleSkillMoveScope = withValidation(
     SkillMoveScopeRequestSchema,
     async (_req, res, body) => {
@@ -11809,13 +8549,6 @@ export function createApiExtension(
         }
         const { name, fromScope, toScope } = body;
         if (!validateSkillName(name, res, 'skill-move-scope')) return;
-        // A built-in lives at exactly one tier by definition: `open-knowledge` is
-        // the project contract, discovery + write-skill are user-global and
-        // present in EVERY project. Moving one does not relocate a skill, it
-        // manufactures a second copy of something that already exists at the
-        // other tier — which then loads twice for the agent and lists twice in
-        // the sidebar. Lifecycle is otherwise ordinary for these; this one verb
-        // is not theirs to use.
         if (isInternalBundleSkillName(name)) {
           errorResponse(
             res,
@@ -11849,12 +8582,6 @@ export function createApiExtension(
 
         const { root: fromRoot, dirRel: fromDirRel, realDir } = effectiveSkillRoot(fromScope, name);
         const fromDir = resolve(fromRoot, name);
-        // Where the BYTES live, which is not always `fromDir`.
-        // `resolveSkillDirForRead` answers "where is this skill found", by root
-        // precedence, and never realpaths — so once `source` points the skill at
-        // another location the elected path is itself a symlink. A move has to
-        // relocate the real tree, so resolve it once here and let every step
-        // below agree on the same answer instead of each rediscovering it.
         const fromContentDir = (() => {
           try {
             return realpathSync(fromDir);
@@ -11862,8 +8589,6 @@ export function createApiExtension(
             return fromDir;
           }
         })();
-        // Destination: the target scope's default skill home (store retirement —
-        // moved skills land in-place like creates/imports do).
         const toBase2 = toScope === 'project' ? contentDir : skillsHome;
         const toHomeRel = resolveDefaultSkillHomeRel(toBase2, toScope);
         if (toHomeRel === null) {
@@ -11898,9 +8623,6 @@ export function createApiExtension(
           );
           return;
         }
-        // A clean absence is the ONLY safe "destination free" — never overwrite a
-        // same-named skill at the target scope (that would then delete the source
-        // = data loss). Registry-wide: any occurrence at the target scope blocks.
         if (resolveSkillDirForRead(toScope, name) !== null || existsSync(toDir)) {
           errorResponse(
             res,
@@ -11912,34 +8634,15 @@ export function createApiExtension(
           return;
         }
 
-        // Capture source install state BEFORE tearing anything down, so the
-        // projection can be re-created at the destination scope.
         const fromBase = skillInstallBase(fromScope);
         const toBase = skillInstallBase(toScope);
         const priorInstall = fromBase ? readInstalledSkills(fromBase).skills[name] : undefined;
-        // The install MARKER is NOT the source of truth for an in-place skill's
-        // host set: a skill installed into editor dirs the marker never recorded
-        // (created/imported in place, or an older marker) reads back with fewer
-        // hosts than it really occupies. The SCAN — which editor dirs actually
-        // hold a copy — is authoritative (same rule the install handler +
-        // sweepSkillOccurrences follow). Union both so a scope move preserves
-        // EVERY editor the skill was installed in, not just what the marker
-        // happened to list — otherwise it re-lands only on the default hub and
-        // silently drops .claude/.cursor/etc..
         const fromScanBase = fromScope === 'project' ? contentDir : skillsHome;
         const scanEntry = (
           fromScope === 'project'
             ? scanInPlaceSkills(contentDir)
             : scanGlobalInPlaceSkills(skillsHome)
         ).find((sk) => sk.name === name);
-        // Editors that reach this skill only via a FOLDER-level symlink (e.g.
-        // `.claude/skills` → `.agents/skills`) are excluded from `scanEntry.hosts`
-        // by design — they hold no independent copy (same inode as the canonical).
-        // But they ARE a real audience: those editors currently SEE the skill. The
-        // destination scope has no such folder symlink, so unless we materialize
-        // them the move silently drops that reach. Union the alias audience — the
-        // editors whose skills-root symlinks to this skill's canonical root — so
-        // the destination projects real copies and reachability is preserved.
         const canonicalRootRel = scanEntry ? dirname(scanEntry.dir) : null;
         const aliasAudience =
           canonicalRootRel !== null
@@ -11955,9 +8658,6 @@ export function createApiExtension(
           ]),
         ];
 
-        // Tear down BOTH live skill docs (source + destination) BEFORE touching
-        // disk — a verbatim dir copy with the live docs closed can't merge into a
-        // stale open doc (the content-doubling root cause).
         await captureAndCloseDocuments(
           [
             ...new Set([
@@ -11969,32 +8669,12 @@ export function createApiExtension(
           'renamed',
         );
 
-        // Copy the WHOLE bundle verbatim (SKILL.md + references + scripts +
-        // binaries) in one fs op — no CRDT write path, nothing to merge. Binaries
-        // that the old text-only client copy silently dropped come along.
         tracedMkdirSync(toRoot, { recursive: true });
-        // `dereference` is load-bearing, not a detail. The source dir is a
-        // SYMLINK whenever the skill's `source` was pointed at another location,
-        // and cpSync's default (false) copies the link rather than the bytes —
-        // so the destination becomes a link to the very tree the delete below
-        // removes, and every path in the new scope dangles at once.
         tracedCpSync(fromContentDir, toDir, { recursive: true, dereference: true });
 
-        // Same-hash copies/links of the source go first (lossless-guarded), then
-        // the source itself (rm -rf of the whole skill dir).
         sweepSkillOccurrences(fromScope, name);
         const del = applySkillDelete({ skillsRoot: fromRoot, name });
-        // `fromRoot` is `dirname(elected path)`, and the election never
-        // realpaths — so when the elected occurrence is a symlink (the `source`
-        // verb pointed this skill elsewhere) the delete above removed only the
-        // pointer and left the real tree behind. A move that leaves its bytes at
-        // the origin is a copy. Bounded to the scope's own base: an outside-base
-        // source tree is the user's own directory, and nothing scans it, so it
-        // can't come back as a ghost occurrence.
         if (del.ok && fromContentDir !== fromDir) {
-          // Both sides must be realpath'd before they can be compared: macOS
-          // resolves the tmpdir-rooted `/var` to `/private/var`, so a base taken
-          // verbatim makes every contained path look like an escape.
           const realScanBase = (() => {
             try {
               return realpathSync(fromScanBase);
@@ -12008,8 +8688,6 @@ export function createApiExtension(
           }
         }
         if (!del.ok) {
-          // Roll back the destination copy so a failed source-removal can't leave
-          // a duplicate — the failure mode this whole endpoint exists to prevent.
           applySkillDelete({ skillsRoot: toRoot, name });
           errorResponse(
             res,
@@ -12027,16 +8705,6 @@ export function createApiExtension(
 
         const movedLockEntry = await transferSkillLockEntry(fromScope, toScope, name);
 
-        // Transfer install projections: drop the source-scope projections +
-        // marker, then re-project into the destination scope for the same hosts.
-        // Re-project on ANY resolved host (marker OR scan) — a scan-only in-place
-        // skill has no marker entry but still occupies real editor dirs. Stamp the
-        // new marker with the DESTINATION scope (not the source's stale scope).
-        // The scan entry captured BEFORE the move carries the hash that decides
-        // which same-named occurrences are this skill. Without it we cannot tell
-        // a projection of the moved bundle from somebody else's fork, so skip
-        // the purge rather than guess — a leftover is recoverable, a wrongly
-        // deleted skill is not.
         if (fromBase) {
           await uninstallSkillFromHostDirs(
             fromBase,
@@ -12045,16 +8713,6 @@ export function createApiExtension(
             scanEntry ? { purge: { contentHash: scanEntry.contentHash } } : {},
           );
         }
-        // The placement ledger is keyed by NAME and would otherwise survive the
-        // move describing locations in their pre-move form, which the list then
-        // reports as "changed outside" — OK accusing another tool of its own
-        // rewrite. Clear the source scope's records; the destination records its
-        // own as it projects.
-        // `fromBase` (the install base) is what every placement reader uses —
-        // `readSkillPlacements(projectDir)` in the list handler, and the ledger
-        // ops in `services/skill-*-ops.ts`. Passing the CONTENT dir would clear
-        // a ledger nobody reads and mint a stray `.ok/local/` beside the content
-        // whenever the two differ, leaving the drift this is meant to end.
         if (fromBase) await clearSkillPlacements(fromBase, name);
         if (toBase && priorHosts.length > 0) {
           const newHosts = projectSkill(
@@ -12074,9 +8732,6 @@ export function createApiExtension(
           });
         }
 
-        // Attribution + shadow-commit for whichever side is a versioned project
-        // scope (global is unversioned — no shadow repo). At most one side is
-        // project on a cross-scope move.
         if (movedLockEntry) {
           const movedLocalHash = localSkillHash(toRoot, name);
           await updateSkillLockEntry(toScope, name, { localHash: movedLocalHash });
@@ -12087,8 +8742,6 @@ export function createApiExtension(
             fromScope === 'project' ? fromDirRel : relative(contentDir, toDir).split(sep).join('/'),
             `skill-move-scope: ${fromScope} -> ${toScope} ${name}`,
           );
-          // Flush + revert-baseline off-path — same shape and reasons as the
-          // rename handler's deferred chain.
           const toKeyForBaseline = relative(contentDir, toDir).split(sep).join('/');
           const wantBaseline = Boolean(movedLockEntry) && toScope === 'project';
           void (async () => {
@@ -12109,12 +8762,6 @@ export function createApiExtension(
           })();
         }
 
-        // A 200 here must mean the skill is READABLE at the destination. The
-        // projection step writes through host roots derived from config, and a
-        // bad root could delete what the copy just placed — reporting success
-        // then leaves the user believing a move happened that in fact destroyed
-        // the bundle. Verify the post-condition rather than trusting that every
-        // step returned without throwing.
         if (!existsSync(join(toDir, 'SKILL.md'))) {
           errorResponse(
             res,
@@ -12126,11 +8773,6 @@ export function createApiExtension(
           return;
         }
 
-        // The destination scope's skill dir is not servable until the filter's
-        // in-place allow-list knows about it, so without this the moved SKILL.md
-        // 404s and the editor falls back to a Files tab. Same reason and same
-        // placement as `handleSkillInstall`, which rebuilds before every exit.
-        // Allow-list swap sync; the expensive rebuild self-heals off-path.
         bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
         scheduleDeferredIgnoreRebuild();
@@ -12156,9 +8798,6 @@ export function createApiExtension(
     { handler: 'skill-move-scope', method: 'POST' },
   );
 
-  // `POST /api/skill/duplicate` — copy a complete bundle within one scope.
-  // This is server-side because the GET surface intentionally does not inline
-  // binary bytes; a client-side GET+PUT compose silently dropped them.
   const handleSkillDuplicate = withValidation(
     SkillDuplicateRequestSchema,
     async (_req, res, body) => {
@@ -12218,8 +8857,6 @@ export function createApiExtension(
           return;
         }
         tracedMkdirSync(targetRoot, { recursive: true });
-        // A duplicate is a new independent skill; if the source canonical is a
-        // symlink (`source` pointed elsewhere) the copy must still be bytes.
         tracedCpSync(sourceDir, targetDir, { recursive: true, dereference: true });
         const { fenced, body: sourceBody } = detectFmRegion(source.skillMd);
         // presence-exempt: no CRDT write, no agent identity
@@ -12255,11 +8892,6 @@ export function createApiExtension(
           void commitOkArtifactWrite('skill-duplicate');
         }
         signalChannel?.('files');
-        // A skill dir is not servable until the filter's in-place allow-list knows
-        // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`. The
-        // allow-list SWAP is synchronous (admission gates the client's next
-        // open); the full rebuild + watcher reconcile self-heal off-path.
         bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
         scheduleDeferredIgnoreRebuild();
@@ -12289,42 +8921,19 @@ export function createApiExtension(
     { handler: 'skill' },
   );
 
-  // ─── `/api/skill-file` — ONE bundle file (any path inside the skill) ──────
-  //
-  // The whole-bundle read/write/delete surface beneath SKILL.md. Routing splits
-  // by scope × type: a PROJECT `.md` reference is a real CRDT content doc
-  // (`.ok/skills/<name>/references/x` — graph + live-edit + shadow attribution),
-  // so its write routes through the SAME paired-write primitive the project
-  // SKILL.md body uses (`composeAndWriteRawBody` under the per-session origin).
-  // A GLOBAL `.md` reference and EVERY script are fs-direct (atomic tmp+rename)
-  // via the skills-write helper — global skills live outside the project graph,
-  // scripts are non-markdown so cannot be wiki-linked. Reads are uniform
-  // (fs-direct) across scope/type so scripts + global refs are MCP-readable too.
-
-  /** Skill-relative bundle path → its allowed-root kind, or null (out of allowlist). */
   function classifySkillFilePath(rel: string): 'reference' | 'script' | 'file' | null {
-    // Reject a NUL byte for parity with the sibling validators
-    // (`resolveSkillFilePath`, `resolveBundleFileAbs`) — a NUL can truncate a
-    // path at the syscall boundary.
     if (rel.includes('\x00')) return null;
     const segments = rel
       .replace(/\\/g, '/')
       .split('/')
       .filter((s) => s !== '' && s !== '.');
     if (segments.length < 1 || segments.some((s) => s === '..')) return null;
-    // `SKILL.md` is the skill's identity — mutated only through the skill
-    // verbs (PUT /api/skill, rename, delete), never the file surface.
     if (segments.length === 1 && (segments[0] as string).toLowerCase() === 'skill.md') return null;
     if (segments[0] === 'references' && segments.length >= 2) return 'reference';
     if (segments[0] === 'scripts' && segments.length >= 2) return 'script';
-    // Anything else in-bundle (root files, custom dirs — `assets/`, `docs/`,
-    // a root `NOTES.md`): a plain bundle file, fs-direct. Imports have always
-    // landed these; the mutation surface admits them too. In-place `.md`
-    // files here are ordinary content docs the file watcher ingests.
     return 'file';
   }
 
-  /** Whether a project `.md` reference (the CRDT-routed case) — else fs-direct. */
   function isProjectMdReference(
     scope: 'project' | 'global',
     kind: 'reference' | 'script' | 'file',
@@ -12333,11 +8942,6 @@ export function createApiExtension(
     return scope === 'project' && kind === 'reference' && rel.toLowerCase().endsWith('.md');
   }
 
-  /**
-   * Every project `.md` file under a bundle FOLDER, as ext-less content-doc
-   * names — the teardown list for a folder delete/rename. Non-md files need no
-   * closing (fs-direct, no live doc).
-   */
   function nestedProjectRefDocNames(realDir: string, dirRel: string): string[] {
     const base = resolve(realDir, dirRel);
     const dirDocPrefix = relative(contentDir, realDir).split(sep).join('/');
@@ -12352,14 +8956,11 @@ export function createApiExtension(
       .map((e) => `${dirDocPrefix}/${dirRel}/${e.split(sep).join('/').replace(/\.md$/i, '')}`);
   }
 
-  /** The CRDT content-doc name (ext-less) for a project `.md` reference. */
   function projectRefContentDocName(name: string, rel: string): string {
-    // `.ok/skills/<name>/references/x.md` → content doc `.ok/skills/<name>/references/x`.
     const extLess = rel.replace(/\.md$/i, '');
     return `${projectSkillContentDocName(name).replace(/\/SKILL$/, '')}/${extLess}`;
   }
 
-  /** Project-scope `.md` bundle references currently on disk under a skill dir. */
   function listProjectMdReferences(skillsRoot: string, name: string): string[] {
     const refsDir = resolve(skillsRoot, name, 'references');
     if (!existsSync(refsDir)) return [];
@@ -12377,30 +8978,12 @@ export function createApiExtension(
     return out;
   }
 
-  /**
-   * After a PROJECT skill's directory is relocated on disk (git-mv'd by the
-   * rename handler) its `SKILL.md` and every `.md` reference are content docs
-   * whose live derived-index (`live-derived-index.ts` `onChange`) only fires on
-   * a CRDT write — which a disk rename never triggers — and whose persistence
-   * store hook (which indexes backlinks) only fires on a write. So the moved
-   * docs sit unindexed (absent from the link/backlink/tag graph) at their NEW
-   * doc names until a manual rescan. Drive the backlink + tag index over to the
-   * new names from the relocated bytes on disk and drop the stale OLD-name
-   * entries — the SAME primitive (`renameDocument` = delete-old + index-new)
-   * the document rename handler uses. Reads disk verbatim: no CRDT write (so the
-   * content docs never desync — disk stays the truth on the next open), and no
-   * session churn against the just-moved dir.
-   */
   async function reindexMovedProjectSkillDocs(
     skillsRoot: string,
     fromName: string,
     toName: string,
   ): Promise<void> {
     if (!derivedDocumentIndex) {
-      // Last silent exit on this path. Returning here means a rename does NO
-      // re-index at all: the file watcher still drops the old doc, so the skill
-      // leaves tags/backlinks/search with nothing taking its place. Every other
-      // branch here now reports; this one must too.
       getLogger('skill-move').warn(
         { fromName, toName },
         'no derived-document index available — skipping re-index of the moved skill (its old entries will be dropped with no replacement)',
@@ -12413,13 +8996,6 @@ export function createApiExtension(
       try {
         markdown = readFileSync(absFile, 'utf-8');
       } catch (err) {
-        // Unreadable relocated file: drop the stale old-name entry rather than
-        // leave it dangling (the next open will index it fresh from disk).
-        //
-        // LOUD, because the consequence is severe and was invisible: this drops
-        // the old entry and adds no new one, so the skill vanishes from tags,
-        // backlinks and search until something re-indexes it. Swallowing the
-        // read error made that indistinguishable from a healthy rename.
         getLogger('skill-move').warn(
           { err, absFile, oldDocName, newDocName },
           'relocated skill file unreadable after move — dropping the old index entry with no replacement',
@@ -12435,11 +9011,6 @@ export function createApiExtension(
       });
     };
 
-    // SKILL.md: its rewrite during the move is fs-direct (applySkillWrite), so
-    // it never re-enters the index via a CRDT write either. The reference `.md`
-    // files were git-mv'd verbatim — never rewritten — so they too are stale.
-    // Doc names derive from the ACTUAL root (in-place skills live at editor-dir
-    // paths; the store root yields the legacy `.ok/skills/...` names).
     const rootRel = relative(contentDir, skillsRoot).split(sep).join('/');
     const docFor = (n: string, rel?: string): string =>
       `${rootRel}/${n}/${rel ? rel.replace(/\.mdx?$/i, '') : 'SKILL'}`;
@@ -12450,12 +9021,6 @@ export function createApiExtension(
     await derivedDocumentIndex.recordDirectMutations(derivedMutations);
   }
 
-  /**
-   * Re-index the OTHER skills' docs whose bodies the ref rewrite touched. The
-   * renamed skill's own files are excluded — `reindexMovedProjectSkillDocs`
-   * already re-read them from disk under their new names, and a second
-   * mutation at the old name would resurrect it.
-   */
   async function reindexRewrittenSkillRefDocs(
     rewrites: readonly SkillRefRewrite[],
     movedName: string,
@@ -12483,10 +9048,6 @@ export function createApiExtension(
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-file-get');
         if (scope === null) return;
         const rel = url.searchParams.get('path') ?? '';
-        // Built-in `open-knowledge*` skills: files come from the editor host
-        // dir, and the `SKILL.md` (skill-dir root) is allowed read-only here so
-        // the managed skill's entrypoint opens in the read-only viewer. Project
-        // built-in under the project root, user-global ones under `<home>`.
         const builtinBase = isInternalBundleSkillName(name)
           ? scope === 'global'
             ? skillsHome
@@ -12494,14 +9055,6 @@ export function createApiExtension(
           : undefined;
         const builtinHost = url.searchParams.get('host') ?? undefined;
         const builtin = builtinBase ? resolveBuiltinSkillDir(builtinBase, name, builtinHost) : null;
-        // A full-directory skill (import captures the WHOLE dir) can carry files
-        // outside references/scripts — a root `config.yaml`, a `data/` subdir.
-        // `readSkillBundledFiles` lists the whole dir, so the sidebar tree shows
-        // them; the READ must therefore serve any in-dir file too, or the tree
-        // shows a file that fails to open (§8.1: "appears but couldn't load").
-        // Containment (below) is the real safety gate — reject only NUL / empty
-        // here; `kind` is a response hint the viewer ignores (it dispatches on
-        // extension), so unclassified files default to 'reference'.
         if (rel === '' || rel.includes('\x00')) {
           errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid skill file path.', {
             handler: 'skill-file-get',
@@ -12510,12 +9063,7 @@ export function createApiExtension(
         }
         const kind =
           (builtin && rel === 'SKILL.md' ? 'reference' : classifySkillFilePath(rel)) ?? 'reference';
-        // Which same-named bundle this file belongs to. Several distinct-content
-        // skills can share a name across host dirs; without the host, a bundle
-        // file request would serve whichever one a bare name lookup lands on —
-        // the wrong bytes, silently, for every row but that one.
         const host = builtinHost;
-        // A built-in resolves its own host dir above; anything else resolves here.
         const resolvedSkillDir = builtinBase
           ? (builtin?.dir ?? null)
           : resolveSkillDirForRead(scope, name, host);
@@ -12540,12 +9088,6 @@ export function createApiExtension(
           );
           return;
         }
-        // A global skill REFERENCE graph node is extension-less, and the client
-        // rebuilds the path with a hardcoded `.md`; when the on-disk file is
-        // actually `.mdx`, the literal `.md` path 404s. Resolve the requested
-        // path, falling back to the sibling supported doc extension (.md ↔ .mdx)
-        // so a `.mdx` reference opens. Scripts / real-extension refs that exist
-        // as-is take the direct path and never trigger the fallback.
         let resolvedAbs = abs;
         let resolvedRel = rel;
         if (!existsSync(resolvedAbs)) {
@@ -12565,7 +9107,6 @@ export function createApiExtension(
           resolvedRel = sibling;
           resolvedAbs = resolve(skillDir, sibling);
         }
-        // Read as text (a script comes back as text, never an executable stream).
         const buf = await readFile(resolvedAbs);
         if (buf.includes(0)) {
           errorResponse(
@@ -12637,8 +9178,6 @@ export function createApiExtension(
           );
           return;
         }
-        // Resolve the skill's REAL dir (in-place-first; store retirement) —
-        // bundle files land next to wherever the SKILL.md actually lives.
         const skillDirAbs = resolveSkillDirForRead(body.scope, body.name);
         if (skillDirAbs === null || !existsSync(join(skillDirAbs, 'SKILL.md'))) {
           errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
@@ -12654,19 +9193,10 @@ export function createApiExtension(
         let created: boolean;
 
         if (routedThroughContent) {
-          // Project `.md` reference = CRDT content doc: route the write through
-          // the doc's `Y.Text('source')` via the sanctioned paired-write
           // primitive (precedent #24 / #38), same branch as the SKILL.md body.
-          // Persistence serializes Y.Text verbatim to `.ok/skills/<name>/<rel>`.
           const refDocName = `${skillDirRel}/${rel.replace(/\.mdx?$/i, '')}`;
-          // Refuse if the reference content doc is mid-conflict — same gate as
-          // the sibling content-write handlers.
           if (checkSkillDocConflictGate(refDocName, 'skill-file-put', res)) return;
           created = !existsSync(resolve(skillDirAbs, rel));
-          // Enforce the per-skill bundle-file cap on this CRDT-routed branch too.
-          // The fs-direct branch counts inside `applySkillBundleFileWrite`;
-          // without this, project `.md` references (the most common bundle file)
-          // could grow unbounded while scripts + global refs are capped.
           if (created && countBundleFiles(skillDirAbs) >= BUNDLE_MAX_FILES) {
             errorResponse(
               res,
@@ -12698,7 +9228,6 @@ export function createApiExtension(
             return;
           }
         } else {
-          // Global `.md` reference OR any script: fs-direct atomic write.
           const fsResult = applySkillBundleFileWrite({
             skillsRoot: dirname(skillDirAbs),
             name: body.name,
@@ -12732,9 +9261,6 @@ export function createApiExtension(
           created = fsResult.created;
         }
 
-        // Attribute + shadow-commit project-scope writes under the skill's
-        // artifact key (the skill dir) — same timeline as SKILL.md edits. Global
-        // skills live outside any project git and are unversioned.
         if (body.scope === 'project') {
           attributeOkArtifactWrite(
             actor,
@@ -12797,23 +9323,9 @@ export function createApiExtension(
           });
           return;
         }
-        // Resolve the skill's REAL dir (in-place-first, store fallback) like the
-        // sibling GET/PUT handlers — the raw store root silently no-opped every
-        // in-place bundle-file delete (the store-fossil class).
         const realDir = resolveSkillDirForRead(scope, name);
         const skillsRoot = realDir !== null ? dirname(realDir) : resolveSkillsRoot(scope);
 
-        // A project `.md` reference is a live content doc — tear it down BEFORE
-        // removing the file so its persistence branch can't resurrect it. The
-        // doc name derives from the REAL dir (a minted store shape closed
-        // nothing for an in-place skill).
-        //
-        // Gated on the file actually being there: the teardown closes
-        // connections, marks the doc `deleted-upstream` and unloads it, and the
-        // doc name is ext-less — so `references/x.md` and `references/x.mdx`
-        // name the SAME doc. Deleting a path that isn't on disk would otherwise
-        // tear down the live doc of a same-stem sibling that survives the
-        // no-op unlink below.
         const bundleAbs = resolve(realDir ?? join(skillsRoot, name), rel);
         if (existsSync(bundleAbs) && isProjectMdReference(scope, kind, rel)) {
           const extLess = rel.replace(/\.md$/i, '');
@@ -12828,10 +9340,6 @@ export function createApiExtension(
           existsSync(bundleAbs) &&
           statSync(bundleAbs).isDirectory()
         ) {
-          // Deleting a bundle FOLDER: every project `.md` beneath it is a live
-          // content doc whose persistence debounce could resurrect the file
-          // after the rm — the same race the single-file teardown above exists
-          // for, once per nested doc.
           const docs = nestedProjectRefDocNames(realDir, rel);
           if (docs.length > 0) await captureAndCloseDocuments(docs, 'deleted-upstream');
         }
@@ -12856,9 +9364,6 @@ export function createApiExtension(
           attributeOkArtifactWrite(
             actor,
             okArtifactKey('skill', '', name),
-            // The skill's REAL dir, not the retired store path: recording
-            // `.ok/skills/…` wrote a version titled with a path that does not
-            // exist, and that title shows in /api/history and the version picker.
             `skill-file-delete: ${
               realDir !== null
                 ? `${relative(contentDir, realDir).split(sep).join('/')}/${rel}`
@@ -12925,8 +9430,6 @@ export function createApiExtension(
           );
           return;
         }
-        // The skill's REAL dir (in-place-first, store fallback) — same
-        // resolution as the sibling GET/PUT/DELETE handlers.
         const realDir = resolveSkillDirForRead(body.scope, body.name);
         if (realDir === null) {
           errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
@@ -12942,20 +9445,14 @@ export function createApiExtension(
         const fromDocName = fromIsDoc ? `${dirRel}/${from.replace(/\.md$/i, '')}` : null;
         const toDocName = toIsDoc ? `${dirRel}/${to.replace(/\.md$/i, '')}` : null;
 
-        // A live content doc mid-conflict must settle before its identity moves.
         if (
           fromDocName !== null &&
           checkSkillDocConflictGate(fromDocName, 'skill-file-rename', res)
         )
           return;
-        // Tear the source doc down BEFORE the fs move so persistence can't
-        // resurrect the old path; the new-name doc indexes fresh from disk.
         if (fromDocName !== null) {
           await captureAndCloseDocuments([fromDocName], 'deleted-upstream');
         } else if (body.scope === 'project') {
-          // Renaming a bundle FOLDER moves every doc beneath it: close them all
-          // before the fs move for the same resurrection race as the delete
-          // handler; the renamed paths index fresh from disk (watcher W4).
           const fromAbs = resolve(realDir, from);
           if (existsSync(fromAbs) && statSync(fromAbs).isDirectory()) {
             const docs = nestedProjectRefDocNames(realDir, from);
@@ -12981,8 +9478,6 @@ export function createApiExtension(
           return;
         }
 
-        // Keep the link graph current for a moved `.md` reference: renamed in
-        // place when both ends are docs, otherwise drop/add the affected side.
         if (derivedDocumentIndex) {
           const mutations: DerivedDocumentIndexMutation[] = [];
           if (fromDocName !== null && toDocName !== null) {
@@ -13005,9 +9500,7 @@ export function createApiExtension(
                 documentName: toDocName,
                 markdown: readFileSync(resolve(skillsRoot, body.name, to), 'utf-8'),
               });
-            } catch {
-              // Unreadable — the next open indexes it fresh.
-            }
+            } catch {}
           }
           await recordDerivedMutationsBestEffort(mutations, 'skill-file-rename');
         }
@@ -13049,53 +9542,22 @@ export function createApiExtension(
     { handler: 'skill-file-rename', method: 'POST' },
   );
 
-  // ─── `POST /api/skill/import` — acquire a skill into `.ok/skills` (slice 3) ───
-  // Fetch a skill-dir (remote/local source),
-  // write it via the SAME sanctioned fs-direct content writers the reconcile
-  // path uses (`applySkillWrite` + `applySkillBundleFileWrite`), attribute +
-  // shadow-commit (project scope), and record upstream in `.ok/skills-lock.json`.
-  // Scripts are written as content, NEVER executed.
-
-  /** `https://github.com/owner/repo.git` → `owner`; else undefined. */
   function publisherFromSource(source: string): string | undefined {
     const m = /github\.com[/:]([\w.-]+)\//.exec(source);
     return m ? m[1] : undefined;
   }
 
-  // Lockfile IO lives in `skills-lock-store.ts`: mutations are serialized per
-  // path and written atomically, which a bare read-then-write here was not. Read
-  // inside `mutateSkillsLock`'s callback, never from a snapshot taken before it.
   const readSkillsLock = readSkillsLockFile;
-  // Mutation baseline: hash the skill AS IT NOW SITS ON DISK, right after a
-  // sanctioned write. Stored as `localHash`; `skills-list` flags a skill modified
-  // when its current on-disk hash diverges from this. `null` when the dir can't be
-  // read (never happens right after a successful write, but keeps the type honest).
   function localSkillHash(skillsRoot: string, name: string): string | undefined {
     return parseSkillDir(resolve(skillsRoot, name))?.contentHash;
   }
-  // Shadow-repo HEAD right after an artifact commit — the Revert baseline. At this
-  // point HEAD is the commit that just captured the freshly-written skill, so its
-  // subtree holds the installed bytes. `undefined` when there's no shadow repo
-  // (non-git project); Revert stays unavailable, consistent with version history.
   async function shadowHeadSha(
     writerId?: string,
     verifyPathRel?: string,
   ): Promise<string | undefined> {
     const shadow = shadowRef?.current;
     if (!shadow || !writerId) return undefined;
-    // The shadow repo has NO `HEAD`/`main` — writes land on per-writer WIP refs
     // (`refs/wip/<branch>/<writerId>`, precedent #25). `commitOkArtifactWrite` has
-    // just driven the persistence drain, so the calling actor's WIP ref now points
-    // at a commit whose tree holds the freshly-written skill. Capture THAT (a valid
-    // baseline `restoreSkillVersion` restores from) rather than `rev-parse HEAD`,
-    // which always throws here and left `baselineRef` — hence Revert — unrecorded.
-    //
-    // `verifyPathRel`: concurrent attribution flushes COALESCE, so the awaited
-    // commit can resolve against an EARLIER in-flight flush — the ref then still
-    // points one commit behind (a delete commit got recorded as azure-deploy's
-    // baseline). When given, the head only counts if its tree contains the path;
-    // otherwise re-flush once and re-read. A still-missing path returns
-    // undefined — no baseline beats a WRONG baseline (revert stays hidden).
     try {
       const sg = shadowGit(shadow);
       const readMine = async (): Promise<string | undefined> => {
@@ -13126,13 +9588,8 @@ export function createApiExtension(
       return undefined;
     }
   }
-  // The writer id the artifact-write commits under (agent/principal); anonymous
-  // writes don't attribute, so there's no WIP ref to baseline from.
   const artifactWriterId = (actor: ReturnType<typeof extractActorIdentity>): string | undefined =>
     actor.kind === 'agent' || actor.kind === 'principal' ? actor.writerId : undefined;
-  // Project a freshly written skill into the configured editor dirs now (copy
-  // mode) so it is live immediately, not only after the next reconcile. Strictly
-  // best-effort: a projection failure must never fail the caller.
   async function projectImportedSkillCopy(args: {
     skillsRoot: string;
     name: string;
@@ -13228,11 +9685,6 @@ export function createApiExtension(
     });
   }
 
-  /**
-   * Where a skill's bundle physically lives: the in-place canonical when the scan
-   * knows one, else the legacy `.ok/skills` store. Same precedence the install
-   * handler uses — the store is only a fallback for a resident not yet drained.
-   */
   function packBundleDir(scope: 'project' | 'global', name: string, skillsRoot: string): string {
     const base = scope === 'project' ? contentDir : skillsHome;
     const found = (
@@ -13241,12 +9693,6 @@ export function createApiExtension(
     return found ? resolve(base, found.dir) : resolve(skillsRoot, name);
   }
 
-  /**
-   * The lockfile entry a skill updates from, with the two retrofits that make a
-   * seeded skill updatable at all: a starter pack installed before provenance
-   * was recorded, and a bundled built-in. Shared by the single and bulk update
-   * paths so a skill that Update works on can never be one Update-all skips.
-   */
   function resolveReimportLockEntry(
     scope: 'project' | 'global',
     name: string,
@@ -13255,19 +9701,6 @@ export function createApiExtension(
   ): SkillsLock['skills'][string] | null {
     const recorded = lock.skills[name];
     if (recorded) return recorded;
-    // A starter pack seeded before provenance was recorded has no lock entry,
-    // but its upstream is deterministic — synthesize it so the pack updates
-    // through this same path. Uses the installed content hash so an unchanged
-    // upstream is a correct no-op. The post-rename names are generic
-    // (`write-a-spec`, `knowledge-base`), so presence is not proof of ownership:
-    // the bundle's own `metadata.pack` marker is the witness, or a user's
-    // same-named skill would be handed our provenance and offered an overwrite.
-    // Read the bundle where it ACTUALLY is. Both of these used to look only in
-    // `.ok/skills/<name>` — the retired store — so for an in-place skill (which
-    // is every seeded pack now) the hash came back empty and the witness came
-    // back false from a directory that does not exist. The retrofit then declined
-    // every short-named pack skill, which is why a seeded pack showed no
-    // provenance and floated outside its source group.
     const bundleDir = packBundleDir(scope, name, skillsRoot);
     return (
       retrofitPackLockEntry(
@@ -13277,13 +9710,6 @@ export function createApiExtension(
         { selfIdentifiesAsPack: bundleSelfIdentifiesAsPack(bundleDir) },
       ) ??
       synthBuiltinLockEntry(scope === 'global' ? skillsHome : contentDir, name) ??
-      // A copy of a plugin's skill: the list serves it a synthesized plugin
-      // origin (`synthPluginLockEntry`), so the Update button and the
-      // auto-update toggle render — resolving from the stored lockfile alone
-      // answered both with "no recorded import source". Same synthesis here,
-      // so the update path honors what the origin advertises. Passing the real
-      // bundle dir keeps the plugin's OWN skill (self-identity) unresolvable —
-      // it has no upstream to update from.
       synthPluginLockEntry(name, resolveProjectIdentity(projectDir ?? contentDir), bundleDir)
     );
   }
@@ -13311,17 +9737,11 @@ export function createApiExtension(
         }
         const scope = body.scope;
 
-        // 1. Resolve the acquired skill + its provenance.
         let acquiredDir: string | null = null;
         let sourceLabel: string;
         let ref: string | undefined;
         let publisher: string | undefined;
-        // The picked upstream skill dir basename — recorded in the lockfile so a
-        // later reimport re-selects the same skill in a multi-skill source.
         let upstreamSkill: string | undefined;
-        // The marketplace-facing coordinates (`owner/repo`, or a website
-        // catalog's hostname) — what an install report names. Distinct from
-        // `sourceLabel`, which keeps the raw string the user typed.
         let resolvedSourceForReport = body.source;
 
         {
@@ -13359,21 +9779,9 @@ export function createApiExtension(
             }
             let pick = dirs[0];
             if (selectedSkill) {
-              // Match the dir basename OR the SKILL.md frontmatter `name` — skills.sh
-              // (and the Explore tab that forwards its result) uses the frontmatter
-              // name, which often differs from the on-disk folder (e.g. folder
-              // `react-native-skills` vs frontmatter `vercel-react-native-skills`).
               const found =
                 dirs.find((d) => d.name === selectedSkill) ??
-                // Metadata-only: this probe just matches a name. `parseSkillDir`
-                // would read and hash every byte of every bundle in the clone,
-                // before the size pre-flight below can refuse any of it.
                 dirs.find((d) => readSkillDirMeta(d.dir)?.name === selectedSkill) ??
-                // Rename alias: the skills.sh listings for the OLD pack-skill
-                // names outlive the rename (there is no self-serve delist), so
-                // someone can still arrive here asking for a name the mirror no
-                // longer ships. Resolve it to the renamed bundle rather than
-                // 404-ing a listing that looks perfectly healthy.
                 dirs.find((d) => d.name === RENAMED_PACK_SKILLS[selectedSkill]);
               if (!found) {
                 errorResponse(res, 404, 'urn:ok:error:not-found', 'Named skill not in source.', {
@@ -13415,8 +9823,6 @@ export function createApiExtension(
           });
           return;
         }
-        // Steps 2-6 (dedupe → collision → write → attribute → lockfile → project)
-        // are the shared import spine, also used by the upload endpoint.
         const outcome = await skillImportService.runSkillImport({
           acquiredDir,
           scope,
@@ -13427,23 +9833,6 @@ export function createApiExtension(
           actor,
           skipProjection: body.install === false,
         });
-        // Count it on skills.sh when EITHER the user came from a skills.sh
-        // listing (`marketplace`, set by the Explore tab) OR the source is our
-        // own published skills repo.
-        //
-        // The privacy rule that gates everything else — never announce a repo
-        // the user did not choose from the marketplace, because telling a third
-        // party which repos they install is a disclosure they did not ask for —
-        // does not apply to our own repo: the name being reported is ours, and
-        // `ok init` and `ok seed` already report it unconditionally. Without the
-        // second arm, `ok skills import inkeep/open-knowledge-skills`, the MCP
-        // import tool on a bare repo source, and every non-Explore route that
-        // installs one of our own skills went uncounted while the seed path
-        // counted the same skill.
-        //
-        // This is the mechanism that actually moves the counter. Fetching the
-        // bundle through skills.sh's download API does NOT: verified against a
-        // skill sitting at 8 installs, which stayed at 8 after a download.
         if (
           outcome.ok &&
           (body.marketplace === true || isOpenKnowledgeSkillsSource(resolvedSourceForReport))
@@ -13453,17 +9842,9 @@ export function createApiExtension(
             resolveSkillInstallReportSettings(),
           );
         }
-        // The imported skill dir is brand new on disk; until the filter's in-place
-        // allow-list is rebuilt its SKILL.md is not servable, and opening the skill
-        // the user just imported falls back to a Files tab. Allow-list swap
-        // sync; the expensive rebuild self-heals off-path.
         bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
         scheduleDeferredIgnoreRebuild();
-        // Tell clients the catalog moved. The watcher cannot: the new dir is
-        // outside its coverage until the deferred rebuild reconciles it, so
-        // without this push the sidebar never refetches and the skill the
-        // user just imported has no row to click for two minutes.
         signalChannel?.('files');
 
         respondSkillImport(res, outcome);
@@ -13473,19 +9854,12 @@ export function createApiExtension(
           cause: e,
         });
       } finally {
-        // Every exit (early-return error paths included) drops the temp clone.
         cleanup();
       }
     },
     { handler: 'skill-import', method: 'POST' },
   );
 
-  // `POST /api/skills/import-bulk` — acquire MANY named skills from one source
-  // in a SINGLE clone. The plugin case: one repo bundles dozens of skills, and
-  // driving the single-skill endpoint per skill re-clones that repo every time.
-  // Identical spine, provenance, dedupe, and collision rules — the only
-  // differences are the amortized fetch and per-skill results, so one oversized
-  // bundle or misspelled name never fails the rest of the selection.
   const handleSkillsImportBulk = withValidation(
     SkillsImportBulkRequestSchema,
     async (_req, res, body) => {
@@ -13509,28 +9883,13 @@ export function createApiExtension(
           return;
         }
         const rawSource = body.source;
-        // Two source shapes, and the difference is exactly where the fetch sits:
-        //  - repo / local path: ONE clone holds every skill, so fetch once and
-        //    pick each selected dir out of it (the whole point of this endpoint).
-        //  - website (`.well-known` skill index): a fetch materializes ONE named
-        //    skill's declared files — there is no bundle on disk to amortize, so
-        //    each selected skill is its own (cheap, clone-free) fetch below.
         let siteSpec: (SourceSpec & { kind: 'well-known' }) | null = null;
         let siteIndex: WellKnownIndex | null = null;
         let dirs: ReturnType<typeof discoverSkillDirs> = [];
         let ref: string | undefined;
         let publisher: string | undefined;
-        // The canonical repo behind a skills.sh page URL — what the install
-        // report must name so the event lands on the right listing.
         let resolvedSourceForReport = rawSource;
         try {
-          // Resolution is per-SKILL by contract: a website source refuses to
-          // resolve without a name (there is no repo to point at, only the
-          // index's per-skill entries), and a skills.sh page URL looks its repo
-          // up by one. Any of the requested names answers the same question, so
-          // the first is the probe — the site branch below then re-fetches with
-          // each selected name in turn, and the repo branch matches all of them
-          // against the single clone.
           const skillsSh = await resolveSkillsShImportSource(rawSource, body.skills[0]);
           const resolvedSource = skillsSh?.source ?? rawSource;
           resolvedSourceForReport = resolvedSource;
@@ -13547,9 +9906,6 @@ export function createApiExtension(
           publisher = skillsSh?.publisher ?? publisherFromSource(resolvedSource);
           if (spec.kind === 'well-known') {
             siteSpec = spec;
-            // Read the origin's index ONCE for the whole selection. Each
-            // per-skill fetch would otherwise re-read it (and re-probe both
-            // candidate index paths), which is a wasted round trip per skill.
             siteIndex = await readWellKnownIndex(spec.origin);
           } else {
             const fetched = await fetchSource(spec);
@@ -13574,8 +9930,6 @@ export function createApiExtension(
           return;
         }
         const results: SkillImportBulkResult[] = [];
-        // Sequential by design: each import writes files, attributes, and (project
-        // scope) shadow-commits — the git index is not concurrency-safe here.
         for (const requested of new Set(body.skills)) {
           let acquiredDir: string;
           let upstreamSkill: string;
@@ -13590,8 +9944,6 @@ export function createApiExtension(
               perSkill = one.cleanup;
               upstreamSkill = requested;
             } catch (e) {
-              // The site index is the authority on what exists there, so a miss
-              // reads the same as a name absent from a clone.
               results.push({
                 requested,
                 status: e instanceof SkillFetchError ? 'not-found' : 'failed',
@@ -13601,13 +9953,9 @@ export function createApiExtension(
               continue;
             }
           } else {
-            // Same two-way match as the single import: dir basename OR the
-            // SKILL.md frontmatter name (they routinely differ).
             const found =
               dirs.find((d) => d.name === requested) ??
               dirs.find((d) => parseSkillDir(d.dir)?.name === requested) ??
-              // Same rename alias as the single import: a stale old-name listing
-              // resolves to the renamed bundle instead of reading as not-found.
               dirs.find((d) => d.name === RENAMED_PACK_SKILLS[requested]);
             if (!found) {
               results.push({ requested, status: 'not-found', warnings: [] });
@@ -13650,12 +9998,6 @@ export function createApiExtension(
               warnings: outcome.body.warnings,
             });
           } catch (e) {
-            // Failure isolation is the contract of this endpoint, and the spine
-            // can THROW as well as return a failure outcome — an unreadable
-            // bundle dir (`statSync` EACCES/EPERM, or an ENOENT in the TOCTOU
-            // window), a lockfile write that hits ENOSPC. Without this catch one
-            // such skill aborts the selection and every already-imported result
-            // is lost with it, since the response is only written after the loop.
             getLogger('skills-import-bulk').warn(
               { skill: requested, err: e },
               'bulk import: one skill threw (rest continue)',
@@ -13670,18 +10012,7 @@ export function createApiExtension(
             perSkill();
           }
         }
-        // Count the plugin/bundle funnel on skills.sh — ONE batched event for
-        // the whole selection. Same two-arm rule as the single import above: a
-        // skills.sh listing the user chose (`marketplace`, set by the plugin
-        // bundle dialog and the MCP import rider), OR our own published repo,
-        // which needs no marketplace referral to be ours to count. A hand-typed
-        // third-party repo is still never announced. Fire-and-forget; the
-        // reporter dedupes per skill per machine.
         if (body.marketplace === true || isOpenKnowledgeSkillsSource(resolvedSourceForReport)) {
-          // `requested` — the name the skills.sh listing carries — not `name`,
-          // which is the LOCAL name after collision resolution (`foo-imported`
-          // when the user already held `foo`). The collector indexes listings,
-          // so a locally-suffixed name is an unknown skill it cannot count.
           const importedNames = results
             .filter((r) => r.status === 'imported')
             .map((r) => r.requested);
@@ -13692,16 +10023,9 @@ export function createApiExtension(
             );
           }
         }
-        // A skill dir is not servable until the filter's in-place allow-list knows
-        // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`. The
-        // allow-list SWAP is synchronous (admission gates the client's next
-        // open); the full rebuild + watcher reconcile self-heal off-path.
         bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
         scheduleDeferredIgnoreRebuild();
-        // Same client push as the single-import path: the watcher cannot see
-        // the new dirs until the deferred rebuild reconciles them.
         signalChannel?.('files');
 
         successResponse(
@@ -13722,25 +10046,16 @@ export function createApiExtension(
           cause: e,
         });
       } finally {
-        // One clone for the whole selection; dropped on every exit path.
         cleanup();
       }
     },
     { handler: 'skills-import-bulk', method: 'POST' },
   );
 
-  // Upload-intake bounds (flood + zip-bomb guards). These are intentionally
-  // tighter than the shared bulk-import policy and cap raw ingress before we
-  // unpack or hand files to the sanctioned writers.
   const UPLOAD_MAX_FILES = 200;
   const UPLOAD_MAX_ENTRY_BYTES = 8 * 1024 * 1024;
   const UPLOAD_MAX_TOTAL_BYTES = 32 * 1024 * 1024;
 
-  /**
-   * Resolve a client-supplied relative path under `root`, rejecting anything that
-   * escapes it (absolute paths, `..`, drive-letter, symlink-free lexical check).
-   * Returns the absolute path, or null when the entry is unsafe (zip-slip).
-   */
   function resolveUploadPath(root: string, rel: string): string | null {
     const norm = rel.split('\\').join('/').replace(/^\/+/, '');
     if (norm === '' || norm.split('/').some((seg) => seg === '..')) return null;
@@ -13754,7 +10069,6 @@ export function createApiExtension(
     data: Buffer;
   }
 
-  /** Collect every multipart file part into a bounded in-memory buffer. */
   function readSkillUploadParts(req: IncomingMessage): Promise<UploadedPart[]> {
     return new Promise((resolveP, reject) => {
       let bb: MultipartParser;
@@ -13772,11 +10086,6 @@ export function createApiExtension(
       const parts: UploadedPart[] = [];
       let total = 0;
       let aborted: Error | null = null;
-      // Tear down the request the instant a limit is breached so the rest of a
-      // hostile multipart body is never buffered into memory (busboy's own
-      // per-file/file-count limits would still admit UPLOAD_MAX_FILES *
-      // UPLOAD_MAX_ENTRY_BYTES before `close` fires — the total-size guard below
-      // is what actually bounds memory).
       const abort = (err: Error) => {
         if (aborted) return;
         aborted = err;
@@ -13815,7 +10124,6 @@ export function createApiExtension(
     });
   }
 
-  /** Unpack a `.zip` buffer into `destDir`, rejecting zip-slip + oversize/bomb. */
   function unzipBufferToDir(buffer: Buffer, destDir: string): Promise<void> {
     return new Promise((resolveP, reject) => {
       yauzlFromBuffer(buffer, { lazyEntries: true }, (err, zip?: ZipFile) => {
@@ -13828,9 +10136,7 @@ export function createApiExtension(
         const fail = (e: unknown) => {
           try {
             zip.close();
-          } catch {
-            // best-effort
-          }
+          } catch {}
           reject(e instanceof Error ? e : new Error(String(e)));
         };
         zip.on('entry', (entry: Entry) => {
@@ -13843,7 +10149,6 @@ export function createApiExtension(
             fail(new Error(`Unsafe archive entry: ${entry.fileName}`));
             return;
           }
-          // Directory entries end in `/`.
           if (entry.fileName.endsWith('/')) {
             tracedMkdirSync(abs, { recursive: true });
             zip.readEntry();
@@ -13870,11 +10175,6 @@ export function createApiExtension(
             });
             rs.on('error', fail);
             rs.on('end', () => {
-              // These throw, and a throw from a stream listener escapes the
-              // surrounding promise entirely — it lands as an uncaughtException
-              // and takes the whole server (every open collab session) with it.
-              // An archive holding both `foo` and `foo/a.md` is enough: the
-              // second entry's mkdir hits ENOTDIR on the file the first wrote.
               try {
                 tracedMkdirSync(dirname(abs), { recursive: true });
                 tracedWriteFileSync(abs, Buffer.concat(chunks));
@@ -13893,19 +10193,12 @@ export function createApiExtension(
     });
   }
 
-  // `POST /api/skill-upload` — acquire a skill from UPLOADED BYTES (a `.zip` of a
-  // skill dir, or a folder's files) rather than a fetched source. Multipart, so
-  // `scope`/`agentId` ride the query string (the body is file parts). Unpacks to
-  // a temp dir, then runs the shared import spine (`runSkillImport`). Never
-  // executes scripts — they are content, like the by-reference import.
   async function handleSkillUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const tmp = mkdtempSync(join(tmpdir(), 'ok-skill-upload-'));
     const cleanup = () => {
       try {
         tracedRmSync(tmp, { recursive: true, force: true });
-      } catch {
-        // best-effort; orphan sweep catches stragglers
-      }
+      } catch {}
     };
     try {
       if (!projectDir) {
@@ -13924,10 +10217,6 @@ export function createApiExtension(
       const url = new URL(req.url ?? '', 'http://localhost');
       const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-upload');
       if (!scope) return;
-      // This route carries its identity in the QUERY (the body is the multipart
-      // upload), so the fields have to be lifted by hand — but all of them, not
-      // just `agentId`. Dropping the rest left uploaded skills with an anonymous
-      // author and no summary, while the identical import spine recorded both.
       const queryField = (key: string): string | undefined =>
         url.searchParams.get(key) ?? undefined;
       const actor = extractActorIdentity(
@@ -13964,8 +10253,6 @@ export function createApiExtension(
         return;
       }
 
-      // A single `.zip`/`.skill` part → unpack it; otherwise the parts ARE the
-      // skill folder (webkitdirectory upload), written at their relative paths.
       const single = parts.length === 1 ? parts[0] : null;
       const zipName = single && /\.(zip|skill)$/i.test(single.relPath) ? single.relPath : null;
       if (single && zipName) {
@@ -14031,12 +10318,6 @@ export function createApiExtension(
     }
   }
 
-  // `POST /api/skill/install` — project a skill's `.ok/skills/<name>/` source
-  // into the project-configured editor host dirs. This is a local-op
-  // projection (writes host dirs on this machine, OUTSIDE the content/CRDT
-  // plane), not an attributed content mutation — the SOURCE edit is what gets
-  // attributed. Validates the source FIRST (pre-install gate) so a
-  // conflicted/malformed SKILL.md never lands verbatim in an agent's context.
   const handleSkillInstall = withValidation(
     SkillInstallRequestSchema,
     async (_req, res, body) => {
@@ -14044,11 +10325,6 @@ export function createApiExtension(
         const skillsRoot = resolveSkillsRoot(body.scope);
         if (!validateSkillName(body.name, res, 'skill-install')) return;
 
-        // Project skills install into the project's host dirs (require a
-        // resolved project root); global skills install into the user-global
-        // host dirs (`<home>/.{host}/skills/`), which need no project. `base` is
-        // both the cwd `projectSkill` resolves host dirs against AND where the
-        // install marker lives (project marker vs user marker).
         if (body.scope === 'project' && !projectDir) {
           errorResponse(
             res,
@@ -14061,34 +10337,13 @@ export function createApiExtension(
         }
         const base = skillInstallBase(body.scope) as string;
 
-        // IN-PLACE skills: the source is the native
-        // editor-dir canonical, not the `.ok/skills` store; fan-out below runs
-        // through the guarded copy primitives, and the scan (not the install
-        // marker) is the truth for its host set.
         const storeSkillDir = resolve(skillsRoot, body.name);
         const inPlaceScanBase = body.scope === 'project' ? contentDir : skillsHome;
-        // Store retirement: the in-place canonical WINS at BOTH scopes (a
-        // same-name `.ok/skills` dir is a placement of the same skill, mirroring
-        // the list + read rules). The legacy store is only the fallback source
-        // for a resident not yet drained.
         const inPlaceEntry = (
           body.scope === 'project'
             ? scanInPlaceSkills(contentDir)
             : scanGlobalInPlaceSkills(skillsHome)
         ).find((s) => s.name === body.name);
-        // A built-in with no copy anywhere installs FROM THE BUNDLE OK SHIPS.
-        //
-        // Everything below fans an existing canonical out to more hosts, so
-        // without this the first install of a built-in was impossible through
-        // this endpoint: the user had nothing on disk to fan out, and the only
-        // code that could create one lived behind the desktop bridge in settings.
-        // That split is why settings had to keep a write of its own, and why the
-        // same skill answered "installed?" differently depending on which surface
-        // you asked. The bundle is a legitimate canonical — it is where a
-        // built-in's bytes come from in the first place.
-        //
-        // Only for OK's own reserved names: for anything else an absent dir is a
-        // caller error and still says so.
         const bundleSource = isInternalBundleSkillName(body.name)
           ? shippedBundleSkillMd(body.name, body.scope)
           : null;
@@ -14105,23 +10360,12 @@ export function createApiExtension(
           return;
         }
 
-        // Install validates the SKILL.md ON DISK (name/description non-empty),
-        // but its live CRDT doc may hold unflushed edits — a description typed
-        // in the editor a moment ago is still in the debounced persist window,
-        // so a disk read would false-fail with "description missing".
-        // Force the pending disk store to land first. No-op when nothing is
-        // debounced (store-backed / never-opened skill); global skills resolve
-        // to a non-content doc that also isn't debounced, so the flush is inert.
         const liveSkillDoc =
           body.scope === 'project'
             ? `${relative(inPlaceScanBase, skillDir).split(sep).join('/')}/SKILL`
             : skillLiveDocName(body.scope, body.name);
         await flushDiskAndDetectOutcome(liveSkillDoc);
 
-        // Lifecycle verbs are ordinary for OK's own bundles: the reserved-name
-        // gate exists to stop a user AUTHORING over them, not to stop them being
-        // installed or uninstalled. Without this an uninstall of a built-in is
-        // refused as INVALID_SKILL_SOURCE and its placement can never be edited.
         const validity = validateSkillForInstall(skillDir, body.name, {
           allowReservedName: isInternalBundleSkillName(body.name),
         });
@@ -14136,10 +10380,6 @@ export function createApiExtension(
           return;
         }
 
-        // ── Fork resolution (same name, different bytes in a non-canonical
-        // editor dir). Its own operation: the chip's three verbs. Every path
-        // stashes the bytes it discards to `~/.ok/edit-backups/forks/` first —
-        // resolution is never silently lossy.
         if (body.fork !== undefined) {
           if (!inPlaceEntry) {
             errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Skill is not in-place.', {
@@ -14198,13 +10438,6 @@ export function createApiExtension(
             }
           }
           signalChannel?.('files');
-          // Admit the just-written skill dirs to the content-filter allow-list
-          // BEFORE responding. A skill dir only enters that allow-list on
-          // `rebuildIgnorePatterns()`, which an API write does not otherwise
-          // trigger — so the client could open the freshly installed SKILL.md,
-          // have it judged excluded, and hang until the 30s sync timeout before
-          // a later rebuild made the retry work. `skill-get` and the scope-move
-          // handler already do this; install was the gap.
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
           scheduleDeferredIgnoreRebuild();
@@ -14224,16 +10457,9 @@ export function createApiExtension(
           return;
         }
 
-        // ── Location-verb normalization (additive MCP spellings → internal
-        // ops). `source` ≡ `setSource`; `mode` ≡ `linkMode`. The schema
-        // guarantees `targets` and `source` never combine with `add`/`remove`.
         const setSourceReq = body.setSource ?? body.source;
         const linkModeReq =
           body.linkMode ?? (body.mode !== undefined ? body.mode === 'link' : undefined);
-        // ── Additive `add`/`remove` (stateless location callers): translate
-        // into the set-exact host math + custom-root placement loops. The
-        // source is untouchable here — a skill's source folder IS the skill;
-        // removing it is `delete`, moving it is `source`.
         let targetsReq = body.targets;
         const rootAdds: string[] = [];
         const rootRemoves: string[] = [];
@@ -14280,12 +10506,6 @@ export function createApiExtension(
           rootRemoves.push(...addRemove.rootRemoves);
         }
 
-        // SOURCE promotion for a STORE-BACKED skill — a single-skill version of
-        // the boot migration: the clicked host's location becomes the real
-        // folder (the store bundle moves there; a same-hash projection there
-        // just becomes real), sibling symlinks re-point, the install-marker
-        // entry drops (the in-place scan is truth from here on), and the
-        // choice is sticky. Without this branch the click silently no-opped.
         if (setSourceReq && !inPlaceEntry) {
           const promoted = await skillInstallOps.promoteStoreBackedSource({
             scope: body.scope,
@@ -14308,13 +10528,6 @@ export function createApiExtension(
             return;
           }
           signalChannel?.('files');
-          // Admit the just-written skill dirs to the content-filter allow-list
-          // BEFORE responding. A skill dir only enters that allow-list on
-          // `rebuildIgnorePatterns()`, which an API write does not otherwise
-          // trigger — so the client could open the freshly installed SKILL.md,
-          // have it judged excluded, and hang until the 30s sync timeout before
-          // a later rebuild made the retry work. `skill-get` and the scope-move
-          // handler already do this; install was the gap.
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
           scheduleDeferredIgnoreRebuild();
@@ -14335,15 +10548,7 @@ export function createApiExtension(
           return;
         }
 
-        // One-shot CUSTOM placement: put a copy or symlink of the bundle under
-        // an arbitrary project-relative dir. Guarded like every other fan-out —
-        // containment inside the project, never under `.ok/`, never the source
-        // itself, never clobbering existing content. Recorded machine-locally
-        // so the path-disclosure surfaces list it.
         if (body.place) {
-          // Project placements are project-relative; GLOBAL placements are
-          // relative to the user home (rendered `~/`-prefixed). A leading `~/`
-          // in the typed path is tolerated at global scope.
           const placeBase = body.scope === 'project' ? projectDir : skillsHome;
           if (!placeBase) {
             errorResponse(
@@ -14385,13 +10590,6 @@ export function createApiExtension(
           if (!('alreadyAtSource' in placed)) {
             signalChannel?.('files');
           }
-          // Admit the just-written skill dirs to the content-filter allow-list
-          // BEFORE responding. A skill dir only enters that allow-list on
-          // `rebuildIgnorePatterns()`, which an API write does not otherwise
-          // trigger — so the client could open the freshly installed SKILL.md,
-          // have it judged excluded, and hang until the 30s sync timeout before
-          // a later rebuild made the retry work. `skill-get` and the scope-move
-          // handler already do this; install was the gap.
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
           scheduleDeferredIgnoreRebuild();
@@ -14412,10 +10610,6 @@ export function createApiExtension(
           return;
         }
 
-        // One-shot placement REMOVAL (inverse of `place`). Guarded three ways:
-        // only RECORDED placements are removable (the source is never in the
-        // ledger), symlinks + same-hash copies only (lossless), a hand-edited
-        // copy is a fork and is refused, never deleted.
         if (body.unplace) {
           const placeBase = body.scope === 'project' ? projectDir : skillsHome;
           if (!placeBase) {
@@ -14481,13 +10675,6 @@ export function createApiExtension(
             }
           }
           signalChannel?.('files');
-          // Admit the just-written skill dirs to the content-filter allow-list
-          // BEFORE responding. A skill dir only enters that allow-list on
-          // `rebuildIgnorePatterns()`, which an API write does not otherwise
-          // trigger — so the client could open the freshly installed SKILL.md,
-          // have it judged excluded, and hang until the 30s sync timeout before
-          // a later rebuild made the retry work. `skill-get` and the scope-move
-          // handler already do this; install was the gap.
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
           scheduleDeferredIgnoreRebuild();
@@ -14507,13 +10694,6 @@ export function createApiExtension(
           return;
         }
 
-        // One-shot PER-LOCATION mode change: make ONE installed location a
-        // symlink to the source, or an independent copy again. The
-        // `linkMode`/`mode` flip converts EVERY location at once — that silent
-        // bulk conversion is the behaviour the install menu no longer offers,
-        // so this row-level verb writes one path and leaves every sibling
-        // alone. Lossless-only: a hand-edited copy is a fork and is refused,
-        // never overwritten.
         if (body.convert) {
           if (!inPlaceEntry) {
             errorResponse(
@@ -14599,38 +10779,16 @@ export function createApiExtension(
           return;
         }
 
-        // Targets: omitted global installs use only host roots already present
-        // on this machine; an explicit list remains authoritative and may
-        // create the named roots. Project resolves the committed
-        // `.ok/skill-targets.json` set → detected project-configured editors.
         const targets: EditorId[] =
           body.scope === 'global'
             ? targetsReq !== undefined
-              ? // Global targets speak the user-global vocabulary (which now
-                // includes `antigravity` — `~/.gemini/skills`); match by value
-                // so the EditorId/SkillUserTargetEditor widths don't clash.
-                USER_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
-              : // Omitted targets = every user host detected on this machine.
-                // Detection and vocabulary are the same set now, so nothing is
-                // dropped — a copy at `~/.gemini/skills` is installable,
-                // listable, and un-installable like any other host's.
-                detectUserSkillHosts(skillsHome).map((host) => host.editorId)
+              ? USER_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
+              : detectUserSkillHosts(skillsHome).map((host) => host.editorId)
             : targetsReq !== undefined
-              ? // An EXPLICIT target list from the per-editor menu is set-exact,
-                // INCLUDING `[]` (unchecking the last editor = install nowhere =
-                // uninstall). Routing `[]` through resolveSkillTargets would hit
-                // its empty→detect fallback and wrongly re-install into every
-                // detected editor. Only an OMITTED `targets` means "use defaults".
-                PROJECT_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
+              ? PROJECT_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
               : resolveSkillTargets(base);
         const warnings: string[] = [];
-        // Parallel machine-readable codes (`warnings[i]` ↔ `warningCodes[i]`) so
-        // clients switch on the code, not the English string.
         const warningCodes: SkillInstallWarningCode[] = [];
-        // Only warn about a no-op when the user did NOT explicitly ask for an
-        // empty set. An explicit `targets: []` (unchecking every editor) is an
-        // intentional uninstall, not a "couldn't find editors" failure — warning
-        // there mislabels a successful uninstall.
         if (targets.length === 0 && targetsReq === undefined) {
           warnings.push(
             body.scope === 'global'
@@ -14639,57 +10797,31 @@ export function createApiExtension(
           );
           warningCodes.push('no-targets');
         }
-        // No "already installed — replacing" warning: install is set-exact over a
-        // live symlink, so a second install is additive (a NEW projection at a new
-        // editor) or a toggle-off (handled by `dropped` below), never a destructive
-        // replace. The success response reports the accurate resulting host set.
         if (validity.hasScripts) {
           warnings.push(
             'This skill includes executable `scripts/`. After you install it, the AI agent in your editor (Claude, Cursor, Codex) can run them — Open Knowledge itself never runs anything. Review the scripts before sharing.',
           );
           warningCodes.push('scripts-present');
         }
-        // Empty-description advisory: the install succeeds; surface the
-        // nudge as a warning rather than a blocking error, so an already-installed
-        // description-less skill no longer red-errors on every install click.
         if (validity.warnings.length > 0) {
           warnings.push(validity.warnings[0]);
           warningCodes.push('no-description');
         }
 
         if (inPlaceEntry) {
-          // Set-exact over the SCAN's editor occurrences: remove only lossless
-          // occurrences (symlink / same-hash copy — never the canonical, never a
-          // fork), then copy the canonical into newly-checked editors
-          // (capability-aware; a DIFFERENT same-name dir is surfaced, untouched).
           const canonicalRootRel = inPlaceEntry.dir.split('/').slice(0, -1).join('/');
-          // The `.agents` hub is a first-class install target for in-place
-          // skills (the editors-only resolver above drops it from `targets`).
           const hubTargeted =
             targetsReq !== undefined
               ? targetsReq.includes('agents')
               : body.scope === 'global' && existsSync(join(skillsHome, '.agents'));
           const inPlaceTargets: SkillHostId[] = hubTargeted ? [...targets, 'agents'] : [...targets];
-          // Install-mode default chain: explicit request > per-skill preference
-          // (scope-local) > project-committed default > this machine's
-          // user-wide default > copy.
           const prefBase = body.scope === 'project' ? projectDir : skillsHome;
-          // `mode` shapes the locations THIS call installs and nothing else. It
-          // used to persist as a skill-wide preference that outranked the
-          // derived default forever after — invisible in the app, which has no
-          // skill-wide mode and picks a new location's form from the ones the
-          // skill already uses. Changing an existing location's form is the
-          // explicit `convert` verb on both surfaces.
           const installMode: 'copy' | 'link' =
             linkModeReq !== undefined
               ? linkModeReq
                 ? 'link'
                 : 'copy'
               : effectiveInstallMode(body.scope, body.name, inPlaceEntry);
-          // One-shot SOURCE move: relocate the real folder to the chosen host
-          // and symlink EVERY other installed location to it — one real folder,
-          // links everywhere else (the old source stays installed, as a link).
-          // Sticky so the next scan doesn't re-elect by precedence.
           if (setSourceReq) {
             const promoted = await skillInstallOps.promoteInPlaceSource({
               scope: body.scope,
@@ -14787,26 +10919,16 @@ export function createApiExtension(
           return;
         }
 
-        // Set-exact: drop any editor the skill was previously installed into
-        // but that isn't in this target set, so the per-editor install menu can
-        // toggle a single editor off without leaving an orphaned symlink behind.
         const priorHosts = resolvedHosts(readInstalledSkills(base).skills[body.name]?.hosts ?? []);
         const dropped = priorHosts.filter((h) => !targets.includes(h));
         if (dropped.length > 0)
           reverseProjectSkill(body.name, base, dropped, skillProjectionRoots(body.scope));
-        // Projection mode by ORIGIN (slice 4): a skill recorded in the import
-        // lockfile is acquired → project as a verbatim COPY so it survives a
-        // fresh clone where the `.ok/skills` source link would dangle.
-        // Locally-authored skills stay symlinked. Copy entries record a
-        // contentHash (the same acquire hasher) so reconcile can flag local edits.
         const lockPathForInstall = join(base, ...SKILLS_LOCK_REL);
         const lockRawForInstall = existsSync(lockPathForInstall)
           ? readFileSync(lockPathForInstall, 'utf-8')
           : null;
         const lockForInstall =
           lockRawForInstall !== null ? parseSkillsLock(lockRawForInstall) : null;
-        // A present-but-unparseable lockfile would silently fall back to symlink
-        // (origin unknown). Surface it so a corrupt lockfile isn't invisible.
         if (lockRawForInstall !== null && lockForInstall === null) {
           log.warn(
             { skill: body.name },
@@ -14814,10 +10936,6 @@ export function createApiExtension(
           );
         }
         const isAcquired = lockForInstall?.skills[body.name] !== undefined;
-        // An explicit `mode` wins here as it does on the in-place path. Without
-        // this the legacy branch silently ignored the caller's request and used
-        // the import-origin default instead — the same call, answered two ways
-        // depending on which store the skill happened to live in.
         const projectionMode: 'symlink' | 'copy' =
           linkModeReq !== undefined
             ? linkModeReq
@@ -14835,11 +10953,6 @@ export function createApiExtension(
           skillProjectionRoots(body.scope),
         );
         if (hosts.length === 0) {
-          // Zero editors left (unchecked them all) = fully uninstalled. DROP the
-          // marker rather than recording `hosts: []`: the Skills list derives
-          // `installed` from marker PRESENCE, and reconcile/reclaim re-materializes
-          // from the marker — so an empty marker would keep the skill reading
-          // Installed and could be re-projected into every detected editor.
           await removeSkillInstall(base, body.name);
         } else {
           await recordSkillInstall(base, body.name, {
@@ -14868,11 +10981,6 @@ export function createApiExtension(
     { handler: 'skill-install', method: 'POST' },
   );
 
-  // `POST /api/skill/uninstall` — remove a skill's editor-host projections +
-  // drop its marker entry, leaving the SOURCE intact — the skill still loads
-  // from its own folder. The inverse of install: same scope→base map, the shared
-  // `uninstallSkillFromHostDirs` reverse-projection. A local-op, not an
-  // attributed content mutation. Idempotent: uninstalling a source-only skill is a no-op.
   const handleSkillUninstall = withValidation(
     SkillUninstallRequestSchema,
     async (_req, res, body) => {
@@ -14914,9 +11022,6 @@ export function createApiExtension(
     { handler: 'skill-uninstall', method: 'POST' },
   );
 
-  // `POST /api/skill/restore` — restore a skill's source to a prior shadow-repo
-  // version (fs-direct; net-new). The
-  // restore itself is attributed as a new `skill-restore` version.
   const handleSkillRestore = withValidation(
     SkillRestoreRequestSchema,
     async (_req, res, body) => {
@@ -14933,7 +11038,6 @@ export function createApiExtension(
         }
         if (!validateSkillName(body.name, res, 'skill-restore')) return;
         if (rejectReservedBuiltinSkill(body.name, res, 'skill-restore')) return;
-        // Global skills are unversioned — there's no prior version to restore.
         if (body.scope === 'global') {
           errorResponse(
             res,
@@ -14968,17 +11072,11 @@ export function createApiExtension(
           skillDirRel: projectSkillDirRel(body.name),
         });
         if (!result.ok) {
-          // Map the failure code to a status: genuine git/disk I/O (and an
-          // escaping shadow path) are server-side 5xx, not a 404 "not found".
           respondSkillRestoreFailure(res, result, 'skill-restore');
           return;
         }
 
         const warnings: string[] = [];
-        // The same in-place-aware path the restore itself ran against. Hardcoding
-        // the retired `.ok/skills` store here made every restore of a normal skill
-        // report "no longer validates" against a directory that does not exist,
-        // and leak an absolute path in the warning.
         const skillDir = resolve(contentDir, projectSkillDirRel(body.name));
         const validity = validateSkillForInstall(skillDir, body.name);
         if (!validity.ok) {
@@ -14986,11 +11084,7 @@ export function createApiExtension(
             `Restored, but the skill no longer validates: ${validity.errors.join(' ')}`,
           );
         }
-        // No "Run `install`" nudge: copies auto-refresh from the source via
-        // resyncRecordedSkillCopies, and the bare `install` form that advice
-        // invited is a set-exact reconciliation, not an additive top-up.
 
-        // Attribute the restore as a new version so it appears in history.
         attributeOkArtifactWrite(
           actor,
           okArtifactKey('skill', '', body.name),
@@ -14998,11 +11092,6 @@ export function createApiExtension(
         );
         await commitOkArtifactWrite('skill-restore');
         signalChannel?.('files');
-        // A skill dir is not servable until the filter's in-place allow-list knows
-        // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`. The
-        // allow-list SWAP is synchronous (admission gates the client's next
-        // open); the full rebuild + watcher reconcile self-heal off-path.
         bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
         scheduleDeferredIgnoreRebuild();
@@ -15029,12 +11118,6 @@ export function createApiExtension(
     { handler: 'skill-restore', method: 'POST' },
   );
 
-  // `POST /api/skill/reimport` — refresh an IMPORTED skill from its recorded
-  // upstream (`.ok/skills-lock.json`). Re-fetches the source, and when the
-  // content hash differs, overwrites the skill IN PLACE (same name, not a
-  // `-imported` rename), updates the lockfile, and re-projects into editors —
-  // otherwise reports `updated: false` (already up to date). Project scope only;
-  // the global store is unversioned.
   const handleSkillReimport = withValidation(
     SkillReimportRequestSchema,
     async (_req, res, body) => {
@@ -15059,10 +11142,6 @@ export function createApiExtension(
         }
         if (!validateSkillName(body.name, res, 'skill-reimport')) return;
 
-        // The bundle's REAL root at either scope (in-place-first; store
-        // fallback). The spine re-resolves it before writing; this early probe
-        // refuses a missing skill BEFORE the clone, and before the auto-update
-        // toggle below records a flag for a skill that isn't there.
         const reimportBase = body.scope === 'global' ? skillsHome : contentDir;
         const {
           root: skillsRoot,
@@ -15084,9 +11163,6 @@ export function createApiExtension(
           body.scope === 'global' ? skillsHome : (projectDir as string),
           ...SKILLS_LOCK_REL,
         );
-        // An old-name pack install resolves directly: it was never renamed, so
-        // its lock key still matches its dir. The source-dir pick below carries
-        // the old→new mapping so the fetch lands on the renamed mirror dir.
         const entry = resolveReimportLockEntry(
           body.scope,
           body.name,
@@ -15104,9 +11180,6 @@ export function createApiExtension(
           return;
         }
         if (body.setAutoUpdate !== undefined) {
-          // Toggle-persist mode: flip the flag, nothing fetched or rewritten.
-          // Persist both choices: absent now means the source-kind default
-          // (local on, remote off), so an explicit remote opt-in must survive.
           await mutateSkillsLock(lockPath, (current) => ({
             ...current,
             skills: {
@@ -15117,9 +11190,6 @@ export function createApiExtension(
               },
             },
           }));
-          // The sync allow-list swap admits the dir; the full walk self-heals
-          // off-path (it held the response for a whole content-tree scan on
-          // large roots).
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
           scheduleDeferredIgnoreRebuild();
@@ -15133,18 +11203,9 @@ export function createApiExtension(
           );
           return;
         }
-        // Recorded into the refreshed lockfile entry by the spine (the new
-        // upstream sha); NOT echoed on the HTTP response (no client reads it).
         let ref: string | undefined;
         let acquiredDir: string | null = null;
         try {
-          // A listing-sourced install looks its skill up on skills.sh by name.
-          // A pre-rename install asks for a name the repo no longer ships: that
-          // still resolves today only because the superseded listing is still
-          // up, and retiring those listings is an open ask — which would
-          // otherwise turn "tidy up the old listings" into "break Update for
-          // everyone who installed from one". Fall back to the renamed listing
-          // so the two decisions stay independent.
           const recordedSkill = entry.skill ?? body.name;
           const renamedSkill = RENAMED_PACK_SKILLS[recordedSkill];
           const skillsSh = await resolveSkillsShImportSource(entry.source, recordedSkill).catch(
@@ -15153,9 +11214,6 @@ export function createApiExtension(
               return resolveSkillsShImportSource(entry.source, renamedSkill);
             },
           );
-          // A plugin-cache copy re-points at the NEWEST cached version — the
-          // recorded dir is a version pin the plugin manager prunes, so honoring
-          // it verbatim would fail exactly when there is an update to pull.
           const resolvedSource =
             skillsSh?.source ?? resolvePluginUpdateSource(entry.source, entry.pluginProvider);
           const resolvedSkill = skillsSh?.skill ?? entry.skill;
@@ -15207,8 +11265,6 @@ export function createApiExtension(
           });
           return;
         }
-        // Size pre-flight, diff, write, attribution, lockfile and re-projection
-        // are the shared reimport spine, also used by the bulk endpoint.
         const outcome = await skillReimportService.runSkillReimport({
           acquiredDir,
           name: body.name,
@@ -15219,11 +11275,6 @@ export function createApiExtension(
           actor,
           ...(body.dryRun !== undefined ? { dryRun: body.dryRun } : {}),
         });
-        // A skill dir is not servable until the filter's in-place allow-list knows
-        // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`. The
-        // allow-list SWAP is synchronous (admission gates the client's next
-        // open); the full rebuild + watcher reconcile self-heal off-path.
         bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
         scheduleDeferredIgnoreRebuild();
@@ -15241,14 +11292,6 @@ export function createApiExtension(
     { handler: 'skill-reimport', method: 'POST' },
   );
 
-  // `POST /api/skills/reimport-bulk` — refresh MANY skills from their recorded
-  // upstreams, cloning once per SOURCE. The provenance-group case: a sidebar row
-  // naming a source offers "update everything from here", and driving the
-  // single-skill endpoint per member re-clones that repo every time — the same
-  // problem `/api/skills/import-bulk` exists to solve. Identical spine, so the
-  // two paths cannot drift; the differences are the amortized fetch and
-  // per-skill results, so one unreachable source or one bundle that refuses to
-  // write never fails the rest of the batch.
   const handleSkillsReimportBulk = withValidation(
     SkillsReimportBulkRequestSchema,
     async (_req, res, body) => {
@@ -15277,9 +11320,6 @@ export function createApiExtension(
         const lock = readSkillsLock(lockPath);
         const results: SkillReimportBulkResult[] = [];
         const named = new Set(body.names);
-        // A malformed name resolves against no lockfile key, but it would still
-        // reach `resolveReimportLockEntry`'s filesystem probes — refuse the shape
-        // before any path is built from it.
         const wellFormed = [...named].filter((name) => {
           if (isValidSkillName(name)) return true;
           results.push({ requested: name, status: 'failed', warnings: [], error: 'INVALID_NAME' });
@@ -15297,22 +11337,12 @@ export function createApiExtension(
           results.push({ requested: name, status: 'not-found', warnings: [] });
         }
 
-        // No operation-level deadline on purpose. Every fetch this loop makes is
-        // already bounded per source (60s for a clone, 15s for a well-known
-        // index), so a dead host stalls one group and reports as its failure
-        // rather than hanging the batch. A cap across the whole request would
-        // instead truncate a large-but-honest one — dropping skills the caller
-        // asked to update, with a partial answer that looks complete.
         for (const group of bySource) {
           let cleanup: () => void = () => {};
           try {
             let ref: string | undefined;
             let dirs: ReturnType<typeof discoverSkillDirs> = [];
             try {
-              // Resolution is per-SKILL by contract (a skills.sh page URL looks
-              // its repo up by one name), and every skill in this group records
-              // the same source, so any of them answers the same question — the
-              // first is the probe, exactly as the bulk import does.
               const probe = group.names[0] as string;
               const skillsSh = await resolveSkillsShImportSource(group.source, probe).catch(
                 async (err: unknown) => {
@@ -15321,8 +11351,6 @@ export function createApiExtension(
                   return resolveSkillsShImportSource(group.source, renamed);
                 },
               );
-              // A plugin-cache copy re-points at the NEWEST cached version — the
-              // recorded dir is a version pin the plugin manager prunes.
               const resolvedSource =
                 skillsSh?.source ??
                 resolvePluginUpdateSource(
@@ -15347,8 +11375,6 @@ export function createApiExtension(
               ref = fetched.ref;
               dirs = discoverSkillDirs(fetched.dir);
             } catch (e) {
-              // One unreachable source fails only its own members. Everything
-              // already updated in this batch still reports.
               getLogger('skills-reimport-bulk').warn(
                 { source: group.source, err: e, requestId: getRequestId(_req) },
                 'bulk update: one source could not be fetched (rest continue)',
@@ -15364,9 +11390,6 @@ export function createApiExtension(
               }
               continue;
             }
-            // Sequential by design: each update writes files, attributes, and
-            // (project scope) shadow-commits — the git index is not
-            // concurrency-safe here.
             for (const name of group.names) {
               const entry = resolveReimportLockEntry(
                 body.scope,
@@ -15428,12 +11451,6 @@ export function createApiExtension(
                   warnings: outcome.body.warnings,
                 });
               } catch (e) {
-                // Failure isolation is the contract of this endpoint, and the
-                // spine can THROW as well as return a failure outcome — an
-                // unreadable bundle dir, a lockfile write that hits ENOSPC.
-                // Without this catch one such skill aborts the batch and every
-                // already-updated result is lost with it, since the response is
-                // only written after the loop.
                 getLogger('skills-reimport-bulk').warn(
                   { skill: name, err: e, requestId: getRequestId(_req) },
                   'bulk update: one skill threw (rest continue)',
@@ -15448,7 +11465,6 @@ export function createApiExtension(
               }
             }
           } finally {
-            // One clone per source; dropped before the next source is fetched.
             cleanup();
           }
         }
@@ -15465,13 +11481,6 @@ export function createApiExtension(
           { handler: 'skills-reimport-bulk' },
         );
 
-        // AFTER the response, and best-effort. A skill dir is not servable until
-        // the filter's in-place allow-list knows about it, and an API write does
-        // not otherwise trigger a rebuild — but the skills are already written by
-        // this point. Rebuilding first meant a throw here landed in the outer
-        // catch and answered 500, telling the user nothing updated when in fact
-        // everything had. The endpoint's whole contract is that it reports what
-        // happened; a bookkeeping failure must not erase that report.
         try {
           bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
@@ -15493,11 +11502,6 @@ export function createApiExtension(
     { handler: 'skills-reimport-bulk', method: 'POST' },
   );
 
-  // `POST /api/skill/revert` — discard local edits and restore an imported skill
-  // to the bytes recorded when it was installed/last updated (the lockfile's
-  // `baselineRef` shadow commit). Reuses `restoreSkillVersion` (same engine as
-  // version-history restore); attributed as a new `skill-revert` version so the
-  // pre-revert edits stay recoverable from history. Project scope only.
   const handleSkillRevert = withValidation(
     SkillRevertRequestSchema,
     async (_req, res, body) => {
@@ -15577,10 +11581,6 @@ export function createApiExtension(
         );
         await commitOkArtifactWrite('skill-revert');
 
-        // Re-baseline `localHash` to the restored bytes so `modified` clears — the
-        // skill now matches its install baseline again. contentHash/baselineRef are
-        // unchanged (still the same installed upstream). Hash + projection use the
-        // skill's REAL root (store, or the in-place editor-dir parent).
         const revertRoot = resolve(contentDir, projectSkillDirRel(body.name), '..');
         const revertedLocalHash = localSkillHash(revertRoot, body.name);
         await mutateSkillsLock(lockPath, (current) =>
@@ -15590,7 +11590,6 @@ export function createApiExtension(
           }),
         );
 
-        // An in-place skill's bundle already IS an editor dir — no projection.
         if (revertRoot === resolveSkillsRoot('project')) {
           await projectImportedSkillCopy({
             skillsRoot: revertRoot,
@@ -15638,29 +11637,10 @@ export function createApiExtension(
   });
   searchService.prewarm();
 
-  // ───────────────────── Embeddings API key — Account control ─────────────────
-  // Loopback + Origin gated (checkLocalOpSecurity) set/clear for the
-  // machine-global embeddings key. The key travels renderer → loopback POST body
-  // → the 0600 `~/.ok/secrets.yml` file directly (no subprocess, no keychain).
-  // It is NEVER logged, spanned, or echoed back: the client body is the only
-  // place it lives, the success body carries only `keyPresent`, and the error
-  // detail is fixed-vocabulary (the cause — a writeFileSync failure — references
-  // a path, not key bytes). Presence is read via GET /api/semantic-status
-  // (`keyPresent`), so there's no GET here that could leak it.
   const HANDLE_LOCAL_OP_EMBEDDINGS_SET_KEY = 'local-op-embeddings-set-key';
   const HANDLE_LOCAL_OP_EMBEDDINGS_CLEAR_KEY = 'local-op-embeddings-clear-key';
-  // One guard for both writes — set and clear hit the same secrets file via a
-  // read-modify-write, so serializing them (and rejecting a same-key double-
-  // click) avoids a lost update. Mirrors the other local-op handlers.
   const LOCAL_OP_EMBEDDINGS_GUARD = '/api/local-op/embeddings';
 
-  // The (project, endpoint) a key op targets — derived ENTIRELY from the
-  // server's own identity + persisted config, NEVER a request body field. The
-  // route is loopback-gated but unauthenticated; letting the body name the
-  // project or endpoint would be a cross-project key-planting primitive. The
-  // body carries key bytes only. The project is this server's project; the
-  // endpoint is whatever the project currently has configured — so the key
-  // binds to exactly the endpoint the next embed will use.
   function embeddingsKeyScope(): { projectDir: string; baseUrl: string } {
     const cfg = readSemanticProviderConfig?.();
     return {
@@ -15685,8 +11665,6 @@ export function createApiExtension(
       try {
         const { projectDir: pd, baseUrl } = embeddingsKeyScope();
         await new FileEmbeddingsBackend(embeddingsSecretsFile).setForProject(pd, baseUrl, body.key);
-        // Re-warm on the next search so the new key takes effect without a
-        // restart (the key isn't part of the provider fingerprint).
         semanticSearch?.reloadCredential();
         successResponse(
           res,
@@ -15731,7 +11709,7 @@ export function createApiExtension(
       try {
         const { projectDir: pd, baseUrl } = embeddingsKeyScope();
         await new FileEmbeddingsBackend(embeddingsSecretsFile).clearForProject(pd, baseUrl);
-        semanticSearch?.reloadCredential(); // re-warm so the cleared key takes effect now
+        semanticSearch?.reloadCredential();
         successResponse(
           res,
           200,
@@ -15759,26 +11737,7 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * POST /api/local-op/embeddings/test — one live probe embed against the SAVED
-   * endpoint + the resolved key.
-   *
-   * The on-demand answer to "is my custom endpoint actually working". Every
-   * embeddings failure degrades quietly to keyword search, so without this a
-   * wrong URL / key / model looks exactly like a working setup that hasn't
-   * indexed yet. Sends one fixed, content-free probe string — never a page and
-   * never a query — and reports either the detected vector length or a
-   * classified reason.
-   *
-   * Deliberately takes NO endpoint from the request body: it probes what is
-   * persisted, so the route can never be pointed at an arbitrary host, and the
-   * echoed `endpoint`/`model` let the UI notice its own unsaved edit rather
-   * than misread a stale result.
-   */
   const HANDLE_LOCAL_OP_EMBEDDINGS_TEST = 'local-op-embeddings-test';
-  // Its own guard slot: a probe waits on a remote provider, so sharing the
-  // set/clear mutex would let one slow test block the key controls. Serializing
-  // probes against each other still stops a double-click from double-calling.
   const LOCAL_OP_EMBEDDINGS_TEST_GUARD = '/api/local-op/embeddings/test';
 
   const handleLocalOpEmbeddingsTest = withValidation(
@@ -15795,26 +11754,17 @@ export function createApiExtension(
         return;
       }
       try {
-        // Absent reader = no project-local layer plumbed, which resolves to the
-        // same defaults `readProjectLocalSemanticConfig` would return.
         const config = readSemanticProviderConfig?.() ?? {
           baseUrl: DEFAULT_EMBEDDINGS_BASE_URL,
           model: DEFAULT_EMBEDDINGS_MODEL,
           dimensions: undefined,
         };
-        // THE shared resolver, so a passing test guarantees the real embed path
-        // resolves the same credential to the same endpoint (project key → env
-        // on the default host → keyless loopback).
         const cred = await resolveEmbeddingsCredential(
           new FileEmbeddingsBackend(embeddingsSecretsFile),
           projectDir ?? contentDir,
           config.baseUrl,
         );
         const echo = { endpoint: config.baseUrl, model: config.model };
-        // Typed here rather than inline: `successResponse` takes `unknown`, so
-        // this annotation is what statically pins the embedder's classification
-        // to the wire enum — a new `EmbeddingErrorReason` fails to compile
-        // instead of failing schema validation at the wire boundary.
         const probe =
           cred.apiKey || cred.keyless
             ? await probeEmbeddingEndpoint({
@@ -15851,65 +11801,23 @@ export function createApiExtension(
     },
   );
 
-  // ---- Markdown linter: write-side rules + the lint-config epoch/generation
-  // shared with the native lint-read group (http/lint-routes.ts) ----
-  // The Settings GUI writes native `.markdownlint.*` rules through the
-  // markdownlint-config endpoint; the read-side handlers (config, per-doc lint,
-  // project audit) moved to the native lint group.
-
-  /**
-   * Monotonic counter over server-side lint-config mutations, and the config
-   * half of {@link readAuditGeneration}: neither the native markdownlint rules
-   * nor the frontmatter-schema bodies appear in the base config, so a rule
-   * toggle moves no fingerprint and would otherwise be invisible to the audit.
-   *
-   * Bumped only through {@link signalLintConfigChanged}, which is also the sole
-   * `lint-config` CC1 emitter here — the two must move together or a mutation
-   * that converges other windows would leave audits on the superseded config.
-   */
   let lintConfigEpoch = 0;
   function signalLintConfigChanged(): void {
     lintConfigEpoch += 1;
     signalChannel?.('lint-config');
   }
 
-  /**
-   * The world an audit plane would be true of: the lint configuration in force,
-   * the branch whose content is on disk, and the local-target inventory
-   * generation. The audit's coalescing key and its in-flight walks both rest on
-   * this one reader, so the three stay in step by construction.
-   *
-   * Branch belongs here for the same reason the config epoch does, one layer
-   * down: a switch replaces the content set wholesale, so a request issued
-   * after one must not attach to a walk started before it, and a walk spanning
-   * one must abandon itself rather than publish half of each branch.
-   *
-   * Compared for equality only, never ordered — a branch label carries no
-   * order. The space separator is unambiguous because a branch label is either
-   * a git branch name (refnames admit no spaces) or a `detached-<oid>` literal.
-   */
   const readAuditGeneration = (): string =>
     `${lintConfigEpoch} ${durabilityState.getActiveBranch()} ${
       derivedDocumentIndex?.readLocalTargetGeneration?.() ?? 0
     }`;
 
-  // Content-rule violations on a post-write document, for the agent write/edit
-  // advisory channel — the full validation plane, not just lint: every enabled
-  // lint source PLUS broken internal links, so an agent that writes a dead
-  // wiki-link hears about it on the write response without a separate `audit`
-  // round-trip. Whole-doc semantics: pre-existing violations reappear on every
-  // write to the doc, which is why the cap matters. Capped; advisory only —
-  // never gates the write. Empty when linting is disabled and links are off.
   const LINT_VIOLATION_CAP = 10;
   async function computeLintViolations(
     source: string,
     docName: string,
   ): Promise<LintViolationWarning[]> {
     const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-    // Advisory-only means advisory-only: by the time this runs the write has
-    // already committed (CRDT + disk + snapshot), so a validation crash must
-    // degrade to zero advisories — never bubble into the handler's catch and
-    // turn a committed write into a 500 the agent would retry.
     try {
       const effective = resolveEffectiveLinterConfig(contentDir, base, {
         docName,
@@ -15918,12 +11826,6 @@ export function createApiExtension(
       });
       const lintFindings = await lintDocument(source, effective, docName);
 
-      // Links plane, via the SAME audit validator the Problems panel and the
-      // `audit` tool consume (one canonical predicate, honoring the project's
-      // `validation.links` posture). The live-derived index updates on a
-      // 100 ms debounce AFTER a change, so at this point it does not yet see
-      // the write being advised — refresh this one doc synchronously first
-      // (idempotent: the debounced pass re-applies the same bytes).
       let linkFindings: ValidationDiagnostic[] = [];
       const linksSetting = getLinksValidationSetting?.() ?? DEFAULT_LINKS_VALIDATION;
       if (derivedDocumentIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
@@ -15958,7 +11860,6 @@ export function createApiExtension(
           code: d.code,
           message: d.message,
           severity: d.severity,
-          // Advisory display units are 1-based; the diagnostic range is 0-based LSP.
           line: d.range.start.line + 1,
           column: d.range.start.character + 1,
           ...('linkTarget' in d && d.linkTarget !== undefined ? { linkTarget: d.linkTarget } : {}),
@@ -15975,10 +11876,6 @@ export function createApiExtension(
     }
   }
 
-  // Zero-match appliesTo detection needs the project's doc list — a content
-  // walk — so only the doc-independent lint-config responses (the surfaces the
-  // Settings frontmatter panel reads) pay for it; per-doc `?doc=` fetches and
-  // the per-write lint path never do.
   function unmatchedGlobProblems(effective: LinterConfig): string[] {
     const slice = effective.plugins.frontmatter;
     if (!slice.enabled || slice.schemas.length === 0) return [];
@@ -15986,9 +11883,6 @@ export function createApiExtension(
     return unmatchedAppliesToProblems(slice.schemas, docFiles);
   }
 
-  // Edit one rule in the project's native `.markdownlint.*` file (the source of
-  // truth). Root-level only for now; returns the recomputed effective config
-  // so the settings panel reflects the change.
   const handleWriteMarkdownlintRule = withValidation(
     MarkdownlintRuleWriteRequestSchema,
     async (_req, res, body) => {
@@ -16005,8 +11899,6 @@ export function createApiExtension(
         );
         return;
       }
-      // A declined write must not read as success: the settings panel would
-      // reload, show the rule silently reverted, and the user would retry.
       if (writeResult.action === 'declined-executable') {
         errorResponse(
           res,
@@ -16017,12 +11909,6 @@ export function createApiExtension(
         );
         return;
       }
-      // Past this point the rule IS on disk — a re-read failure must not
-      // report the write itself as failed.
-      // Converge every other window on the new rules. Without this a rule
-      // toggle in one window leaves the rest linting against a stale config
-      // until they happen to refetch, which is what the frontmatter sibling
-      // below already avoids.
       signalLintConfigChanged();
       try {
         const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
@@ -16056,19 +11942,11 @@ export function createApiExtension(
     { handler: 'markdownlint-config', method: 'POST' },
   );
 
-  // Edit one field of a frontmatter schema file (non-destructive merge via
-  // applyFieldConstraint; create-on-first-edit). Responds with the recomputed
-  // effective config, mirroring the markdownlint write.
   const handleWriteFrontmatterSchema = withValidation(
     FrontmatterSchemaWriteRequestSchema,
     async (_req, res, body) => {
       let writeResult: WriteFrontmatterSchemaResult;
       try {
-        // Five shapes over one route (schema-refined): delete → remove the
-        // tool-managed file; field + removeField → drop the field; field +
-        // renameTo → rename it; field + constraint → per-field edit;
-        // otherwise create-empty (scaffold the skeleton so a freshly-picked
-        // new schema file exists).
         const root = resolve(projectDir ?? contentDir);
         const parentPath = body.parentPath ?? [];
         writeResult = body.delete
@@ -16106,11 +11984,6 @@ export function createApiExtension(
         );
         return;
       }
-      // `.ok/` is outside the content file-watcher, so schema-file mutations
-      // never reach the tree or other clients through watcher events. `files`
-      // keeps show-OK trees live on create/delete; `lint-config` converges
-      // every other window's effective config (this response only reaches the
-      // requesting client).
       if (writeResult.action === 'created' || writeResult.action === 'deleted') {
         signalChannel?.('files');
       }
@@ -16155,14 +12028,6 @@ export function createApiExtension(
         if (effectiveDocName === null) return;
         const resolvedDocName = resolveAlias(effectiveDocName);
 
-        // A deterministic auto-fix is attributed to whoever asked for it: an
-        // agent caller (MCP `lint fix:true` always sends agentId) keeps agent
-        // attribution; a bare UI body lands as the principal — the human
-        // clicked the button, no agent was involved. `principal-*` ids are
-        // filtered at the presence-broadcaster boundary, so the structurally
-        // enforced setPresence/touchMode shape below stays valid without
-        // badging the user as their own agent. No principal loaded → neutral
-        // anonymous writer with no contributor record (mirrors rename).
         const actor = extractActorIdentity(
           body as unknown as Record<string, unknown>,
           getPrincipal,
@@ -16196,11 +12061,6 @@ export function createApiExtension(
           });
           return;
         }
-        // Refuse a symlink whose canonical target escapes the content dir BEFORE
-        // loading the session. The read path (lintDoc) guards via realpath; this
-        // CRDT-load path must too — otherwise persistence silently drops the
-        // escaped load and the endpoint returns a misleading 200 ("clean")
-        // instead of a path-escape 400. Throws SymlinkEscapeError → 400 below.
         assertNoSymlinkEscape(resolve(contentDir, docRelPath), contentDir);
 
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
@@ -16211,9 +12071,6 @@ export function createApiExtension(
           clientName,
         });
 
-        // Lint + fix the LIVE CRDT source (not disk) so the fix ranges resolve
-        // against the bytes we actually mutate. `fixDocument` delegates to
-        // upstream markdownlint's `applyFixes` — we author no fix logic.
         const source = session.dc.document.getText('source').toString();
         const configWarnings: string[] = [];
         const { cfg, before, fixed, ran, failures } = await lintAndFixSource({
@@ -16229,13 +12086,6 @@ export function createApiExtension(
         let reLintWarning: string | undefined;
         const reLintFailures: LintPluginFailure[] = [];
         if (fixed !== source) {
-          // Land the fixed bytes through the sanctioned agent-write spine:
-          // attributed to the calling agent (never the anonymous `file-system`
-          // writer a shell `ok lint --fix` produces), item-preserving (`patch`),
-          // conflict- and FM-gated, and bridged to WYSIWYG + the live preview.
-          // The setPresence('writing')/touchMode('idle') pairing mirrors
-          // `handleAgentWriteMd` so the fix flashes a live "writing" badge; the
-          // try/finally shape is structurally enforced by agent-presence.test.ts.
           try {
             const icon = iconFromClientName(clientName);
             const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
@@ -16292,14 +12142,6 @@ export function createApiExtension(
           }
           flushDocToDisk(resolvedDocName, 'lint-fix');
 
-          // Remaining problems: re-lint the ACTUAL post-write source (bridge
-          // normalization can shift bytes vs `fixed`), reusing the resolved cfg.
-          // The write is already durable here (transacted + flushed to disk +
-          // git); a re-lint exception (markdownlint's `lint()` can throw) must
-          // NOT surface as a 500 that makes the caller believe the fix failed
-          // and retry / take compensating actions on already-fixed content.
-          // Fall back to the pre-fix diagnostics and report the re-lint failure
-          // as a warning instead.
           try {
             after = await lintDocument(
               session.dc.document.getText('source').toString(),
@@ -16319,11 +12161,7 @@ export function createApiExtension(
 
         const errorCount = after.filter((d) => d.severity === 'error').length;
         const warningCount = after.length - errorCount;
-        // Net problems the auto-fix resolved (clamped — a fix never nets negative).
         const fixedCount = Math.max(0, before.length - after.length);
-        // One channel for everything that made this run less than complete:
-        // config faults, plugin throws from the fix + re-lint passes, and the
-        // re-lint failure the deprecated singular `warning` also carries.
         const responseWarnings = [
           ...configWarnings,
           ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
@@ -16342,9 +12180,6 @@ export function createApiExtension(
             warningCount,
             ran,
             ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
-            // Emitted in parallel with its copy in `warnings` for one
-            // deprecation window: the text header still branches on it, and
-            // dropping it now would break every caller that reads it today.
             ...(reLintWarning ? { warning: reLintWarning } : {}),
           },
           { handler: 'lint-fix' },
@@ -16440,12 +12275,6 @@ export function createApiExtension(
     routes['/api/test-rescan-files'] = handleTestRescanFiles;
   }
 
-  // DNS-rebinding defense: routes that mutate local filesystem / CRDT /
-  // vault state. A DNS-rebound cross-origin page could otherwise POST to
-  // these endpoints and write to the user's content dir. Read-only
-  // endpoints (document/pages/backlinks/…) stay accessible so the editor
-  // UI can bootstrap against the collab server; mutations require a
-  // loopback Host header. /api/workspace enforces this inline already.
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',
@@ -16480,17 +12309,8 @@ export function createApiExtension(
     '/api/skill/revert',
     '/api/skill/track-in-git',
   ]);
-  // Every `/api/local-op/*` endpoint mutates local filesystem state or
-  // issues network requests on behalf of the user — clone/open/auth
-  // flows all fit. Prefix-match so new local-op handlers are protected
-  // by default.
   const STATE_MUTATING_PREFIXES: ReadonlyArray<string> = ['/api/local-op/'];
 
-  // The legacy route table's view for the shared /api/* admission pipeline
-  // (`http/api-pipeline.ts` — the same pipeline the native Hono routes run).
-  // `resolve` never declines an /api/* URL: unmatched paths resolve to the
-  // bounded `/api/*` template with no dispatch so the pipeline's explicit
-  // RFC 9457 404 owns the response and the dispatch surface stays closed.
   const apiRouteTable: ApiRouteTable = {
     resolve(url) {
       const handler = routes[url];
@@ -16510,10 +12330,6 @@ export function createApiExtension(
     table: apiRouteTable,
   });
 
-  // The natively-routed route groups. Their paths live in the Hono app only —
-  // deliberately absent from `routes` above (a route lives in exactly one
-  // router). Each group rides the same shared pipeline with its own table, so
-  // gate behavior is identical to the legacy dispatch by construction.
   const linkGraphRoutes = createLinkGraphRoutes({
     hocuspocus,
     derivedDocumentIndex,
@@ -16738,16 +12554,8 @@ export function createApiExtension(
     systemActionsRoutes,
     folderTemplateRoutes,
   ];
-  // "A route lives in exactly one router" — enforced at construction, not
-  // just documented; covers every group aggregated into the native paths.
-  // Throw semantics pinned in `http/http-app.test.ts`.
   const nativePaths = nativeGroups.flatMap((group) => [...group.paths]);
   assertSingleRouterOwnership(nativePaths, routes);
-  // Multi-group composition: paths concatenate; dispatch chains the per-group
-  // pipelines in order. Safe because the pipeline declines (returns false,
-  // zero side effects) BEFORE any request observation when a group's table
-  // does not resolve the URL — only the owning group's pipeline runs the
-  // admission gates and dispatch span.
   const groupDispatches = nativeGroups.map((group) =>
     createApiRequestPipeline({
       log,
@@ -16766,29 +12574,14 @@ export function createApiExtension(
     },
   };
 
-  // In-process dispatch for MCP tools mounted on this same server process.
-  // Allowlist: endpoints whose handlers are thin marshaling over a
-  // capability service (`services/*`) or the derived-document-index reads —
-  // for these the HTTP self-call collapses to a function call with the same
-  // handler producing the same wire body. Everything else (CRDT paired
-  // writes, rename, rollback/restore, sync/conflicts, history, lint/audit,
-  // template + skill CRUD) has no extracted service yet and stays on HTTP;
-  // extend this set as further capabilities extract.
   const MCP_LOCAL_API_PATHS: ReadonlySet<string> = new Set([
-    // searchService (native workspace-tools group)
     '/api/search',
-    // fileOpsService
     '/api/delete-path',
     '/api/create-folder',
-    // versionOpsService
     '/api/save-version',
-    // skillImportService
     '/api/skill/import',
-    // skillPlacementOps / skillInstallOps
     '/api/skill/install',
-    // assetService (multipart body rides the synthetic request into busboy)
     '/api/upload',
-    // derived-document-index reads (native link-graph group)
     '/api/orphans',
     '/api/hubs',
     '/api/backlinks',
@@ -16796,12 +12589,6 @@ export function createApiExtension(
     '/api/dead-links',
     '/api/suggest-links',
   ]);
-  // Every collapsed path must resolve to a handler at construction — a typo
-  // here, or a later route rename, would otherwise fall back to HTTP forever
-  // with no signal. Same posture as `assertSingleRouterOwnership` above.
-  // The local-api collapse may consult any native group's table (the
-  // link-graph reads and the workspace-tools `/api/search` resolve this way);
-  // the MCP_LOCAL_API_PATHS allowlist is what bounds the reachable set.
   const localApiNativeTables = nativeGroups.map((group) => group.table);
   const resolveLocalApiNativeDispatch = (pathname: string) => {
     for (const table of localApiNativeTables) {
@@ -16825,7 +12612,7 @@ export function createApiExtension(
   });
 
   return {
-    priority: 100, // Higher priority — API routes run before static file serving
+    priority: 100,
     async onRequest({ request, response }: { request: IncomingMessage; response: ServerResponse }) {
       await runApiPipeline(request, response);
     },

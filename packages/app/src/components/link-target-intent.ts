@@ -15,12 +15,6 @@ type LinkTargetIntent =
       displayState: 'resolved' | 'folder';
       resolvedTarget: NavigableTarget | SkillFileTarget;
       hashDocName: string;
-      /**
-       * Kind-aware navigation hash. `null` for ordinary docs/folders (the caller
-       * builds `#/<hashDocName>`); set for a `skill-file` target, which routes to
-       * the read-only viewer via `#/__skill-file__/…` and cannot be expressed as a
-       * plain docName hash.
-       */
       hash: string | null;
     }
   | {
@@ -31,8 +25,6 @@ type LinkTargetIntent =
       suggestedName: string;
     };
 
-/** A `skill-file` resolves to the read-only bundle-file viewer — navigable, not a
- *  missing page. Build the navigate intent with its kind-aware viewer hash. */
 function skillFileNavigate(
   target: SkillFileTarget,
 ): Extract<LinkTargetIntent, { kind: 'navigate' }> {
@@ -73,9 +65,6 @@ export function resolveLinkTargetIntent(
       pagesBySlug: options.pagesBySlug,
       pagesByBasename: options.pagesByBasename,
     });
-    // A `skill-file` IS navigable here — it opens the read-only bundle-file
-    // viewer (e.g. a skill's `references/*` shown in Outgoing). `asset` stays
-    // non-navigable and falls through to the create path.
     if (resolvedTarget.kind === 'skill-file') return skillFileNavigate(resolvedTarget);
     if (resolvedTarget.kind === 'asset') continue;
     if (resolvedTarget.kind === 'missing') {

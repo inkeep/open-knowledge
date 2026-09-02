@@ -13,8 +13,6 @@ describe('changedBlockRange', () => {
   });
 
   test('a whole-body replace that only appends collapses to the appended tail', () => {
-    // The write is a `replace`, but the shared prefix is byte-identical — the
-    // reason follow mode flashes the section, not the whole doc.
     expect(changedBlockRange(['heading', 'intro'], ['heading', 'intro', 'new-section'])).toEqual({
       from: 2,
       to: 3,

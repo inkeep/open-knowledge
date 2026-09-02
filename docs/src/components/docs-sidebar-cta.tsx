@@ -3,27 +3,17 @@ import { GitHubIcon } from '@/components/icons/github';
 import { MarketingButton } from '@/components/marketing-button';
 import { GITHUB_URL } from '@/lib/site';
 
-// Compact for the button label (e.g. "1.5K"); full comma-grouped for the tooltip.
 const compactStars = new Intl.NumberFormat('en-US', {
   notation: 'compact',
   maximumFractionDigits: 1,
 });
 const fullStars = new Intl.NumberFormat('en-US');
 
-/**
- * Two CTAs rendered in the docs sidebar `banner` slot, directly beneath the
- * search bar. URLs share the source of truth in site.ts. `stars` is the live
- * GitHub count (null when the fetch fails — the count is then omitted).
- */
 export function DocsSidebarCta({ stars }: { stars: number | null }) {
   return (
     <div className="flex gap-2">
-      {/* Docs readers span platforms, so OS detection names the platform but
-          never guesses a Windows/Linux architecture: the primary segment sends
-          those visitors to /download, while the caret carries explicit builds. */}
-      {/* The download flexes and the star keeps its natural size: the star's
-          width is driven by a live count we don't control, so it gets the space
-          it needs and the download absorbs whatever is left. */}
+      {}
+      {}
       <DownloadSplitButton cta="docs-sidebar" variant="compact" className="min-w-0 flex-1" />
       <MarketingButton
         href={GITHUB_URL}
