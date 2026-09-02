@@ -348,6 +348,7 @@
       "Sudah punya repositori git? Tambahkan dengan <0>git remote add origin <url></0> di folder proyek ini. Halaman ini diperbarui otomatis begitu sebuah remote terdeteksi."
     ],
     "45MZFs": ["Perintah"],
+    "46YgRZ": ["Tambahkan blok di bawah"],
     "484LKL": ["Hapus tautan"],
     "49Mb7P": [
       "Kami tidak dapat memeriksa apakah Slidev terpasang. Kembali ke jendela ini untuk mencoba lagi."
@@ -608,6 +609,7 @@
     ],
     "7PzzBU": ["Pengguna"],
     "7S7FNA": ["OpenKnowledge memeriksa proyek"],
+    "7Voget": ["Pilih ", ["name"]],
     "7WnfoD": ["Laporan ini sudah dalam perjalanan. Hasilnya akan muncul di riwayat laporan bug."],
     "7Y9yTo": [["owner"], "/", ["name"], " dibuat, tetapi push gagal."],
     "7YRrJ9": [
@@ -981,6 +983,7 @@
       "Berkas ini terlalu besar untuk dibuka di penyunting teks bawaan (batas 1 MB). Gunakan Buka berkas di bawah untuk membukanya di aplikasi lain."
     ],
     "C_cPoW": ["Sesi GitHub Anda kedaluwarsa — masuk lagi untuk memverifikasi akses push."],
+    "CbxTfe": ["Pilih blok"],
     "CcaU4i": ["Suntingan langsung diterapkan dan disimpan otomatis ke tema ini."],
     "ChMshD": ["Keluar dari ", ["appName"]],
     "Ck9XRt": ["Kuncinya tidak bisa disimpan — silakan coba lagi."],

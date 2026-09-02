@@ -30,7 +30,7 @@ describe('Observer A paired-write baseline — raw ytext, not canonical fragment
     });
     resetMetrics();
 
-    const fixturePayload = '## Section 1\n\nLorem ipsum dolor sit amet.\n\n';
+    const fixturePayload = '## Section 1\n\nLorem ipsum dolor.\n \nSit amet.\n';
     const composedAppend = `\n\n${fixturePayload}`;
     doc.transact(() => {
       composeAndWriteRawBody(doc, composedAppend, 'agent');
@@ -39,8 +39,9 @@ describe('Observer A paired-write baseline — raw ytext, not canonical fragment
     const ytextAfterAgent = ytext.toString();
     const fragmentJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
     const fragmentSerialized = mdManager.serialize(fragmentJson);
-    expect(ytextAfterAgent.endsWith('amet.\n\n')).toBe(true);
-    expect(fragmentSerialized.endsWith('amet.\n\n')).toBe(false);
+    expect(ytextAfterAgent.includes('dolor.\n \nSit')).toBe(true);
+    expect(fragmentSerialized.includes('dolor.\n \nSit')).toBe(false);
+    expect(fragmentSerialized.includes('dolor.\n\nSit')).toBe(true);
     expect(ytextAfterAgent === fragmentSerialized).toBe(false);
 
     const pathBFiresBefore = getMetrics().observerAPathBFires;

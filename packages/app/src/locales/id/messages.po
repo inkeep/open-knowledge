@@ -1440,6 +1440,10 @@ msgstr "Tambahkan pola lain"
 msgid "Add at least one letter or number."
 msgstr "Tambahkan setidaknya satu huruf atau angka."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr "Tambahkan blok di bawah"
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11633,6 +11637,10 @@ msgstr "Lihat panduan pemasangan lengkap"
 msgid "See what's added"
 msgstr "Lihat yang ditambahkan"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr "Pilih {name}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11659,6 +11667,10 @@ msgstr "Pilih semua berkas dan folder"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
 msgstr "Pilih seluruh sumber"
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
+msgstr "Pilih blok"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select every visible file-tree row when focus is in the Files sidebar."

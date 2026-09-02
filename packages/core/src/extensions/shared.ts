@@ -62,6 +62,7 @@ export const sharedExtensions = [
   SourceLiteralMark,
   PlainTextClipboard,
   StarterKit.configure({
+    trailingNode: false,
     undoRedo: false,
     bulletList: false,
     orderedList: false,

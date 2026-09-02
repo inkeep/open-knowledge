@@ -1,4 +1,9 @@
-import { MarkdownManager, sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import {
+  MarkdownManager,
+  MIN_CARRIED_TRAILING_EMPTIES,
+  sharedExtensions,
+  stripFrontmatter,
+} from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { commonmark } from 'commonmark.json';
@@ -144,46 +149,41 @@ describe('count tripwire', () => {
     expect(resolver.resolveInSource(anchor, { source, doc })?.confidence).toBe('ordinal');
   });
 
-  test('the tripwire reads the comparable ProseMirror child count, not a children.length', () => {
-    const source = '# A\n\nbody\n\n## Tail';
-    const baseJson = md.parse('# A\n\nbody\n\n## Tail') as { type: string; content: unknown[] };
-    const affordanceDoc = schema.nodeFromJSON({
-      ...baseJson,
-      content: [...baseJson.content, { type: 'paragraph' }],
-    });
+  test('the tripwire counts a trailing empty paragraph, because the source spells it', () => {
+    const source = '# A\n\nbody\n\n## Tail\n\n';
+    const doc = snap(source).doc;
     const mdastCount = computeSourceBlocks(source, md).blocks.length;
 
-    expect(comparableChildCount(affordanceDoc)).toBe(mdastCount);
-    expect(affordanceDoc.childCount).toBe(mdastCount + 1);
-    expect(affordanceDoc.children.length).toBe(mdastCount + 1);
+    expect(doc.child(doc.childCount - 1).type.name).toBe('paragraph');
+    expect(doc.child(doc.childCount - 1).content.size).toBe(0);
+    expect(comparableChildCount(doc)).toBe(mdastCount);
+    expect(comparableChildCount(doc)).toBe(doc.childCount);
 
-    const anchor = present(
-      resolver.captureFromWysiwyg(affordanceDoc, pmPosOfBlock(affordanceDoc, 0)),
-    );
-    expect(resolver.resolveInSource(anchor, { source, doc: affordanceDoc })?.confidence).toBe(
-      'exact',
-    );
-    expect(affordanceDoc.childCount === mdastCount).toBe(false);
+    const anchor = present(resolver.captureFromWysiwyg(doc, pmPosOfBlock(doc, 0)));
+    expect(resolver.resolveInSource(anchor, { source, doc })?.confidence).toBe('exact');
   });
 
-  test('a source-carried trailing blank run stays in the comparable count', () => {
-    const carried = '# A\n\nbody\n\n\n';
-    const doc = snap(carried).doc;
-    const blocks = computeSourceBlocks(carried, md).blocks;
+  test('a source-carried trailing blank run stays in the comparable count at every length', () => {
+    expect(MIN_CARRIED_TRAILING_EMPTIES).toBe(1);
+    for (const [carried, expected] of [
+      ['# A\n\nbody\n\n', 3],
+      ['# A\n\nbody\n\n\n', 4],
+    ] as const) {
+      const doc = snap(carried).doc;
+      const blocks = computeSourceBlocks(carried, md).blocks;
+      expect(blocks.length).toBe(expected);
+      expect(comparableChildCount(doc)).toBe(blocks.length);
+      expect(comparableChildCount(doc)).toBe(doc.childCount);
+    }
+  });
 
-    expect(blocks.length).toBe(4);
-    expect(comparableChildCount(doc)).toBe(blocks.length);
-
-    const affordanceOnly = '## H\n';
-    const headingJson = md.parse(affordanceOnly) as { type: string; content: unknown[] };
-    const affordanceDoc = schema.nodeFromJSON({
-      ...headingJson,
-      content: [...headingJson.content, { type: 'paragraph' }],
-    });
-    expect(affordanceDoc.childCount).toBe(2);
-    expect(comparableChildCount(affordanceDoc)).toBe(
-      computeSourceBlocks(affordanceOnly, md).blocks.length,
-    );
+  test('an all-empty doc is the schema minimum, the one paragraph no source spells', () => {
+    for (const source of ['', '\n', '\n\n\n']) {
+      const doc = snap(source).doc;
+      expect(doc.childCount).toBe(1);
+      expect(computeSourceBlocks(source, md).blocks.length).toBe(0);
+      expect(comparableChildCount(doc)).toBe(0);
+    }
   });
 
   test('a leading blank run is never subtracted, at or below the floor', () => {

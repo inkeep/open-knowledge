@@ -1444,6 +1444,10 @@ msgstr "Add another pattern"
 msgid "Add at least one letter or number."
 msgstr "Add at least one letter or number."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr "Add block below"
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11637,6 +11641,10 @@ msgstr "See the full install guide"
 msgid "See what's added"
 msgstr "See what's added"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr "Select {name}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11663,6 +11671,10 @@ msgstr "Select all files and folders"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
 msgstr "Select all source"
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
+msgstr "Select block"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
