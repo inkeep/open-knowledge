@@ -513,6 +513,15 @@
    The data-agent-flash-state attribute lives on the React wrapper (stable across PM updates).
    Targets only the last 3 blocks (append) or first 3 blocks (prepend) — covers most agent writes.
    Uses :nth-last-child / :nth-child to scope the flash without touching PM-managed DOM.
+   The append half counts `of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)` because
+   both are widget decorations that render as a direct .ProseMirror child at the document end.
+   Counting either would shift the append flash one block up while it is showing. CSS cannot
+   import OK_TRAILING_AFFORDANCE_CLASS from editor/extensions/trailing-affordance.ts, so this
+   list is the one place carrying the names literally; globals.test.ts pins them together.
+
+   The append and prepend halves are separate rules on purpose rather than one comma-joined
+   prelude. A selector list is invalidated as a whole, so on a UA that cannot parse `of S` the
+   prepend half would lose its flash too, though it uses no Selectors L4 syntax of its own.
 
    Staggered entry (30ms per block) via animation-delay for a cascading feel on multi-block writes. */
 
@@ -559,7 +568,10 @@
 
 [data-agent-flash-state="editing"][data-agent-flash-position="append"]
   .ProseMirror
-  > *:nth-last-child(-n + 3),
+  > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
+  animation: agent-flash 2s var(--ease-out-strong) forwards;
+  position: relative;
+}
 [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
   .ProseMirror
   > *:nth-child(-n + 3) {
@@ -570,12 +582,12 @@
 /* Stagger — second affected block fires 30ms after first, third at 60ms */
 [data-agent-flash-state="editing"][data-agent-flash-position="append"]
   .ProseMirror
-  > *:nth-last-child(2) {
+  > *:nth-last-child(2 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
   animation-delay: 30ms;
 }
 [data-agent-flash-state="editing"][data-agent-flash-position="append"]
   .ProseMirror
-  > *:nth-last-child(1) {
+  > *:nth-last-child(1 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
   animation-delay: 0ms;
 }
 [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
@@ -599,7 +611,11 @@
 @media (prefers-reduced-motion: reduce) {
   [data-agent-flash-state="editing"][data-agent-flash-position="append"]
     .ProseMirror
-    > *:nth-last-child(-n + 3),
+    > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
+    animation: none;
+    box-shadow: inset 3px 0 0 var(--color-agent);
+    transition: box-shadow 2s ease;
+  }
   [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
     .ProseMirror
     > *:nth-child(-n + 3) {
@@ -1113,7 +1129,13 @@
   scroll-padding-bottom: var(--ask-composer-height, 0px);
 }
 .editor-doc-scroll :is(.ProseMirror, .cm-content) {
-  padding-bottom: var(--ask-composer-height, 0px);
+  /* Composer inset ADDS to the trailing dead zone rather than replacing it —
+     this selector outranks the base `.ProseMirror` rule, so a bare
+     `var(--ask-composer-height)` here would zero the zone out from under the
+     affordance for every document in the scroller. `--ok-trailing-zone` is
+     declared on `.ProseMirror` only, so `.cm-content` takes the 0px fallback
+     and source mode is unchanged. */
+  padding-bottom: calc(var(--ask-composer-height, 0px) + var(--ok-trailing-zone, 0px));
 }
 
 /* Standalone Mermaid docs render OUTSIDE `.editor-doc-scroll` — a diagram +
@@ -1224,6 +1246,34 @@
   outline: none;
   min-height: 200px;
   line-height: 1.7;
+  /* Trailing dead zone — the click target `TrailingAffordance` engages in, and
+     the reason it is a token rather than incidental slack. The extension reads
+     the band between the last block's bottom and this element's bottom, and a
+     block's own `margin-bottom` collapses THROUGH a parent with no bottom
+     padding: with `padding-bottom: 0` those two edges are the same pixel and
+     the band is exactly 0px tall. That is the state a document is in whenever
+     the Ask composer is unmounted, because `BottomComposer` REMOVES
+     `--ask-composer-height` rather than setting it to zero. With the composer
+     mounted the scroller rule above does supply padding, but the composer
+     floats over precisely that band, so the only room ever left to click was
+     whatever `margin-bottom` the final block happened to carry. The old
+     `trailingNode` paragraph supplied this height as content; 2rem reproduces
+     it as layout. Anything that zeroes this silently un-ships the affordance,
+     so an e2e pins it by asserting this element's resolved `padding-bottom`
+     equals the composer inset plus this token, and a second assertion measures
+     the band directly. That direct reading pins the token only because
+     `measureZoneHeight` subtracts the other two terms sharing this edge: the
+     composer's reserved inset, and the final block's own `margin-bottom`, which
+     does not collapse through a padded parent and on this fixture already
+     exceeds the floor on its own. A naive band measurement would stay plausible
+     with the token gone, and that subtraction is what lets this one go red.
+
+     The base is 0px and the height is granted by the opt-in rule below, so the
+     CSS predicate matches the plugin's own bail (`view.editable`) instead of
+     approximating it. A read-only view and every non-editor ProseMirror get no
+     dead zone rather than an unreachable one. */
+  --ok-trailing-zone: 0px;
+  padding-bottom: var(--ok-trailing-zone);
   /* Extend hit area into left margin so the gap between text and the drag handle
      does not prematurely hide it. padding-left compensates so text is unchanged. */
   margin-left: -2.5rem;
@@ -1240,6 +1290,18 @@
   margin-right: -2.5rem;
   padding-right: 2.5rem;
   @apply text-gray-800 dark:text-white/80;
+}
+
+/* The dead zone, granted only where the affordance can actually engage. The
+   selector is the CSS half of `trailingAffordancePlugin`'s `view.editable`
+   bail; the composer opts out because its editor is a slim one-line prompt
+   whose own rule zeroes `min-height`, and 2rem of unclickable padding under it
+   reads as a broken text box. This wins on specificity, not position: the
+   attribute selector and the class inside `:not()` each add a class-level
+   point, so (0,3,0) against the base rule's (0,1,0). Raising the base rule's
+   specificity is what would break it, not moving this block. */
+.ProseMirror[contenteditable="true"]:not(.composer-prosemirror) {
+  --ok-trailing-zone: 2rem;
 }
 
 /* Phone-width rails. The 4rem side rails are a desktop reading measure; on a
@@ -1316,6 +1378,12 @@
   line-height: 1.5;
   margin-left: 0;
   padding-left: 0;
+  /* No trailing dead zone either: nothing can follow a one-line prompt, so the
+     affordance never engages here and the pad would only add dead space. The
+     token needs no reset — this element is excluded from the opt-in rule that
+     grants it — but the padding does, because the scroller rule adds the
+     composer's own height on top. */
+  padding-bottom: 0;
   /* Drop the right gutter mirror too — the slim composer is a single-line prompt,
      not a document body, so it needs neither the drag-handle hit area nor the
      full-width-block border slack. */
@@ -2402,22 +2470,44 @@
   user-select: none;
 }
 
-/* + button */
-.ok-add-block-btn {
+/* Gutter "+" chrome, shared by the block handle's button (`ok-add-block-btn`, a
+   real <button> parked beside a block by DragHandlePlugin) and the
+   TrailingAffordance hint (`ok-trailing-affordance-plus`, a <span> inside a
+   widget decoration below the last block). The two are deliberately the same
+   glyph at the same gutter offset, so hovering the dead zone reads as "a block
+   goes here" exactly the way hovering a block does. One rule rather than two
+   copies, so they cannot drift into a near-miss that reads as a rendering bug.
+
+   `color` clears the 3:1 WCAG 2.2 §1.4.11 floor for a non-text UI component,
+   here and on the drag grip that matches it: 3.64:1 against `--background`.
+   It is one value for the whole gutter vocabulary rather than a per-call-site
+   choice, so both glyphs move together when it changes.
+
+   Hover is a second surface, not a free ride, because the hover background is
+   translucent and composites toward the glyph. Light hover (6% black over
+   white) lands 3.19:1 and stays put. Dark hover (8% white over the dark canvas)
+   lifts the ground far enough that the resting dark glyph drops to 2.79:1, so
+   the dark block below lifts the glyph on hover rather than the background
+   alone. Every figure is `Y = L³` for these chroma-0 colors, then the standard
+   `(Y1 + 0.05) / (Y2 + 0.05)`, with the translucent layer composited in sRGB
+   before linearizing. */
+.ok-add-block-btn,
+.ok-trailing-affordance-plus {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 20px;
   height: 20px;
   cursor: pointer;
-  color: oklch(0.72 0 0);
+  color: oklch(0.62 0 0);
   border-radius: 3px;
   border: none;
   background: transparent;
   padding: 0;
   transition: background-color 100ms var(--ease-out-strong);
 }
-.ok-add-block-btn:hover {
+.ok-add-block-btn:hover,
+.ok-trailing-affordance-plus:hover {
   background-color: oklch(0 0 0 / 6%);
 }
 
@@ -2432,7 +2522,7 @@
   width: 20px;
   height: 20px;
   cursor: grab;
-  color: oklch(0.72 0 0);
+  color: oklch(0.62 0 0);
   border-radius: 3px;
   border: none;
   background: transparent;
@@ -2484,17 +2574,104 @@ body[data-editor-tab-dragging] * {
 }
 
 /* Dark mode */
-.dark .ok-add-block-btn {
+.dark :is(.ok-add-block-btn, .ok-trailing-affordance-plus) {
   color: oklch(0.5 0 0);
 }
-.dark .ok-add-block-btn:hover {
+.dark :is(.ok-add-block-btn, .ok-trailing-affordance-plus):hover {
   background-color: oklch(1 0 0 / 8%);
+  /* 0.5 against the hover-lifted ground is 2.79:1, under the 3:1 floor; 0.62
+     restores 4.60:1. Derivation on the shared rule above. */
+  color: oklch(0.62 0 0);
 }
 .dark .ok-drag-grip {
   color: oklch(0.5 0 0);
 }
 .dark .ok-drag-grip:hover {
   background-color: oklch(1 0 0 / 8%);
+  /* Same ground, same floor, same lift — the grip is part of the gutter
+     vocabulary and moves with it. */
+  color: oklch(0.62 0 0);
+}
+
+/* TrailingAffordance hint — the "+" shown while hovering the empty region below
+   a non-paragraph final block (`editor/extensions/trailing-affordance.ts`). It
+   is a widget decoration, so it is chrome and never document content.
+
+   Zero height with an absolutely positioned child: the hint appears and
+   disappears under the pointer, and an in-flow box would reflow the document
+   every time it did. `left: -52px` is not arbitrary — it is where
+   `BlockDragHandle` parks its own "+" (floating-ui `left-start`, `mainAxis: 10`
+   against the 42px controls row), so the two read as one affordance. The dead
+   zone reaches the plugin because `handleDOMEvents` binds on `view.dom` and
+   `inTrailingZone` classifies by coordinate, not because of anything here — a
+   zero-height row has no hit region to claim it either way. What the
+   `pointer-events` pair declares is that the hint is inert chrome with one
+   exception: the glyph opts back in, and it has to, because `left: -52px` puts
+   it partly left of `view.dom`'s border box and so outside that coordinate
+   test, which is why `inTrailingZone` recognizes it by target instead. */
+.ok-trailing-affordance {
+  position: relative;
+  height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Only the placement is this glyph's own — everything else comes from the
+   shared gutter-"+" rule above. `left` lands it in the same column the block
+   handle uses: the row is a child of `.ProseMirror`, whose content box starts
+   2.5rem (40px) inside its border box, and the handle sits 12px further out
+   still. `top` centers the 20px box on the line a click would create. */
+.ok-trailing-affordance-plus {
+  position: absolute;
+  top: 4px;
+  left: -52px;
+  pointer-events: auto;
+}
+
+/* Same narrow-rail gate as the `.ProseMirror` escape far above. At a 1rem rail
+   the -52px gutter does not exist, so the 20px glyph lands at [-36px, -16px],
+   outside `.ProseMirror`'s border box and clipped away by the scroller, and the
+   affordance the plugin pins on for coarse pointers is invisible. Park it at
+   the text origin instead: nothing follows the last block, so it overlaps
+   nothing. Must stay AFTER the rule above — a media query adds no specificity,
+   so an earlier block loses to it on source order. */
+@media (width < 40rem) and (pointer: coarse) {
+  .ok-trailing-affordance-plus {
+    left: 0;
+  }
+}
+
+/* The block handle's "+" fades in; this one is a widget decoration that enters
+   the DOM already hovered, so without an entry transition it pops at full
+   opacity and the two gutter glyphs read as different components. There is no
+   exit half: the decoration is removed, not hidden. */
+@media (prefers-reduced-motion: no-preference) {
+  .ok-trailing-affordance-plus {
+    transition:
+      background-color 100ms var(--ease-out-strong),
+      opacity 100ms var(--ease-out-strong);
+  }
+
+  @starting-style {
+    .ok-trailing-affordance-plus {
+      opacity: 0;
+    }
+  }
+}
+
+/* Gapcursor — the caret ProseMirror places where no textblock can sit (after a
+   final table, between two fences). It is drawn as `border-top: 1px solid
+   black`, which is all but invisible on the dark theme. Bind it to the same
+   token the text caret uses.
+
+   The descendant selector is load-bearing. prosemirror-gapcursor itself injects
+   nothing (it ships `style/gapcursor.css` and tells you to include it), but
+   `@tiptap/core` carries a copy of that CSS as a string and appends it to a
+   `style[data-tiptap-style]` tag at runtime. Its rule has equal specificity to
+   a bare `.ProseMirror-gapcursor::after` and can land after this stylesheet, so
+   the extra `.ProseMirror` ancestor is what keeps this declaration winning. */
+.ProseMirror .ProseMirror-gapcursor::after {
+  border-top-color: var(--foreground);
 }
 
 /* Positioned host for the per-column / per-row cell-handle dropdowns
@@ -5507,7 +5684,9 @@ html.electron-mode [data-slot="sidebar-inner"] {
 .dark
   [data-agent-flash-state="editing"][data-agent-flash-position="append"]
   .ProseMirror
-  > *:nth-last-child(-n + 3),
+  > *:nth-last-child(-n + 3 of :not(.ok-trailing-affordance, .ProseMirror-gapcursor)) {
+  animation-name: agent-flash-dark;
+}
 .dark
   [data-agent-flash-state="editing"][data-agent-flash-position="prepend"]
   .ProseMirror

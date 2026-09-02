@@ -1,15 +1,18 @@
 import type { Root as MdastRoot, Paragraph } from 'mdast';
 import type { SourceDocBoundary } from './mdast-augmentation.ts';
 
-export const MIN_CARRIED_EDGE_EMPTIES = 2;
+export const MIN_CARRIED_LEADING_EMPTIES = 2;
+
+export const MIN_CARRIED_TRAILING_EMPTIES = 1;
 
 export interface DocEdgeEmpties {
   leading: number;
   trailing: number;
 }
 
-function applyFloor(empties: number): number {
-  return empties >= MIN_CARRIED_EDGE_EMPTIES ? empties : 0;
+function applyFloor(empties: number, edge: 'leading' | 'trailing'): number {
+  const floor = edge === 'leading' ? MIN_CARRIED_LEADING_EMPTIES : MIN_CARRIED_TRAILING_EMPTIES;
+  return empties >= floor ? empties : 0;
 }
 
 export function carriedEdgeEmpties(source: string): DocEdgeEmpties {
@@ -17,8 +20,8 @@ export function carriedEdgeEmpties(source: string): DocEdgeEmpties {
   const afterHead = afterBom.replace(/^\n+/, '');
   if (afterHead.replace(/\n+$/, '').length === 0) return { leading: 0, trailing: 0 };
   return {
-    leading: applyFloor(afterBom.length - afterHead.length),
-    trailing: applyFloor(afterHead.length - afterHead.replace(/\n+$/, '').length - 1),
+    leading: applyFloor(afterBom.length - afterHead.length, 'leading'),
+    trailing: applyFloor(afterHead.length - afterHead.replace(/\n+$/, '').length - 1, 'trailing'),
   };
 }
 
@@ -35,11 +38,11 @@ export function materializeDocEdgeBlankRuns(
   const head =
     children.length === 0 || boundary.leading === undefined
       ? 0
-      : applyFloor(boundary.leading.length);
+      : applyFloor(boundary.leading.length, 'leading');
   const tail =
     children.length === 0 || boundary.trailing === undefined
       ? 0
-      : applyFloor(boundary.trailing.length - 1);
+      : applyFloor(boundary.trailing.length - 1, 'trailing');
   if (head === 0 && tail === 0) return boundary;
 
   const lastEnd = children[children.length - 1]?.position?.end;

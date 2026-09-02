@@ -70,7 +70,7 @@ export function deriveEditorClipOptions(editor: Editor): () => EditorClipOptions
     const padding = {
       top: editorToolbarOverlapPx(),
       bottom:
-        readRootInlinePxVar('--ask-composer-height') +
+        readRootInlinePxVar(ASK_COMPOSER_HEIGHT_VAR) +
         readRootInlinePxVar('--conflict-footer-height'),
     };
     return boundary ? { boundary, padding } : { padding };
@@ -131,6 +131,8 @@ export function editorRegionWidthPx(editor: Editor): number | null {
   if (!boundary) return null;
   return Math.max(0, boundary.getBoundingClientRect().width - PANE_GUTTER_PX * 2);
 }
+
+export const ASK_COMPOSER_HEIGHT_VAR = '--ask-composer-height';
 
 function readRootInlinePxVar(name: string): number {
   const value = Number.parseFloat(document.documentElement.style.getPropertyValue(name));

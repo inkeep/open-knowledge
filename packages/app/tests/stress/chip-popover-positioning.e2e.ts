@@ -27,6 +27,14 @@ async function rectOf(_page: Page, locator: ReturnType<Page['locator']>) {
   return box;
 }
 
+async function disableFollowFile(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('ok-acp-follow-file-v1', '0');
+    } catch {}
+  });
+}
+
 test('CHIP-POS-WIKI: wiki-link PropPanel anchors to chip rect when scrolled past first viewport', async ({
   page,
   api,
@@ -34,6 +42,7 @@ test('CHIP-POS-WIKI: wiki-link PropPanel anchors to chip rect when scrolled past
   const docName = `chip-pos-wiki-${Math.random().toString(36).slice(2, 10)}`;
   await api.createPage(`${docName}.md`);
   await api.replaceDoc(docName, `${FILLER}\n\nTrailing chip: [[fake-target]]\n`);
+  await disableFollowFile(page);
   await page.goto(`/#/${docName}`);
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   await waitForActiveProviderSynced(page);
@@ -64,6 +73,7 @@ test('CHIP-POS-LINK: internal-link PropPanel anchors to chip rect when scrolled 
   const docName = `chip-pos-link-${Math.random().toString(36).slice(2, 10)}`;
   await api.createPage(`${docName}.md`);
   await api.replaceDoc(docName, `${FILLER}\n\nTrailing chip: [Beta page](beta.md)\n`);
+  await disableFollowFile(page);
   await page.goto(`/#/${docName}`);
   await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
   await waitForActiveProviderSynced(page);

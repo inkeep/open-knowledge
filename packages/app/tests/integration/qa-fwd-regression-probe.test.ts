@@ -69,20 +69,21 @@ async function seedDocument(raw: string, fragmentBody = raw): Promise<TestClient
 }
 
 describe('#3132 forward verification + regression checks', () => {
-  test('FWD-02: one Enter at the tail stays below the carry floor; the second Enter carries both', async () => {
+  test('FWD-02: each Enter at the tail carries on its own press', async () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
       a.doc.transact(() => {
         a.fragment.insert(a.fragment.length, [para()]);
       });
-      await wait(1500);
-      const afterOne = clients.map((c) => c.ytext.toString());
-      diag('FWD-02:one-enter', { afterOne });
-      for (const yt of afterOne) {
-        expect(yt, 'single Enter is affordance-ambiguous and must not write bytes').toBe(
-          'Above.\n\nBelow.\n',
-        );
+      const afterOne = 'Above.\n\nBelow.\n\n';
+      const carriedOne = await settle(
+        () => clients.every((c) => c.ytext.toString() === afterOne),
+        6000,
+      );
+      diag('FWD-02:one-enter', { carriedOne, ytext: clients.map((c) => c.ytext.toString()) });
+      for (const c of clients) {
+        expect(c.ytext.toString(), 'one Enter is authored and carries immediately').toBe(afterOne);
       }
       a.doc.transact(() => {
         a.fragment.insert(a.fragment.length, [para()]);
@@ -94,9 +95,7 @@ describe('#3132 forward verification + regression checks', () => {
       );
       diag('FWD-02:two-enters', { converged, ytext: clients.map((c) => c.ytext.toString()) });
       for (const c of clients) {
-        expect(c.ytext.toString(), 'second Enter crosses the floor and carries the run').toBe(
-          expected,
-        );
+        expect(c.ytext.toString(), 'the second Enter adds the second blank line').toBe(expected);
       }
     } finally {
       for (const c of clients) await c.cleanup();

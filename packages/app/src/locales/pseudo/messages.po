@@ -1440,6 +1440,10 @@ msgstr ""
 msgid "Add at least one letter or number."
 msgstr ""
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr ""
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11633,6 +11637,10 @@ msgstr ""
 msgid "See what's added"
 msgstr ""
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr ""
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11658,6 +11666,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
+msgstr ""
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts

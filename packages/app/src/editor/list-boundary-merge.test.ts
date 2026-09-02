@@ -196,7 +196,7 @@ describe('preserved stock behaviors (controls — must hold before and after the
 
   test('Backspace on the empty paragraph after a list rejoins the list (no stray bullet)', () => {
     const editor = mountEditor('- item one\n');
-    setCaret(editor, editor.state.doc.content.size - 1);
+    setCaret(editor, itemPos(editor, 0, 'end'));
     press(editor, 'Enter');
     press(editor, 'Enter');
     press(editor, 'Backspace');
@@ -204,17 +204,19 @@ describe('preserved stock behaviors (controls — must hold before and after the
     const md = serialize(editor).trim();
     expect(md).toBe('- item one');
     expect(md).not.toMatch(/^- *$/m);
+    expect(editor.state.doc.childCount).toBe(1);
   });
 
   test('Backspace on an empty nested item removes it', () => {
     const editor = mountEditor('- top\n  - sub\n');
-    setCaret(editor, editor.state.doc.content.size - 1);
+    setCaret(editor, itemPos(editor, 1, 'end'));
     press(editor, 'Enter');
     press(editor, 'Backspace');
 
     const md = serialize(editor);
     expect(md).toMatch(/^- top\n {2}- sub\n?$/m);
     expect(md.match(/- sub/g)).toHaveLength(1);
+    expect(md).not.toMatch(/^ *- *$/m);
   });
 
   test('a ranged selection spanning the nested boundary deletes via the normal path', () => {
@@ -315,7 +317,20 @@ describe('unusual merge targets in the owned configuration', () => {
     expect(md).not.toMatch(/\n\nnext/);
   });
 
-  test('Backspace on a fresh autoformatted empty item at the nested boundary dissolves it into the list', () => {
+  test('Backspace on an empty item at the nested boundary dissolves it into the list', () => {
+    const editor = mountEditor('- top\n  - child\n- next');
+    editor.view.dispatch(
+      editor.state.tr.delete(itemPos(editor, 2, 'start'), itemPos(editor, 2, 'end')),
+    );
+    setCaret(editor, itemPos(editor, 2, 'start'));
+    expect(press(editor, 'Backspace')).toBe(true);
+
+    const md = serialize(editor);
+    expect(md).not.toMatch(/^- *$/m);
+    expect(md.trim()).toBe('- top\n  - child');
+  });
+
+  test('Backspace right after a "- " autoformat at the nested boundary undoes the rule, not the merge', () => {
     const editor = mountEditor('- top\n  - child\n\nx');
     const { view } = editor;
     let paraPos = -1;
@@ -335,11 +350,11 @@ describe('unusual merge targets in the owned configuration', () => {
       f(view, from, from, ' ', () => view.state.tr.insertText(' ', from, from)),
     );
     expect(handled).toBe(true);
-    press(editor, 'Backspace');
+    expect(press(editor, 'Backspace')).toBe(true);
 
-    const md = serialize(editor);
-    expect(md).not.toMatch(/^- *$/m);
-    expect(md.trim()).toBe('- top\n  - child');
+    expect(editor.state.doc.lastChild?.type.name).toBe('paragraph');
+    expect(editor.state.doc.lastChild?.textContent).toBe('- ');
+    expect(serialize(editor)).toContain('- top\n  - child\n');
   });
 });
 

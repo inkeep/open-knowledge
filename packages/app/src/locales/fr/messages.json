@@ -414,6 +414,7 @@
       "Vous avez déjà un dépôt git ? Ajoutez-le avec <0>git remote add origin <url></0> dans le dossier de ce projet. Cette page se met à jour automatiquement dès qu'un dépôt distant est détecté."
     ],
     "45MZFs": ["Commandes"],
+    "46YgRZ": ["Ajouter un bloc en dessous"],
     "484LKL": ["Retirer le lien"],
     "49Mb7P": [
       "Nous n'avons pas pu vérifier si Slidev est installé. Revenez à cette fenêtre pour réessayer."
@@ -726,6 +727,7 @@
     ],
     "7PzzBU": ["Utilisateur"],
     "7S7FNA": ["OpenKnowledge a vérifié le projet"],
+    "7Voget": ["Sélectionner ", ["name"]],
     "7WnfoD": [
       "Ce rapport est déjà en route. Son résultat apparaîtra dans l'historique des rapports de bug."
     ],
@@ -1185,6 +1187,7 @@
     "C_cPoW": [
       "Votre session GitHub a expiré — reconnectez-vous pour vérifier l'accès en écriture."
     ],
+    "CbxTfe": ["Sélectionner le bloc"],
     "CcaU4i": [
       "Les modifications s’appliquent immédiatement et sont automatiquement enregistrées dans ce thème."
     ],

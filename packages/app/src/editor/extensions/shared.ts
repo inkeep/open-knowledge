@@ -37,6 +37,7 @@ import { TableInsertControls } from './table-insert-controls';
 import { TableRowEnter } from './table-row-enter';
 import { TagClickPlugin } from './tag-click-plugin';
 import { Tag } from './tag-view';
+import { TrailingAffordance } from './trailing-affordance';
 import { WikiLink } from './wiki-link';
 import { WikiLinkEmbed } from './wiki-link-embed';
 
@@ -97,6 +98,7 @@ export const sharedExtensions = [
   FootnoteAnchorScroll,
   BlockDragHandle,
   BlockMover,
+  TrailingAffordance,
   TableInsertControls,
   TableRowEnter,
   SourceDirtyObserver,

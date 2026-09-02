@@ -1,8 +1,4 @@
-import {
-  type MarkdownManager,
-  MIN_CARRIED_EDGE_EMPTIES,
-  stripFrontmatter,
-} from '@inkeep/open-knowledge-core';
+import { type MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 
 export interface SourceBlockSpans {
@@ -101,7 +97,7 @@ export function comparableChildCount(doc: PmNode): number {
     if (child.type.name !== 'paragraph' || child.content.size !== 0) break;
     trailingEmpty++;
   }
-  return trailingEmpty < MIN_CARRIED_EDGE_EMPTIES ? doc.childCount - trailingEmpty : doc.childCount;
+  return trailingEmpty === doc.childCount ? 0 : doc.childCount;
 }
 
 export function blockRangeToPositions(

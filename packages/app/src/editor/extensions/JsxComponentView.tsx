@@ -47,7 +47,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
-import { TextSelection } from '@tiptap/pm/state';
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react';
 import {
   ArrowDown,
@@ -89,6 +88,7 @@ import {
   resolveDescriptorPlaceholder,
   shouldRenderPlaceholder,
 } from '../registry/resolve-descriptor-placeholder.ts';
+import { moveCaretAfterNode, placeGapCursorAfterNode } from '../selection/place-caret.ts';
 import {
   consumeAutoOpen,
   createChildNode,
@@ -579,11 +579,11 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         const nodeEnd = p + curNode.nodeSize;
         const selFrom = editor.state.selection.from;
         if (selFrom < p || selFrom >= nodeEnd) return;
-        if (isSelfClosingLeaf) {
-          const $end = editor.state.doc.resolve(Math.min(nodeEnd, editor.state.doc.content.size));
-          const nextSel = TextSelection.near($end, 1);
-          editor.view.dispatch(editor.state.tr.setSelection(nextSel).scrollIntoView());
-        } else {
+        if (
+          !isSelfClosingLeaf ||
+          (!moveCaretAfterNode(editor.view, p, curNode.nodeSize) &&
+            !placeGapCursorAfterNode(editor.view, p, curNode.nodeSize))
+        ) {
           editor.chain().setNodeSelection(p).run();
         }
       } catch (err) {

@@ -1444,6 +1444,10 @@ msgstr "再添加一个模式"
 msgid "Add at least one letter or number."
 msgstr "请至少加入一个字母或数字。"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr "在下方添加块"
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11637,6 +11641,10 @@ msgstr "查看完整的安装指南"
 msgid "See what's added"
 msgstr "查看将添加的内容"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr "选择 {name}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11663,6 +11671,10 @@ msgstr "选中所有文件和文件夹"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
 msgstr "全选源码"
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
+msgstr "选择块"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select every visible file-tree row when focus is in the Files sidebar."
