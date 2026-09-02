@@ -139,6 +139,28 @@ import { getMeter, setActiveSpanAttributes, withSpan } from './telemetry.ts';
 
 const log = getLogger('persistence');
 
+/**
+ * Dev-only: the server runs `Y.Text`-only, matching a client on the projection
+ * binding. Read once at module load for the same reason the observer extension
+ * does — a run where some writes reason about the fragment and others do not is
+ * worse than either. See `OK_DISABLE_BRIDGE` in `server-observer-extension.ts`.
+ */
+/**
+ * The markdown bridge no longer runs, so nothing derives the `Y.XmlFragment`.
+ *
+ * Every fragment-side check below is therefore comparing `Y.Text` against an
+ * EMPTY document: the bridge-invariant check reports divergence on every write
+ * and takes its repair arm each time, minting a "Before persistence fragment
+ * rebuild" checkpoint into the user's version history and rebuilding a replica
+ * nothing reads.
+ *
+ * Nothing about what reaches disk changes by skipping it — `Y.Text` was already
+ * the source of truth for the bytes written (precedent #38), and the repair arm
+ * only ever touched the replica. Kept as a named seam while the fragment reads
+ * are removed in stages; it goes with the last of them.
+ */
+const BRIDGE_DISABLED = true;
+
 export class DocumentOpenSizeLimitError extends Error {
   readonly docName: string;
   readonly size: number;
@@ -1912,7 +1934,21 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           fragmentMarkdown = null;
           normalizeEqual = false;
         }
-        if (!normalizeEqual) {
+        // With the bridge detached there is no fragment to hold an invariant
+        // against: Observer B never derives one, so `json` came from an EMPTY
+        // document and the check above reports divergence on EVERY write. Left
+        // unguarded, each save would take the repair arm below — minting a
+        // "Before persistence fragment rebuild" checkpoint into the user's
+        // version history and rebuilding a fragment nothing reads.
+        //
+        // Nothing about the bytes on disk changes by skipping it: Y.Text is
+        // already the source of truth for what is written (precedent #38), and
+        // the arm below never altered that — it only repaired the replica.
+        //
+        // This is the persistence half of `OK_DISABLE_BRIDGE`. Without it the
+        // switch silences Observer A but leaves the rest of the server still
+        // reasoning about a replica that no longer exists.
+        if (!normalizeEqual && !BRIDGE_DISABLED) {
           // Watchdog already emitted the rate-limited telemetry +
           // incremented `bridgeInvariantViolations` (or its suppressed
           // counterpart) — or, when serialize itself threw, the warn above

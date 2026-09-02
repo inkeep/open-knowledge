@@ -5,13 +5,16 @@
  * extends Y.Doc). This avoids openDirectConnection's connection-count increment
  * which would prevent documents from unloading during server shutdown.
  *
- * Skips __system__ and config docs (markdown bridge is markdown-only;
- * config docs are Y.Text-only).
+ * The markdown bridge is NOT attached: every client derives its ProseMirror
+ * document locally from `Y.Text`, so the `Y.XmlFragment` has no readers. What
+ * survives here is the per-document quiescence tracker, which persistence needs
+ * and which was never bridge logic — it reads `Y.Doc` transactions only.
  */
 import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
+import { attachQuiescenceTracker } from './bridge-quiescence.ts';
 import {
   isConfigDoc,
   isEditableTextDoc,
@@ -100,14 +103,65 @@ export interface ServerObserverExtensionOptions {
  * - afterUnloadDocument: detaches observers (clears debounces)
  * - Skips __system__ doc (CC1 broadcast pseudo-doc)
  */
+/**
+ * The markdown bridge no longer runs. `Y.Text` is the only live CRDT.
+ *
+ * Kept as a named constant rather than deleted inline because the observer
+ * machinery it gates is being removed in stages, and a single named seam makes
+ * each stage's remaining arm obvious. It goes when the last one does.
+ *
+ * Every client derives its ProseMirror document locally from `Y.Text` (see
+ * `projection-binding.ts`), so nothing reads the `Y.XmlFragment` any more.
+ * Leaving the bridge attached would be actively harmful, not merely wasteful:
+ * Observer A serializes a fragment nobody updates and line-diffs it back over
+ * `Y.Text`, silently reverting edits.
+ */
+const BRIDGE_DISABLED = true;
+
 export function createServerObserverExtension(opts: ServerObserverExtensionOptions): Extension {
+  // Say so, once per server, while the machinery is still present but inert.
+  // Silence here would be indistinguishable from the bridge running normally,
+  // and telling those two apart has already cost this branch several sessions.
+  // Drop this line with the rest of the observer machinery.
+  log.info({}, '[ServerObserverExtension] markdown bridge not attached — Y.Text is the only CRDT');
+
   const cleanups = new Map<string, () => void>();
   const pendingRetries = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * Quiescence detachers, keyed per document.
+   *
+   * Separate from `cleanups` because the two have different lifetimes: a doc
+   * the bridge declines has no observer cleanup but still has a tracker, and
+   * conflating them would either skip the detach or make the "already
+   * attached?" check answer for the wrong thing.
+   */
+  const quiescenceDetachers = new Map<string, () => void>();
 
   return {
     async afterLoadDocument({ documentName, document }) {
+      // Quiescence tracking comes FIRST, and is deliberately outside every skip
+      // below.
+      //
+      // It reads `Y.Doc` transactions only — nothing about the fragment — but
+      // persistence gates every write on `isDocQuiescent`, and the counters
+      // start equal, so a doc with no tracker reports `settledGen >
+      // lastUserTxGen` as false forever and never persists. It used to be
+      // attached from inside `setupServerObservers`, which made "the bridge
+      // declined this doc" silently mean "this doc never settles" — the app
+      // came up and then stalled with `OK_DISABLE_BRIDGE=1`.
+      //
+      // Detached on unload via its own map, whose lifetime differs from the
+      // observer cleanups'.
+      if (!quiescenceDetachers.has(documentName)) {
+        quiescenceDetachers.set(
+          documentName,
+          attachQuiescenceTracker(document as unknown as Y.Doc),
+        );
+      }
+
       // Mermaid docs are Y.Text-only like config docs — the markdown bridge must
       // NOT run (it would re-canonicalize the diagram source through remark).
+      if (BRIDGE_DISABLED) return;
       if (
         isSystemDoc(documentName) ||
         isConfigDoc(documentName) ||
@@ -188,6 +242,14 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
         pendingRetries.delete(documentName);
       }
 
+      // Before the observer cleanup's early return below: a doc the bridge
+      // declined has a tracker and no cleanup, so returning first would leak it.
+      const detachQuiescence = quiescenceDetachers.get(documentName);
+      if (detachQuiescence) {
+        detachQuiescence();
+        quiescenceDetachers.delete(documentName);
+      }
+
       const cleanup = cleanups.get(documentName);
       if (!cleanup) return;
       cleanup();
@@ -206,6 +268,18 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
         }
       }
       cleanups.clear();
+
+      for (const [docName, detach] of quiescenceDetachers.entries()) {
+        try {
+          detach();
+        } catch (err) {
+          log.error(
+            { docName, err },
+            `[ServerObserverExtension] Quiescence detach failed for '${docName}'`,
+          );
+        }
+      }
+      quiescenceDetachers.clear();
     },
   };
 }

@@ -2607,7 +2607,11 @@ export function createServer(options: ServerOptions): ServerInstance {
       const name = document.name;
       if (isReservedForUserTree(name)) return false;
       if (getReconciledBase(name) !== undefined) return false;
-      if (document.getXmlFragment('default').length !== 0) return false;
+      // `Y.Text` alone: it is the only CRDT, so it is the whole answer to
+      // "does this document hold content?". The fragment half that stood here
+      // asked a derived replica the same question; with nothing deriving it,
+      // that half answered "empty" for every document and could only ever
+      // return the wrong answer.
       if (document.getText('source').length !== 0) return false;
       return defaultShouldUnloadDocument(document);
     };

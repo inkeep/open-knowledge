@@ -30,6 +30,7 @@
  */
 
 import {
+  alignProjectionToDoc,
   applySplice,
   buildProjection,
   changedProjectionBlocks,
@@ -58,43 +59,21 @@ import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-man
  * deriving from a fragment the client no longer updates, converge on the
  * fragment's stale content.
  */
-const PROJECTION_BINDING_ENABLED = false;
-
-declare global {
-  interface Window {
-    /** Dev-only projection-path toggle — see `projectionBindingEnabled`. */
-    __okProjectionBinding?: boolean;
-  }
-}
-
 /**
  * Whether this editor binds the projection or the fragment.
  *
- * The constant above is the shipping decision. The two dev-only channels below
- * exist because the path has to be *typed on* before it can be trusted — every
- * property here is asserted by test, but no human has yet put a caret in it —
- * and requiring a source edit plus a rebuild to try it makes that exercise
- * something people skip:
+ * ALWAYS the projection on this branch. The fragment binding and the
+ * server-side bridge that maintained it are gone, so there is no second path
+ * to select — this survives only as the seam the fragment arms are being
+ * deleted through, and goes with the last of them.
  *
- *   VITE_OK_PROJECTION_BINDING=1 pnpm --dir packages/desktop run dev
- *
- * or, in DevTools, set `window.__okProjectionBinding` to true and reload.
- * (Spelled in prose rather than as an assignment on purpose: the
- * `no ungated window.__ writes` STOP rule scans lines, not syntax, and a
- * pasteable assignment here reads to it as a real ungated write. This module
- * only ever READS that global.)
- *
- * `import.meta.env.PROD` is replaced with a literal by Vite, so the whole
- * override body is unreachable — and tree-shakeable — in a production build.
- * Turning this on must NOT be combined with the server-side bridge observers on
- * the same document: Observer A would keep writing `Y.Text` from a fragment the
- * client no longer updates.
+ * The dev-only override channels (`VITE_OK_PROJECTION_BINDING`,
+ * `window.__okProjectionBinding`) are removed with the constant they gated:
+ * there is nothing left to turn on. `OK_DISABLE_BRIDGE` on the server side is
+ * likewise obsolete — the bridge is not attached at all.
  */
 export function projectionBindingEnabled(): boolean {
-  if (PROJECTION_BINDING_ENABLED) return true;
-  if (import.meta.env.PROD === true) return false;
-  if (typeof window !== 'undefined' && window.__okProjectionBinding === true) return true;
-  return import.meta.env.VITE_OK_PROJECTION_BINDING === '1';
+  return true;
 }
 
 const projectionBindingKey = new PluginKey('okProjectionBinding');
@@ -288,8 +267,11 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         }
         // The dispatch reuses the projection's own node objects, so the
         // identity-based change detection stays meaningful on the next
-        // keystroke.
-        adopt({ ...next, doc: view.state.doc });
+        // keystroke. `alignProjectionToDoc` holds the editor's trailing
+        // type-here paragraph with a zero-width span: the parse cannot produce
+        // it, and without an entry the block table is one short of the document
+        // for the rest of the session.
+        adopt(alignProjectionToDoc(next, view.state.doc));
       };
 
       const onYText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
@@ -313,7 +295,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
       // actually have moved, and it answers the question exactly.
       let settling = false;
       if (ytext.toString() === projection.source) {
-        adopt({ ...projection, doc: view.state.doc });
+        adopt(alignProjectionToDoc(projection, view.state.doc));
       } else {
         settling = true;
         queueMicrotask(() => {
@@ -331,7 +313,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
           const changed = changedProjectionBlocks(projection.doc, after);
           if (changed === null) {
-            adopt({ ...projection, doc: after });
+            adopt(alignProjectionToDoc(projection, after));
             return;
           }
 
@@ -357,7 +339,27 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           // block with a zero-width span so the table keeps one entry per
           // document block. The block reaches the markdown as soon as it holds
           // content.
-          const writesBytes = splice.to > splice.from || splice.text !== '';
+          // Compare against the bytes ALREADY THERE, not merely against the
+          // splice's shape. A block can be rebuilt without its markdown
+          // changing — the render-time attrs on links, wiki links, images and
+          // JSX components are configured per document and updated after mount,
+          // which makes a block unequal to its predecessor while serializing
+          // byte-for-byte the same. `changedProjectionBlocks` correctly reports
+          // a change (the nodes differ), and the splice correctly describes the
+          // replacement; what would be wrong is performing it.
+          //
+          // Writing bytes equal to the ones present is not a harmless no-op:
+          // the transaction is tracked, so it CLEARS THE REDO STACK and pushes
+          // an undo item that retracts nothing. It also replaces the CRDT items
+          // for that range, disturbing other clients' cursors and the undo
+          // manager's attribution for text nobody edited.
+          //
+          // The symptom is remote from the cause and document-shaped: redo
+          // stops working after a mode switch, but only on documents holding
+          // one of those node types — a document of plain paragraphs cannot
+          // reproduce it. The gap-rewrite path already declines for the same
+          // reason; this extends the rule to the replacement path.
+          const writesBytes = projection.source.slice(splice.from, splice.to) !== splice.text;
           if (writesBytes) {
             const doc = ytext.doc;
             if (doc === null) return;
@@ -372,7 +374,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           }
           const reprojected = reprojectAgainst(nextSource, after, md);
           stats.rebuilds++;
-          adopt(reprojected ?? { ...buildProjection(nextSource, md), doc: after });
+          adopt(reprojected ?? alignProjectionToDoc(buildProjection(nextSource, md), after));
         },
         destroy() {
           destroyed = true;

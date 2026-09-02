@@ -32,10 +32,20 @@ import {
   mapOffsetThroughDelta,
   projectionBindingEnabled,
 } from './projection-binding';
+import { sharedUndoManagerFor } from './shared-undo-manager';
 import { buildExtensionList, buildPatternDConstructorOptions } from './TiptapEditor';
 import { fakeClipboard, installDomGlobals } from './walk-currency-test-harness';
 
 const md = new MarkdownManager({ extensions: sharedExtensions });
+/**
+ * The manager the projection actually runs with in the app. The
+ * structural-freshness derive is load-bearing for JSX components, so a rig
+ * built on a plain manager would pass while the product silently lost edits.
+ */
+const projectionMd = new MarkdownManager({
+  extensions: sharedExtensions,
+  deriveStructuralFreshness: true,
+});
 
 let restoreDom: (() => void) | undefined;
 beforeAll(() => {
@@ -62,7 +72,7 @@ function createRig(source: string): Rig {
 
   const host = document.createElement('div');
   document.body.appendChild(host);
-  const binding = createProjectionBinding({ ytext, md, origin: USER_ORIGIN });
+  const binding = createProjectionBinding({ ytext, md: projectionMd, origin: USER_ORIGIN });
   const editor = new Editor({
     element: host,
     content: binding.content,
@@ -618,5 +628,258 @@ describe('the Pattern D constructor path honours the flag', () => {
     // the observable difference between the two arms.
     expect(content.content ?? []).toHaveLength(0);
     cleanup();
+  });
+});
+
+/**
+ * A held empty paragraph must survive a projection REBUILD.
+ *
+ * An empty paragraph — what Enter produces before anything is typed into it —
+ * has no markdown spelling, so the projection holds it with a zero-width span
+ * and writes nothing. That much already worked. What did not is what happens
+ * next: any rebuild re-parses the source, and a parse of those bytes cannot
+ * produce a block the bytes do not spell, so the held entry disappears while
+ * the block stays in the document. `map.blocks.length === doc.childCount` is
+ * then false for the rest of the session.
+ *
+ * Rebuilds are ordinary — a remote write, an agent edit, or the
+ * `reprojectAgainst` fallback after a multi-block change — so this is reached
+ * without doing anything unusual.
+ *
+ * Both consequences are silent. Edits at the tail become unplaceable and are
+ * DISCARDED, and `rebaseProjection` refuses outright once the two disagree, so
+ * every keystroke falls back to a whole-document parse — the cost the block
+ * scoping exists to avoid.
+ *
+ * Found by hand, not by this suite, and the shape is the one §7 warns about:
+ * the symptom lands one keystroke LATER than the edit that broke the table, so
+ * it reads as "typing went to the wrong place" rather than "the list exit was
+ * mishandled".
+ */
+describe('projection binding — a held block the source cannot spell', () => {
+  const LIST_TAIL = '# Heading\n\nIntro.\n\n- one\n- two\n';
+
+  /** The table must carry one entry per document block, always. */
+  function expectAligned(rig: Rig): void {
+    const projection = rig.stats.projection as unknown as {
+      map: { blocks: readonly unknown[] };
+    };
+    expect(projection.map.blocks.length).toBe(rig.editor.state.doc.childCount);
+  }
+
+  /** Enter at the very end of the document — the everyday way to hold a block. */
+  function enterAtEnd(rig: Rig): void {
+    rig.editor.commands.focus('end');
+    rig.editor.commands.insertContent('\n');
+  }
+
+  it('keeps the held block in the table across a rebuild', () => {
+    const rig = createRig(LIST_TAIL);
+    enterAtEnd(rig);
+    const held = rig.editor.state.doc.childCount;
+    expectAligned(rig);
+
+    // Force a rebuild the way a remote write would: a foreign-origin change.
+    rig.ydoc.transact(() => rig.ytext.insert(0, '<!-- x -->\n\n'), 'remote');
+
+    // The rebuild re-parses bytes that cannot spell the held block. Before the
+    // fix the table came back one entry short and stayed that way.
+    expect(rig.editor.state.doc.childCount).toBeGreaterThanOrEqual(held);
+    expectAligned(rig);
+    rig.destroy();
+  });
+
+  it('materializes the held block into bytes when typed into', () => {
+    const rig = createRig(LIST_TAIL);
+    enterAtEnd(rig);
+    rig.ydoc.transact(() => rig.ytext.insert(0, '<!-- x -->\n\n'), 'remote');
+
+    const last = rig.editor.state.doc.childCount - 1;
+    appendToBlock(rig.editor, last, 'X');
+
+    // The reported bug: with no table entry to anchor it, the splice resolved
+    // against the PREVIOUS block's span and the text landed at the end of the
+    // list's last item.
+    expect(rig.ytext.toString()).not.toContain('twoX');
+    expect(rig.ytext.toString()).toContain('X');
+    expectAligned(rig);
+    rig.destroy();
+  });
+
+  it('does not re-parse on a keystroke after a rebuild', () => {
+    const rig = createRig(LIST_TAIL);
+    enterAtEnd(rig);
+    rig.ydoc.transact(() => rig.ytext.insert(0, '<!-- x -->\n\n'), 'remote');
+
+    appendToBlock(rig.editor, 1, 'a');
+    const before = rig.stats.rebuilds;
+    for (const ch of 'bcdefghij') appendToBlock(rig.editor, 1, ch);
+    // `rebaseProjection` refuses whenever the table and document disagree, so a
+    // misaligned table turned every keystroke into a whole-document parse.
+    expect(rig.stats.rebuilds).toBe(before);
+    rig.destroy();
+  });
+
+  it('survives Enter out of a list and types into the new paragraph', () => {
+    // The reported sequence: a bullet, Enter for a second bullet, Enter again
+    // to leave the list, then type.
+    const rig = createRig(LIST_TAIL);
+    const editor = rig.editor;
+    editor.commands.focus('end');
+    editor.commands.splitListItem('listItem');
+    editor.commands.liftListItem('listItem');
+    expectAligned(rig);
+
+    const beforeText = rig.ytext.toString();
+    editor.commands.insertContent('after');
+    expect(rig.ytext.toString()).not.toBe(beforeText);
+    expect(rig.ytext.toString()).toContain('after');
+    // Not swallowed into the list's last item.
+    expect(rig.ytext.toString()).not.toContain('twoafter');
+    expectAligned(rig);
+    rig.destroy();
+  });
+});
+
+/**
+ * A WYSIWYG edit INSIDE a JSX component must reach `Y.Text`.
+ *
+ * A `jsxComponent` serializes from the `sourceRaw` slice captured at parse
+ * time, not from its children. So an edit inside one emits the stale capture
+ * and is silently discarded: it stays on screen, never reaches the CRDT, and
+ * disappears at the next mode switch or reload. Nothing reports it.
+ *
+ * Under the bridge this was covered by accident of where the work happened —
+ * the SERVER serialized the fragment, and the server's manager has always run
+ * with `deriveStructuralFreshness`. Moving the serialize onto the client lost
+ * that, because no client manager had the flag. The projection therefore takes
+ * its own manager (`getProjectionMarkdownManager`) rather than the clipboard's.
+ */
+describe('projection binding — editing inside a JSX component', () => {
+  const WITH_CALLOUT = [
+    '# Title',
+    '',
+    '<Callout type="info">',
+    'Original callout text.',
+    '</Callout>',
+    '',
+    'Trailing paragraph.',
+    '',
+  ].join('\n');
+
+  /** Append text to the first text node matching `contains`. */
+  function appendInside(editor: Editor, contains: string, text: string): void {
+    let at = -1;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text?.includes(contains)) at = pos + (node.text?.length ?? 0);
+    });
+    expect(at).toBeGreaterThanOrEqual(0);
+    editor.view.dispatch(editor.state.tr.insertText(text, at, at));
+  }
+
+  it('projects the component as a single top-level block', () => {
+    const rig = createRig(WITH_CALLOUT);
+    expect(rig.editor.state.doc.child(1).type.name).toBe('jsxComponent');
+    rig.destroy();
+  });
+
+  it('carries an edit inside the component into Y.Text', () => {
+    const rig = createRig(WITH_CALLOUT);
+    appendInside(rig.editor, 'Original callout text', ' EDITED');
+    // The silent-loss shape: without the freshness derive the serialize emits
+    // the captured `sourceRaw` verbatim, the splice is byte-identical, and
+    // nothing is written at all.
+    expect(rig.ytext.toString()).toContain('EDITED');
+    rig.destroy();
+  });
+
+  it('leaves blocks outside the component untouched', () => {
+    const rig = createRig(WITH_CALLOUT);
+    appendInside(rig.editor, 'Original callout text', ' EDITED');
+    expect(rig.ytext.toString()).toContain('# Title');
+    expect(rig.ytext.toString()).toContain('Trailing paragraph.');
+    rig.destroy();
+  });
+});
+
+/**
+ * A block rebuilt WITHOUT its markdown changing must not write.
+ *
+ * `link`, `wikiLink`, `jsxComponent`, `jsxInline` and `imageReference` are
+ * configured per document and carry render-time attrs that are updated after
+ * mount. That makes a block unequal to its predecessor while it serializes
+ * byte-for-byte the same, so `changedProjectionBlocks` reports a change (the
+ * nodes really do differ) and the splice describes a replacement whose text is
+ * what is already on disk.
+ *
+ * Performing that replacement is not a harmless no-op. The transaction is
+ * tracked by the shared undo manager, so it CLEARS THE REDO STACK and pushes an
+ * undo item that retracts nothing — and it replaces the CRDT items for a range
+ * nobody edited, disturbing other clients' cursors and undo attribution.
+ *
+ * The symptom is remote from the cause and document-shaped: redo stops working
+ * after a mode switch, and ONLY on documents containing one of those node
+ * types. A document of plain paragraphs cannot reproduce it, which is what made
+ * it look intermittent.
+ */
+describe('projection binding — a rebuild that changes no bytes', () => {
+  const WITH_LINK = '# Heading\n\nSee [docs](target.md) here.\n\nTail.\n';
+
+  /**
+   * Rebuild a block so it is NOT `eq()` to its predecessor while serializing to
+   * exactly the same bytes.
+   *
+   * The `sourceLiteral` mark carries the raw source a text run came from, so a
+   * run marked with its own text emits those same bytes. That is the shape the
+   * product reaches through provenance marks and render-time attrs; here it is
+   * constructed directly so the test does not depend on which extension
+   * happens to refresh a node on mount.
+   */
+  function rebuildBlockSameBytes(editor: Editor, blockIndex: number): void {
+    const { doc, schema, tr } = editor.state;
+    let pos = 0;
+    for (let i = 0; i < blockIndex; i++) pos += doc.child(i).nodeSize;
+    const node = doc.child(blockIndex);
+    const marked = node.content.content.map((child) =>
+      child.isText && child.text !== undefined && child.text.length > 0
+        ? child.mark([...child.marks, schema.marks.sourceLiteral.create({ sourceRaw: child.text })])
+        : child,
+    );
+    editor.view.dispatch(
+      tr.replaceWith(pos, pos + node.nodeSize, node.type.create(node.attrs, marked)),
+    );
+  }
+
+  it('does not touch Y.Text when the block serializes identically', () => {
+    const rig = createRig(WITH_LINK);
+    const before = rig.ytext.toString();
+    const origins: unknown[] = [];
+    rig.ytext.observe((_event, transaction) => origins.push(transaction.origin));
+
+    rebuildBlockSameBytes(rig.editor, 1);
+
+    // The bytes are unchanged either way; what must not happen is the WRITE.
+    expect(rig.ytext.toString()).toBe(before);
+    expect(origins).toEqual([]);
+    rig.destroy();
+  });
+
+  it('leaves the redo stack intact, so redo still works', () => {
+    const rig = createRig(WITH_LINK);
+    const undoManager = sharedUndoManagerFor(rig.ytext);
+    appendToBlock(rig.editor, 2, '!');
+    undoManager.stopCapturing();
+    undoManager.undo();
+    expect(undoManager.redoStack).toHaveLength(1);
+
+    // The rebuild a mode switch triggers on a doc holding a link.
+    rebuildBlockSameBytes(rig.editor, 1);
+
+    // Before the fix this wrote identical bytes under a tracked origin, and
+    // Yjs clears the redo stack on any tracked change that is not an undo/redo.
+    expect(undoManager.redoStack).toHaveLength(1);
+    undoManager.redo();
+    expect(rig.ytext.toString()).toContain('Tail.!');
+    rig.destroy();
   });
 });

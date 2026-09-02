@@ -26,7 +26,12 @@
         // so an undeclared var is dropped before electron-vite sees it and the
         // flag silently stays off. `packages/app run dev` is plain Vite and
         // needs no entry.
-        "VITE_OK_PROJECTION_BINDING"
+        "VITE_OK_PROJECTION_BINDING",
+        // Its server-side other half. The projection client never writes the
+        // fragment, so leaving the bridge attached lets Observer A serialize a
+        // stale fragment back over `Y.Text` and revert every WYSIWYG keystroke.
+        // These two belong on together — see `OK_DISABLE_BRIDGE`.
+        "OK_DISABLE_BRIDGE"
       ]
     },
     "build:desktop:dir": {
