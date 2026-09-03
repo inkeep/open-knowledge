@@ -1,16 +1,27 @@
+import type { ChildProcess } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { createServer as createHttpServer, type Server } from 'node:http';
 import { createServer } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { validateSpawnPath } from './path-containment.ts';
 import {
+  adaptSlidevChild,
   buildSlidevInvocation,
   findFreePort,
   probeSlidevReady,
   type ReadinessProbe,
   type SlidevProcess,
   type StartSlidevDeps,
+  signalSlidevChild,
   startSlidevServer,
 } from './slidev-server.ts';
+
+function fakeChildProcess(pid: number | undefined): ChildProcess {
+  return Object.assign(new EventEmitter(), {
+    pid,
+    kill: vi.fn(() => true),
+  }) as unknown as ChildProcess;
+}
 
 function fakeProcess(opts: { exitImmediately?: boolean } = {}) {
   let exitCb: ((code: number | null) => void) | null = null;
@@ -26,6 +37,7 @@ function fakeProcess(opts: { exitImmediately?: boolean } = {}) {
     },
     signal: (sig) => {
       signals.push(sig);
+      return Promise.resolve();
     },
     isAlive: () => alive,
     pid: 4242,
@@ -198,6 +210,58 @@ describe('startSlidevServer', () => {
       code: null,
     });
     warnSpy.mockRestore();
+  });
+});
+
+describe('adaptSlidevChild', () => {
+  it.each([0, null] as const)('marks the process dead and forwards exit code %s', (code) => {
+    const child = fakeChildProcess(4321);
+    const process = adaptSlidevChild(child);
+    const onExit = vi.fn();
+    process.onExit(onExit);
+
+    child.emit('exit', code, code === null ? 'SIGTERM' : null);
+
+    expect(process.isAlive()).toBe(false);
+    expect(onExit).toHaveBeenCalledExactlyOnceWith(code);
+  });
+
+  it('keeps a spawned process alive and tracked after a child error', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const child = fakeChildProcess(4321);
+      const process = adaptSlidevChild(child);
+      const onExit = vi.fn();
+      process.onExit(onExit);
+
+      child.emit('error', new Error('late pipe error'));
+
+      expect(process.isAlive()).toBe(true);
+      expect(process.spawnError).toBeUndefined();
+      expect(onExit).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('reports an error before a pid is assigned as a spawn failure', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const child = fakeChildProcess(undefined);
+      const process = adaptSlidevChild(child);
+      const onExit = vi.fn();
+      process.onExit(onExit);
+      const error = Object.assign(new Error('not found'), { code: 'ENOENT' });
+
+      child.emit('error', error);
+      child.emit('exit', null, null);
+
+      expect(process.isAlive()).toBe(false);
+      expect(process.spawnError).toBe(error);
+      expect(onExit).toHaveBeenCalledExactlyOnceWith(null);
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 
@@ -396,5 +460,98 @@ describe('buildSlidevInvocation — Windows command-line injection', () => {
     expect(validateSpawnPath('C:\\proj\\%PATH%.md', 'win32')).toBe(false);
     expect(validateSpawnPath('C:\\proj\\a"b.md', 'win32')).toBe(false);
     expect(validateSpawnPath('C:\\proj\\Q1 & Q2.md', 'win32')).toBe(true);
+  });
+});
+
+describe('signalSlidevChild', () => {
+  function fakeChild() {
+    const kill = vi.fn(() => true);
+    return {
+      child: { pid: 4321, kill } as unknown as ChildProcess,
+      kill,
+    };
+  }
+
+  it('terminates the complete cmd.exe process tree on Windows', async () => {
+    const { child, kill } = fakeChild();
+    const treeKills: number[] = [];
+
+    await signalSlidevChild(child, 'SIGKILL', {
+      platform: 'win32',
+      killWindowsTree: async (pid) => {
+        treeKills.push(pid);
+      },
+    });
+
+    expect(treeKills).toEqual([4321]);
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it('logs a failed Windows tree kill without retrying a bare PID', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { child, kill } = fakeChild();
+    const killWindowsTree = vi.fn(() => Promise.reject(new Error('taskkill failed')));
+
+    await signalSlidevChild(child, 'SIGKILL', { platform: 'win32', killWindowsTree });
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(killWindowsTree).toHaveBeenCalledTimes(1);
+    expect(kill).not.toHaveBeenCalled();
+    expect(JSON.parse(warnSpy.mock.calls[0]?.[0] as string)).toMatchObject({
+      event: 'slides-tree-kill-failed',
+      pid: 4321,
+      signal: 'SIGKILL',
+      message: 'taskkill failed',
+    });
+    warnSpy.mockRestore();
+  });
+
+  it('waits for the Windows tree kill to settle', async () => {
+    const { child } = fakeChild();
+    let release: (() => void) | undefined;
+    const killWindowsTree = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    let settled = false;
+
+    const signal = signalSlidevChild(child, 'SIGTERM', {
+      platform: 'win32',
+      killWindowsTree,
+    }).then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release?.();
+    await signal;
+    expect(settled).toBe(true);
+  });
+
+  it('bounds a hanging Windows tree kill', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { child } = fakeChild();
+      const signal = signalSlidevChild(child, 'SIGTERM', {
+        platform: 'win32',
+        killWindowsTree: () => new Promise<void>(() => {}),
+        timeoutMs: 5_000,
+      });
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await signal;
+
+      expect(JSON.parse(warnSpy.mock.calls[0]?.[0] as string)).toMatchObject({
+        event: 'slides-tree-kill-failed',
+        message: 'taskkill timed out',
+      });
+    } finally {
+      warnSpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

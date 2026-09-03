@@ -8,7 +8,7 @@ import { projectLocalSlidevBin } from './slidev-resolve.ts';
 
 export interface SlidevProcess {
   onExit(cb: (code: number | null) => void): void;
-  signal(signal: 'SIGTERM' | 'SIGKILL'): void;
+  signal(signal: 'SIGTERM' | 'SIGKILL'): Promise<void>;
   isAlive(): boolean;
   readonly pid: number | undefined;
   readonly spawnError?: NodeJS.ErrnoException | undefined;
@@ -75,11 +75,11 @@ export async function startSlidevServer(deps: StartSlidevDeps): Promise<StartSli
     }
     if (probe.reachable) {
       if (probe.hasVersionMeta) return { ok: true, port, process: child };
-      child.signal('SIGKILL');
+      void child.signal('SIGKILL');
       return { ok: false, reason: 'unsupported-server' };
     }
     if (deps.now() >= deadline) {
-      child.signal('SIGKILL');
+      void child.signal('SIGKILL');
       return { ok: false, reason: 'timeout' };
     }
     await deps.delay(pollIntervalMs);
@@ -173,14 +173,78 @@ export function buildSlidevInvocation(
   return { mode: 'login-shell', file: config.shell, args: ['-l', '-i', '-c', cmdline] };
 }
 
-function signalSlidevChild(child: ChildProcess, sig: 'SIGTERM' | 'SIGKILL'): void {
+export interface SignalSlidevChildDeps {
+  readonly platform?: NodeJS.Platform;
+  readonly killWindowsTree?: (pid: number) => Promise<void>;
+  readonly timeoutMs?: number;
+}
+
+const WINDOWS_TREE_KILL_TIMEOUT_MS = 5_000;
+
+function taskkillWindowsTree(pid: number, timeoutMs: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    let settled = false;
+    const settle = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error === undefined) resolve();
+      else reject(error);
+    };
+    const timer = setTimeout(() => {
+      killer.kill();
+      settle(new Error('taskkill timed out'));
+    }, timeoutMs);
+    timer.unref();
+    killer.once('error', (error) => settle(error));
+    killer.once('exit', (code) => {
+      if (code === 0) settle();
+      else settle(new Error(`taskkill exited with status ${code ?? 'unknown'}`));
+    });
+  });
+}
+
+export function signalSlidevChild(
+  child: ChildProcess,
+  sig: 'SIGTERM' | 'SIGKILL',
+  deps: SignalSlidevChildDeps = {},
+): Promise<void> {
   const pid = child.pid;
-  if (pid === undefined) return;
-  if (process.platform === 'win32') {
-    try {
-      child.kill();
-    } catch {}
-    return;
+  if (pid === undefined) return Promise.resolve();
+  if ((deps.platform ?? process.platform) === 'win32') {
+    const timeoutMs = deps.timeoutMs ?? WINDOWS_TREE_KILL_TIMEOUT_MS;
+    const killTree = deps.killWindowsTree ?? ((treePid) => taskkillWindowsTree(treePid, timeoutMs));
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (err?: unknown) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (err !== undefined) {
+          console.warn(
+            JSON.stringify({
+              event: 'slides-tree-kill-failed',
+              pid,
+              signal: sig,
+              message: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }
+        resolve();
+      };
+      const timer = setTimeout(() => finish(new Error('taskkill timed out')), timeoutMs);
+      timer.unref();
+      void Promise.resolve()
+        .then(() => killTree(pid))
+        .then(
+          () => finish(),
+          (err: unknown) => finish(err),
+        );
+    });
   }
   try {
     process.kill(-pid, sig);
@@ -189,6 +253,7 @@ function signalSlidevChild(child: ChildProcess, sig: 'SIGTERM' | 'SIGKILL'): voi
       child.kill(sig);
     } catch {}
   }
+  return Promise.resolve();
 }
 
 function isDir(dir: string): boolean {
@@ -210,6 +275,49 @@ function repairedSpawnEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+export function adaptSlidevChild(child: ChildProcess): SlidevProcess {
+  let alive = true;
+  let spawnError: NodeJS.ErrnoException | undefined;
+  child.on('exit', () => {
+    alive = false;
+  });
+  child.on('error', (err: NodeJS.ErrnoException) => {
+    if (child.pid === undefined) {
+      alive = false;
+      spawnError = err;
+    }
+    console.warn(
+      JSON.stringify({
+        event: 'slides-child-error',
+        code: err?.code ?? null,
+        message: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  });
+  return {
+    onExit: (cb) => {
+      let reported = false;
+      const report = (code: number | null) => {
+        if (reported) return;
+        reported = true;
+        cb(code);
+      };
+      child.on('exit', (code) => report(code));
+      child.on('error', () => {
+        if (child.pid === undefined) report(null);
+      });
+    },
+    get spawnError() {
+      return spawnError;
+    },
+    signal: (sig) => signalSlidevChild(child, sig),
+    isAlive: () => alive,
+    get pid() {
+      return child.pid;
+    },
+  };
+}
+
 export function realSpawnSlidev(config: SlidevSpawnConfig, port: number): SlidevProcess {
   const invocation = buildSlidevInvocation(config, port);
   const child = spawn(invocation.file, [...invocation.args], {
@@ -221,34 +329,5 @@ export function realSpawnSlidev(config: SlidevSpawnConfig, port: number): Slidev
     windowsHide: true,
     windowsVerbatimArguments: invocation.mode === 'windows-shell',
   });
-  let alive = true;
-  let spawnError: NodeJS.ErrnoException | undefined;
-  child.on('exit', () => {
-    alive = false;
-  });
-  child.on('error', (err: NodeJS.ErrnoException) => {
-    alive = false;
-    spawnError = err;
-    console.warn(
-      JSON.stringify({
-        event: 'slides-child-error',
-        code: err?.code ?? null,
-        message: err instanceof Error ? err.message : String(err),
-      }),
-    );
-  });
-  return {
-    onExit: (cb) => {
-      child.on('exit', (code) => cb(code));
-      child.on('error', () => cb(null));
-    },
-    get spawnError() {
-      return spawnError;
-    },
-    signal: (sig) => signalSlidevChild(child, sig),
-    isAlive: () => alive,
-    get pid() {
-      return child.pid;
-    },
-  };
+  return adaptSlidevChild(child);
 }

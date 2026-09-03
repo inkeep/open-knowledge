@@ -9480,6 +9480,7 @@ msgid "Opening worktree"
 msgstr "वर्कट्री खोला जा रहा है"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "खोला जा रहा है…"
 
@@ -14162,6 +14163,7 @@ msgstr "कोई प्रॉम्प्ट आज़माएँ"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "फिर कोशिश करें"

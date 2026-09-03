@@ -740,6 +740,9 @@ export type SlidevOpenFailureReason =
   | 'invalid-path'
   | 'spawn-error'
   | 'exited-early'
+  | 'cancelled'
+  | 'load-failed'
+  | 'renderer-failed'
   | 'timeout'
   | 'unsupported-server';
 

@@ -1,5 +1,6 @@
 import type { OkSlidesOpenResult, OkSlidesStatusResult } from '../../shared/ipc-channels.ts';
 import type { SlidesDeckRegistry, SlidesDeckWindow } from '../slides-registry.ts';
+import type { SlidesWindowOutcome } from '../slides-window.ts';
 import { resolveSlidev, type SlidevResolveProbes } from '../slidev-resolve.ts';
 import { type SlidevProcess, type StartSlidevDeps, startSlidevServer } from '../slidev-server.ts';
 
@@ -16,15 +17,14 @@ export async function handleSlidesStatus(
 export interface SlidesOpenDeps {
   registry: Pick<
     SlidesDeckRegistry,
-    | 'get'
-    | 'getOpenInFlight'
-    | 'setOpenInFlight'
-    | 'clearOpenInFlight'
-    | 'trackSpawned'
-    | 'untrackSpawned'
+    'get' | 'getOpenInFlight' | 'setOpenInFlight' | 'clearOpenInFlight' | 'trackSpawned'
   >;
   startDeps: StartSlidevDeps;
-  openWindow(deck: { docPath: string; port: number; process: SlidevProcess }): void;
+  openWindow(deck: {
+    docPath: string;
+    port: number;
+    process: SlidevProcess;
+  }): Promise<SlidesWindowOutcome>;
   focusWindow(window: SlidesDeckWindow): void;
   recordOpenAttempt(result: OkSlidesOpenResult): void;
 }
@@ -47,20 +47,25 @@ export async function handleSlidesOpen(
       onSpawned: (process) => deps.registry.trackSpawned(docPath, process),
     });
     if (!started.ok) {
-      deps.registry.untrackSpawned(docPath);
       const result: OkSlidesOpenResult = { kind: 'open', ok: false, reason: started.reason };
       deps.recordOpenAttempt(result);
       return result;
     }
+    let opened: SlidesWindowOutcome;
     try {
-      deps.openWindow({ docPath, port: started.port, process: started.process });
+      opened = await deps.openWindow({
+        docPath,
+        port: started.port,
+        process: started.process,
+      });
     } catch (err) {
-      started.process.signal('SIGTERM');
+      void started.process.signal('SIGTERM');
       throw err;
-    } finally {
-      deps.registry.untrackSpawned(docPath);
     }
-    const result: OkSlidesOpenResult = { kind: 'open', ok: true };
+    const result: OkSlidesOpenResult = opened.shown
+      ? { kind: 'open', ok: true }
+      : { kind: 'open', ok: false, reason: opened.reason };
+    if (!opened.shown && opened.reason === 'cancelled') return result;
     deps.recordOpenAttempt(result);
     return result;
   })();
@@ -70,4 +75,10 @@ export async function handleSlidesOpen(
   } finally {
     deps.registry.clearOpenInFlight(docPath);
   }
+}
+
+export function shouldLogSlidesOpenError(
+  result: OkSlidesOpenResult,
+): result is Extract<OkSlidesOpenResult, { ok: false }> {
+  return !result.ok && result.reason !== 'cancelled';
 }
