@@ -612,9 +612,12 @@ test.describe('Terminal placement continuity — live Electron', () => {
     });
     await page.reload({ waitUntil: 'domcontentloaded' });
 
-    await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
+    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
+    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
     await expectCollapsedRailColumn(page, '#agents-column');
-    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
     await editorWindow.evaluate((windowHandle: unknown) => {
       const target = windowHandle as {
         setSize: (width: number, height: number, animate: boolean) => void;

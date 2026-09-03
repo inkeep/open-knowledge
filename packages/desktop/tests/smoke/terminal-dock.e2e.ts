@@ -612,14 +612,18 @@ test.describe('Docked terminal — live Electron', () => {
       const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
       target.setSize(900, 900, false);
     });
+    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
+    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(1000);
     await expectCollapsedRailColumn(page, '#agents-column');
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible();
-    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
 
     await clickViewAgentsItem(app);
+    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
+    await expect(page.getByText('Terminal closed to make room for the agent panel.')).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText('Terminal closed to make room for the agent panel.')).toBeVisible();
     await expectCollapsedRailColumn(page, '#terminal-column');
 
     await clickViewAgentsItem(app);
