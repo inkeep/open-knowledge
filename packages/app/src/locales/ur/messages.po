@@ -9484,6 +9484,7 @@ msgid "Opening worktree"
 msgstr "ورک ٹری کھولا جا رہا ہے"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "کھولا جا رہا ہے..."
 
@@ -14166,6 +14167,7 @@ msgstr "کوئی پرامپٹ آزمائیں"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "دوبارہ کوشش کریں"

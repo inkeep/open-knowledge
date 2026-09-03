@@ -278,7 +278,7 @@ import {
 } from './ipc/local-op.ts';
 import { handleSeedApply, handleSeedListPacks, handleSeedPlan } from './ipc/seed.ts';
 import { handleSharingSetMode, handleSharingStatus } from './ipc/sharing.ts';
-import { handleSlidesOpen, handleSlidesStatus } from './ipc/slides.ts';
+import { handleSlidesOpen, handleSlidesStatus, shouldLogSlidesOpenError } from './ipc/slides.ts';
 import {
   detectProtocol as detectProtocolImpl,
   recordHandoff as recordHandoffImpl,
@@ -4446,7 +4446,7 @@ function registerIpcHandlers() {
       },
       recordOpenAttempt: recordDeckOpen,
       openWindow: (deck) => {
-        createSlidesWindow({
+        return createSlidesWindow({
           createWindow: (winOpts) => {
             const win = new BrowserWindow({
               ...DEFAULT_WIN_OPTS,
@@ -4476,7 +4476,7 @@ function registerIpcHandlers() {
         window.focus();
       },
     });
-    if (!opened.ok) {
+    if (shouldLogSlidesOpenError(opened)) {
       logIpcError({
         event: 'ipc.error',
         channel: 'ok:slides:dispatch',
@@ -6381,7 +6381,15 @@ function bootPrimaryInstance(): void {
 
   const runTerminalQuitDrain = createTerminalQuitDrain({
     defer: (callback) => setImmediate(callback),
-    drain: () => terminalReaper?.killAll() ?? Promise.resolve(),
+    drain: async () => {
+      const [terminalResult] = await Promise.allSettled([
+        terminalReaper?.killAll() ?? Promise.resolve(),
+        slidesDeckRegistry.reapAll(),
+      ]);
+      if (terminalResult.status === 'rejected') {
+        getLogger('lifecycle').warn({ err: terminalResult.reason }, 'terminal quit drain failed');
+      }
+    },
     resumeQuit: () => app.quit(),
   });
   app.on('will-quit', (event) => {
@@ -6393,8 +6401,6 @@ function bootPrimaryInstance(): void {
       crashSentinelHeartbeat = null;
     }
     rendererRecovery = null;
-    void terminalReaper?.killAll();
-    slidesDeckRegistry.reapAll();
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();

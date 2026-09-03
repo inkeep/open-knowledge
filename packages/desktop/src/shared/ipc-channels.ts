@@ -49,6 +49,8 @@ import type {
   OkSharePayloadFields,
   OkSharingSetModeResult,
   OkSharingStatusResult,
+  OkSlidesOpenResult,
+  OkSlidesStatusResult,
   OkTerminalDockState,
   OkTerminalDockStateUpdate,
   OkTerminalDockStateWriteResult,
@@ -56,6 +58,8 @@ import type {
   OkUpdateChannel,
   OkSeedApplyOptions as SeedApplyOptions,
   OkSeedPlanOptions as SeedPlanOptions,
+  SlidevOpenFailureReason,
+  SlidevSource,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   FindEnclosingGitRootResult,
@@ -81,23 +85,7 @@ export type { OkSharingSetModeResult, OkSharingStatusResult };
 
 export type OkSharingResult = OkSharingStatusResult | OkSharingSetModeResult;
 
-export type SlidevSource = 'project-local' | 'global';
-
-export type OkSlidesStatusResult =
-  | { readonly kind: 'status'; readonly available: true; readonly source: SlidevSource }
-  | { readonly kind: 'status'; readonly available: false };
-
-export type SlidevOpenFailureReason =
-  | 'not-available'
-  | 'invalid-path'
-  | 'spawn-error'
-  | 'exited-early'
-  | 'timeout'
-  | 'unsupported-server';
-
-export type OkSlidesOpenResult =
-  | { readonly kind: 'open'; readonly ok: true }
-  | { readonly kind: 'open'; readonly ok: false; readonly reason: SlidevOpenFailureReason };
+export type { OkSlidesOpenResult, OkSlidesStatusResult, SlidevOpenFailureReason, SlidevSource };
 
 export interface RecentProject {
   path: string;

@@ -47,6 +47,7 @@ export const SPEC_PLATFORM_GATES = {
   'sidebar-pill-lockstep-fade.e2e.ts': ['!DARWIN'],
   'skill-scope-roundtrip.e2e.ts': ['!DARWIN'],
   'skills-studio.e2e.ts': ['!DARWIN'],
+  'slidev-render-readiness.e2e.ts': ['!PLATFORM_SUPPORTED'],
   'terminal-dock-state.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-dock.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-links.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],

@@ -9484,6 +9484,7 @@ msgid "Opening worktree"
 msgstr "워크트리 여는 중"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "여는 중…"
 
@@ -14166,6 +14167,7 @@ msgstr "프롬프트 사용"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "다시 시도"

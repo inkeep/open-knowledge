@@ -1,7 +1,7 @@
 import { DEFAULT_SIGTERM_GRACE_MS, DEFAULT_SIGTERM_POLL_MS } from '@inkeep/open-knowledge-core';
 
 export interface GracefulTerminateDeps {
-  sendSignal(signal: 'SIGTERM' | 'SIGKILL'): void;
+  sendSignal(signal: 'SIGTERM' | 'SIGKILL'): void | Promise<void>;
   isAlive(): boolean;
   now(): number;
   sleep(ms: number): Promise<void>;
@@ -15,12 +15,12 @@ export async function gracefulTerminate(
   const graceMs = deps.graceMs ?? DEFAULT_SIGTERM_GRACE_MS;
   const pollMs = deps.pollMs ?? DEFAULT_SIGTERM_POLL_MS;
 
-  deps.sendSignal('SIGTERM');
+  await deps.sendSignal('SIGTERM');
   const deadline = deps.now() + graceMs;
   while (deps.now() < deadline) {
     if (!deps.isAlive()) return { escalated: false };
     await deps.sleep(pollMs);
   }
-  deps.sendSignal('SIGKILL');
+  await deps.sendSignal('SIGKILL');
   return { escalated: true };
 }

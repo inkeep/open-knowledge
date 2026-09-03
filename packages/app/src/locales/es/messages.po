@@ -9484,6 +9484,7 @@ msgid "Opening worktree"
 msgstr "Abriendo el worktree"
 
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 msgid "Opening..."
 msgstr "Abriendo..."
 
@@ -14166,6 +14167,7 @@ msgstr "Prueba un prompt"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/components/SlidesToolbarControls.tsx
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Inténtalo de nuevo"

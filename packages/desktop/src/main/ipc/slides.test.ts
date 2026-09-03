@@ -4,7 +4,7 @@ import type { OkSlidesOpenResult } from '../../shared/ipc-channels.ts';
 import { createSlidesDeckRegistry, type SlidesDeckWindow } from '../slides-registry.ts';
 import type { SlidevResolveProbes } from '../slidev-resolve.ts';
 import type { SlidevProcess, StartSlidevDeps } from '../slidev-server.ts';
-import { handleSlidesOpen, handleSlidesStatus } from './slides.ts';
+import { handleSlidesOpen, handleSlidesStatus, shouldLogSlidesOpenError } from './slides.ts';
 
 const PROJECT = '/tmp/deck-project';
 const LOCAL_BIN = join(PROJECT, 'node_modules', '.bin', 'slidev');
@@ -73,18 +73,32 @@ describe('handleSlidesStatus', () => {
 
 const DECK = '/decks/talk/slides.md';
 
-function fakeSlidevProcess(): SlidevProcess {
-  return { onExit: () => {}, signal: () => {}, isAlive: () => true, pid: 7 };
+function fakeSlidevProcess(signals?: Array<'SIGTERM' | 'SIGKILL'>): SlidevProcess {
+  return {
+    onExit: () => {},
+    signal: (signal) => {
+      signals?.push(signal);
+      return Promise.resolve();
+    },
+    isAlive: () => true,
+    pid: 7,
+  };
 }
 
 function fakeWindow(id: number): SlidesDeckWindow {
   return { id } as unknown as SlidesDeckWindow;
 }
 
-function readyStartDeps(port: number): { deps: StartSlidevDeps; process: SlidevProcess } {
-  const process = fakeSlidevProcess();
+function readyStartDeps(port: number): {
+  deps: StartSlidevDeps;
+  process: SlidevProcess;
+  signals: Array<'SIGTERM' | 'SIGKILL'>;
+} {
+  const signals: Array<'SIGTERM' | 'SIGKILL'> = [];
+  const process = fakeSlidevProcess(signals);
   return {
     process,
+    signals,
     deps: {
       findFreePort: () => Promise.resolve(port),
       spawnSlidev: () => process,
@@ -126,7 +140,10 @@ describe('handleSlidesOpen', () => {
     const result = await handleSlidesOpen(DECK, {
       registry,
       startDeps,
-      openWindow: (deck) => opened.push(deck),
+      openWindow: async (deck) => {
+        opened.push(deck);
+        return { shown: true };
+      },
       focusWindow: () => {
         throw new Error('a fresh open must not focus an existing window');
       },
@@ -160,9 +177,10 @@ describe('handleSlidesOpen', () => {
     const deps = {
       registry,
       startDeps,
-      openWindow: (deck: { docPath: string; port: number; process: SlidevProcess }) => {
+      openWindow: async (deck: { docPath: string; port: number; process: SlidevProcess }) => {
         opened.push({ docPath: deck.docPath, port: deck.port });
         registry.register({ ...deck, window: fakeWindow(opened.length) });
+        return { shown: true };
       },
       focusWindow: () => {},
       recordOpenAttempt: () => {},
@@ -239,8 +257,9 @@ describe('handleSlidesOpen', () => {
     const result = await handleSlidesOpen(DECK, {
       registry,
       startDeps,
-      openWindow: () => {
+      openWindow: async () => {
         openedCount += 1;
+        return { shown: true };
       },
       focusWindow: () => {},
       recordOpenAttempt: () => {},
@@ -250,13 +269,64 @@ describe('handleSlidesOpen', () => {
     expect(openedCount).toBe(0);
   });
 
+  it('reports renderer-failed when the server shell loads but the deck never mounts', async () => {
+    const registry = createSlidesDeckRegistry();
+    const attempts: OkSlidesOpenResult[] = [];
+    const started = readyStartDeps(5200);
+    const result = await handleSlidesOpen(DECK, {
+      registry,
+      startDeps: started.deps,
+      openWindow: async () => ({ shown: false, reason: 'renderer-failed' }),
+      focusWindow: () => {},
+      recordOpenAttempt: (attempt) => attempts.push(attempt),
+    });
+
+    expect(result).toEqual({ kind: 'open', ok: false, reason: 'renderer-failed' });
+    expect(attempts).toEqual([{ kind: 'open', ok: false, reason: 'renderer-failed' }]);
+    await registry.reapAll();
+    expect(started.signals).toEqual(['SIGKILL']);
+  });
+
+  it('preserves a navigation failure from the hidden window lifecycle', async () => {
+    const registry = createSlidesDeckRegistry();
+    const attempts: OkSlidesOpenResult[] = [];
+    const result = await handleSlidesOpen(DECK, {
+      registry,
+      startDeps: readyStartDeps(5200).deps,
+      openWindow: async () => ({ shown: false, reason: 'load-failed' }),
+      focusWindow: () => {},
+      recordOpenAttempt: (attempt) => attempts.push(attempt),
+    });
+
+    expect(result).toEqual({ kind: 'open', ok: false, reason: 'load-failed' });
+    expect(attempts).toEqual([{ kind: 'open', ok: false, reason: 'load-failed' }]);
+  });
+
+  it('does not record a user-cancelled hidden window as a failed open', async () => {
+    const registry = createSlidesDeckRegistry();
+    const attempts: OkSlidesOpenResult[] = [];
+    const result = await handleSlidesOpen(DECK, {
+      registry,
+      startDeps: readyStartDeps(5200).deps,
+      openWindow: async () => ({ shown: false, reason: 'cancelled' }),
+      focusWindow: () => {},
+      recordOpenAttempt: (attempt) => attempts.push(attempt),
+    });
+
+    expect(result).toEqual({ kind: 'open', ok: false, reason: 'cancelled' });
+    expect(attempts).toEqual([]);
+  });
+
   it('records exactly one open attempt for a fresh spawn', async () => {
     const registry = createSlidesDeckRegistry();
     const attempts: OkSlidesOpenResult[] = [];
     await handleSlidesOpen(DECK, {
       registry,
       startDeps: readyStartDeps(5200).deps,
-      openWindow: (deck) => registry.register({ ...deck, window: fakeWindow(1) }),
+      openWindow: async (deck) => {
+        registry.register({ ...deck, window: fakeWindow(1) });
+        return { shown: true };
+      },
       focusWindow: () => {},
       recordOpenAttempt: (r) => attempts.push(r),
     });
@@ -304,8 +374,10 @@ describe('handleSlidesOpen', () => {
     const deps = {
       registry,
       startDeps,
-      openWindow: (deck: { docPath: string; port: number; process: SlidevProcess }) =>
-        registry.register({ ...deck, window: fakeWindow(1) }),
+      openWindow: async (deck: { docPath: string; port: number; process: SlidevProcess }) => {
+        registry.register({ ...deck, window: fakeWindow(1) });
+        return { shown: true };
+      },
       focusWindow: () => {},
       recordOpenAttempt: (r: OkSlidesOpenResult) => attempts.push(r),
     };
@@ -325,7 +397,10 @@ describe('handleSlidesOpen', () => {
       handleSlidesOpen(docPath, {
         registry,
         startDeps: readyStartDeps(port).deps,
-        openWindow: (deck) => opened.push({ docPath: deck.docPath, port: deck.port }),
+        openWindow: async (deck) => {
+          opened.push({ docPath: deck.docPath, port: deck.port });
+          return { shown: true };
+        },
         focusWindow: () => {
           throw new Error('distinct decks never focus');
         },
@@ -339,5 +414,18 @@ describe('handleSlidesOpen', () => {
       { docPath: '/decks/a.md', port: 5200 },
       { docPath: '/decks/b.md', port: 5300 },
     ]);
+  });
+});
+
+describe('shouldLogSlidesOpenError', () => {
+  it('does not classify user cancellation as an IPC error', () => {
+    expect(shouldLogSlidesOpenError({ kind: 'open', ok: false, reason: 'cancelled' })).toBe(false);
+  });
+
+  it('keeps operational failures observable', () => {
+    expect(shouldLogSlidesOpenError({ kind: 'open', ok: false, reason: 'renderer-failed' })).toBe(
+      true,
+    );
+    expect(shouldLogSlidesOpenError({ kind: 'open', ok: true })).toBe(false);
   });
 });
