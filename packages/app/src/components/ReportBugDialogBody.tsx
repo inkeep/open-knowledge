@@ -461,11 +461,7 @@ function ReportBugDialog({
               ) : null}
             </DialogBody>
             <DialogFooter>
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => handleOpenChange(false)}
-              >
+              <Button variant="ghost" onClick={() => handleOpenChange(false)}>
                 {crashInvite !== undefined ? <Trans>Not now</Trans> : <Trans>Cancel</Trans>}
               </Button>
               <Button onClick={() => void handleCreate()} disabled={phase.creating}>
@@ -508,11 +504,7 @@ function ReportBugDialog({
               </div>
             </DialogBody>
             <DialogFooter className="sm:justify-between">
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => setPhase(COMPOSE_IDLE)}
-              >
+              <Button variant="ghost" onClick={() => setPhase(COMPOSE_IDLE)}>
                 <Trans>Back</Trans>
               </Button>
               <Button onClick={() => handleSend(phase.report)}>

@@ -106,12 +106,7 @@ export function SkillRenameDialog({ skill, existingNames, onOpenChange, onRename
           ) : null}
         </div>
         <DialogFooter>
-          <Button
-            variant="outline"
-            className="font-mono uppercase"
-            onClick={() => onOpenChange(false)}
-            disabled={saving}
-          >
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             <Trans>Cancel</Trans>
           </Button>
           <Button onClick={() => void submit()} disabled={!canSave}>

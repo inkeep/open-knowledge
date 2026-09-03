@@ -208,3 +208,84 @@ describe('Dialog window-drag band', () => {
     expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-6rem)]']);
   });
 });
+
+describe('Dialog footer typography', () => {
+  afterEach(() => cleanup());
+
+  async function renderFooter(children: ReactNode) {
+    const { Dialog, DialogContent, DialogFooter, DialogTitle } = await import('./dialog');
+
+    render(
+      <Dialog open={true}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Dialog title</DialogTitle>
+          <DialogFooter>{children}</DialogFooter>
+        </DialogContent>
+      </Dialog>,
+    );
+  }
+
+  test('the footer carries the treatment for every button it contains', async () => {
+    const { Button } = await import('./button');
+    await renderFooter(<Button variant="outline">Cancel</Button>);
+
+    expectVisualClassTokens(
+      document.querySelector('[data-slot="dialog-footer"]')?.getAttribute('class'),
+      [
+        '[&_button]:font-mono',
+        '[&_button]:uppercase',
+        '[&_[data-slot=button]]:font-mono',
+        '[&_[data-slot=button]]:uppercase',
+      ],
+    );
+  });
+
+  test('footer choices do not re-declare the treatment the footer already supplies', async () => {
+    const { Button } = await import('./button');
+    await renderFooter(
+      <>
+        <Button variant="outline">Cancel</Button>
+        <Button variant="ghost">Back</Button>
+      </>,
+    );
+
+    for (const label of ['Cancel', 'Back']) {
+      expectVisualClassTokensAbsent(screen.getByText(label).getAttribute('class'), [
+        'font-mono',
+        'uppercase',
+      ]);
+    }
+  });
+
+  test('a DialogClose wrapping a button leans on the footer rather than its own classes', async () => {
+    const { DialogClose } = await import('./dialog');
+    const { Button } = await import('./button');
+    await renderFooter(
+      <DialogClose asChild>
+        <Button variant="outline">Dismiss</Button>
+      </DialogClose>,
+    );
+
+    const button = screen.getByText('Dismiss');
+    expect(button.tagName).toBe('BUTTON');
+    expectVisualClassTokensAbsent(button.getAttribute('class'), ['font-mono', 'uppercase']);
+  });
+
+  test('the built-in close affordance leans on the footer rather than its own classes', async () => {
+    const { Dialog, DialogContent, DialogFooter, DialogTitle } = await import('./dialog');
+
+    render(
+      <Dialog open={true}>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Dialog title</DialogTitle>
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expectVisualClassTokensAbsent(screen.getByText('Close').getAttribute('class'), [
+      'font-mono',
+      'uppercase',
+    ]);
+  });
+});

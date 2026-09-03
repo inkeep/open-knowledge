@@ -15,11 +15,24 @@
 // widen the pattern rather than assuming it is already covered.
 //
 // The confirm belongs on `default` (or `destructive` when the action is
-// irreversible removal). Both bake `font-mono uppercase` into their variant
-// string, so the footer's typographic treatment comes with the variant —
-// there is nothing to hand-add. Canonical shape, matching every other
-// confirm dialog in the codebase, is to omit the prop entirely and let
-// `defaultVariants` supply `default`:
+// irreversible removal). `DialogFooter` and `AlertDialogFooter` impose
+// `font-mono uppercase` on every button they contain, so the row's
+// typographic treatment is the footer's job and there is nothing to
+// hand-add on either button — a `className="font-mono uppercase"` on a
+// footer button is redundant, not load-bearing. `default`, `destructive`
+// and `outline-mono` bake the pair into their variant strings too, which is
+// what dresses them outside a footer. The footer's rule outranks
+// the button's own class (`(0,1,1)` vs `(0,1,0)`, and the two declarations
+// sit on different elements so `tailwind-merge` cannot arbitrate), so
+// opting one button out takes `font-sans!` / `normal-case!` rather than a
+// plain utility. The footer keys on both the `button` element and
+// `[data-slot=button]`, because neither alone covers every shape: the
+// AlertDialog wrappers stamp their own data-slot, and `<Button asChild>`
+// rendering an anchor is not a button element. A footer action that is
+// neither — the bare `<a>` in InstallInClaudeDesktopDialog — styles itself,
+// by design. Canonical shape, matching
+// every other confirm dialog in the codebase, is to omit the prop entirely
+// and let `defaultVariants` supply `default`:
 //
 //   <DialogFooter>
 //     <Button variant="outline" onClick={close}>Cancel</Button>
@@ -51,6 +64,6 @@ jsx_element() as $footer where {
     $footer <: r"(?s).*variant=\"secondary\".*",
     register_diagnostic(
         span = $footer,
-        message = "Demoted confirm in a dialog footer. `secondary` draws no border and its `bg-secondary` fill sits within about 1.1:1 of the dialog surface, so it reads as flat text and loses the emphasis contest with the `outline` dismiss beside it. Drop the variant prop and let the confirm take `default` (or `destructive` for irreversible removal), which also supplies the footer's font-mono uppercase treatment. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-demoted-dialog-confirmgrit"
+        message = "Demoted confirm in a dialog footer. `secondary` draws no border and its `bg-secondary` fill sits within about 1.1:1 of the dialog surface, so it reads as flat text and loses the emphasis contest with the `outline` dismiss beside it. Drop the variant prop and let the confirm take `default` (or `destructive` for irreversible removal); the footer already supplies the row's font-mono uppercase treatment, so there is nothing to hand-add. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-demoted-dialog-confirmgrit"
     )
 }

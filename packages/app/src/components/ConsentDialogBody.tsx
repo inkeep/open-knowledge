@@ -383,7 +383,6 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
           <Button
             type="button"
             variant="outline"
-            className="font-mono uppercase"
             onClick={() => void onCancel()}
             disabled={busy}
             data-testid="consent-cancel"

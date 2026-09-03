@@ -1,4 +1,3 @@
-
 import { setTimeout as wait } from 'node:timers/promises';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';

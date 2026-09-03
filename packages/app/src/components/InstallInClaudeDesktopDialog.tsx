@@ -352,11 +352,7 @@ export function InstallInClaudeDesktopDialog({
           )}
           {phase.kind === 'idle' && isElectron && (
             <>
-              <Button
-                className="uppercase font-mono"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
                 <Trans>Cancel</Trans>
               </Button>
               <Button onClick={handleInstallElectron}>
@@ -366,21 +362,13 @@ export function InstallInClaudeDesktopDialog({
             </>
           )}
           {phase.kind === 'idle' && !isElectron && (
-            <Button
-              className="uppercase font-mono"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               <Trans>Close</Trans>
             </Button>
           )}
           {phase.kind === 'error' && isElectron && (
             <>
-              <Button
-                className="uppercase font-mono"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
                 <Trans>Cancel</Trans>
               </Button>
               <Button onClick={handleInstallElectron}>

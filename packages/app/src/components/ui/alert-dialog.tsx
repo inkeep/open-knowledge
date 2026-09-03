@@ -85,6 +85,8 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<'div'>)
       data-slot="alert-dialog-footer"
       className={cn(
         '-mx-6 -mb-6 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 px-6 py-4 sm:flex-row sm:justify-end',
+        '[&_button]:font-mono [&_button]:uppercase',
+        '[&_[data-slot=button]]:font-mono [&_[data-slot=button]]:uppercase',
         className,
       )}
       {...props}
@@ -132,7 +134,7 @@ function AlertDialogCancel({
     <Button variant={variant} size={size} asChild>
       <AlertDialogPrimitive.Cancel
         data-slot="alert-dialog-cancel"
-        className={cn('font-mono uppercase', className)}
+        className={cn(className)}
         {...props}
       />
     </Button>

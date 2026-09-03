@@ -121,7 +121,6 @@ export function TrashFailureModal({
         {}
         <Button
           variant="outline"
-          className="font-mono uppercase"
           onClick={onRetry}
           disabled={isSubmitting}
           data-testid="trash-failure-modal-retry"

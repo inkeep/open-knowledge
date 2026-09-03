@@ -511,7 +511,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
             <Button
               variant="link-muted"
               disabled={busy}
-              className="-ms-2.5 tracking-wide font-mono uppercase"
+              className="-ms-2.5 tracking-wide"
               data-testid="mcp-consent-skip"
               onClick={onDismiss}
             >

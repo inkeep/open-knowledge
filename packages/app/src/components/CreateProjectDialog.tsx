@@ -866,7 +866,7 @@ export function CreateProjectDialog({
             <Button
               type="button"
               variant="ghost"
-              className="me-auto font-mono uppercase"
+              className="me-auto"
               onClick={() => goToStep('pick')}
               disabled={busy}
               data-testid="create-change-pack"
@@ -880,7 +880,6 @@ export function CreateProjectDialog({
             <Button
               type="button"
               variant="outline"
-              className="font-mono uppercase"
               onClick={() => onOpenChange(false)}
               disabled={busy}
               data-testid="create-cancel"

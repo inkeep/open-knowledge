@@ -358,7 +358,25 @@ Plugin: [`biome-plugins/no-raw-route-hash-construction.grit`](no-raw-route-hash-
 
 Dialog-footer emphasis hierarchy. A confirmation dialog's footer holds two actions, and the confirm has to outrank the dismiss. `secondary` is the one Button variant that draws no border and whose fill is imperceptible: `bg-secondary` sits within roughly 1.1:1 of the dialog surface in both light and dark, so the button reads as flat text rather than an action. Every other variant either fills with a contrasting color or draws a border, so `secondary` is the only one that can lose that contest with the `outline` Cancel standing beside it. A footer authored that way inverts the hierarchy: the escape action reads as the primary one, and the actual primary CTA reads as de-emphasized text. The rule flags a `DialogFooter` or `AlertDialogFooter` containing `variant="secondary"` and asks for `default` (or `destructive`, when the action is irreversible removal).
 
-**The typographic treatment comes with the variant.** `default` and `destructive` bake `font-mono uppercase` into their variant strings, and `DialogClose` hardcodes the same pair, so a footer gets its look from the design system rather than from hand-added classes. The two sites this rule was written against had reached for `variant="secondary"` plus a hand-added `className="font-mono uppercase"`, which recovered the footer's typography while leaving the confirm without a perceptible fill. That is what makes the inversion easy to author by accident: the footer still looks like a footer. The canonical shape omits the prop entirely and lets `defaultVariants` supply `default`, matching every other confirm dialog in the tree.
+**The typographic treatment comes from the footer, not the variant.** `DialogFooter` and `AlertDialogFooter` carry `[&_button]:` and `[&_[data-slot=button]]:` pairs of `font-mono uppercase`, so every footer action is drawn in the footer's typeface whatever variant it takes. Nothing needs hand-adding at a call site, and a `className="font-mono uppercase"` on a footer button is redundant rather than load-bearing. `default`, `destructive` and `outline-mono` also bake the pair into their variant strings — that is what dresses them outside a footer, so do not delete it on the strength of this paragraph.
+
+**Why two selectors rather than one.** Neither predicate covers every footer shape on its own, so the rule is their union:
+
+| Footer action | `button` element | `[data-slot=button]` |
+| --- | --- | --- |
+| plain `<Button>` | yes | yes |
+| `<Button asChild>` rendering an `<a>` | no | yes |
+| `AlertDialogCancel` / `AlertDialogAction` | yes | no |
+| `DialogClose asChild` wrapping a `Button` | yes | no |
+
+Radix's `Slot` lets the child's `data-slot` win, so the three wrapper primitives stamp their own slot name and fall out of a slot-only selector; `<Button asChild>` rendering an anchor is not a `<button>` element and falls out of a tag-only one. Keying on both covers all five. Keep the descendant combinator: `ShareBranchSwitchDialog` wraps three footer buttons in a `<div>`, which a child-scoped variant would miss.
+
+Two consequences worth knowing before you fight them:
+
+- **The footer outranks the button.** The compiled rule is `.…\:font-mono button { … }` at specificity `(0,1,1)`; a class on the button itself is `(0,1,0)` and loses, and `tailwind-merge` cannot arbitrate because the two declarations sit on different elements. Opting one footer button out of the treatment therefore needs the important modifier — `font-sans!` / `normal-case!` — not a plain utility.
+- **A footer action that is neither a `<button>` nor a `Button` styles itself.** The bare `<a>` in `InstallInClaudeDesktopDialog`'s footer is the one live instance, and it carries its own `font-mono tracking-wide uppercase`. That is deliberate: the footer dresses the design system's buttons, and a hand-rolled action carries its own treatment. Promoting such a link to `<Button asChild>` brings it under the rule.
+
+Historically the two sites this rule was written against had reached for `variant="secondary"` plus a hand-added `className="font-mono uppercase"`, which recovered the footer's typography while leaving the confirm without a perceptible fill. That is what makes the inversion easy to author by accident: the footer still looks like a footer. The canonical shape omits the prop entirely and lets `defaultVariants` supply `default`, matching every other confirm dialog in the tree.
 
 **Matched as one whole JSX element, not as `<Tag $...>$body</Tag>`.** A footer holds two or more children, and a single `$body` capture binds only an arity-one child list. GritQL regex matches the entire node text, so the leading tag name anchors the match to footers themselves rather than to any ancestor that happens to contain one.
 

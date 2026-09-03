@@ -544,7 +544,7 @@ export function AuthModal({
             </DialogBody>
 
             <DialogFooter>
-              <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
+              <Button variant="outline" onClick={handleCancel}>
                 <Trans>Cancel</Trans>
               </Button>
             </DialogFooter>
@@ -566,7 +566,7 @@ export function AuthModal({
             </DialogBody>
 
             <DialogFooter>
-              <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
+              <Button variant="outline" onClick={handleCancel}>
                 <Trans>Cancel</Trans>
               </Button>
               <Button onClick={handlePatConnect} disabled={!patToken.trim() || patSubmitting}>
@@ -591,7 +591,7 @@ export function AuthModal({
               <Button variant="ghost" onClick={() => setStep('pat')}>
                 <Trans>Use a token instead</Trans>
               </Button>
-              <Button variant="outline" className="font-mono uppercase" onClick={handleCancel}>
+              <Button variant="outline" onClick={handleCancel}>
                 <Trans>Cancel</Trans>
               </Button>
             </DialogFooter>

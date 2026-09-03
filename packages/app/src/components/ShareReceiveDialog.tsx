@@ -692,7 +692,7 @@ function ShareReceiveDialogInner({
           )}
         </DialogBody>
         <DialogFooter>
-          <Button variant="outline" className="font-mono uppercase" onClick={() => store.dismiss()}>
+          <Button variant="outline" onClick={() => store.dismiss()}>
             <Trans>Cancel</Trans>
           </Button>
         </DialogFooter>

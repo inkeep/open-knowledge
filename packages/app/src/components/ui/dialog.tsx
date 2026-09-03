@@ -20,9 +20,7 @@ function DialogPortal({ ...props }: React.ComponentProps<typeof DialogPrimitive.
 }
 
 function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
-  return (
-    <DialogPrimitive.Close data-slot="dialog-close" className="font-mono uppercase" {...props} />
-  );
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
 function DialogOverlay({
@@ -122,6 +120,8 @@ function DialogFooter({
       data-slot="dialog-footer"
       className={cn(
         '-mx-6 -mb-6 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 px-6 py-4 sm:flex-row sm:justify-end',
+        '[&_button]:font-mono [&_button]:uppercase',
+        '[&_[data-slot=button]]:font-mono [&_[data-slot=button]]:uppercase',
         className,
       )}
       {...props}
@@ -129,7 +129,7 @@ function DialogFooter({
       {children}
       {showCloseButton && (
         <DialogPrimitive.Close asChild>
-          <Button variant="outline" className="font-mono uppercase">
+          <Button variant="outline">
             <Trans>Close</Trans>
           </Button>
         </DialogPrimitive.Close>

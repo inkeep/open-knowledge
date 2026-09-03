@@ -1,4 +1,3 @@
-
 import { prependFrontmatter } from '@inkeep/open-knowledge-core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
