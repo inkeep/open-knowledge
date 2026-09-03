@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { globSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 type UndoClass =
@@ -14,76 +14,93 @@ interface UndoRow {
   undo: UndoClass;
   why: string;
   contract: string;
+  clearsSourceUndoOnModeReturn?: true;
 }
 
 const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
   AGENT_WRITE_ORIGIN: {
     undo: 'agent-session-um',
-    why: 'Typed exemplar for the agent-write origin; real writes carry the per-session session.origin. Undoable only by the server per-session UndoManager, never by a human Cmd+Z.',
-    contract: 'session-undo-manager.test.ts, agent-undo.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Typed exemplar for the agent-write origin; real writes carry the per-session session.origin. Undoable only by the server per-session UndoManager, never by a human Cmd+Z. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract:
+      'session-undo-manager.test.ts, integration/agent-undo.test.ts, source-undo-mode-flip.test.ts',
   },
   FILE_WATCHER_ORIGIN: {
     undo: 'system-not-undoable',
-    why: 'Disk-to-CRDT intake (paired). A system origin tracked by no UndoManager.',
-    contract: 'external-change disk intake (system origin)',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Disk-to-CRDT intake (paired). A system origin tracked by no UndoManager. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract: 'external-change disk intake (system origin), source-undo-mode-flip.test.ts',
   },
   ROLLBACK_ORIGIN: {
     undo: 'system-not-undoable',
-    why: 'Timeline restore rewrites body + fragment as a paired write; deliberately not client-undoable, and it stales pre-rollback client undo items.',
-    contract: 'undo-after-rollback.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Timeline restore rewrites body + fragment as a paired write; deliberately not client-undoable, and it stales pre-rollback client undo items. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract: 'undo-after-rollback.test.ts, source-undo-mode-flip.test.ts',
   },
   MANAGED_RENAME_ORIGIN: {
     undo: 'system-not-undoable',
-    why: 'Managed-rename spine (paired). System origin tracked by no UndoManager.',
-    contract: 'attribution-sweep-coverage.test.ts (identity threading)',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Managed-rename spine (paired). System origin tracked by no UndoManager. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract:
+      'attribution-sweep-coverage.test.ts (identity threading), source-undo-mode-flip.test.ts',
   },
   GENERATED_ARTIFACT_ORIGIN: {
     undo: 'system-not-undoable',
-    why: 'Machine-maintained generated documents are reconciled through a paired system write and are tracked by no UndoManager.',
-    contract: 'generated-artifact.test.ts, server-factory.test.ts (generated index wiring)',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Machine-maintained generated documents are reconciled through a paired system write and are tracked by no UndoManager. The paired write reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract:
+      'generated-artifact.test.ts, server-factory.test.ts (generated index wiring), source-undo-mode-flip.test.ts',
   },
   MERMAID_SOURCE_ORIGIN: {
     undo: 'system-not-undoable',
-    why: 'Mermaid diagram seed/reconcile into Y.Text(source); system origin, markdown bridge gated off.',
-    contract: 'mermaid-persistence (system origin)',
+    why: 'Full Y.Text(source) seed/reconcile for standalone Mermaid, Excalidraw, and editable-text documents; system origin, markdown bridge gated off. A full replacement clears the Mermaid diagram UndoManager so stale label edits cannot replay into it; the editable-text pane exposes view-local CodeMirror history and the Excalidraw canvas its own scene history, so neither is reached by that clear.',
+    contract: 'MermaidDocEditor.test.ts (system reconcile)',
   },
   MERMAID_DIAGRAM_EDIT_ORIGIN: {
     undo: 'client-editor-um',
     why: 'Diagram-label commits, tracked by the MermaidDocEditor own client Y.UndoManager so Cmd+Z reverts a label edit.',
-    contract: 'MermaidDocEditor (own UndoManager)',
+    contract: 'MermaidDocEditor.test.ts (own UndoManager)',
   },
   FORM_WRITE_ORIGIN: {
     undo: 'no-undo-manager',
-    why: 'Frontmatter property-panel write to the YAML region of Y.Text; single-root, captured by no editor UndoManager.',
-    contract: 'write-surface-undo-exclusion.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Frontmatter property-panel write to the YAML region of Y.Text; single-root, captured by no editor UndoManager, and one landing while source mode is inactive clears the source undo history on return.',
+    contract: 'write-surface-undo-exclusion.test.ts, source-undo-mode-flip.test.ts',
   },
   LINT_FIX_ORIGIN: {
     undo: 'no-undo-manager',
-    why: 'Client markdownlint auto-fix writing Y.Text(source) directly; captured by no editor UndoManager.',
-    contract: 'write-surface-undo-exclusion.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Client markdownlint auto-fix writing Y.Text(source) directly; captured by no editor UndoManager. Driven from the Problems panel and the visual editor, so one can land while source mode is inactive and clear the source undo history on return.',
+    contract: 'write-surface-undo-exclusion.test.ts, source-undo-mode-flip.test.ts',
   },
   SOURCE_PASTE_ORIGIN: {
     undo: 'no-undo-manager',
-    why: 'Chunked large source-mode paste writing Y.Text(source) directly, bypassing CM6 dispatch; captured by no editor UndoManager.',
-    contract: 'write-surface-undo-exclusion.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Chunked large source-mode paste writing Y.Text(source) directly, bypassing CM6 dispatch; captured by no editor UndoManager. Issued only from the source view paste handler, but the chunked insert yields per animation frame, so a tail chunk can land after a mode flip and clear the source undo history on return.',
+    contract: 'write-surface-undo-exclusion.test.ts, source-undo-mode-flip.test.ts',
   },
   TAB_REPLAY_ORIGIN: {
     undo: 'replay-not-undoable',
-    why: 'Recovery replay of buffered updates onto a recycled provider. The replayed bytes are durable but not Cmd+Z-undoable — post-recycle, the last pre-hiccup edits are recovery machinery, not a fresh user action.',
-    contract: 'undo-recycle-reset.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Recovery replay of buffered updates onto a recycled provider. The replayed bytes are durable but not Cmd+Z-undoable — post-recycle, the last pre-hiccup edits are recovery machinery, not a fresh user action. The replay reaches Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract: 'undo-recycle-reset.test.ts, source-undo-mode-flip.test.ts',
   },
 };
 
 const FACTORY_ORIGIN_ROWS: Record<string, UndoRow> = {
   createSessionOrigin: {
     undo: 'agent-session-um',
-    why: 'Mints the per-session frozen agent-write origin (session.origin); object-identity-unique, added to the session UndoManager trackedOrigins so only that session can undo its writes.',
-    contract: 'session-undo-manager.test.ts, agent-undo.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Mints the per-session frozen agent-write origin (session.origin); object-identity-unique, added to the session UndoManager trackedOrigins so only that session can undo its writes. Its paired writes reach Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract:
+      'session-undo-manager.test.ts, integration/agent-undo.test.ts, source-undo-mode-flip.test.ts',
   },
   createUndoOrigin: {
     undo: 'agent-undo-system',
-    why: 'Mints the per-session agent-undo origin (session.undoOrigin); filtered out of its own stack so undo-of-undo never stacks. Idle-LRU eviction destroys the session UndoManager, and a later undo gets the loud no-active-session refusal rather than a wrong-frame pop.',
-    contract: 'agent-undo.test.ts, agent-sessions.eviction.test.ts',
+    clearsSourceUndoOnModeReturn: true,
+    why: 'Mints the per-session agent-undo origin (session.undoOrigin); filtered out of its own stack so undo-of-undo never stacks. Idle-LRU eviction destroys the session UndoManager, and a later undo gets the loud no-active-session refusal rather than a wrong-frame pop. Its undo writes reach Y.Text(source), so one landing while source mode is inactive clears the source undo history on return.',
+    contract:
+      'integration/agent-undo.test.ts, agent-sessions.eviction.test.ts, source-undo-mode-flip.test.ts',
   },
 };
 
@@ -119,15 +136,23 @@ const NON_CONTENT_ORIGINS: Record<string, string> = {
 };
 
 const HERE = import.meta.dirname;
+
 const SRC_ROOTS = [
   join(HERE, '../../../server/src'),
   join(HERE, '../../../core/src'),
   join(HERE, '../../src'),
 ];
 const AGENT_SESSIONS_PATH = join(HERE, '../../../server/src/agent-sessions.ts');
+const CONTRACT_SEARCH_ROOTS = [
+  ...SRC_ROOTS,
+  join(HERE, '..'),
+  join(HERE, '../../../cli/src'),
+  join(HERE, '../../../desktop/src'),
+];
 
 const ORIGIN_SEGMENT = /(^|_)ORIGIN(_|$)/;
 const CONST_DECL = /\bconst\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=;\n]+)?=/g;
+const CONTRACT_TEST_FILE = /[\w./-]+\.test\.tsx?\b/g;
 
 function isScannedSource(fileName: string): boolean {
   if (!fileName.endsWith('.ts') && !fileName.endsWith('.tsx')) return false;
@@ -147,6 +172,33 @@ function walkTsFiles(dir: string, out: string[]): void {
     if (statSync(full).isDirectory()) walkTsFiles(full, out);
     else if (isScannedSource(entry)) out.push(full);
   }
+}
+
+function enumerateContractTestFiles(): Array<{ owner: string; file: string }> {
+  const rows: Array<[string, UndoRow]> = [
+    ...Object.entries(ORIGIN_UNDO_CONTRACT),
+    ...Object.entries(FACTORY_ORIGIN_ROWS),
+    ...Object.entries(RESERVED_UNDO_ROWS),
+  ];
+  return rows.flatMap(([owner, row]) =>
+    (row.contract.match(CONTRACT_TEST_FILE) ?? []).map((file) => ({ owner, file })),
+  );
+}
+
+function rowsPromisingSourceUndoClear(): Array<[string, UndoRow]> {
+  return [
+    ...Object.entries(ORIGIN_UNDO_CONTRACT),
+    ...Object.entries(FACTORY_ORIGIN_ROWS),
+    ...Object.entries(RESERVED_UNDO_ROWS),
+  ].filter(([, row]) => row.clearsSourceUndoOnModeReturn);
+}
+
+function contractFileHits(file: string): string[] {
+  return CONTRACT_SEARCH_ROOTS.flatMap((root) =>
+    globSync(`**/${file}`, { cwd: root, exclude: ['node_modules/**'] }).map((hit) =>
+      join(root, hit),
+    ),
+  );
 }
 
 function enumerateOriginConstants(): string[] {
@@ -202,6 +254,27 @@ describe('origin-undoability sweep', () => {
     expect(findUnclassified(['FORM_WRITE_ORIGIN', '__PLANTED_UNCLASSIFIED_ORIGIN__'])).toEqual([
       '__PLANTED_UNCLASSIFIED_ORIGIN__',
     ]);
+  });
+
+  test('every test file named in a contract ruling resolves to exactly one path', () => {
+    const unresolved = enumerateContractTestFiles()
+      .map(({ owner, file }) => ({ owner, file, hits: contractFileHits(file) }))
+      .filter(({ hits }) => hits.length !== 1);
+    expect(unresolved).toEqual([]);
+  });
+
+  test('every ruling that promises a source-undo clear cites the mode-flip contract', () => {
+    expect(rowsPromisingSourceUndoClear().length).toBeGreaterThanOrEqual(11);
+    const missing = rowsPromisingSourceUndoClear()
+      .filter(([, row]) => !row.contract.includes('source-undo-mode-flip.test.ts'))
+      .map(([owner]) => owner);
+
+    expect(missing).toEqual([]);
+  });
+
+  test('the contract resolver catches an invented file (planted positive)', () => {
+    expect(contractFileHits('__never_a_real__.test.ts')).toEqual([]);
+    expect(contractFileHits(basename(import.meta.filename))).toHaveLength(1);
   });
 
   test('the reserved machine-merge undo row is documented for the conflict-spec extension point', () => {

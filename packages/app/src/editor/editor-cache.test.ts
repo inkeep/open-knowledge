@@ -774,6 +774,7 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
   });
 
   test('cleanup is resilient when editor.destroy() throws', () => {
+    performance.clearMeasures('ok/cache/park-destroy-failed');
     const h = makeTiptapHarness('doc-a');
     const undoManager = attachStubUndoManager(h.editor);
     (h.editor as unknown as { destroy: () => void }).destroy = () => {
@@ -795,6 +796,17 @@ describe('TipTap cache — undoManager.restore cleanup on destroy', () => {
     expect(() => parkTiptapEditor(entry)).not.toThrow();
     expect(h.spies.destroyCalls).toBe(1);
     expect(undoManager.restore).toBeUndefined();
+    const failure = performance.getEntriesByName('ok/cache/park-destroy-failed').at(-1) as
+      | (PerformanceMeasure & {
+          detail?: { devtools?: { properties?: Array<[string, string]> } };
+        })
+      | undefined;
+    expect(Object.fromEntries(failure?.detail?.devtools?.properties ?? [])).toMatchObject({
+      docName: h.docName,
+      kind: 'tiptap',
+      stage: 'editor',
+      message: 'throwing-proxy',
+    });
   });
 
   test('evictTiptapEditor capture-before-destroy ordering: state inaccessible AFTER destroy still clears restore', () => {
@@ -1204,6 +1216,133 @@ describe('CM6 cache — lifecycle', () => {
     expect(__peekCm('cm-doc-0')).toBeUndefined();
     expect(__peekCm('cm-doc-extra')).toBeDefined();
     expect(harnesses[0].spies.destroyCalls).toBe(1);
+  });
+});
+
+describe('CM6 cache — undoManager teardown', () => {
+  beforeEach(() => {
+    __resetCacheForTests();
+    __resetScrollRestoreCoordination();
+  });
+  afterEach(() => {
+    __resetCacheForTests();
+  });
+
+  function makeFakeCmUndoManager(): { undoManager: Y.UndoManager; calls: string[] } {
+    const calls: string[] = [];
+    const undoManager = {
+      clear() {
+        calls.push('clear');
+      },
+      destroy() {
+        calls.push('destroy');
+      },
+    } as unknown as Y.UndoManager;
+    return { undoManager, calls };
+  }
+
+  function mountWithUndoManager(h: CmHarness, undoManager: Y.UndoManager): CmCacheEntry {
+    return mountCmEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: ((ctr: FakeNode) => ({
+        ...h.factory(ctr),
+        undoManager,
+      })) as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+  }
+
+  test('parkCmEditor on an __uncached entry clears then destroys the undoManager', () => {
+    const h = makeCmHarness('cm-undo-uncached');
+    const { undoManager, calls } = makeFakeCmUndoManager();
+    const entry: CmCacheEntry = {
+      view: h.view,
+      ydoc: h.ydoc,
+      ytext: h.ytext,
+      provider: h.provider,
+      themeCompartment: h.themeCompartment,
+      wordWrapCompartment: h.wordWrapCompartment,
+      placeholderCompartment: h.placeholderCompartment,
+      lintCompartment: new Compartment(),
+      undoManager,
+      scrollTop: 0,
+      hadFocus: false,
+      activeMountKey: h.docName,
+      parkingNode: null,
+      __uncached: true,
+    };
+
+    parkCmEditor(entry);
+
+    expect(h.spies.destroyCalls).toBe(1);
+    expect(calls).toEqual(['clear', 'destroy']);
+    expect(entry.undoManager).toBeUndefined();
+  });
+
+  test('uncached park continues through undo-manager cleanup and marks a view teardown failure', () => {
+    performance.clearMeasures('ok/cache/park-destroy-failed');
+    const h = makeCmHarness('cm-view-uncached-failure');
+    const { undoManager, calls } = makeFakeCmUndoManager();
+    const entry: CmCacheEntry = {
+      view: h.view,
+      ydoc: h.ydoc,
+      ytext: h.ytext,
+      provider: h.provider,
+      themeCompartment: h.themeCompartment,
+      wordWrapCompartment: h.wordWrapCompartment,
+      placeholderCompartment: h.placeholderCompartment,
+      lintCompartment: new Compartment(),
+      scrollTop: 0,
+      hadFocus: false,
+      activeMountKey: h.docName,
+      parkingNode: null,
+      undoManager,
+      __uncached: true,
+    };
+    h.view.destroy = () => {
+      throw new Error('view teardown failed');
+    };
+
+    parkCmEditor(entry);
+
+    expect(calls).toEqual(['clear', 'destroy']);
+    expect(entry.undoManager).toBeUndefined();
+    const failure = performance.getEntriesByName('ok/cache/park-destroy-failed').at(-1) as
+      | (PerformanceMeasure & {
+          detail?: { devtools?: { properties?: Array<[string, string]> } };
+        })
+      | undefined;
+    expect(Object.fromEntries(failure?.detail?.devtools?.properties ?? [])).toMatchObject({
+      docName: h.docName,
+      kind: 'cm',
+      stage: 'view',
+      message: 'view teardown failed',
+    });
+  });
+
+  test('evictCmEditor clears then destroys the undoManager', () => {
+    const h = makeCmHarness('cm-undo-evict');
+    const { undoManager, calls } = makeFakeCmUndoManager();
+    const entry = mountWithUndoManager(h, undoManager);
+    expect(entry.undoManager).toBe(undoManager);
+
+    expect(evictCmEditor(h.docName)).toBe(true);
+
+    expect(h.spies.destroyCalls).toBe(1);
+    expect(calls).toEqual(['clear', 'destroy']);
+    expect(entry.undoManager).toBeUndefined();
+  });
+
+  test('the ordinary cached park leaves the undoManager alive for the reparent', () => {
+    const h = makeCmHarness('cm-undo-cached-park');
+    const { undoManager, calls } = makeFakeCmUndoManager();
+    const entry = mountWithUndoManager(h, undoManager);
+
+    parkCmEditor(entry);
+
+    expect(h.spies.destroyCalls).toBe(0);
+    expect(calls).toEqual([]);
+    expect(entry.undoManager).toBe(undoManager);
   });
 });
 
