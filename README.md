@@ -6,7 +6,7 @@
 </p>
 
 <p>
-<b>OpenKnowledge</b> is a beautiful markdown editor with integrations with Claude, Codex, and other harnesses. For knowledge bases, LLM wikis, specs, and notes. Private, local, and free.
+<b>OpenKnowledge</b> is a beautiful markdown editor with integrations for Claude, Codex, and other harnesses. For knowledge bases, LLM wikis, specs, and notes. Private, local, and free.
 
 </p>
 
