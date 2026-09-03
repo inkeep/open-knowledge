@@ -290,6 +290,19 @@ describe('exec — stdout provenance headers', () => {
     expect(s.text?.startsWith('.:')).toBe(false);
   });
 
+  test('`cat <FILE.MD>` prepends the header for an uppercase extension', async () => {
+    const project = await bootstrap();
+    writeFileSync(resolve(project, 'UPPER.MD'), '# Upper\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat UPPER.MD' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    const s = structured(result);
+    expect(s.text?.startsWith('==> UPPER.MD <==\n')).toBe(true);
+  });
+
   test('`cat <file.md>` prepends `==> <file> <==` header to stdout', async () => {
     const project = await bootstrap();
     const contentDir = resolve(project, 'articles');

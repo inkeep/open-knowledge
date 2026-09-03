@@ -152,3 +152,180 @@ describe('extractReferencedPaths — fallback regex', () => {
     expect(paths).toEqual(['file.md']);
   });
 });
+
+describe('extractReferencedPaths — grep filename-only flags', () => {
+  test('grep -l reports the files it named, not every file it searched', () => {
+    const paths = extractReferencedPaths('specs/one.md\n', [
+      stage('grep', '-l', 'alpha', 'specs/one.md', 'specs/two.md'),
+    ]);
+    expect(paths).toEqual(['specs/one.md']);
+  });
+
+  test('grep -L reports the files without a match', () => {
+    const paths = extractReferencedPaths('specs/two.md\n', [
+      stage('grep', '-L', 'alpha', 'specs/one.md', 'specs/two.md'),
+    ]);
+    expect(paths).toEqual(['specs/two.md']);
+  });
+
+  test('grep -l with no match reports nothing', () => {
+    const paths = extractReferencedPaths('', [
+      stage('grep', '-l', 'alpha', 'specs/one.md', 'specs/two.md'),
+    ]);
+    expect(paths).toEqual([]);
+  });
+
+  test('single-file grep reports the file it read', () => {
+    const paths = extractReferencedPaths('alpha beta\n', [stage('grep', 'alpha', 'README.md')]);
+    expect(paths).toEqual(['README.md']);
+  });
+});
+
+describe('extractReferencedPaths — long listing', () => {
+  test('ls -l reads the name field and skips the total line', () => {
+    const stdout = [
+      'total 8',
+      '-rw-r--r--  1 user user  3132 Sep  1 12:47 README.md',
+      'drwxr-xr-x  2 user user    64 Sep  1 12:47 specs',
+      '-rw-r--r--  1 user user   100 Sep  1 12:47 my  notes.md',
+      '',
+    ].join('\n');
+    expect(extractReferencedPaths(stdout, [stage('ls', '-l')])).toEqual([
+      'README.md',
+      'specs',
+      'my  notes.md',
+    ]);
+  });
+});
+
+describe('extractReferencedPaths — operand commands', () => {
+  test.each(['sort', 'uniq', 'cut', 'wc'])('%s reports its operand, not its output', (cmd) => {
+    const paths = extractReferencedPaths('prose with other.md inside\n', [stage(cmd, 'notes.md')]);
+    expect(paths).toEqual(['notes.md']);
+  });
+
+  test('a non-wiki operand does not hijack the producer', () => {
+    const paths = extractReferencedPaths('alpha beta\n', [
+      stage('cat', 'README.md'),
+      stage('sort', 'plain.txt'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+});
+
+describe('extractReferencedPaths — grep reads flags through the argv model', () => {
+  test('a pattern supplied with -e is not read as a flag', () => {
+    const paths = extractReferencedPaths('the -l flag lists files\n', [
+      stage('grep', '-e', '-l', 'notes.md'),
+    ]);
+    expect(paths).toEqual(['notes.md']);
+  });
+
+  test('a pattern after -- is not read as a flag', () => {
+    const paths = extractReferencedPaths('the -l flag lists files\n', [
+      stage('grep', '--', '-l', 'notes.md'),
+    ]);
+    expect(paths).toEqual(['notes.md']);
+  });
+
+  test('single-file grep is not split on a colon inside a matched line', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('grep', 'see also', 'README.md'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+
+  test('an ambiguous multi-operand grep with no match reports nothing', () => {
+    expect(extractReferencedPaths('', [stage('grep', 'nomatch', 'a.md', 'b.md')])).toEqual([]);
+  });
+});
+
+describe('extractReferencedPaths — pins for the sibling one-liners', () => {
+  test('ls -a drops the dot entries from the raw listing', () => {
+    const stdout = '.\n..\n.git\nREADME.md\nspecs\n';
+    expect(extractReferencedPaths(stdout, [stage('ls', '-a')])).toEqual(['README.md', 'specs']);
+  });
+
+  test('a non-wiki operand does not elect head as producer', () => {
+    const paths = extractReferencedPaths('content\n', [
+      stage('cat', 'auth.md'),
+      stage('head', 'plain.txt'),
+    ]);
+    expect(paths).toEqual(['auth.md']);
+  });
+
+  test('the fallback regex matches an uppercase extension', () => {
+    expect(extractReferencedPaths('see NOTES.MD for background\n', [stage('wc', '-l')])).toEqual([
+      'NOTES.MD',
+    ]);
+  });
+});
+
+describe('extractReferencedPaths — grep counts only the files it searches', () => {
+  test('a -f pattern file is not a searched file', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('grep', '-f', 'needles.md', 'notes.md'),
+    ]);
+    expect(paths).toEqual(['notes.md']);
+  });
+
+  test('grep -h suppresses filename prefixing even with multiple operands', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('grep', '-h', 'see also', 'README.md', 'specs/two.md'),
+    ]);
+    expect(paths).toEqual(['README.md', 'specs/two.md']);
+  });
+
+  test('a digit-bearing bundle still counts as recursive', () => {
+    const stdout = 'specs/one.md:12:alpha\nspecs/one.md-13-see other.md\n';
+    expect(extractReferencedPaths(stdout, [stage('grep', '-rA3', 'alpha', '.')])).toEqual([
+      'specs/one.md',
+    ]);
+  });
+
+  test('a digit-bearing bundle still suppresses filename prefixing', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('grep', '-hA3', 'see also', 'README.md', 'specs/two.md'),
+    ]);
+    expect(paths).toEqual(['README.md', 'specs/two.md']);
+  });
+
+  test('a grep with only an output-shaping flag defers to the upstream producer', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('cat', 'README.md'),
+      stage('grep', '-l', 'also'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+
+  test('a recursive grep with no search operand reads stdin and defers upstream', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('cat', 'README.md'),
+      stage('grep', '-r', 'also'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+
+  test('a bare dash operand is stdin, not a searched file', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('cat', 'README.md'),
+      stage('grep', '-r', 'also', '-'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+
+  test('a dash beside a real operand is not counted as a second searched file', () => {
+    const paths = extractReferencedPaths('(standard input):see specs/two.md\n', [
+      stage('grep', 'see', 'README.md', '-'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+
+  test('a grep with no search operand defers to the upstream producer', () => {
+    const paths = extractReferencedPaths('specs/two.md: see also\n', [
+      stage('cat', 'README.md'),
+      stage('grep', 'also'),
+    ]);
+    expect(paths).toEqual(['README.md']);
+  });
+});
