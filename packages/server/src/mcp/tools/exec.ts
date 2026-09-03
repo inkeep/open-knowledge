@@ -7,7 +7,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { expandGlobStages } from '../../bash/expand-globs.ts';
-import { extractReferencedPaths, pathArgs } from '../../bash/extract-paths.ts';
+import { extractReferencedPaths, isWikiPath, pathArgs } from '../../bash/extract-paths.ts';
 import {
   createBashInstance,
   erofsTarget,
@@ -342,7 +342,7 @@ function buildStdoutProvenance(
     return `${key}/:\n`;
   }
 
-  const wikiFiles = operands.filter((p) => /\.(md|mdx)$/.test(p) && fileByPath.has(rebase(p)));
+  const wikiFiles = operands.filter((p) => isWikiPath(p) && fileByPath.has(rebase(p)));
   if (wikiFiles.length !== 1) return '';
   return `==> ${rebase(wikiFiles[0])} <==\n`;
 }
@@ -371,8 +371,12 @@ async function classifyPaths(
         } else if (st.isFile()) {
           files.push(p);
         }
-      } catch {
-        if (/\.(md|mdx)$/i.test(p)) files.push(p);
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+          log.warn({ path: p, code }, 'stat failed for a reported path; dropping it');
+        }
+        return;
       }
     }),
   );
