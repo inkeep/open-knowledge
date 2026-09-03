@@ -1440,6 +1440,10 @@ msgstr "एक और पैटर्न जोड़ें"
 msgid "Add at least one letter or number."
 msgstr "कम से कम एक अक्षर या अंक जोड़ें।"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr "नीचे ब्लॉक जोड़ें"
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11670,6 +11674,10 @@ msgstr "पूरी इंस्टॉल मार्गदर्शिका 
 msgid "See what's added"
 msgstr "देखें क्या जुड़ेगा"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr "{name} चुनें"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11696,6 +11704,10 @@ msgstr "सभी फ़ाइलें और फ़ोल्डर चुन�
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
 msgstr "पूरा स्रोत चुनें"
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
+msgstr "ब्लॉक चुनें"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select every visible file-tree row when focus is in the Files sidebar."

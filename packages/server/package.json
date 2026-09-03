@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-server",
-  "version": "0.68.3",
+  "version": "0.68.7",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -49,7 +49,7 @@
     "ignore": "^5.3.2",
     "ipaddr.js": "^2.3.0",
     "jsonc-parser": "^3.3.1",
-    "just-bash": "^2.14.3",
+    "just-bash": "~2.14.3",
     "mermaid": "^11.14.0",
     "mrmime": "^2.0.1",
     "pino": "^10.3.1",
@@ -71,9 +71,10 @@
   "scripts": {
     "build": "tsdown && pnpm run build:skill-bundles",
     "build:skill-bundles": "tsx scripts/build-skill-bundles.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm run typecheck:bash && tsc",
     "test": "vitest run",
-    "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts"
+    "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts",
+    "typecheck:bash": "tsc -p tsconfig.bash.json"
   },
   "devDependencies": {
     "@types/mdast": "^4.0.4",

@@ -369,6 +369,41 @@ describe('createApiRouteGroup', () => {
     ).toThrow(/covers no registered route/);
   });
 
+  test('a namespace-subsuming family collapses to the wildcard claim; keys outside the prefix stay mounted', () => {
+    const group = createApiRouteGroup(
+      { '/api/thing/alpha': handler, '/api/thing/nested/beta': handler, '/api/other': handler },
+      {
+        dynamic: {
+          prefix: '/api/thing/',
+          template: '/api/thing/:op',
+          dispatch: () => undefined,
+        },
+      },
+    );
+    expect([...group.paths].sort()).toEqual(['/api/other', '/api/thing/*']);
+    const member = group.table.resolve('/api/thing/alpha');
+    expect(member?.template).toBe('/api/thing/alpha');
+    expect(member?.dispatch).toBeDefined();
+    const unknown = group.table.resolve('/api/thing/some-future-op');
+    expect(unknown?.template).toBe('/api/thing/:op');
+    expect(unknown?.dispatch).toBeUndefined();
+  });
+
+  test('a bare dynamic.prefix fails at construction — its wildcard would swallow unrelated siblings', () => {
+    expect(() =>
+      createApiRouteGroup(
+        { '/api/local-op/clone': handler },
+        {
+          dynamic: {
+            prefix: '/api/local-op',
+            template: '/api/local-op/:op',
+            dispatch: () => undefined,
+          },
+        },
+      ),
+    ).toThrow(/must end in '\/'/);
+  });
+
   test('a dynamic leg claims its namespace: wildcard path, bound template, 404-able empty tail', () => {
     const seen: string[] = [];
     const group = createApiRouteGroup(

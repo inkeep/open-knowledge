@@ -63,6 +63,11 @@ export function createApiRouteGroup<R extends ApiRouteRecord>(
   const mutating: ReadonlySet<string> = new Set(opts.mutating ?? []);
   const mutatingPrefixes: readonly string[] = opts.mutatingPrefixes ?? [];
   const routeKeys = Object.keys(routes);
+  if (dynamic !== undefined && !dynamic.prefix.endsWith('/')) {
+    throw new Error(
+      `dynamic.prefix '${dynamic.prefix}' must end in '/' — a bare prefix mounts a wildcard that also swallows unrelated siblings ('/api/local-op' matches '/api/local-op-status')`,
+    );
+  }
   for (const prefix of mutatingPrefixes) {
     if (!prefix.endsWith('/')) {
       throw new Error(
@@ -96,7 +101,9 @@ export function createApiRouteGroup<R extends ApiRouteRecord>(
   };
   return {
     paths:
-      dynamic !== undefined ? [...Object.keys(routes), `${dynamic.prefix}*`] : Object.keys(routes),
+      dynamic !== undefined
+        ? [...routeKeys.filter((key) => !key.startsWith(dynamic.prefix)), `${dynamic.prefix}*`]
+        : routeKeys,
     table,
   };
 }

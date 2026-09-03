@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, describe, expect, test } from 'vitest';
-import { createBashInstance, execBash } from './index.ts';
+import { expandGlobStages } from './expand-globs.ts';
+import { createBashInstance, erofsTarget, execBash } from './index.ts';
 import { deriveScanRoots } from './mtime-scan.ts';
 import { augmentStagesWithExcludes, parseCommand, serializeStages } from './parse-command.ts';
 
@@ -19,6 +20,7 @@ function build(): string {
   writeFileSync(join(root, 'other.md'), 'zzz\naaa\n');
   writeFileSync(join(root, 'specs/one.md'), 'ONE\n');
   writeFileSync(join(root, '-delete'), 'flag-shaped filename\n');
+  writeFileSync(join(root, '-o'), 'flag-shaped filename\n');
   return root;
 }
 
@@ -33,125 +35,135 @@ function snapshot(dir: string, root = dir): string[] {
     .sort();
 }
 
-type Disposition = 'parse-blocked' | 'ran' | 'exec-threw';
-
-interface Attempt {
-  command: string;
-  expect: Disposition;
-  category?: string;
-}
+type Disposition = 'parse-blocked' | 'fs-refused' | 'engine-rejected' | 'ran' | 'exec-threw';
 
 async function attempt(
   root: string,
   command: string,
-): Promise<{ disposition: Disposition; category?: string }> {
+): Promise<{ disposition: Disposition; category?: string; stderr?: string }> {
   const parsed = parseCommand(command);
   if ('error' in parsed) return { disposition: 'parse-blocked', category: parsed.error.category };
+  const expanded = await expandGlobStages(parsed.stages, root);
+  if ('error' in expanded)
+    return { disposition: 'parse-blocked', category: expanded.error.category };
   try {
-    const effective = serializeStages(augmentStagesWithExcludes(parsed.stages));
-    await execBash(createBashInstance(root), effective);
+    const effective = serializeStages(augmentStagesWithExcludes(expanded.stages));
+    const result = await execBash(createBashInstance(root), effective);
+    if (erofsTarget(result.stderr).blocked) return { disposition: 'fs-refused' };
+    if (result.exitCode !== 0) return { disposition: 'engine-rejected', stderr: result.stderr };
     return { disposition: 'ran' };
-  } catch {
-    return { disposition: 'exec-threw' };
+  } catch (error) {
+    return { disposition: erofsTarget(error).blocked ? 'fs-refused' : 'exec-threw' };
   }
 }
 
-const WRITE_ATTEMPTS: Attempt[] = [
-  { command: 'sort -o important.md other.md', expect: 'parse-blocked', category: 'write_blocked' },
-  {
-    command: 'sort --output important.md other.md',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  {
-    command: 'sort --output-file important.md other.md',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  { command: 'sort -o=important.md other.md', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'sort -oimportant.md other.md', expect: 'parse-blocked', category: 'write_blocked' },
-  {
-    command: 'sort -r -o important.md other.md',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  { command: 'sort -ro important.md other.md', expect: 'parse-blocked', category: 'write_blocked' },
-  {
-    command: 'sort -nro important.md other.md',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  { command: 'sort -uo important.md other.md', expect: 'parse-blocked', category: 'write_blocked' },
-  {
-    command: 'sort -o important.md -r other.md',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  { command: 'find . -delete', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -name *.md -delete', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -exec rm {} +', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -execdir rm {} +', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -ok rm {} +', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -okdir rm {} +', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -fprint important.md', expect: 'parse-blocked', category: 'write_blocked' },
-  {
-    command: 'find . -fprintf important.md %p',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  { command: 'find . -fls important.md', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'find . -exec rm {} ;', expect: 'parse-blocked', category: 'shell_construct_blocked' },
-  {
-    command: 'find . -execdir rm {} ;',
-    expect: 'parse-blocked',
-    category: 'shell_construct_blocked',
-  },
-  { command: 'find . -ok rm {} ;', expect: 'parse-blocked', category: 'shell_construct_blocked' },
-  { command: 'cat other.md > important.md', expect: 'parse-blocked', category: 'write_blocked' },
-  { command: 'cat other.md >> important.md', expect: 'parse-blocked', category: 'write_blocked' },
-  {
-    command: 'cat other.md | tee important.md',
-    expect: 'parse-blocked',
-    category: 'unknown_command',
-  },
-  {
-    command: 'cut -f1 other.md -o important.md',
-    expect: 'parse-blocked',
-    category: 'write_blocked',
-  },
-  {
-    command: 'sort other.md `rm important.md`',
-    expect: 'parse-blocked',
-    category: 'shell_construct_blocked',
-  },
-  {
-    command: 'sort other.md $(rm important.md)',
-    expect: 'parse-blocked',
-    category: 'shell_construct_blocked',
-  },
-  { command: 'find {*,-delete}', expect: 'ran' },
-  { command: 'find {.,-delete}', expect: 'ran' },
-  { command: 'find *', expect: 'ran' },
-  { command: 'uniq other.md important.md', expect: 'ran' },
+const PARSER_MUST_REFUSE: Array<[string, string]> = [
+  ['find . -exec rm {} +', 'shell_construct_blocked'],
+  ['find . -execdir rm {} +', 'shell_construct_blocked'],
+  ['find . -ok rm {} +', 'shell_construct_blocked'],
+  ['find . -okdir rm {} +', 'shell_construct_blocked'],
+  ['find . -exec rm {} ;', 'shell_construct_blocked'],
+  ['find . -execdir rm {} ;', 'shell_construct_blocked'],
+  ['find . -ok rm {} ;', 'shell_construct_blocked'],
+  ['cat other.md > important.md', 'write_blocked'],
+  ['cat other.md >> important.md', 'write_blocked'],
+  ['cat other.md > /tmp/escaped.md', 'write_blocked'],
+  ['cat other.md | tee important.md', 'unknown_command'],
+  ['sort other.md `rm important.md`', 'shell_construct_blocked'],
+  ['sort other.md $(rm important.md)', 'shell_construct_blocked'],
+];
+
+const FILESYSTEM_MUST_REFUSE: string[] = [
+  'sort -o important.md other.md',
+  'sort --output important.md other.md',
+  'sort -o=important.md other.md',
+  'sort -oimportant.md other.md',
+  'sort -r -o important.md other.md',
+  'sort -o important.md -r other.md',
+  'sort -o /tmp/escaped.md other.md',
+  'sort -o ../escaped.md other.md',
+  'find . -delete',
+  'find . -name *.md -delete',
+  'find / -delete',
+  'find *',
+];
+
+const ENGINE_DOES_NOT_IMPLEMENT: string[] = [
+  'sort --output-file important.md other.md',
+  'sort -ro important.md other.md',
+  'sort -nro important.md other.md',
+  'sort -uo important.md other.md',
+  'find . -fprint important.md',
+  'find . -fprintf important.md %p',
+  'find . -fls important.md',
+  'cut -f1 other.md -o important.md',
+  'find {*,-delete}',
+  'find {.,-delete}',
+  'sort *',
+];
+
+const INERT_UNDER_THIS_ENGINE: string[] = [
+  'sort *.md',
+  'uniq *.md',
+  'uniq other.md important.md',
+  'uniq -- -delete important.md',
 ];
 
 describe('exec is read-only — no allowlisted command may alter the tree', () => {
-  test.each(
-    WRITE_ATTEMPTS,
-  )('$command is refused at the layer that owns it and changes nothing', async ({
-    command,
-    expect: expected,
-    category,
-  }) => {
+  test('the filesystem refuses a write the parser never sees', async () => {
     const root = build();
     const before = snapshot(root);
-    const result = await attempt(root, command);
-    expect(result.disposition).toBe(expected);
-    if (category !== undefined) expect(result.category).toBe(category);
+    const bash = createBashInstance(root);
+    await expect(execBash(bash, 'cat other.md > important.md')).rejects.toThrow(/EROFS/);
     expect(snapshot(root)).toEqual(before);
   });
 
-  test('the write guard and the mtime backstop read an attached value the same way', () => {
+  test.each(PARSER_MUST_REFUSE)('%s is refused by the parser as %s', async (command, category) => {
+    const root = build();
+    const before = snapshot(root);
+    expect(await attempt(root, command)).toEqual({ disposition: 'parse-blocked', category });
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  test.each(FILESYSTEM_MUST_REFUSE)('%s reaches the filesystem and it refuses', async (command) => {
+    const root = build();
+    const before = snapshot(root);
+    expect(await attempt(root, command)).toEqual({ disposition: 'fs-refused' });
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  test.each(
+    ENGINE_DOES_NOT_IMPLEMENT,
+  )('%s dies on an option just-bash does not implement, which is not the mount', async (command) => {
+    const root = build();
+    const before = snapshot(root);
+    const result = await attempt(root, command);
+    expect(result.disposition).toBe('engine-rejected');
+    expect(result.stderr).toMatch(
+      /invalid option|unrecognized option|unknown predicate|No such file/,
+    );
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  test.each(
+    INERT_UNDER_THIS_ENGINE,
+  )('%s runs to completion because this engine never writes for it', async (command) => {
+    const root = build();
+    const before = snapshot(root);
+    expect(await attempt(root, command)).toEqual({ disposition: 'ran' });
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  test('expansion can hand sort a genuine -o, and the filesystem refuses it', async () => {
+    const root = build();
+    rmSync(join(root, '-delete'));
+    rmSync(join(root, 'specs'), { recursive: true });
+    const before = snapshot(root);
+    expect(await attempt(root, 'sort *')).toEqual({ disposition: 'fs-refused' });
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  test('the mtime backstop reads an attached value as a path', () => {
     const roots = deriveScanRoots([{ command: 'sort', args: ['sort', '-onotes', 'other.md'] }]);
     expect(roots).toContain('notes');
   });
@@ -169,8 +181,10 @@ describe('exec is read-only — no allowlisted command may alter the tree', () =
   });
 });
 
-describe('the write guard does not reach commands whose -o only reads', () => {
+describe('a read-only -o parses for every command that has one', () => {
   test.each([
+    'grep -o needle other.md',
+    'find . -name a.md -o -name b.md',
     'grep -oE PRD-[0-9]+ other.md',
     'grep -on needle other.md',
     'grep -orn needle .',

@@ -403,6 +403,7 @@
       "¿Ya tienes un repositorio git? Añádelo con <0>git remote add origin <url></0> en la carpeta de este proyecto. Esta página se actualiza automáticamente en cuanto se detecta un remoto."
     ],
     "45MZFs": ["Comandos"],
+    "46YgRZ": ["Añadir bloque debajo"],
     "484LKL": ["Quitar el enlace"],
     "49Mb7P": [
       "No pudimos comprobar si Slidev está instalado. Vuelve a esta ventana para reintentarlo."
@@ -707,6 +708,7 @@
     ],
     "7PzzBU": ["Usuario"],
     "7S7FNA": ["OpenKnowledge revisó el proyecto"],
+    "7Voget": ["Seleccionar ", ["name"]],
     "7WnfoD": [
       "Este informe ya va en camino. Su resultado aparecerá en el historial de informes de error."
     ],
@@ -1172,6 +1174,7 @@
     "C_cPoW": [
       "Tu sesión de GitHub ha caducado: inicia sesión de nuevo para verificar el acceso de push."
     ],
+    "CbxTfe": ["Seleccionar bloque"],
     "CcaU4i": ["Los cambios se aplican al instante y se guardan automáticamente en este tema."],
     "ChMshD": ["Salir de ", ["appName"]],
     "Ck9XRt": ["No se pudo guardar la clave; inténtalo de nuevo."],

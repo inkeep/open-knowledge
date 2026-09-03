@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -340,6 +340,22 @@ describe('exec — stdout provenance headers', () => {
     expect(files.some((f) => f.path === 'articles/auth.md')).toBe(true);
   });
 
+  test('`cat X | head -n 2` — a separated flag value does not elect head as producer', async () => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'articles');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'auth.md'), 'line 1\nline 2\nline 3\n');
+
+    const result = (await buildExecResult(
+      { command: 'cat articles/auth.md | head -n 2' },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    const s = structured(result);
+    expect(s.text).toContain('==> articles/auth.md <==\n');
+    expect(fileEntries(s).some((f) => f.path === 'articles/auth.md')).toBe(true);
+  });
+
   test('`cat X | head -5` — cat header wins, head is a trimmer', async () => {
     const project = await bootstrap();
     const contentDir = resolve(project, 'articles');
@@ -353,6 +369,30 @@ describe('exec — stdout provenance headers', () => {
 
     const s = structured(result);
     expect(s.text).toContain('==> articles/auth.md <==\n');
+  });
+});
+
+describe('exec — a refused write reads as a refused write', () => {
+  test.each([
+    ['sort -oarticles/auth.md articles/auth.md', ''],
+    ['sort -o articles/auth.md articles/auth.md', ''],
+    ['find . -delete', 'articles/auth.md'],
+  ])('%s is reported as write_blocked, naming the file', async (command, named) => {
+    const project = await bootstrap();
+    const contentDir = resolve(project, 'articles');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'auth.md'), 'b\na\n');
+
+    const result = (await buildExecResult(
+      { command },
+      { resolveCwd: async () => project, serverUrl: undefined, config: DEFAULT_CONFIG },
+    )) as ExecResult;
+
+    const s = structured(result);
+    expect(s.error?.category).toBe('write_blocked');
+    expect(s.error?.message).toContain('exec is read-only');
+    if (named !== '') expect(s.error?.message).toContain(named);
+    expect(readFileSync(resolve(contentDir, 'auth.md'), 'utf8')).toBe('b\na\n');
   });
 });
 

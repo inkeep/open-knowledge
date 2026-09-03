@@ -41,6 +41,18 @@ describe('extractReferencedPaths — ls', () => {
     expect(paths).toEqual(['top.md']);
   });
 
+  test('several directories: each `dir:` header prefixes the entries under it', () => {
+    const stdout = 'docs:\napi.md\nauth.md\n\nspecs:\none.md\n';
+    const paths = extractReferencedPaths(stdout, [stage('ls', 'docs', 'specs')]);
+    expect(paths).toEqual(['docs', 'docs/api.md', 'docs/auth.md', 'specs', 'specs/one.md']);
+  });
+
+  test('a file and a directory: the file is bare, the directory section is prefixed', () => {
+    const stdout = 'README.md\n\nspecs:\none.md\n';
+    const paths = extractReferencedPaths(stdout, [stage('ls', 'README.md', 'specs')]);
+    expect(paths).toEqual(['README.md', 'specs', 'specs/one.md']);
+  });
+
   test('`ls .` treated as no parent', () => {
     const paths = extractReferencedPaths('top.md\n', [stage('ls', '.')]);
     expect(paths).toEqual(['top.md']);

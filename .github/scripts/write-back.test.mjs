@@ -26,13 +26,16 @@ import {
   runWriteBack,
   selectGhToken,
 } from './write-back.mjs';
+import { composeReply } from './write-back-gate.mjs';
 
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
 const GH_PULL = 'https://github.com/inkeep/agents-private/pull/2844';
 const SLACK_ARCHIVE = 'https://inkeep.slack.com/archives/C016VCYCL74/p1727122965001469';
 const LINEAR_UPLOAD = 'https://uploads.linear.app/abc/def/diagnostics.zip';
 const DISCORD_THREAD = 'https://discord.com/channels/1514363990740828223/1528881792063508610';
-const CHANGESET = { title: 'Honor backslash escapes', body: 'Honor backslash escapes in the markdown promoters.' };
+const CHANGESET_BODY =
+  'Honor backslash escapes in the markdown promoters.\n\nTyping the escape now stays literal.';
+const CHANGESET = { title: CHANGESET_BODY.split('\n')[0], body: CHANGESET_BODY };
 
 const PRIVATE_SHA = 'da71f0c698ccaac11da915169ca6c7d585d5eb97';
 const MIRRORED_SHA = 'eb52a625cd86859a8ec43ddc8f96e9b418d092a7';
@@ -434,7 +437,8 @@ describe('write-back run', () => {
     const mark = h.writes.find((w) => w.kind === 'mark');
     expect(post.origin).toBe(GH_ISSUE);
     expect(post.text).toContain('v0.36.0');
-    expect(post.text).toContain(CHANGESET.body);
+    expect(post.text).not.toContain(CHANGESET.body);
+    expect(post.text).toContain('https://github.com/inkeep/open-knowledge/releases');
     expect(mark.url).toBe(notificationMarkerUrl({ version: '0.36.0', originUrl: GH_ISSUE }));
   });
 
@@ -574,6 +578,27 @@ describe('changeset parsing', () => {
     expect(parseChangeset(['---', "'x': patch", '---', ''].join('\n'))).toBeNull();
     expect(parseChangeset('')).toBeNull();
   });
+
+  test('no real changeset shape leaks into the reply, whatever its prose looks like', () => {
+    const shapes = [
+      'Fixed an error thrown inside every CodeMirror-backed editor when selecting with the mouse. Double-clicking to select a word and triple-clicking to select a line both threw, and so did the handler that starts a drag from a widget.',
+      'Messages you send in an agent chat now carry their own actions:\n\n- Send the same prompt to a different agent.\n- Copy and edit a sent message.',
+      'The sync indicator recovers after a sleep, a Wi-Fi change, or a VPN flap.',
+    ];
+    for (const prose of shapes) {
+      const changeset = parseChangeset(['---', "'x': patch", '---', '', prose].join('\n'));
+      const text = composeReply({
+        changeset,
+        version: 'v0.36.0',
+        originChannel: 'github-issue',
+        coverage: ['PRD-7539'],
+      });
+      expect(text).not.toBeNull();
+      expect(text).not.toContain(changeset.title);
+      expect(text).not.toContain(changeset.body);
+      expect(text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+    }
+  });
 });
 
 describe('locating the changeset a fix shipped with', () => {
@@ -592,7 +617,7 @@ describe('locating the changeset a fix shipped with', () => {
     expect(findChangesetPath(['.changeset/some-fix.md'], { repo: 'open-knowledge' })).toBe('.changeset/some-fix.md');
   });
 
-  test("another product's changeset is never quoted to an Open Knowledge reporter", () => {
+  test("another product's changeset is never picked for an Open Knowledge reporter", () => {
     const foreign = ['public/agents/.changeset/some-agents-fix.md', '.changeset/a-stray-root-changeset.md'];
     expect(findChangesetPath(foreign, { repo: 'agents-private' })).toBeNull();
   });
@@ -1385,7 +1410,8 @@ describe('the beta leg', () => {
     expect(post.text).toContain('going out now on the Open Knowledge beta channel');
     expect(post.text).toContain('follow up here');
     expect(post.text).not.toContain('This shipped in');
-    expect(post.text).toContain(CHANGESET.body);
+    expect(post.text).not.toContain(CHANGESET.body);
+    expect(post.text).toContain('https://github.com/inkeep/open-knowledge/releases');
   });
 
   test('the beta marker is not the stable one, so each channel is told at most once', async () => {
@@ -1428,36 +1454,21 @@ describe('the beta leg', () => {
     expect(post.text).not.toContain('beta');
   });
 
-  test('the stable leg omits the changeset prose when a beta reply already quoted it on this origin', async () => {
-    const betaMarker = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
-    const h = harness({
-      live: true,
-      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, betaMarker] })],
-    });
+  test('the stable leg links the notes instead of quoting the changeset', async () => {
+    const h = harness({ live: true });
     const result = await h.run();
     const post = h.writes.find((w) => w.kind === 'post');
     expect(post.text).toContain('This shipped in Open Knowledge v0.36.0');
     expect(post.text).not.toContain(CHANGESET.body);
+    expect(post.text).toContain('https://github.com/inkeep/open-knowledge/releases');
     expect(result.posted.map((p) => p.identifier)).toEqual(['PRD-7539']);
-    expect(result.posted[0].quoted).toBe(false);
   });
 
-  test('a dry run reports the same quote decision the live run would make', async () => {
-    const betaMarker = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
-    const h = harness({
-      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, betaMarker] })],
-    });
-    const result = await h.run();
-    expect(result.posted[0].quoted).toBe(false);
-    expect(h.logs.some((m) => m.includes('[dry run]') && m.includes('quoted=false'))).toBe(true);
-  });
-
-  test('the quote decision is made per origin, not once for the whole candidate', async () => {
-    const betaMarker = notificationMarkerUrl({ version: '0.35.0', originUrl: GH_ISSUE });
+  test('no origin gets the changeset prose, whichever channel it came in on', async () => {
     const h = harness({
       live: true,
       listCandidates: async () => [
-        candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, DISCORD_THREAD, betaMarker] }),
+        candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, DISCORD_THREAD] }),
       ],
     });
     await h.run();
@@ -1465,6 +1476,8 @@ describe('the beta leg', () => {
     const forIssue = posts.find((p) => p.origin === GH_ISSUE);
     const forDiscord = posts.find((p) => p.origin === DISCORD_THREAD);
     expect(forIssue.text).not.toContain(CHANGESET.body);
-    expect(forDiscord.text).toContain(CHANGESET.body);
+    expect(forIssue.text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+    expect(forDiscord.text).not.toContain(CHANGESET.body);
+    expect(forDiscord.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
   });
 });

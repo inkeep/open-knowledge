@@ -10,10 +10,13 @@ import {
   INLINE_RENDERABLE_EXTENSIONS,
 } from '@inkeep/open-knowledge-core';
 import sirv from 'sirv';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { WebSocket } from 'ws';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
-import { buildIngressPolicy } from './ingress-policy.ts';
+import {
+  __resetWarnedForwardedHeaderRefusalForTests,
+  buildIngressPolicy,
+} from './ingress-policy.ts';
 import { getFreeLoopbackPort } from './loopback-rig-test-helpers.ts';
 import type { McpHttpHandler } from './mcp-http.ts';
 import {
@@ -188,6 +191,10 @@ afterEach(async () => {
   );
 });
 
+beforeEach(() => {
+  __resetWarnedForwardedHeaderRefusalForTests();
+});
+
 describe('mountMcpAndApi /mcp guard', () => {
   test('rejects non-loopback Origin before the MCP handler runs', async () => {
     let calls = 0;
@@ -283,6 +290,10 @@ describe('mountMcpAndApi /mcp guard', () => {
     expect(log.warn).toHaveBeenCalledWith(
       expect.objectContaining({ host: '127.0.0.1' }),
       expect.stringContaining('refused proxied WS upgrade'),
+    );
+    expect(log.warn).toHaveBeenCalledWith(
+      { handler: 'ws-upgrade' },
+      expect.stringContaining('server.allowExternal'),
     );
   });
 

@@ -17,7 +17,6 @@ import {
   evaluateFanIn,
   isOriginRepliableFrom,
   markerSuffixFor,
-  originAlreadyNotified,
   partitionAttachments,
 } from './write-back-gate.mjs';
 
@@ -357,14 +356,6 @@ export async function runWriteBack({
         skip(candidate.identifier, 'already-notified');
         continue;
       }
-      const quotedBefore = originAlreadyNotified(attachmentUrls, origin.url);
-      if (quotedBefore) {
-        log(
-          `::debug::write-back: ${origin.url} already carries a marker for an earlier version ` +
-            `(${candidate.identifier}); any reply for this origin will omit the changeset quote.`,
-        );
-      }
-
       const changeset = await readChangesetProse(candidate, { fixReferences });
       const text =
         changeset === null
@@ -375,13 +366,12 @@ export async function runWriteBack({
               originChannel: origin.channel,
               coverage: gate.coverage,
               channel,
-              quote: !quotedBefore,
             });
 
       if (!text) {
         log(
           `::warning::write-back: ${candidate.identifier} shipped in v${gate.version} but has no changeset prose ` +
-            'to quote; posting nothing rather than a bare version.',
+            'behind it; posting nothing rather than a bare version.',
         );
         skip(candidate.identifier, 'no-prose');
         continue;
@@ -390,14 +380,13 @@ export async function runWriteBack({
       if (!live) {
         log(
           `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
-            `(v${gate.version}, covers ${gate.coverage.join(', ')}, quoted=${!quotedBefore}).`,
+            `(v${gate.version}, covers ${gate.coverage.join(', ')}).`,
         );
         posted.push({
           identifier: candidate.identifier,
           origin: origin.url,
           version: gate.version,
           dryRun: true,
-          quoted: !quotedBefore,
         });
         continue;
       }
@@ -415,20 +404,18 @@ export async function runWriteBack({
       } catch (err) {
         throw new NeedsHumanError(
           `marker for ${origin.url} was written but the reply did NOT send (${err.message}). ` +
-            'No future run will retry it; post the reply by hand — and since this marker now makes a ' +
-            'later automated reply on this same origin assume its quote already landed, include it.',
+            'No future run will retry it; post the reply by hand.',
         );
       }
       log(
         `::notice::write-back: replied to ${origin.url} for ${candidate.identifier} ` +
-          `(v${gate.version}, quoted=${!quotedBefore}).`,
+          `(v${gate.version}).`,
       );
       posted.push({
         identifier: candidate.identifier,
         origin: origin.url,
         version: gate.version,
         dryRun: false,
-        quoted: !quotedBefore,
       });
     }
   };

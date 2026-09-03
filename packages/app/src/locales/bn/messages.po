@@ -1440,6 +1440,10 @@ msgstr "আরেকটি প্যাটার্ন যোগ করুন"
 msgid "Add at least one letter or number."
 msgstr "অন্তত একটি অক্ষর বা সংখ্যা যোগ করুন।"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr "নিচে ব্লক যোগ করুন"
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11670,6 +11674,10 @@ msgstr "পূর্ণ ইনস্টল নির্দেশিকা দে
 msgid "See what's added"
 msgstr "কী যুক্ত হবে দেখুন"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr "{name} নির্বাচন করুন"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11696,6 +11704,10 @@ msgstr "সব ফাইল ও ফোল্ডার নির্বাচন �
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
 msgstr "পুরো সোর্স নির্বাচন করুন"
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
+msgstr "ব্লক নির্বাচন করুন"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select every visible file-tree row when focus is in the Files sidebar."

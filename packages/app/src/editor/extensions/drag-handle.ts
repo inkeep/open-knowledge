@@ -1,5 +1,6 @@
 import { offset } from '@floating-ui/dom';
 import { incrementBlockGripClickSelectFailed } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { type Editor, Extension } from '@tiptap/core';
 import { DragHandlePlugin, normalizeNestedOptions } from '@tiptap/extension-drag-handle';
 import type { Node as PmNode } from '@tiptap/pm/model';
@@ -7,23 +8,28 @@ import { TextSelection } from '@tiptap/pm/state';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { getDescriptor } from '../registry/index.ts';
 import { createChildNode, focusInsertedComponent } from '../slash-command/component-items.tsx';
+import { GUTTER_PLUS_SVG } from './gutter-plus-icon.ts';
 
 const HANDLE_HEIGHT = 20;
 const MAX_SINGLE_LINE_HEIGHT = 44;
 const BODY_LINE_HEIGHT = 28;
 
+function selectNamed(name: string): string {
+  return t`Select ${name}`;
+}
+
 function describeBlockForGrip(node: PmNode | null): string {
-  if (!node) return 'Select block';
+  if (!node) return t`Select block`;
   if (node.type.name === 'jsxComponent') {
     const componentName = (node.attrs.componentName as string | undefined) ?? '';
     if (componentName) {
       const descriptor = getDescriptor(componentName);
       const label =
         descriptor.name === '*' ? componentName : (descriptor.displayName ?? descriptor.name);
-      if (label) return `Select ${label}`;
+      if (label) return selectNamed(label);
     }
   }
-  return `Select ${node.type.name}`;
+  return selectNamed(node.type.name);
 }
 
 function createBlockControlsElement(): {
@@ -38,9 +44,9 @@ function createBlockControlsElement(): {
 
   const addBtn = document.createElement('button');
   addBtn.className = 'ok-add-block-btn';
-  addBtn.setAttribute('aria-label', 'Add block below');
+  addBtn.setAttribute('aria-label', t`Add block below`);
   addBtn.setAttribute('type', 'button');
-  addBtn.innerHTML = `<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`;
+  addBtn.innerHTML = GUTTER_PLUS_SVG;
 
   addBtn.addEventListener('mousedown', (e) => {
     e.preventDefault();
@@ -50,7 +56,7 @@ function createBlockControlsElement(): {
   const grip = document.createElement('button');
   grip.className = 'ok-drag-grip';
   grip.setAttribute('type', 'button');
-  grip.setAttribute('aria-label', 'Select block');
+  grip.setAttribute('aria-label', t`Select block`);
   grip.setAttribute('tabindex', '-1');
   grip.innerHTML = `<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-grip-vertical-icon lucide-grip-vertical"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>`;
 
@@ -150,6 +156,7 @@ export const BlockDragHandle = Extension.create({
           currentNode = node;
           currentNodePos = pos ?? -1;
           grip.setAttribute('aria-label', describeBlockForGrip(node));
+          addBtn.setAttribute('aria-label', t`Add block below`);
         },
         computePositionConfig: {
           placement: 'left-start',

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { getSchema } from '@tiptap/core';
+import { getSchema, resolveExtensions } from '@tiptap/core';
+import type { ContentMatch, NodeType } from '@tiptap/pm/model';
 import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './extensions/shared.ts';
 
@@ -285,5 +286,32 @@ describe('R10: schema add-only invariant', () => {
           'If removing or renaming attrs/types, STOP — this violates R10 (y-prosemirror data loss).',
       );
     }
+  });
+});
+
+describe('resolved extension list', () => {
+  const resolvedNames = resolveExtensions(sharedExtensions).map((ext) => ext.name);
+
+  test('TrailingNode does not survive the resolve', () => {
+    expect(resolvedNames).not.toContain('trailingNode');
+  });
+
+  test('Gapcursor does, so disabling TrailingNode did not take it along', () => {
+    expect(resolvedNames).toContain('gapCursor');
+  });
+});
+
+describe('default block type (priority-resolved, which extensionOrder does not cover)', () => {
+  function defaultBlockAt(match: ContentMatch): NodeType | null {
+    for (let i = 0; i < match.edgeCount; i++) {
+      const { type } = match.edge(i);
+      if (type.isTextblock && !type.hasRequiredAttrs()) return type;
+    }
+    return null;
+  }
+
+  test('the block ProseMirror authors by default is paragraph', () => {
+    const schema = getSchema(sharedExtensions);
+    expect(defaultBlockAt(schema.nodes.doc.contentMatch)?.name).toBe('paragraph');
   });
 });

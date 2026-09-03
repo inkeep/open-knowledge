@@ -1,4 +1,4 @@
-import type { Stage } from './parse-command.ts';
+import { classifyArgs, type Stage } from './parse-command.ts';
 
 const PRODUCER_COMMANDS: ReadonlySet<string> = new Set(['cat', 'ls', 'grep', 'find']);
 
@@ -21,23 +21,35 @@ export function argsOf(stage: Stage): string[] {
   return stage.args.slice(1);
 }
 
-export function nonFlagArgs(args: string[]): string[] {
-  return args.filter((a) => !a.startsWith('-'));
+export function pathArgs(stage: Stage): string[] {
+  return classifyArgs(stage)
+    .filter((a) => a.role === 'path')
+    .map((a) => a.value);
 }
 
 function extractFromCat(stage: Stage): string[] {
-  return nonFlagArgs(argsOf(stage)).filter(isWikiPath);
+  return pathArgs(stage).filter(isWikiPath);
 }
 
 function extractFromLs(stdout: string, stage: Stage): string[] {
-  const pathArgs = nonFlagArgs(argsOf(stage));
-  const baseDir = pathArgs.length > 0 ? pathArgs[pathArgs.length - 1] : '';
-  const prefix = baseDir && baseDir !== '.' ? normalize(baseDir) : '';
+  const operands = pathArgs(stage);
+  const fileArgs = operands.filter(isWikiPath);
+  if (operands.length > 0 && fileArgs.length === operands.length) {
+    return fileArgs.map((p) => normalize(p));
+  }
+  const only = operands.length === 1 ? operands[0] : '';
+  let prefix = only && only !== '.' ? normalize(only) : '';
   const out: string[] = [];
   if (prefix) out.push(prefix);
   for (const line of stdout.split('\n')) {
     const name = line.trim();
     if (!name) continue;
+    if (name.endsWith(':')) {
+      const dir = normalize(name.slice(0, -1));
+      prefix = dir === '.' ? '' : dir;
+      if (prefix) out.push(prefix);
+      continue;
+    }
     if (/\.[a-z0-9]+$/i.test(name) && !isWikiPath(name)) continue;
     const path = prefix ? `${prefix}/${name}` : name;
     out.push(path);
@@ -68,11 +80,11 @@ function extractFromFind(stdout: string): string[] {
 }
 
 function extractFromHeadTail(stage: Stage): string[] {
-  return nonFlagArgs(argsOf(stage)).filter(isWikiPath);
+  return pathArgs(stage).filter(isWikiPath);
 }
 
 function headTailActsAsProducer(stage: Stage): boolean {
-  return nonFlagArgs(argsOf(stage)).length > 0;
+  return pathArgs(stage).length > 0;
 }
 
 function fallback(stdout: string): string[] {

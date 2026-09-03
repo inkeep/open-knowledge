@@ -1043,7 +1043,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project-local',
           description:
-            'Exposure consent interlock. Once the unified server boot lands, a non-loopback server.bind or a server.externalUrl without allowExternal: true will be refused at boot with a one-line fix. Default off. Per-machine (project-local) — consent never travels via git, clone, or share; containers consent via the environment instead.',
+            'Exposure consent interlock. A non-loopback server.bind without allowExternal: true is refused at boot with a one-line fix; a server.externalUrl without it boots (a committed externalUrl never arms exposure on clones — but it is project-scoped, so its host still joins the Host/Origin allowlists there), but requests carrying forwarding headers (X-Forwarded-For etc.) are refused until consent is given — proxy tolerance requires both keys. Default off. The server has no authentication of its own, so only consent behind an authenticating edge. Per-machine (project-local) — consent never travels via git, clone, or share; containers consent via the environment instead.',
         })
         .default(false),
       openBrowser: z

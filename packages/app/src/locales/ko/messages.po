@@ -1444,6 +1444,10 @@ msgstr "패턴 추가"
 msgid "Add at least one letter or number."
 msgstr "문자 또는 숫자를 하나 이상 추가하세요."
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Add block below"
+msgstr "아래에 블록 추가"
+
 #: src/comments/CommentSelectionAffordance.tsx
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add Comment"
@@ -11674,6 +11678,10 @@ msgstr "전체 설치 안내 보기"
 msgid "See what's added"
 msgstr "추가되는 항목 보기"
 
+#: src/editor/extensions/drag-handle.ts
+msgid "Select {name}"
+msgstr "{name} 선택"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Select {slot} — {0}"
@@ -11700,6 +11708,10 @@ msgstr "모든 파일과 폴더 선택"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select all source"
 msgstr "모든 소스 선택"
+
+#: src/editor/extensions/drag-handle.ts
+msgid "Select block"
+msgstr "블록 선택"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Select every visible file-tree row when focus is in the Files sidebar."

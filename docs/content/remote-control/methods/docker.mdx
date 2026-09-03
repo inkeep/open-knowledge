@@ -139,7 +139,9 @@ Two practices make this predictable:
 
 ## Rules for anything in front of the server
 
-Three rules apply to any proxy you place between clients and the container (an auth proxy, nginx, a CDN layer):
+Four rules apply to any proxy you place between clients and the container (an auth proxy, nginx, a CDN layer):
+
+- **The server must consent before any proxy fronts it.** A request carrying a forwarding header (`X-Forwarded-For`, `Forwarded`, `X-Forwarded-Proto`, ...) is refused with `403 Proxied request refused` unless BOTH `OK_EXTERNAL_URL` and `OK_ALLOW_EXTERNAL=1` are set. Every proxy stamps at least one of these headers, so this pair is a prerequisite for the rules below.
 
 - **Preserve the original `Host` header.** The server compares each request's `Host` with `OK_EXTERNAL_URL`. Many reverse proxies replace `Host` with the upstream address, such as `ok:8080`. The server rejects these requests with `403`. Forward the client's host instead. In Caddy, use `header_up Host {host}`. In nginx, set the `Host` header to `$host` with `proxy_set_header`. Hosting platform edges usually preserve it automatically. A proxy you add may not.
 - **Never buffer `/mcp`.** It is a streaming endpoint that uses server-sent events. A proxy that buffers or compresses the response causes agent connections to time out. In nginx, set `proxy_buffering` to `off` for this path. Caddy streams by default. Hosting platform edges pass server-sent events through. Apply this rule to any proxy you add.

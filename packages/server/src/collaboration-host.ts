@@ -9,6 +9,7 @@ import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import { toBroadcasterKey, validateAgentId } from './agent-id.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
 import type { AgentSessionManager } from './agent-sessions.ts';
+
 import {
   buildIngressPolicy,
   type IngressPolicy,
@@ -17,6 +18,7 @@ import {
   isPeerAdmitted,
   stampIngressContext,
   tripsForwardedHeaderTripwire,
+  warnForwardedHeaderRefusalOnce,
 } from './ingress-policy.ts';
 import type { PinoLogger } from './logger.ts';
 import type { MaintenanceCoordinator } from './maintenance-coordinator.ts';
@@ -252,6 +254,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
         { url: req.url, host: req.headers.host },
         '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
       );
+      warnForwardedHeaderRefusalOnce(log, 'collab-upgrade');
       socket.destroy();
       return true;
     }

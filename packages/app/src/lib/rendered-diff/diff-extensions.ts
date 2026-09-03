@@ -7,6 +7,7 @@ const DROP_NAMES = new Set([
   'blockDragHandle',
   'blockMover',
   'tableInsertControls',
+  'trailingAffordance',
   'fileHandler',
   'gfmAutolink',
   'inlineLinkInputRule',

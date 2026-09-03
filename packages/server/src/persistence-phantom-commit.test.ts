@@ -70,7 +70,7 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
     fixture.cleanup();
   });
 
-  test('y-prosemirror-style empty-paragraph append → principal NOT recorded', async () => {
+  test('empty-paragraph insert at a sub-floor edge → principal NOT recorded', async () => {
     writeFileSync(
       join(fixture.contentDir, 'empty-para-doc.md'),
       '# Original heading\n\nOriginal body.\n',
@@ -96,7 +96,7 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
         connection: { context: { principalId: 'principal-test-phantom' } },
       };
       serverDoc.transact(() => {
-        serverDoc.getXmlFragment('default').push([new Y.XmlElement('paragraph')]);
+        serverDoc.getXmlFragment('default').insert(0, [new Y.XmlElement('paragraph')]);
       }, connectionOrigin);
 
       await expectContributorCountRemainsAt(0, { durationMs: 800 });
@@ -106,6 +106,46 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
     }
 
     expect(contributorCount()).toBe(0);
+  });
+
+  test('empty-paragraph append at the tail → principal IS recorded', async () => {
+    writeFileSync(
+      join(fixture.contentDir, 'tail-empty-doc.md'),
+      '# Original heading\n\nOriginal body.\n',
+      'utf-8',
+    );
+    const server = createServer({
+      contentDir: fixture.contentDir,
+      projectDir: fixture.tmpDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      gitEnabled: false,
+    });
+    await server.ready;
+    try {
+      const conn = await server.hocuspocus.openDirectConnection('tail-empty-doc');
+      const serverDoc = server.hocuspocus.documents.get('tail-empty-doc');
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+
+      serverDoc.transact(
+        () => {
+          serverDoc.getXmlFragment('default').push([new Y.XmlElement('paragraph')]);
+        },
+        {
+          source: 'connection' as const,
+          connection: { context: { principalId: 'principal-test-tail-empty' } },
+        },
+      );
+
+      await waitForContributorCount(1);
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+
+    expect(contributorCount()).toBe(1);
   });
 
   test('real user edit changes serialized markdown → principal IS recorded', async () => {

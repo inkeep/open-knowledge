@@ -399,6 +399,7 @@
       "Já tem um repositório git? Adicione-o com <0>git remote add origin <url></0> na pasta deste projeto. Esta página se atualiza sozinha assim que um remoto for detectado."
     ],
     "45MZFs": ["Comandos"],
+    "46YgRZ": ["Adicionar bloco abaixo"],
     "484LKL": ["Remover o link"],
     "49Mb7P": [
       "Não foi possível verificar se o Slidev está instalado. Volte para esta janela para tentar de novo."
@@ -699,6 +700,7 @@
     ],
     "7PzzBU": ["Usuário"],
     "7S7FNA": ["OpenKnowledge verificou o projeto"],
+    "7Voget": ["Selecionar ", ["name"]],
     "7WnfoD": [
       "Este relatório já está a caminho. O resultado vai aparecer no histórico de relatórios de erro."
     ],
@@ -1146,6 +1148,7 @@
       "Este arquivo é grande demais para abrir no editor de texto integrado (limite de 1 MB). Use Abrir arquivo, abaixo, para abri-lo em outro app."
     ],
     "C_cPoW": ["Sua sessão do GitHub expirou — entre de novo para verificar o acesso de envio."],
+    "CbxTfe": ["Selecionar bloco"],
     "CcaU4i": ["As alterações são aplicadas imediatamente e salvas automaticamente neste tema."],
     "ChMshD": ["Encerrar o ", ["appName"]],
     "Ck9XRt": ["Não deu para salvar a chave — tente de novo."],

@@ -352,6 +352,7 @@
       "Already have a git repository? Add it with <0>git remote add origin <url></0> in this project's folder. This page updates automatically once a remote is detected."
     ],
     "45MZFs": ["Commands"],
+    "46YgRZ": ["Add block below"],
     "484LKL": ["Remove link"],
     "49Mb7P": ["We couldn't check whether Slidev is installed. Return to this window to retry."],
     "4A3Yzu": ["Code block"],
@@ -597,6 +598,7 @@
     ],
     "7PzzBU": ["User"],
     "7S7FNA": ["OpenKnowledge checked the project"],
+    "7Voget": ["Select ", ["name"]],
     "7WnfoD": [
       "This report is already on its way. Its result will appear in your bug report history."
     ],
@@ -995,6 +997,7 @@
       "This file is too large to open in the built-in text editor (1 MB limit). Use Open file below to open it in another app."
     ],
     "C_cPoW": ["Your GitHub session expired — sign in again to verify push access."],
+    "CbxTfe": ["Select block"],
     "CcaU4i": ["Edits apply live and save automatically to this theme."],
     "ChMshD": ["Quit ", ["appName"]],
     "Ck9XRt": ["Couldn't save the key — please try again."],
