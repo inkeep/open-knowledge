@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-server",
-  "version": "0.68.7",
+  "version": "0.68.8",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
