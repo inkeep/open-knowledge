@@ -30,6 +30,16 @@ A doc written before this behavior may still carry a blank line at the end that 
 
 Markdown problems (hard tabs, heading increments, and the rest) are flagged inline as you write, with a **Problems** panel in the document panel for the whole doc or project. See [Content rules](/docs/advanced/content-rules/overview).
 
+### Undo in source mode
+
+This section is about the Markdown source pane only. The visual editor keeps its own undo history, and none of what follows changes it.
+
+Undo in source mode covers the editing you did there. Switching to the visual editor for a look and coming straight back leaves that history intact. But if you leave source mode, by switching to the visual editor or by moving to another tab, and anything writes to the document while you are away, source-mode undo and redo start fresh when you come back. Many things count as a write, not only the obvious ones: your own edits in the visual editor, an agent, a collaborator, a change on disk, a field you change in the **Properties** panel, a fix applied from the **Problems** panel or from the visual editor, or the tail of a large paste you started in source mode that was still landing as you flipped away. Restoring an earlier version from the [Timeline](./timeline-and-recovery.mdx) counts as a write too, so if you restore while you are out of source mode, undo there starts fresh when you come back. Source-mode undo history belongs to the current document session: navigating through enough other documents to evict it, or closing and reopening the app, starts it fresh even if no one rewrote the file.
+
+No text is removed when that happens. One case is still not covered. If a rewrite lands while you are sitting in Markdown source rather than away from it, the history is left as it is, so a single undo can still take back more than you expect.
+
+To go further back, the [Timeline](./timeline-and-recovery.mdx) keeps earlier versions of the whole document. Each entry is a snapshot of the whole document. Agent edits, human edits, and file-system changes are batched into an entry once activity settles. Upstream syncs get their own entry when the sync lands. Restoring an entry brings back that version's content. Restoring is append-only, so the edits you made since then stay on the timeline and you can restore back to them.
+
 ### Tables
 
 Insert a table from the slash menu. The header row stays visible as you scroll down a long table, the first column stays pinned as you scroll sideways, and dragging a row or column handle reorders it. Cells are single-line in the stored markdown: pressing Enter inside a cell — or pasting a table whose cells hold lists or paragraphs — joins the lines with `<br />`, the GFM line-break idiom, so the table stays valid for everyone else opening the file. `<br>` tags in existing files render as real line breaks and round-trip byte-for-byte.

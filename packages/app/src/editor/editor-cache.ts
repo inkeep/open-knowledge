@@ -126,6 +126,7 @@ export interface CmCacheEntry {
   wordWrapCompartment: Compartment;
   placeholderCompartment: Compartment;
   lintCompartment: Compartment;
+  undoManager?: Y.UndoManager;
   scrollTop: number;
   hadFocus: boolean;
   activeMountKey: string | null;
@@ -147,6 +148,7 @@ interface CmFactoryResult {
   ydoc: Y.Doc;
   ytext: Y.Text;
   provider: HocuspocusProvider;
+  undoManager?: Y.UndoManager;
   themeCompartment: Compartment;
   wordWrapCompartment: Compartment;
   placeholderCompartment: Compartment;
@@ -445,6 +447,7 @@ export function parkTiptapEditor(entry: TiptapCacheEntry): void {
       mark('ok/cache/park-destroy-failed', {
         docName: docName ?? '',
         kind: 'tiptap',
+        stage: 'editor',
         message: err instanceof Error ? err.message : String(err),
       });
     }
@@ -539,6 +542,7 @@ export function mountCmEditor(params: MountCmParams): CmCacheEntry {
       ydoc: fresh.ydoc,
       ytext: fresh.ytext,
       provider: fresh.provider,
+      undoManager: fresh.undoManager,
       themeCompartment: fresh.themeCompartment,
       wordWrapCompartment: fresh.wordWrapCompartment,
       placeholderCompartment: fresh.placeholderCompartment,
@@ -602,6 +606,7 @@ export function mountCmEditor(params: MountCmParams): CmCacheEntry {
     ydoc: fresh.ydoc,
     ytext: fresh.ytext,
     provider: fresh.provider,
+    undoManager: fresh.undoManager,
     themeCompartment: fresh.themeCompartment,
     wordWrapCompartment: fresh.wordWrapCompartment,
     placeholderCompartment: fresh.placeholderCompartment,
@@ -642,9 +647,11 @@ export function parkCmEditor(entry: CmCacheEntry): void {
       mark('ok/cache/park-destroy-failed', {
         docName: entry.activeMountKey ?? '',
         kind: 'cm',
+        stage: 'view',
         message: err instanceof Error ? err.message : String(err),
       });
     }
+    destroyCmUndoManager(entry, entry.activeMountKey ?? '', 'park-destroy-failed');
     entry.activeMountKey = null;
     return;
   }
@@ -664,6 +671,27 @@ export function parkCmEditor(entry: CmCacheEntry): void {
   entry.activeMountKey = null;
 }
 
+function destroyCmUndoManager(
+  entry: CmCacheEntry,
+  docName: string,
+  event: 'park-destroy-failed' | 'evict-failed',
+): void {
+  const undoManager = entry.undoManager;
+  if (!undoManager) return;
+  entry.undoManager = undefined;
+  try {
+    undoManager.clear();
+    undoManager.destroy();
+  } catch (err) {
+    mark(`ok/cache/${event}`, {
+      docName,
+      kind: 'cm',
+      stage: 'undo-manager',
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 export function evictCmEditor(docName: string): boolean {
   const entry = cmCache.get(docName);
   if (!entry) return false;
@@ -680,6 +708,7 @@ export function evictCmEditor(docName: string): boolean {
       message: err instanceof Error ? err.message : String(err),
     });
   }
+  destroyCmUndoManager(entry, docName, 'evict-failed');
   try {
     entry.provider.destroy();
   } catch (err) {

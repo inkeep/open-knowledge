@@ -6,6 +6,10 @@ import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { sourceModeSetup } from '../../src/editor/source-mode-setup';
+import {
+  createSourceUndoFlipExtension,
+  setSourceViewUndoFlipActive,
+} from '../../src/editor/source-undo-mode-flip';
 
 export type SourceUndoWiring = 'production' | 'legacy';
 
@@ -37,15 +41,22 @@ export function installCmMeasurementStubs(): void {
 export interface MountedSourceUndoEditor {
   view: EditorView;
   undoManager: Y.UndoManager;
+  setSourceModeActive: (active: boolean) => void;
   destroy: () => void;
 }
 
 export function mountSourceUndoEditor(opts: {
+  docName?: string;
   ytext: Y.Text;
-  awareness: Awareness;
+  awareness?: Awareness;
   wiring: SourceUndoWiring;
   parent: HTMLElement;
 }): MountedSourceUndoEditor {
+  if (opts.wiring === 'production' && !opts.awareness) {
+    throw new Error(
+      'mountSourceUndoEditor({ wiring: "production" }) requires awareness: yCollab drops yRemoteSelections without it, so the mount would install a smaller extension set than SourceEditor.tsx',
+    );
+  }
   const undoManager = new Y.UndoManager(opts.ytext);
   const undoWiring =
     opts.wiring === 'production'
@@ -53,13 +64,28 @@ export function mountSourceUndoEditor(opts: {
           sourceModeSetup,
           yCollab(opts.ytext, opts.awareness, { undoManager }),
           keymap.of(yUndoManagerKeymap),
+          createSourceUndoFlipExtension({
+            docName: opts.docName ?? 'source-undo-rig',
+            ytext: opts.ytext,
+            undoManager,
+          }),
         ]
       : [basicSetup, yCollab(opts.ytext, opts.awareness, { undoManager })];
   const view = new EditorView({
     state: EditorState.create({ doc: opts.ytext.toString(), extensions: undoWiring }),
     parent: opts.parent,
   });
-  return { view, undoManager, destroy: () => view.destroy() };
+  const setSourceModeActive = (active: boolean) => {
+    if (opts.wiring !== 'production') return;
+    setSourceViewUndoFlipActive(view, active);
+  };
+  setSourceModeActive(true);
+  return {
+    view,
+    undoManager,
+    setSourceModeActive,
+    destroy: () => view.destroy(),
+  };
 }
 
 export function typeInSource(view: EditorView, text: string, at?: number): void {
@@ -83,7 +109,8 @@ export function applyRemoteSourceEdit(local: Y.Doc, mutate: (ytext: Y.Text) => v
 export function runSourceUndo(view: EditorView, wiring: SourceUndoWiring): boolean {
   if (wiring === 'production') {
     const binding = yUndoManagerKeymap.find((b) => b.key === 'Mod-z');
-    return binding?.run?.(view) ?? false;
+    if (!binding?.run) throw new Error('yUndoManagerKeymap no longer binds Mod-z');
+    return binding.run(view);
   }
   return cmNativeUndo(view);
 }
