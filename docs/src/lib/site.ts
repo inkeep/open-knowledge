@@ -1,6 +1,10 @@
 import { STABLE_DMG_URL } from './download-links';
 
 export const SITE_URL = 'https://openknowledge.ai';
+
+export function absoluteSiteUrl(path: string): string {
+  return new URL(path, SITE_URL).href;
+}
 export const SITE_NAME = 'OpenKnowledge';
 export const TWITTER_HANDLE = '@OpenKnowledge';
 

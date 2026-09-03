@@ -1,15 +1,14 @@
 import { ArrowRight, Bot, FileText, type LucideIcon, NotebookPen } from 'lucide-react';
-import type { ReactNode } from 'react';
 
 interface Layer {
   k: string;
   Icon: LucideIcon;
   title: string;
   role: string;
-  desc: ReactNode;
+  desc: string;
 }
 
-const LAYERS: Layer[] = [
+export const LAYERS: Layer[] = [
   {
     k: 'LAYER 01',
     Icon: NotebookPen,
@@ -73,7 +72,7 @@ interface Path {
   desc: string;
 }
 
-const PATHS: Path[] = [
+export const PATHS: Path[] = [
   {
     href: '/docs/get-started/quickstart',
     title: 'Try the Quickstart',

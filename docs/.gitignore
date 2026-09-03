@@ -1,5 +1,8 @@
 .next/
 .source/
+# Second content build, emitted by vitest.real-source.config.mts in the Vite
+# flavour that `.source/` must never hold.
+.source-vitest/
 .vercel
 .env
 .env.local

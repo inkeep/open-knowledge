@@ -32,7 +32,7 @@ const NO_COMMENTS_RULE = 'no-comments/no-comments';
 const NO_COMMENTS_SEVERITY = 'error';
 
 export default defineConfig({
-  ignorePatterns: ['.agents/skills/**', '.codex/skills/**', '/reports/**'],
+  ignorePatterns: ['.agents/skills/**', '.codex/skills/**', '/reports/**', '/specs/**'],
   options: {
     typeAware: true,
   },

@@ -149,7 +149,8 @@ export function classifyDownloadOs(input: string | null | undefined): DetectedOs
     lower.includes('linux') ||
     lower.includes('x11') ||
     lower.includes('cros') ||
-    lower.includes('chrome os')
+    lower.includes('chrome os') ||
+    lower.includes('chromium os')
   ) {
     return 'linux';
   }

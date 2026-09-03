@@ -42,7 +42,22 @@
     "@inkeep/open-knowledge-docs#build": {
       "dependsOn": ["^build", "typecheck"],
       "outputs": ["dist/**", ".next/**"],
-      "env": ["VERCEL_GIT_COMMIT_SHA", "GITHUB_SHA"]
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!src/**/*.test.ts",
+        "!src/**/*.test.tsx",
+        "!src/**/*.test-helper.ts",
+        "!vitest.config.ts",
+        "!vitest.*.config.mts"
+      ],
+      "env": [
+        "VERCEL_GIT_COMMIT_SHA",
+        "GITHUB_SHA",
+        "VERCEL_ENV",
+        "OK_ALLOW_BLOGLESS_LLMS_TXT",
+        "CI",
+        "VERCEL"
+      ]
     },
     "test": {
       "dependsOn": ["^build"],
@@ -56,6 +71,26 @@
         "vite.dedupe.ts",
         "tests/lingui-macro-shim.tsx",
         "tests/integration/idb-preload.ts",
+        "../../test-support/*.ts",
+        "../test-support/*.ts"
+      ]
+    },
+    "@inkeep/open-knowledge-docs#test": {
+      "dependsOn": ["^build", "build"],
+      "cache": true,
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "content/**",
+        "_snippets/**",
+        "next.config.ts",
+        "source.config.ts",
+        "microfrontends.json",
+        "postcss.config.ts",
+        "tsconfig.json",
+        "vitest.config.ts",
+        "vitest.*.config.mts",
         "../../test-support/*.ts",
         "../test-support/*.ts"
       ]

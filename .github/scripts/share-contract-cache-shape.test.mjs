@@ -18,6 +18,13 @@ describe('share contract corpus cache wiring', () => {
     const turbo = JSON.parse(readFileSync(join(REPO_ROOT, 'turbo.json'), 'utf8'));
     const docsBuild = turbo.tasks['@inkeep/open-knowledge-docs#build'];
 
-    expect(docsBuild.env).toEqual(['VERCEL_GIT_COMMIT_SHA', 'GITHUB_SHA']);
+    expect(docsBuild.env).toEqual([
+      'VERCEL_GIT_COMMIT_SHA',
+      'GITHUB_SHA',
+      'VERCEL_ENV',
+      'OK_ALLOW_BLOGLESS_LLMS_TXT',
+      'CI',
+      'VERCEL',
+    ]);
   });
 });

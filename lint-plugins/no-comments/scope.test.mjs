@@ -24,8 +24,13 @@ describe('glob compilation', () => {
     ['packages/**/src/**/*.ts', 'packages/app/tests/a.ts', false],
     ['**/*.d.ts', 'docs/next-env.d.ts', true],
     ['**/*.d.ts', 'a.d.ts', true],
+    ['**/*.d.mts', 'docs/next-env.d.mts', true],
+    ['**/*.d.cts', 'docs/lib/types.d.cts', true],
+    ['**/*.d.mts', 'docs/vitest.real-source.config.mts', false],
     ['*.ts', 'oxlint.config.ts', true],
     ['*.ts', 'docs/tailwind.config.ts', false],
+    ['*.ts', 'vitest.scripts.config.mts', false],
+    ['docs/**/*.mts', 'docs/vitest.real-source.config.mts', true],
     ['**/*.private.*', privateTestPath('packages/core/src', 'a'), true],
   ];
 
@@ -42,7 +47,10 @@ describe('scope membership', () => {
     'scripts/comment-fidelity.mjs',
     '.github/scripts/bridge-public-pr-to-monorepo.mjs',
     'docs/tailwind.config.ts',
+    'docs/vitest.real-source.config.mts',
+    'docs/lib/a.cts',
     'oxlint.config.ts',
+    'vitest.scripts.config.mts',
   ];
   const outOfScope = [
     'knip.config.ts',
@@ -52,6 +60,9 @@ describe('scope membership', () => {
     privateTestPath('packages/core/src/markdown', 'a'),
     'packages/app/src/locales/en/messages.ts',
     'docs/next-env.d.ts',
+    'docs/next-env.d.mts',
+    'docs/lib/types.d.cts',
+    'types.d.mts',
     'lint-plugins/no-comments/__fixtures__/must-fire.fixture.ts',
     'packages/app/src/lib/a.mjs',
     'packages/app/node_modules/x/src/a.ts',
@@ -93,7 +104,7 @@ describe('discovery over the real tree', () => {
         path.includes('/dist/') ||
         path.includes('.private.') ||
         path.includes('md-conformance/') ||
-        path.endsWith('.d.ts'),
+        /\.d\.[mc]?ts$/.test(path),
     );
     expect(leaks).toEqual([]);
   });
@@ -112,7 +123,12 @@ describe('the scope definition is derived, not restated', () => {
 });
 
 test('globToRegExp refuses syntax it does not implement instead of mis-compiling it', () => {
-  for (const glob of ['packages/**/{src,tests}/**/*.ts', 'packages/**/*.?s', '!packages/foo/**', 'src/[abc]/*.ts']) {
+  for (const glob of [
+    'packages/**/{src,tests}/**/*.ts',
+    'packages/**/*.?s',
+    '!packages/foo/**',
+    'src/[abc]/*.ts',
+  ]) {
     expect(() => globToRegExp(glob), glob).toThrow(/unsupported glob syntax/);
   }
 });

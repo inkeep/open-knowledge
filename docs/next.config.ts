@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { withMicrofrontends } from '@vercel/microfrontends/next/config';
 import { createMDX } from 'fumadocs-mdx/next';
 import type { NextConfig } from 'next';
+import { markdownRewrites } from './src/lib/markdown-routes';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -15,16 +16,7 @@ const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   async rewrites() {
     return {
-      beforeFiles: [
-        {
-          source: '/docs/:path*.md',
-          destination: '/llms.mdx/:path*',
-        },
-        {
-          source: '/docs/:path*.mdx',
-          destination: '/llms.mdx/:path*',
-        },
-      ],
+      beforeFiles: markdownRewrites(),
       afterFiles: [
         {
           source: '/ingest/static/:path*',

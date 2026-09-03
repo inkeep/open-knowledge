@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { PageMarkdownActions } from '@/components/page-markdown-actions';
 import { ProductUpdatesForm } from '@/components/product-updates-form';
-import { metaDescription, SITE_NAME, SITE_URL, TWITTER_HANDLE } from '@/lib/site';
+import { absoluteSiteUrl, metaDescription, SITE_NAME, SITE_URL, TWITTER_HANDLE } from '@/lib/site';
 import { source } from '@/lib/source';
 import { getMDXComponents } from '@/mdx-components';
 
@@ -67,6 +67,7 @@ export async function generateMetadata(props: PageProps<'/docs/[...slug]'>): Pro
     keywords,
     alternates: {
       canonical: page.url,
+      types: { 'text/markdown': absoluteSiteUrl(`${page.url}.md`) },
     },
     openGraph: {
       type: 'article',

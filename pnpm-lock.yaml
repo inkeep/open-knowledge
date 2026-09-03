@@ -269,6 +269,9 @@ importers:
       marked:
         specifier: ^18.0.6
         version: 18.0.7
+      mdast-util-mdx:
+        specifier: ^3.0.0
+        version: 3.0.0
       mermaid:
         specifier: ~11.16.1
         version: 11.16.1
@@ -293,9 +296,30 @@ importers:
       react-hook-form:
         specifier: ^7.80.0
         version: 7.81.0(react@19.2.5)
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
+      remark-mdx:
+        specifier: ^3.1.1
+        version: 3.1.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      remark-stringify:
+        specifier: ^11.0.0
+        version: 11.0.0
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+      unist-util-visit:
+        specifier: ^5.1.0
+        version: 5.1.0
+      yaml:
+        specifier: ^2.8.2
+        version: 2.9.0
       zod:
         specifier: ^4.3.6
         version: 4.4.3
@@ -303,6 +327,9 @@ importers:
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.2
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: ^24.7.0
         version: 24.13.3

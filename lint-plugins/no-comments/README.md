@@ -237,11 +237,13 @@ the mirror cannot resolve. The infix is not an escape hatch from this policy —
 file still ships INTERNALLY, still rots, and review holds it to the same bar; the gate skips it
 only because the mirrored predicate cannot see it anyway.
 
-`packages/**/{src,tests}/**/*.{ts,tsx}`, `scripts/**/*.mjs`, `.github/scripts/**/*.mjs`,
-`docs/**/*.{ts,tsx}`, and root `*.ts`. Excluded: the audit framework's own tree, `*.private.*`,
-the fidelity and lume-qa suites, fixtures, `*.d.ts`, generated locales, `knip.config.ts`, and
-build output. `scope.mjs` is the one place this is written down; the gate, the sweep, the
-codemod, and the hook all read it from there.
+Source files across the package, script, docs, lint-plugin and root-config strata, minus an
+exclusion set that covers the audit framework's own tree, `*.private.*` files, the fidelity and
+lume-qa suites, fixtures, declaration files, generated locales, build output, and specific
+single-file carve-outs. `scope.mjs` holds both lists, and it is the one place they are written
+down; the gate, the sweep, the codemod, and the hook all read it from there. Read that file
+rather than a restatement here: this paragraph has drifted from it twice, because an enumeration
+in prose has nothing checking it.
 
 This directory ships to the public mirror, which means its own tests may not *spell* a
 `*.private.*` path: the mirror's content-leak gate rejects a named reference to one in any
