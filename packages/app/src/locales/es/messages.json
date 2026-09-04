@@ -2898,6 +2898,9 @@
     "Vlc75q": ["Mantener el archivo eliminado"],
     "VmJT51": ["Cargando tus informes"],
     "VmXASo": ["(enlace simbólico)"],
+    "VpRSfQ": [
+      "La sincronización está tardando más de lo habitual: tus cambios están a salvo en este dispositivo."
+    ],
     "VsaI0G": [
       ["folderCount", "plural", { "one": ["carpeta"], "many": ["carpetas"], "other": ["carpetas"] }]
     ],
@@ -3002,9 +3005,6 @@
     "X3MMeA": ["Ninguno de estos problemas tiene arreglo automático."],
     "X59Fx2": ["No se pudo abrir este documento en Slidev."],
     "X7ShnN": ["Abrir el panel de agentes"],
-    "X7fxS9": [
-      "Conectado, pero tus ediciones aún no llegan al servidor. Reinícialo si esto continúa."
-    ],
     "X7u0xR": [["0"], " plantillas disponibles"],
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
@@ -4649,7 +4649,6 @@
     "n4vt3Q": ["Descargar la aplicación"],
     "n5Vy3l": ["Abierto en la rama ", ["branch"]],
     "n5n_vi": ["Repositorio privado"],
-    "n6N-xC": ["Conectado, pero tus ediciones aún no llegan al servidor."],
     "n6hXUm": [
       "La sincronización automática hace fetch, pull y push de commits a tu repositorio git remoto cada cierto tiempo para que tus ediciones sigan sincronizadas entre equipos."
     ],

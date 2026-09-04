@@ -3257,14 +3257,6 @@ msgstr "연결 대상"
 msgid "Connected to GitHub"
 msgstr "GitHub에 연결됨"
 
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "연결되었지만 편집 내용이 아직 서버에 전달되지 않고 있습니다."
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "연결되었지만 편집 내용이 아직 서버에 전달되지 않고 있습니다. 계속되면 서버를 재시작하세요."
-
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -12881,6 +12873,10 @@ msgstr "이 워크트리의 동기화가 자동(풀만)으로 설정되어 있�
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "이 워크트리의 동기화가 수동으로 설정되어 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "동기화가 평소보다 오래 걸리고 있습니다. 변경 내용은 이 기기에 안전하게 보관됩니다."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"

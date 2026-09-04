@@ -1,6 +1,7 @@
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { FORCE_SYNC_INTERVAL_MS } from '@/editor/provider-pool';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { useRelaunchInFlight } from '@/lib/relaunch-store';
 import { restartCollabServer } from '@/lib/restart-collab-server';
@@ -9,6 +10,11 @@ import type { SyncStatus } from './use-sync-status';
 const TOAST_ID = 'sync-status';
 
 const DISCONNECT_PRESUMED_DEAD_MS = 10_000;
+export const SYNC_CATCHUP_GRACE_MS = FORCE_SYNC_INTERVAL_MS + 3_000;
+
+const NO_TOAST_HANDLERS = { onDismiss: undefined, onAutoClose: undefined };
+
+type CatchupClaim = 'idle' | 'armed' | 'asserted' | 'dismissed';
 
 export async function runDisconnectRestart(
   bridge: Pick<OkDesktopBridge, 'restartServer' | 'config'>,
@@ -16,7 +22,7 @@ export async function runDisconnectRestart(
   try {
     const result = await restartCollabServer(bridge);
     if (!result.ok) {
-      toast.error(result.message, { id: TOAST_ID, duration: Infinity });
+      toast.error(result.message, { id: TOAST_ID, duration: Infinity, ...NO_TOAST_HANDLERS });
     }
   } catch {}
 }
@@ -28,14 +34,20 @@ export function useSyncToasts(status: SyncStatus, activeDocName: string | null) 
   const wasDisconnectedRef = useRef(false);
   const downgradeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const downgradedRef = useRef(false);
-  const outageToastStandingRef = useRef(false);
+  const outageEpisodeRef = useRef(false);
   const disconnectedSinceRef = useRef<number | null>(null);
+  const catchupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catchupClaimRef = useRef<CatchupClaim>('idle');
 
   useEffect(
     () => () => {
       if (downgradeTimerRef.current !== null) {
         clearTimeout(downgradeTimerRef.current);
         downgradeTimerRef.current = null;
+      }
+      if (catchupTimerRef.current !== null) {
+        clearTimeout(catchupTimerRef.current);
+        catchupTimerRef.current = null;
       }
     },
     [],
@@ -48,6 +60,16 @@ export function useSyncToasts(status: SyncStatus, activeDocName: string | null) 
         downgradeTimerRef.current = null;
       }
     };
+    const clearCatchupTimer = () => {
+      if (catchupTimerRef.current !== null) {
+        clearTimeout(catchupTimerRef.current);
+        catchupTimerRef.current = null;
+      }
+    };
+    const endOutageEpisode = () => {
+      outageEpisodeRef.current = false;
+      catchupClaimRef.current = 'idle';
+    };
 
     if (status === 'synced') {
       hasConnectedRef.current = true;
@@ -55,15 +77,20 @@ export function useSyncToasts(status: SyncStatus, activeDocName: string | null) 
 
     if (relaunchInFlight) {
       clearDowngradeTimer();
+      clearCatchupTimer();
       downgradedRef.current = false;
       disconnectedSinceRef.current = null;
       toast.dismiss(TOAST_ID);
-      outageToastStandingRef.current = false;
+      endOutageEpisode();
       return;
     }
 
     if (!activeDocName) {
       clearDowngradeTimer();
+      clearCatchupTimer();
+      if (catchupClaimRef.current === 'armed') {
+        catchupClaimRef.current = 'idle';
+      }
       return;
     }
 
@@ -80,28 +107,56 @@ export function useSyncToasts(status: SyncStatus, activeDocName: string | null) 
             },
           }
         : {};
-    const showToast = (message: string) => {
-      outageToastStandingRef.current = true;
-      toast.warning(message, { id: TOAST_ID, duration: Infinity, ...restartAction });
+    const showOutageToast = (message: string) => {
+      outageEpisodeRef.current = true;
+      toast.warning(message, {
+        id: TOAST_ID,
+        duration: Infinity,
+        ...NO_TOAST_HANDLERS,
+        ...restartAction,
+      });
     };
     const showConnectionLost = () =>
-      showToast(t`Connection lost — keep this tab open, your edits will sync when reconnected`);
-    const showConnectedStalled = () =>
-      showToast(
-        hasRestartButton
-          ? t`Connected, but your edits aren't reaching the server yet. Restart it if this continues.`
-          : t`Connected, but your edits aren't reaching the server yet.`,
+      showOutageToast(
+        t`Connection lost — keep this tab open, your edits will sync when reconnected`,
       );
     const showServerStopped = () =>
-      showToast(
+      showOutageToast(
         hasRestartButton ? t`The server stopped. Restart it to reconnect.` : t`The server stopped.`,
       );
+    const showSyncCatchingUp = () => {
+      catchupClaimRef.current = 'asserted';
+      toast.warning(t`Sync is taking longer than usual — your changes are safe on this device.`, {
+        id: TOAST_ID,
+        duration: Infinity,
+        ...NO_TOAST_HANDLERS,
+        ...restartAction,
+        onDismiss: () => {
+          catchupClaimRef.current = 'dismissed';
+        },
+      });
+    };
 
     if (status === 'connected') {
       clearDowngradeTimer();
       downgradedRef.current = false;
       disconnectedSinceRef.current = null;
-      if (outageToastStandingRef.current) showConnectedStalled();
+      if (outageEpisodeRef.current && catchupClaimRef.current === 'idle') {
+        catchupClaimRef.current = 'armed';
+        catchupTimerRef.current = setTimeout(() => {
+          catchupTimerRef.current = null;
+          if (outageEpisodeRef.current) {
+            showSyncCatchingUp();
+          } else {
+            catchupClaimRef.current = 'idle';
+          }
+        }, SYNC_CATCHUP_GRACE_MS);
+      }
+    } else {
+      clearCatchupTimer();
+      if (catchupClaimRef.current !== 'dismissed') {
+        catchupClaimRef.current = 'idle';
+      }
     }
 
     if (status === 'disconnected' && hasConnectedRef.current) {
@@ -136,8 +191,8 @@ export function useSyncToasts(status: SyncStatus, activeDocName: string | null) 
       clearDowngradeTimer();
       downgradedRef.current = false;
       disconnectedSinceRef.current = null;
-      outageToastStandingRef.current = false;
-      toast.success(t`Reconnected`, { id: TOAST_ID, duration: 3000 });
+      endOutageEpisode();
+      toast.success(t`Reconnected`, { id: TOAST_ID, duration: 3000, ...NO_TOAST_HANDLERS });
     }
   }, [status, activeDocName, t, relaunchInFlight]);
 }

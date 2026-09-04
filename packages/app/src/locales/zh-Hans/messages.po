@@ -3257,14 +3257,6 @@ msgstr "已连接到"
 msgid "Connected to GitHub"
 msgstr "已连接到 GitHub"
 
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet."
-msgstr "已连接，但你的编辑尚未送达服务器。"
-
-#: src/presence/use-sync-toasts.ts
-msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
-msgstr "已连接，但你的编辑尚未送达服务器。如果持续如此，请重启服务器。"
-
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -12881,6 +12873,10 @@ msgstr "这个 worktree 的同步已设为「自动（仅拉取）」，继承�
 #: src/hooks/use-worktree-autosync-notice.tsx
 msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr "这个 worktree 的同步已设为「手动」，继承自 {project}。可在「设置 → 同步」中更改。"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Sync is taking longer than usual — your changes are safe on this device."
+msgstr "同步用时比平常更久——你的更改已安全保存在此设备上。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
