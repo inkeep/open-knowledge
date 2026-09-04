@@ -300,11 +300,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
     });
 
     test('a comment-block drain takes the splice path, not missing-position', () => {
-      // A `commentBlock` is minted by the comment promoter rather than by
-      // remark, so it is the one top-level block whose `position` has to be
-      // stamped by hand (`spanOver` in `comment-promoter.ts`). Without that
-      // stamp a document opening with a comment sends the whole drain down the
-      // missing-position fallback.
       const raw = '<!-- note -->\n\nOriginal.\n';
       const { doc, xmlFragment, ytext } = createTestDoc();
       const cleanup = setupServerObservers({ doc, xmlFragment, ytext, mdManager, schema });
@@ -397,10 +392,6 @@ describe('map-driven Observer A — default Path A behavior', () => {
     });
 
     test('an offset-less block reports missing-position through the pure computer', () => {
-      // No input the parser accepts yields a position-less top-level block —
-      // `commentBlock`, the only hand-minted one, carries a span — so the guard
-      // is driven directly. It must stay: it is the last thing standing between
-      // an offset-less block and an offset arithmetic throw inside the drain.
       const stripPositions = {
         parseToEditorMdast: (body: string) => {
           const tree = mdManager.parseToEditorMdast(body);

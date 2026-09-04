@@ -250,7 +250,6 @@ export function loadManagedArtifactDoc(
   const extParsed = parseExternalSkillDocName(documentName);
   if (extParsed && externalSkillAbsPath(extParsed.name, extParsed.rel) === null) return;
 
-  // Seed only a document that is empty. `Y.Text` is the source of truth
   // (precedent #38) and the only surface, so it is the whole test.
   const ytext = document.getText('source');
   if (ytext.length > 0) return;

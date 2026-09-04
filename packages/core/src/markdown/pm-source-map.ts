@@ -1,120 +1,41 @@
-/**
- * Byte-accurate ProseMirror ↔ markdown-source position map.
- *
- * The WYSIWYG document is a *projection* of the `Y.Text('source')` markdown:
- * to splice a locally re-serialized block back into the markdown, and to carry
- * a cursor across a mode switch, the projection has to know which source bytes
- * every ProseMirror node came from. remark retains a `position` on effectively
- * every mdast node it produces; the mdast→PM handler layer drops all of them,
- * because a PM node has no place to put one.
- *
- * This module supplies that place — beside the doc rather than inside it. A
- * recorder is threaded through the handlers, keyed on the PM node objects they
- * return, and a post-parse walk of the finished doc turns those recordings into
- * a flat span table. Keeping it out of the node attrs matters: attrs are part
- * of the schema and would be serialized into the CRDT, into `toJSON`, and into
- * every byte-stability snapshot; a side table is free of all of that and is
- * simply not built when nobody asks for one.
- *
- * ## What "byte-accurate" means here, and where it stops
- *
- * A span whose PM length equals its source length maps char-for-char and is
- * exact. Everywhere else — a paragraph (whose PM length counts its open/close
- * tokens) or a text run that source-escaped some characters — a position
- * interior to the span is interpolated. Callers that need exactness should ask
- * at the granularity the map is exact at: `blocks` (top-level block boundaries,
- * straight from mdast top-level positions) is the granularity the block splice
- * needs, and it never interpolates.
- */
-
 import type { Node as PmNode } from '@tiptap/pm/model';
 import type { Position } from 'unist';
 
-/** The source span one ProseMirror node was parsed from. */
 export interface PmSourceSpan {
-  /** ProseMirror position immediately before the node. */
   from: number;
-  /** ProseMirror position immediately after the node. */
   to: number;
-  /** Char offset of the node's first source character, in the original markdown. */
   sourceStart: number;
-  /** Char offset one past the node's last source character. */
   sourceEnd: number;
-  /** PM node type name — for tripwires and debugging, never for indexing. */
   type: string;
-  /** Nesting depth below the doc; a top-level block is 1. */
   depth: number;
-  /**
-   * False when the span was inherited rather than parsed — a node synthesized
-   * outside remark (a materialized blank-line paragraph that lost its mint, the
-   * non-empty-doc filler) whose span was narrowed from its neighbours. Such a
-   * span still bounds the node correctly; it just is not a parse fact.
-   */
   mapped: boolean;
 }
 
-/**
- * How far down the tree the map's spans go.
- *
- * `full` is a parse result — a span for (nearly) every node. `block` carries
- * only top-level blocks, which is what the write path indexes and all it needs;
- * it is what a splice rebase produces, since rebasing exactly is cheap at the
- * top level and would cost a document parse below it. A consumer that places a
- * character-accurate cursor (a mode switch) should check this and ask for a
- * rebuild rather than interpolate across a whole block.
- */
 export type PmSourceMapPrecision = 'full' | 'block';
 
-/** Both directions of the map, plus the block table the splice path indexes. */
 export interface PmSourceMap {
-  /** See `PmSourceMapPrecision`. */
   readonly precision: PmSourceMapPrecision;
-  /** Every node's span, pre-order (a parent precedes its children). */
   readonly spans: readonly PmSourceSpan[];
-  /** Top-level block spans, index-aligned with the PM doc's children. */
   readonly blocks: readonly PmSourceSpan[];
-  /** Length of the markdown this map was built from. */
   readonly sourceLength: number;
-  /** `doc.content.size` of the projected document. */
   readonly docSize: number;
-  /** Source offset for a ProseMirror position. */
   pmPosToSourceOffset(pos: number): number;
-  /** ProseMirror position for a source offset. */
   sourceOffsetToPmPos(offset: number): number;
-  /** Index of the top-level block containing a PM position, or null when there are none. */
   blockIndexForPmPos(pos: number): number | null;
-  /** Index of the top-level block containing a source offset, or null when there are none. */
   blockIndexForSourceOffset(offset: number): number | null;
-  /**
-   * Source char range covering top-level blocks `[fromBlock, toBlock)`,
-   * extended to whole lines so a re-serialized block can be spliced in without
-   * disturbing the newline structure around it. Null when the range is empty.
-   */
   blockRangeToSourceRange(fromBlock: number, toBlock: number): { from: number; to: number } | null;
 }
 
-/** Anything carrying a unist `position`; the recorder never reads anything else. */
 interface Positioned {
   position?: Position | undefined;
   children?: unknown;
 }
 
-/**
- * Collects mdast positions against the PM nodes the handlers return.
- *
- * One recorder serves one parse. `positions` is keyed on node identity, which
- * survives the tree build: `Fragment.from` keeps the node objects it is given,
- * so a block node recorded by its handler is the same object that ends up in
- * the finished doc. (Adjacent text nodes with identical marks are merged into
- * fresh objects and lose their recording; the walk fills those from their
- * parent, which is the paragraph the merge happened in.)
- */
 export interface SourceMapRecorder {
   readonly positions: WeakMap<PmNode, Position>;
   record(mdastNode: unknown, result: unknown): void;
 }
 
-/** Lets the frozen parse processor hold a recorder slot it can find at call time. */
 export interface SourceMapRecorderHolder {
   current: SourceMapRecorder | null;
 }
@@ -131,7 +52,6 @@ function isPmNode(value: unknown): value is PmNode {
   return typeof value === 'object' && value !== null && 'type' in value && 'nodeSize' in value;
 }
 
-/** mdast children as raw nodes, when the shape allows an index alignment. */
 function childNodesOf(node: unknown, count: number): unknown[] | null {
   if (typeof node !== 'object' || node === null) return null;
   const children = (node as Positioned).children;
@@ -142,11 +62,6 @@ function childNodesOf(node: unknown, count: number): unknown[] | null {
 export function createSourceMapRecorder(): SourceMapRecorder {
   const positions = new WeakMap<PmNode, Position>();
 
-  // First write wins. Handlers run innermost-first (a handler calls `state.all`
-  // before it builds its own node), so the first recording against any object
-  // is the most specific one available — a parent that passes a child straight
-  // through (the paragraph unwrap) must not overwrite the child's own span with
-  // its coarser one.
   const set = (value: unknown, position: Position | null): boolean => {
     if (position === null || !isPmNode(value)) return false;
     if (positions.has(value)) return false;
@@ -154,17 +69,6 @@ export function createSourceMapRecorder(): SourceMapRecorder {
     return true;
   };
 
-  /**
-   * Push positions down a subtree the handler built itself.
-   *
-   * Most handlers delegate to `state.all`, so their children were recorded by
-   * their own handler calls and this finds nothing to do. The ones that do not
-   * — `table`, which assembles rows and cells directly — would otherwise leave
-   * every row and cell with only the whole table's span. Descent is gated on an
-   * exact child-count match at each level and stops the moment a node already
-   * has a recording, so it can only ever narrow an inherited span, never
-   * contradict a parsed one.
-   */
   const descend = (pmNode: PmNode, mdastNode: unknown): void => {
     const kids = childNodesOf(mdastNode, pmNode.childCount);
     if (kids === null) return;
@@ -179,11 +83,6 @@ export function createSourceMapRecorder(): SourceMapRecorder {
     record(mdastNode, result) {
       const own = positionOf(mdastNode);
       if (Array.isArray(result)) {
-        // A handler that returns an array in the same count as its mdast
-        // children returned them in order (`state.all` preserves order), so
-        // index alignment is sound and strictly sharper than the parent span.
-        // This is the mark path: `toPmMark` re-marks every child into a fresh
-        // object, which drops the child's own recording.
         const kids = childNodesOf(mdastNode, result.length);
         for (let i = 0; i < result.length; i++) {
           const kid = kids?.[i];
@@ -203,13 +102,6 @@ export function createSourceMapRecorder(): SourceMapRecorder {
 
 type HandlerFn = (...args: unknown[]) => unknown;
 
-/**
- * Wrap a handler table so every node it produces is recorded when a recorder is
- * installed. Wrapping happens once, at `MarkdownManager` construction, because
- * the parse processor is frozen around the table; with an empty holder the
- * wrapper is one null check per node, which is why the map costs nothing to
- * have available and nothing to not use.
- */
 export function withSourceMapRecording<T extends Record<string, unknown> | undefined>(
   handlers: T,
   holder: SourceMapRecorderHolder,
@@ -231,7 +123,6 @@ export function withSourceMapRecording<T extends Record<string, unknown> | undef
   return wrapped as T;
 }
 
-/** Translates parse-time offsets back onto the bytes the caller passed in. */
 export type SourceOffsetAdjuster = (parseOffset: number) => number;
 
 interface WalkContext {
@@ -245,12 +136,6 @@ function clamp(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(value, hi));
 }
 
-/**
- * Walk one node's children, emitting a span each. Children with no recording
- * are bounded by their mapped neighbours rather than inheriting the parent's
- * whole span, so a synthesized blank-line paragraph between two real blocks
- * collapses onto the gap it actually occupies instead of swallowing both.
- */
 function walkChildren(
   ctx: WalkContext,
   parent: PmNode,
@@ -338,14 +223,6 @@ function lastIndexAtOrBefore(sorted: readonly number[], value: number): number {
   return found;
 }
 
-/**
- * Deepest span containing `value` on the given axis.
- *
- * Spans nest and siblings are disjoint on both axes, so scanning back from the
- * last span that starts at or before `value`, the first one that also ends
- * after it is the innermost container: anything between it and `value` is a
- * subtree that already closed.
- */
 function deepestContaining(
   order: readonly PmSourceSpan[],
   starts: readonly number[],
@@ -359,25 +236,12 @@ function deepestContaining(
   return null;
 }
 
-/**
- * Interpolate inside a span. Equal lengths map char-for-char — the exact case,
- * and the one text runs land in unless the source escaped something. Otherwise
- * the offset is scaled, which keeps the landing inside the right node without
- * claiming a precision the span does not have.
- */
 function interpolate(fromLen: number, toLen: number, rel: number, base: number): number {
   if (fromLen <= 0) return base;
   if (fromLen === toLen) return base + rel;
   return base + Math.round((rel / fromLen) * toLen);
 }
 
-/**
- * Extend a source range outward to whole lines.
- *
- * A leading BOM is not part of any line: it precedes the first block but a
- * splice that swallowed it would silently strip it from the file, which the
- * byte-stability guards would then report as a spurious diff.
- */
 function toLineBounds(source: string, from: number, to: number): { from: number; to: number } {
   const floor = source.charCodeAt(0) === 0xfeff ? 1 : 0;
   let start = clamp(from, floor, source.length);
@@ -387,13 +251,6 @@ function toLineBounds(source: string, from: number, to: number): { from: number;
   return { from: start, to: end };
 }
 
-/**
- * Build the map from a parsed doc and the recordings its parse produced.
- *
- * `adjust` translates parse-time offsets back onto `source` — `parseMd` strips
- * a BOM and may dedent JSX close tags before handing bytes to remark, and both
- * shift every position downstream.
- */
 export function buildPmSourceMap(
   doc: PmNode,
   recorder: SourceMapRecorder,
@@ -412,14 +269,6 @@ export function buildPmSourceMap(
   return sourceMapOverSpans(spans, source, doc.content.size, 'full');
 }
 
-/**
- * A map carrying only top-level block spans.
- *
- * The rebase path's output: exact where the write path reads it, and honest
- * about carrying nothing below that. `spans` and `blocks` are the same array,
- * so every lookup still answers — it just interpolates across a whole block
- * instead of across a text run.
- */
 export function buildBlockSourceMap(
   blocks: readonly PmSourceSpan[],
   sourceLength: number,
@@ -428,7 +277,6 @@ export function buildBlockSourceMap(
   return sourceMapOverSpans([...blocks], { length: sourceLength }, docSize, 'block');
 }
 
-/** The shared query surface. `source` is read only for whole-line bounds. */
 function sourceMapOverSpans(
   spans: PmSourceSpan[],
   source: string | { length: number },
@@ -439,10 +287,6 @@ function sourceMapOverSpans(
   const text = typeof source === 'string' ? source : null;
   const blocks = spans.filter((span) => span.depth === 1);
 
-  // The PM axis is already ascending in pre-order; the source axis is too for
-  // every tree remark produces, but an inherited span can tie with its
-  // neighbour, so sort explicitly and keep containers ahead of what they
-  // contain (widest first) to preserve the nesting the search relies on.
   const bySource = [...spans].sort(
     (a, b) => a.sourceStart - b.sourceStart || b.sourceEnd - a.sourceEnd || a.depth - b.depth,
   );
@@ -512,17 +356,9 @@ function sourceMapOverSpans(
       if (last <= first) return null;
       const head = blocks[first] as PmSourceSpan;
       const tail = blocks[last - 1] as PmSourceSpan;
-      // A zero-width range is an INSERTION POINT, not a line. Blocks that emit
-      // no markdown — an empty paragraph the user just made with Enter — hold a
-      // zero-width span so the table keeps one entry per document block; widening
-      // that to its enclosing line would make the next edit overwrite the
-      // neighbour it sits against.
       if (head.sourceStart === tail.sourceEnd) {
         return { from: head.sourceStart, to: head.sourceStart };
       }
-      // Without the bytes (a rebased map keeps none) the block span IS the line
-      // range: rebase derives every span from a splice that was itself
-      // line-bounded, so there is nothing left to widen.
       return text === null
         ? { from: head.sourceStart, to: tail.sourceEnd }
         : toLineBounds(text, head.sourceStart, tail.sourceEnd);

@@ -76,7 +76,6 @@ describe('onLoadDocument seed guard', () => {
 
     await loadDocument(persistence, document, docName);
 
-    // The disk bytes must not be concatenated onto the live ones.
     expect(document.getText('source').toString()).toBe(live);
     expect(document.getText('source').toString()).not.toContain('Disk paragraph.');
   });

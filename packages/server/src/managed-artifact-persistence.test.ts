@@ -316,7 +316,6 @@ describe('store/load round-trip', () => {
 
     loadManagedArtifactDoc(doc, docName, ctx);
 
-    // Untouched: no disk bytes appended, no fragment minted, no epoch stamped.
     expect(doc.getText('source').toString()).toBe(live);
     expect(doc.getXmlFragment('default').length).toBe(0);
     expect(doc.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBeUndefined();

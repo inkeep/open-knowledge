@@ -20,19 +20,8 @@ function isPrecededByListItem(source: string, closeLineStart: number): boolean {
   return false;
 }
 
-/**
- * One run of characters this pass removed, in ORIGINAL-source coordinates.
- *
- * The dedent is the only pre-parse transform in `parseMd` that is not
- * length-preserving, so it is the only one that shifts every mdast `position`
- * downstream of it. A caller that needs to map a parsed position back onto the
- * bytes the user actually holds (the ProseMirror source map) collects these and
- * adds the removals back; every other caller ignores them.
- */
 export interface DedentEdit {
-  /** Offset of the first removed character, in the original source. */
   at: number;
-  /** How many characters were removed there. */
   removed: number;
 }
 
@@ -55,13 +44,6 @@ export function dedentBlockJsxClose(source: string, edits?: DedentEdit[]): strin
   return mutated ? result : source;
 }
 
-/**
- * Map an offset in the dedented text back onto the original source.
- *
- * Removals are emitted in ascending original order, so each one's dedented
- * offset is its original offset minus everything removed before it; an offset
- * at or past that point sits after the removal and must have it added back.
- */
 export function undedentOffset(edits: readonly DedentEdit[], dedentedOffset: number): number {
   let cumulative = 0;
   for (const edit of edits) {

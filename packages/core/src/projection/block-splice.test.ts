@@ -1,19 +1,3 @@
-/**
- * The single-CRDT write path: a WYSIWYG edit becomes one `Y.Text` splice.
- *
- * The oracle here is deliberately NOT "serialize the whole edited document".
- * That oracle disagrees with a correct block splice on roughly a tenth of real
- * documents, and every disagreement is the oracle renormalizing blocks the user
- * never touched — scoring the better behaviour as a failure. What is asserted
- * instead is the pair of properties the migration actually needs:
- *
- *  - CONTAINMENT: every byte outside the edited block's line range is identical
- *    before and after — strictly stronger than line-diffing a whole
- *    re-serialized document, which rewrites bytes the user never touched.
- *  - FIDELITY: re-projecting the spliced source yields the document the user
- *    edited into being — the edit landed, and nothing else moved.
- */
-
 import { describe, expect, it } from 'vitest';
 import { sharedExtensions } from '../extensions/shared.ts';
 import { loadLargeRealistic } from '../markdown/fixtures/index.ts';
@@ -30,7 +14,6 @@ import {
 
 const md = new MarkdownManager({ extensions: sharedExtensions });
 
-/** Replace one top-level block of a projection's doc, the way an edit would. */
 function replaceBlock(projection: Projection, index: number, markdown: string) {
   const replacement = md.parse(markdown);
   const node = projection.doc.type.schema.nodeFromJSON(replacement);
@@ -134,8 +117,6 @@ describe('computeBlockSplice — containment', () => {
   });
 
   it('does not renormalize a block the user did not touch', () => {
-    // The exact shape the whole-document oracle gets wrong: serializing the
-    // whole doc rewrites `[**Desktop**](x)` to `**[Desktop](x)**`.
     const projection = buildProjection(DOC, md);
     const after = replaceBlock(projection, 0, '# Edited heading\n');
     const splice = computeBlockSplice(projection, after, md);
@@ -174,8 +155,6 @@ describe('computeBlockSplice — insertion and deletion', () => {
       children.push(block as never);
     });
     const next = applySplice(DOC, computeBlockSplice(projection, after, md) as never);
-    // The document's own trailing newline is outside every block span, so the
-    // append lands before it and the file keeps its final newline.
     expect(next).toBe(`${DOC.slice(0, -1)}\n\nAppended.\n`);
     expect(buildProjection(next, md).doc.childCount).toBe(projection.doc.childCount + 1);
   });
@@ -217,8 +196,6 @@ describe('computeBlockSplice — corpus containment', () => {
     const source = loadLargeRealistic();
     const projection = buildProjection(source, md);
     const count = projection.doc.childCount;
-    // Sample across the document rather than every block: the property is
-    // per-block and the document is long.
     for (let i = 0; i < count; i += Math.max(1, Math.floor(count / 40))) {
       const fresh = buildProjection(source, md);
       const after = replaceBlock(fresh, i, 'REPLACED.\n');
@@ -235,7 +212,6 @@ describe('computeBlockSplice — corpus containment', () => {
 });
 
 describe('rebaseProjection', () => {
-  /** Every rebase claim, checked against the parse it is standing in for. */
   function expectAgreesWithRebuild(rebased: Projection) {
     const rebuilt = buildProjection(rebased.source, md);
     expect(rebased.map.precision).toBe('block');
@@ -292,9 +268,6 @@ describe('rebaseProjection', () => {
   });
 
   it('survives a run of consecutive edits without ever rebuilding', () => {
-    // The property that matters: a rebased projection is a valid input to the
-    // next splice. If it were not, the second keystroke would write at stale
-    // offsets and corrupt the document.
     let projection = buildProjection(DOC, md);
     for (const [index, text] of [
       [0, '# First edit\n'],
@@ -313,7 +286,6 @@ describe('rebaseProjection', () => {
     expect(projection.source).toContain('# Second edit');
     expect(projection.source).toContain('- three');
     expect(projection.source).toContain('Last edit.');
-    // Untouched blocks kept their authored bytes throughout.
     expect(projection.source).toContain('[**Desktop**](x)');
   });
 

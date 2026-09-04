@@ -1,21 +1,3 @@
-/**
- * Block ordinals derived from source alone.
- *
- * The property under test is not "these are the right strings" — the strings
- * are opaque identities and no consumer reads them. It is that the table is
- * INDEX-ALIGNED with the projected ProseMirror document's top-level children,
- * because every consumer indexes one by an ordinal taken from the other: the
- * agent write-flash maps a server-computed ordinal onto the client's PM doc,
- * and the lint decorations map a source line onto a PM block. So the oracle
- * throughout is `buildProjection(...).doc`, the very document the client builds
- * under the projection binding.
- *
- * The second property is the one `changedBlockRange` rests on: a block's
- * identity changes when its own bytes change, and only then. A snapshot that
- * missed a link-target rewrite would flash the wrong region; one that reported
- * an untouched block as changed would flash the whole document.
- */
-
 import { describe, expect, it } from 'vitest';
 import { changedBlockRange } from '../constants/activity.ts';
 import { sharedExtensions } from '../extensions/shared.ts';
@@ -25,7 +7,6 @@ import { computeSourceBlocks, sourceBlockSnapshot } from './source-blocks.ts';
 
 const md = new MarkdownManager({ extensions: sharedExtensions });
 
-/** Every block's identity, plus the PM child count the ordinals must match. */
 function snapshotAndDoc(source: string): { blocks: string[]; childCount: number } {
   return {
     blocks: sourceBlockSnapshot(source, md),
@@ -63,15 +44,10 @@ describe('the source block table', () => {
     const heading = blocks[0];
     expect(fmLineCount).toBeGreaterThan(0);
     expect(heading).toBeDefined();
-    // Full-source coordinates: slicing the ORIGINAL source (fence included)
-    // with the reported offsets must land on the heading, not on the fence.
     expect(source.slice(heading?.sourceStart ?? 0, heading?.sourceEnd ?? 0)).toBe('# Heading');
   });
 
   it('gives a materialized blank-run paragraph a zero-width span, not a null one', () => {
-    // A preserved blank run becomes an empty top-level paragraph in the editor
-    // view. It occupies no bytes, which is different from having no position —
-    // conflating the two would let it slice up a neighbour's bytes.
     const { blocks } = computeSourceBlocks('First.\n\n\n\nSecond.\n', md);
     const empty = blocks.filter((b) => b.kind === 'paragraph' && b.text === '');
     expect(empty.length).toBeGreaterThan(0);
@@ -82,7 +58,6 @@ describe('the source block table', () => {
   });
 
   it('answers no blocks rather than throwing on unparseable MDX', () => {
-    // A half-typed JSX tag is a routine transient state in source mode.
     const source = '# Fine\n\n<Unclosed\n';
     expect(() => sourceBlockSnapshot(source, md)).not.toThrow();
   });
@@ -101,8 +76,6 @@ describe('a snapshot pair driving changedBlockRange', () => {
   });
 
   it('catches a change that leaves the visible text identical', () => {
-    // The block's plain text is the same either way; only the link target
-    // moved. A text-based identity would report no change and flash nothing.
     const linked = '# Title\n\nSee [docs](one.md).\n';
     const relinked = '# Title\n\nSee [docs](two.md).\n';
     const range = changedBlockRange(
@@ -120,7 +93,6 @@ describe('a snapshot pair driving changedBlockRange', () => {
     );
     expect(range).not.toBeNull();
     expect(range?.to).toBe(sourceBlockSnapshot(appended, md).length);
-    // The point of the prefix scan: an append must not claim the whole doc.
     expect(range?.from).toBeGreaterThan(0);
   });
 

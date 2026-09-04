@@ -222,15 +222,6 @@ interface BuildEditorOptionsArgs {
   ctorStart: number;
   prebuiltMapping?: ProsemirrorMapping;
   onWedged?: (detail: WedgeDetail) => void;
-  /**
-   * Single-CRDT path. When present the editor derives its document from
-   * `Y.Text('source')` instead of binding the XmlFragment, and every extension
-   * that exists to service the fragment binding drops out with it — the y-sync
-   * collaboration extension it replaces, the cursor plugin (which keys off
-   * `ySyncPluginKey`), the binding staleness guard and the walk-currency guard.
-   * Supplied by `buildPatternDConstructorOptions` when
-   * `projectionBindingEnabled()`; see `projection-binding.ts`.
-   */
   projection?: ProjectionBinding;
 }
 

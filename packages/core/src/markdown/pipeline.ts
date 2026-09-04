@@ -218,20 +218,11 @@ export function parseMd(rawSource: string, processor: Processor): PmNode {
   return parseMdInternal(rawSource, processor);
 }
 
-/** A projected document together with the map back to the bytes it came from. */
 export interface ParsedWithSourceMap {
   doc: PmNode;
   map: PmSourceMap;
 }
 
-/**
- * Parse and build the source map in one pass.
- *
- * The recorder has to be installed for the duration of the parse and taken back
- * out afterwards: the processor is frozen around the wrapped handler table at
- * construction, so the holder is the only way in, and leaving a recorder
- * installed would silently attach the next parse's nodes to this map.
- */
 export function parseMdWithSourceMap(
   rawSource: string,
   processor: Processor,
@@ -247,9 +238,6 @@ export function parseMdWithSourceMap(
   } finally {
     holder.current = previous;
   }
-  // Both pre-parse shifts, composed back the way they were applied: the dedent
-  // ran on the post-BOM text, so its removals are re-added first and the BOM
-  // last.
   const bomShift = rawSource.charCodeAt(0) === 0xfeff ? 1 : 0;
   const adjust =
     edits.length === 0 && bomShift === 0

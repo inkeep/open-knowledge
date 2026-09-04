@@ -147,18 +147,6 @@ function isReplayOutboxSupported(): boolean {
 export interface ReplayOutboxEntry {
   readonly delta: Uint8Array;
   readonly fullState: Uint8Array;
-  /**
-   * The document content as of the last server `synced` — the ACKED BASE the
-   * buffer was captured against.
-   *
-   * The only witness the replay's surface attribution has. Without it, "our
-   * content differs from the server" cannot be told apart from "the server
-   * moved on", and an aged buffer splices over live content.
-   *
-   * Absent (`undefined`) on entries whose doc never reached a `synced` event,
-   * and on records written by a version that did not carry the field. Readers
-   * must treat that as "cannot attribute" rather than "no divergence".
-   */
   readonly base?: string | undefined;
 }
 
@@ -248,9 +236,6 @@ export async function readReplayOutboxEntry(
         if (!(record.delta instanceof Uint8Array) || !(record.fullState instanceof Uint8Array)) {
           return null;
         }
-        // A record predating the base field, or one whose `base` is not a
-        // string, yields `undefined` — "cannot attribute", which the replay
-        // treats as a reason to decline rather than to splice blind.
         return {
           delta: record.delta,
           fullState: record.fullState,

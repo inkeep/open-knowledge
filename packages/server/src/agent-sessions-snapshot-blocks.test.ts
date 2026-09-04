@@ -1,18 +1,3 @@
-/**
- * `snapshotBlocks` reads `Y.Text`, not the `Y.XmlFragment`.
- *
- * The block ordinals stamped into an `agent-flash` entry are consumed by a
- * client that indexes its own ProseMirror document by them, and that document
- * is derived from `Y.Text` — so a snapshot taken from the fragment would be
- * answering about a structure nobody is looking at.
- *
- * The fragment is deliberately populated with DIFFERENT content in the
- * divergence row below. That is not a realistic document state; it is the only
- * way to prove which of the two replicas the function actually consulted, and
- * it is what would silently fail if someone re-pointed it at the fragment for
- * being the cheaper read.
- */
-
 import type { Document } from '@hocuspocus/server';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { getSchema } from '@tiptap/core';
@@ -24,7 +9,6 @@ import { snapshotBlocks } from './agent-sessions.ts';
 const md = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
 
-/** A doc holding `source` in `Y.Text`, and optionally other markdown in the fragment. */
 function docWith(source: string, fragmentMd?: string): Document {
   const doc = new Y.Doc() as unknown as Document;
   doc.getText('source').insert(0, source);
@@ -48,8 +32,6 @@ describe('snapshotBlocks', () => {
   });
 
   test('follows Y.Text when the fragment holds something else', () => {
-    // Y.Text says two blocks; the fragment says four. Reading the fragment
-    // would return four entries and misplace every ordinal after the first.
     const doc = docWith(
       '# Real\n\nThe authoritative body.\n',
       '# Stale\n\nOne.\n\nTwo.\n\nThree.\n',
@@ -63,8 +45,6 @@ describe('snapshotBlocks', () => {
   });
 
   test('skips the frontmatter fence — ordinals address body blocks', () => {
-    // The fence is not a top-level block in the editor's view of the document,
-    // so counting it would shift every ordinal by one on every doc with FM.
     const blocks = snapshotBlocks(docWith('---\ntitle: T\n---\n\n# Heading\n\nBody.\n'));
     expect(blocks).toEqual(['# Heading', 'Body.']);
   });

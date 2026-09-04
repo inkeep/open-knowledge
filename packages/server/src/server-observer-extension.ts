@@ -35,21 +35,10 @@ export interface ServerObserverExtensionOptions {
 
 const BRIDGE_DISABLED = true;
 export function createServerObserverExtension(opts: ServerObserverExtensionOptions): Extension {
-  // Once per server, while the machinery is present but inert: an inert bridge
-  // and a working one are otherwise indistinguishable from the logs. Drop this
-  // line with the rest of the observer machinery.
   log.info({}, '[ServerObserverExtension] markdown bridge not attached — Y.Text is the only CRDT');
 
   const cleanups = new Map<string, () => void>();
   const pendingRetries = new Map<string, ReturnType<typeof setTimeout>>();
-  /**
-   * Quiescence detachers, keyed per document.
-   *
-   * Separate from `cleanups` because the two have different lifetimes: a doc
-   * the bridge declines has no observer cleanup but still has a tracker, and
-   * conflating them would either skip the detach or make the "already
-   * attached?" check answer for the wrong thing.
-   */
   const quiescenceDetachers = new Map<string, () => void>();
 
   return {
@@ -131,8 +120,6 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
         pendingRetries.delete(documentName);
       }
 
-      // Before the observer cleanup's early return below: a doc the bridge
-      // declined has a tracker and no cleanup, so returning first would leak it.
       const detachQuiescence = quiescenceDetachers.get(documentName);
       if (detachQuiescence) {
         detachQuiescence();

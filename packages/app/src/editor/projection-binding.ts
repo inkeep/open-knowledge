@@ -1,33 +1,3 @@
-/**
- * Binds a ProseMirror view directly to `Y.Text('source')` — no XmlFragment.
- *
- * This is the single-CRDT target's client half. The ProseMirror document is a
- * per-client *projection* of the markdown: derived on read, never synced, and
- * rebuilt when the markdown changes underneath it. A local edit is translated
- * back into one `Y.Text` splice under the user's own origin. There is no second
- * replica, so there is nothing to reconcile and no staleness to guard against.
- *
- * Two properties are load-bearing and easy to lose:
- *
- * **The write is block-scoped.** Only the edited top-level block is
- * re-serialized (0.05 ms flat at every document size, against 181 ms to
- * re-serialize a 488 KB document), and only its line range is rewritten. That
- * second half is a correctness property, not just a cost one: a whole-document
- * serialize renormalizes blocks the user never touched, which changes bytes on
- * disk and produces spurious git diffs. See `core/projection/block-splice.ts`.
- *
- * **The write is one contiguous replacement.** The splice deletes a whole line
- * range and inserts a whole replacement, so changed lines land as one fresh
- * contiguous run. Do not "optimize" this into a character-minimal diff — that
- * trades a cost win for the content-loss class
- * `external-change-stale-anchor-interleave` exists to pin.
- *
- * The binding never re-parses the document on a keystroke: after each write the
- * projection is rebased arithmetically (`rebaseProjection`). A parse happens
- * only when the markdown changes from outside — an agent write, a file watcher,
- * another client — which is orders of magnitude rarer than typing.
- */
-
 import {
   alignProjectionToDoc,
   applySplice,
@@ -46,13 +16,6 @@ import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
-/**
- * Always true: the projection is the only WYSIWYG binding.
- *
- * The seam its call sites still branch on, kept until the last of them is
- * inlined; it goes with them. Nothing turns it off — there is no second path
- * to select.
- */
 export function projectionBindingEnabled(): boolean {
   return true;
 }
@@ -62,41 +25,16 @@ const projectionBindingKey = new PluginKey('okProjectionBinding');
 interface ProjectionBindingOptions {
   ytext: Y.Text;
   md: MarkdownManager;
-  /**
-   * The projection the editor is being CONSTRUCTED with.
-   *
-   * ProseMirror builds its plugin views inside the `EditorView` constructor, and
-   * TipTap's `dispatchTransaction` reaches for a `this.view` that does not exist
-   * yet at that moment — so a binding cannot install its document by dispatching
-   * from `view()`. It has to arrive as the editor's initial content instead, and
-   * the plugin has to be told which projection that content came from. Getting
-   * this wrong is not a rendering glitch: the binding would see the editor's
-   * empty starting document as a local edit and write it over the markdown.
-   */
   initial: Projection;
-  /**
-   * Mutable counters the binding writes as it runs. Held by the caller rather
-   * than read out of plugin state so a test can assert the cost model directly:
-   * a keystroke must not re-parse the document, and the only way to see that is
-   * to watch `rebuilds` stay put across a typing run.
-   */
   stats?: ProjectionBindingState;
-  /**
-   * Stamped on every write this client makes, and the origin a shared
-   * `Y.UndoManager` tracks. It is what makes one undo stack possible: source
-   * mode and WYSIWYG write the same type under origins the same manager
-   * follows, so the most recent edit retracts whichever view made it.
-   */
   origin: unknown;
 }
 
-/** Apply a computed splice to the CRDT as one delete plus one insert. */
 function applyToYText(ytext: Y.Text, splice: SourceSplice): void {
   if (splice.to > splice.from) ytext.delete(splice.from, splice.to - splice.from);
   if (splice.text !== '') ytext.insert(splice.from, splice.text);
 }
 
-/** Carry a source offset across a `Y.Text` delta from someone else's write. */
 export function mapOffsetThroughDelta(
   delta: ReadonlyArray<{ retain?: number; insert?: string | object; delete?: number }>,
   offset: number,
@@ -115,8 +53,6 @@ export function mapOffsetThroughDelta(
       continue;
     }
     if (op.delete !== undefined) {
-      // Inside the removed run: collapse onto its start, the only position that
-      // still exists.
       if (read + op.delete > offset) return write;
       read += op.delete;
     }
@@ -124,46 +60,22 @@ export function mapOffsetThroughDelta(
   return write + Math.max(0, offset - read);
 }
 
-/**
- * Re-derive a projection for a document the editor already holds.
- *
- * Used when a splice cannot be rebased arithmetically (a multi-block edit).
- * The PM document is the editor's, not the parse's: adopting the parse's
- * document would silently replace what the user is looking at. The two must
- * agree on block count for the map to index, and when they do not the caller
- * has genuinely diverged and rebuilds from the markdown instead.
- */
 function reprojectAgainst(source: string, doc: PmNode, md: MarkdownManager): Projection | null {
   const rebuilt = buildProjection(source, md);
   if (rebuilt.doc.childCount !== doc.childCount) return null;
   return { ...rebuilt, doc };
 }
 
-/**
- * Move a projected document into the editor's own `Schema`.
- *
- * `MarkdownManager` builds a schema of its own, so a projection's nodes carry
- * `NodeType`s from a different instance than the editor's. ProseMirror matches
- * content by NodeType IDENTITY, so those nodes are not merely unequal to the
- * editor's — inserted directly they are silently dropped on the first
- * incremental rebuild. The JSON round trip is the conversion, and it is why the
- * binding adopts `view.state.doc` after every dispatch: from that point on both
- * sides of every comparison come from the editor's schema, and the cheap
- * identity check in `changedProjectionBlocks` means what it says.
- */
 function intoEditorSchema(view: EditorView, doc: PmNode): PmNode {
   return doc.type.schema === view.state.schema ? doc : view.state.schema.nodeFromJSON(doc.toJSON());
 }
 
-/** Replace the whole document, optionally landing the caret at `at`. */
 function replaceDoc(view: EditorView, doc: PmNode, at: number | null): void {
   const tr = view.state.tr.replaceWith(
     0,
     view.state.doc.content.size,
     intoEditorSchema(view, doc).content,
   );
-  // Y.js origins, not ProseMirror history, decide what is undoable here; this
-  // keeps a remote rewrite out of any local PM history that happens to be on.
   tr.setMeta('addToHistory', false);
   if (at !== null) {
     const pos = Math.max(0, Math.min(at, tr.doc.content.size));
@@ -173,18 +85,11 @@ function replaceDoc(view: EditorView, doc: PmNode, at: number | null): void {
 }
 
 interface ProjectionBindingState {
-  /** The projection believed to match both the CRDT and the editor document. */
   projection: Projection;
-  /** How many times the document had to be re-parsed from scratch. */
   rebuilds: number;
-  /** How many local edits were written as a block splice. */
   writes: number;
 }
 
-/**
- * The plugin. Its `view` owns the binding's whole lifecycle: initial
- * projection, the `Y.Text` observer, the local-edit write path, and teardown.
- */
 function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   const { ytext, md, origin } = options;
 
@@ -198,9 +103,6 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         rebuilds: 1,
         writes: 0,
       };
-      // The one reentrancy that exists here: the dispatch that lands a remote
-      // change would otherwise look like a local edit to `update` and be
-      // written straight back out.
       let applyingRemote = false;
 
       const adopt = (next: Projection): void => {
@@ -208,26 +110,12 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         stats.projection = next;
       };
 
-      /**
-       * A full-precision map of the state the projection currently describes.
-       *
-       * A rebased map resolves only to block granularity, which is all the
-       * write path needs but not enough to carry a caret. The bytes it would be
-       * built from are the projection's own, so this is exact rather than a
-       * guess — and it costs a parse only when someone else edits, never on a
-       * keystroke.
-       */
       const fullPrecision = (): Projection => {
         if (projection.map.precision === 'full') return projection;
-        // Counted, because it IS a parse: an outside write that lands after a
-        // typing burst pays two — one to read the caret precisely, one to build
-        // the new document. Both are on the outside-write path, never on a
-        // keystroke, which is the budget that matters.
         stats.rebuilds++;
         return buildProjection(projection.source, md);
       };
 
-      /** Full-source offset of the caret, or null when it cannot be placed. */
       const caretOffset = (): number => {
         const before = fullPrecision();
         return before.bodyOffset + before.map.pmPosToSourceOffset(view.state.selection.from);
@@ -246,12 +134,6 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         } finally {
           applyingRemote = false;
         }
-        // The dispatch reuses the projection's own node objects, so the
-        // identity-based change detection stays meaningful on the next
-        // keystroke. `alignProjectionToDoc` holds the editor's trailing
-        // type-here paragraph with a zero-width span: the parse cannot produce
-        // it, and without an entry the block table is one short of the document
-        // for the rest of the session.
         adopt(alignProjectionToDoc(next, view.state.doc));
       };
 
@@ -263,17 +145,6 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
       ytext.observe(onYText);
 
-      // The editor was constructed from `initial`, but the CRDT can have moved
-      // between building that projection and mounting — a sync landing, an
-      // agent write. Reconcile out of line rather than by dispatching from
-      // inside the constructor, and refuse to write anything until it settles:
-      // the safe direction under uncertainty is the CRDT's, never the
-      // editor's.
-      // The check is on the BYTES, not on the two documents. `initial.doc` came
-      // from the markdown manager's schema and `view.state.doc` from the
-      // editor's, so `eq` between them is false however identical they look —
-      // it compares NodeType identity. The source string is the thing that can
-      // actually have moved, and it answers the question exactly.
       let settling = false;
       if (ytext.toString() === projection.source) {
         adopt(alignProjectionToDoc(projection, view.state.doc));
@@ -300,40 +171,11 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
 
           const splice = computeBlockSplice(projection, after, md, changed);
           if (splice === null) {
-            // The edit could not be placed against the block table this
-            // projection was built from — the two have drifted. Re-derive the
-            // document FROM the CRDT and discard the unplaceable edit: writing
-            // at offsets that may be stale is the one outcome worse than losing
-            // a keystroke, because it corrupts bytes the user cannot see. Not
-            // reachable while the block table and the document stay in step,
-            // which the rebase maintains; this is the net under that.
             project(ytext.toString(), null);
             return;
           }
 
           const nextSource = applySplice(projection.source, splice);
-          // Write only when the bytes actually differ from the ones already
-          // there — the test is on the bytes, not on the splice's shape.
-          //
-          // A document can change without its markdown changing. An empty
-          // paragraph (what Enter produces) has no markdown spelling, and a
-          // block carrying links, wiki links, images or JSX components is
-          // rebuilt when their render-time attrs are configured after mount, so
-          // it is unequal to its predecessor while serializing byte-for-byte
-          // the same. Both reach here as a real change with a correct splice
-          // that must not be performed.
-          //
-          // Writing equal bytes is not a harmless no-op: the transaction is
-          // tracked, so it clears the redo stack and pushes an undo item that
-          // retracts nothing, and it replaces the CRDT items for that range,
-          // disturbing other clients' cursors and undo attribution for text
-          // nobody edited. The symptom is document-shaped and lands far from
-          // the cause — redo stops working after a mode switch, but only on
-          // documents holding one of those node types.
-          //
-          // Skipping the write still rebases: that records the block with a
-          // zero-width span, so the table keeps one entry per document block and
-          // the block reaches the markdown as soon as it holds content.
           const writesBytes = projection.source.slice(splice.from, splice.to) !== splice.text;
           if (writesBytes) {
             const doc = ytext.doc;
@@ -360,40 +202,14 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   });
 }
 
-/**
- * The two halves of a projection binding, which must be produced together.
- *
- * `content` is the editor's initial document and `extension` carries the plugin
- * that was told about it. Splitting them across two calls would let a caller
- * construct the editor from one projection and bind the plugin to another; the
- * binding would then read the difference as a local edit and write the wrong
- * document into the CRDT. One call, one projection.
- */
 export interface ProjectionBinding {
   content: JSONContent;
   extension: Extension;
   projection: Projection;
-  /** Live counters — see `ProjectionBindingOptions.stats`. */
   stats: ProjectionBindingState;
-  /** The document's one undo manager, shared with source mode. */
   undoManager: Y.UndoManager;
 }
 
-/**
- * Project the markdown and produce the editor content, extension and undo
- * manager for it.
- *
- * Undo ships here rather than as a separate opt-in because it is the same
- * decision: a surface that writes `Y.Text` under a tracked origin must send its
- * undo to the manager that tracks that origin. Wiring the write without the
- * undo would leave `Mod-z` on whatever history happened to be installed, which
- * for this editor is nothing — `sharedExtensions` disables StarterKit's
- * undo/redo because collaboration owns history.
- *
- * `origin` defaults to `PROJECTION_WRITE_ORIGIN`, the origin the shared manager
- * tracks. Passing a different one is for tests that want to watch the origin;
- * a caller that overrides it in production silently loses undo.
- */
 export function createProjectionBinding(
   options: Omit<ProjectionBindingOptions, 'initial' | 'origin'> & { origin?: unknown },
 ): ProjectionBinding {
@@ -414,8 +230,6 @@ export function createProjectionBinding(
         return [plugin];
       },
       addKeyboardShortcuts() {
-        // Straight to the shared manager. There is no ProseMirror history to
-        // consult and no second stack to reconcile with — that is the point.
         return {
           'Mod-z': () => {
             undoManager.undo();

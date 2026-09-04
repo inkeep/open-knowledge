@@ -1282,9 +1282,6 @@ export class ProviderPool {
             namespace: this.storageNamespace,
           });
           if (durable === null) return;
-          // A record written before the base was carried reads `undefined`;
-          // normalize to null, which the attribution treats as "cannot
-          // attribute" rather than as an absence of divergence.
           source = {
             delta: durable.delta,
             fullState: durable.fullState,
@@ -1697,16 +1694,9 @@ export class ProviderPool {
         const fragClean = matchesServer(oursFragBody);
         if (ytextClean && fragClean) return true;
         if (ytextClean) {
-          // Un-drained WYSIWYG edit: the fragment moved while Y.Text stayed
-          // at the acked base the server rebuilt from disk.
-          // The only serialize-composed writer outside the server. Without the
-          // guard, an un-drained doc-start rule pair replayed through the recycle
-          // re-mints the collision server-side after every server writer is
-          // fixed.
           ours = composeWithDerivedBody(oursFm, oursFragBody).md;
           surface = 'fragment';
         } else if (fragClean) {
-          // Unacked source-mode edit: Y.Text moved, fragment still at base.
           ours = oursYtext;
           surface = 'ytext';
         } else {

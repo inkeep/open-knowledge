@@ -1405,16 +1405,6 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     return isReservedForUserTree(docName);
   }
   function isRejectedByConfigurableRules(relativePath: string): boolean {
-    // The content root itself. `relative(contentDir, contentDir)` is `''`, and
-    // a raw watcher event on the root reaches here that way — `ignore` THROWS
-    // on an empty path ("path must not be empty"), which aborts the whole
-    // parcel batch and silently drops every other event in it.
-    //
-    // The root is not a file the configurable rules can have an opinion about,
-    // so it is not rejected by them. Callers that must not treat it as content
-    // reject it on their own terms — `isPathIgnored` below, and asset-serve's
-    // existing `!rel` check. `contentRelativePath` already guards the same case
-    // for the folder-index path.
     if (relativePath === '') return false;
     for (const segment of relativePath.split('/')) {
       if (BUILTIN_SKIP_DIRS.has(segment)) return true;
@@ -1586,10 +1576,6 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     },
 
     isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
-      // The content root is not addressable content, so nothing may admit it:
-      // asset-serve already rejects it via its own `!rel` check, and a watcher
-      // event on the root indexes nothing. Answered here rather than left to
-      // the rules below so every caller agrees.
       if (relativePath === '') return true;
       if (isReservedDocName(relativePath)) return true;
       if (isSecretBearingFile(relativePath)) return true;

@@ -128,15 +128,6 @@ function collectInlineCommentMatches(
   return deduped;
 }
 
-/**
- * Span a synthesized node across the source the nodes it replaces occupied.
- *
- * `commentBlock` is minted here rather than by remark, so nothing gives it a
- * `position` — and a top-level block without one is the one hole the ProseMirror
- * source map cannot narrow from its neighbours, because a comment block is
- * exactly where a projection has to place a splice. The replaced children still
- * carry remark's positions, so the span is theirs end to end.
- */
 function spanOver(nodes: readonly RootContent[]): Position | undefined {
   const start = nodes[0]?.position?.start;
   const end = nodes[nodes.length - 1]?.position?.end;
@@ -244,8 +235,6 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
       }
       if (j < children.length && j > i + 1) {
         const inner = children.slice(i + 1, j);
-        // The span covers the fences too: they are the block's source, and a
-        // splice that replaced only the interior would strand them.
         const fencedSpan = spanOver(children.slice(i, j + 1));
         const block: CommentBlockMdast = {
           type: 'commentBlock',

@@ -1,21 +1,3 @@
-/**
- * The single-CRDT client binding, end to end over a real `Y.Doc` and a real
- * ProseMirror view.
- *
- * What is being pinned here is not "typing works" — it is the four properties
- * the binding exists for:
- *
- *  1. A WYSIWYG edit reaches `Y.Text` under the USER's origin, which is what
- *     lets one `Y.UndoManager` see it alongside source-mode edits.
- *  2. Bytes outside the edited block never move, so an edit cannot produce a
- *     diff in text the user did not touch.
- *  3. An external write — an agent, a file watcher, another client — is picked
- *     up without a derive, a latch, or a demand gate. There is no second
- *     replica to go stale.
- *  4. Typing does not re-parse the document. A keystroke rebases arithmetically;
- *     only an outside write pays a parse.
- */
-
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor } from '@tiptap/core';
@@ -29,11 +11,6 @@ import { buildExtensionList, buildPatternDConstructorOptions } from './TiptapEdi
 import { fakeClipboard, installDomGlobals } from './walk-currency-test-harness';
 
 const md = new MarkdownManager({ extensions: sharedExtensions });
-/**
- * The manager the projection actually runs with in the app. The
- * structural-freshness derive is load-bearing for JSX components, so a rig
- * built on a plain manager would pass while the product silently lost edits.
- */
 const projectionMd = new MarkdownManager({
   extensions: sharedExtensions,
   deriveStructuralFreshness: true,
@@ -83,7 +60,6 @@ function createRig(source: string): Rig {
   };
 }
 
-/** Type at the end of a top-level block, the way a caret at its end would. */
 function appendToBlock(editor: Editor, blockIndex: number, text: string): void {
   const doc = editor.state.doc;
   let pos = 0;
@@ -131,7 +107,6 @@ describe('projection binding — WYSIWYG edits write Y.Text under the user origi
     const rig = createRig(DOC);
     appendToBlock(rig.editor, 0, ' edited');
     const after = rig.ytext.toString();
-    // The shape a whole-document serialize gets wrong.
     expect(after).toContain('[**Desktop**](x)');
     expect(after).not.toContain('**[Desktop](x)**');
     expect(after).toContain('# Heading edited');
@@ -140,8 +115,6 @@ describe('projection binding — WYSIWYG edits write Y.Text under the user origi
   });
 
   it('writes one contiguous delete+insert, never a character-minimal diff', () => {
-    // The stale-anchor interleave class: changed lines must land as one fresh
-    // contiguous run.
     const rig = createRig(DOC);
     const deltas: unknown[][] = [];
     rig.ytext.observe((event) => deltas.push(event.changes.delta as unknown[]));
@@ -164,19 +137,16 @@ describe('projection binding — WYSIWYG edits write Y.Text under the user origi
     expect(after).toContain('# HeadingAC');
     expect(after).toContain('Tail.B');
     expect(after).toContain('inside.D');
-    // And the projection still agrees with a fresh parse of what it wrote.
     expect(md.parse(after)).toEqual(rig.editor.state.doc.toJSON());
     rig.destroy();
   });
 });
 
-/** Put the caret at a document position and press Enter. */
 function pressEnter(editor: Editor, at: number): void {
   editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, at)));
   editor.commands.splitBlock();
 }
 
-/** Remove a whole top-level block, the way Backspace on an empty line does. */
 function deleteBlock(editor: Editor, blockIndex: number): void {
   let pos = 0;
   for (let i = 0; i < blockIndex; i++) pos += editor.state.doc.child(i).nodeSize;
@@ -184,7 +154,6 @@ function deleteBlock(editor: Editor, blockIndex: number): void {
   editor.view.dispatch(editor.state.tr.delete(pos, pos + size));
 }
 
-/** Document position at the end of a top-level block's content. */
 function endOfBlock(editor: Editor, blockIndex: number): number {
   let pos = 0;
   for (let i = 0; i <= blockIndex; i++) pos += editor.state.doc.child(i).nodeSize;
@@ -192,14 +161,6 @@ function endOfBlock(editor: Editor, blockIndex: number): number {
 }
 
 describe('projection binding — blocks markdown cannot spell', () => {
-  // Enter makes an EMPTY paragraph, and markdown has no way to write one: a
-  // blank line is only expressible as a wider gap between two blocks that
-  // themselves emit. The projection therefore has to hold a block the CRDT does
-  // not, until it gets content. The failure mode is total, not subtle: an empty
-  // block that reaches the deletion branch cannot be placed, the document
-  // rebuilds from unchanged markdown, and Enter does nothing at all — while
-  // Shift+Enter (a hard break INSIDE a paragraph, which markdown can spell)
-  // keeps working.
   it('keeps the empty paragraph Enter creates, and writes no bytes for it', () => {
     const rig = createRig(DOC);
     const before = rig.ytext.toString();
@@ -221,15 +182,11 @@ describe('projection binding — blocks markdown cannot spell', () => {
     rig.editor.commands.insertContent('New paragraph.');
 
     expect(rig.ytext.toString()).toBe(`${DOC}\nNew paragraph.\n`);
-    // And the projection agrees with a fresh parse of what it wrote.
     expect(md.parse(rig.ytext.toString())).toEqual(rig.editor.state.doc.toJSON());
     rig.destroy();
   });
 
   it('splits a paragraph in two when Enter lands mid-block', () => {
-    // No space at the split point: splitting mid-phrase leaves the second block
-    // with a leading space, which the serializer correctly escapes to keep the
-    // byte — right behaviour, but it would make this test about escaping.
     const rig = createRig('# H\n\nhelloworld\n');
     pressEnter(rig.editor, endOfBlock(rig.editor, 1) - 'world'.length);
 
@@ -241,14 +198,7 @@ describe('projection binding — blocks markdown cannot spell', () => {
   it('preserves a leading space when a split creates one', () => {
     const rig = createRig('# H\n\nhello world\n');
     pressEnter(rig.editor, endOfBlock(rig.editor, 1) - ' world'.length);
-    // The space survives as an escape rather than being silently dropped.
     expect(rig.ytext.toString()).toBe('# H\n\nhello\n\n&#x20;world\n');
-    // Re-parsing gives the space back — as text plus a `sourceLiteral` mark
-    // carrying the escape it was written with, so a later serialize re-emits
-    // the same bytes. Structural equality is therefore the wrong assertion
-    // here: the editor's document and a parse of what it wrote agree on
-    // content but not on provenance markup, and only the content is the
-    // user-visible claim.
     const reparsed = rig.editor.state.doc.type.schema.nodeFromJSON(md.parse(rig.ytext.toString()));
     expect(reparsed.childCount).toBe(rig.editor.state.doc.childCount);
     expect(reparsed.textContent).toBe(rig.editor.state.doc.textContent);
@@ -275,8 +225,6 @@ describe('projection binding — blocks markdown cannot spell', () => {
     expect(rig.editor.state.doc.childCount).toBe(blocks + 1);
 
     rig.editor.commands.undo?.();
-    // Undo goes through the shared Y.UndoManager, which saw no write for the
-    // empty block; delete it directly instead, the way Backspace would.
     const size = rig.editor.state.doc.content.size;
     const lastSize = rig.editor.state.doc.child(rig.editor.state.doc.childCount - 1).nodeSize;
     if (rig.editor.state.doc.childCount > blocks) {
@@ -288,12 +236,6 @@ describe('projection binding — blocks markdown cannot spell', () => {
   });
 
   it('writes an interior blank run as the wider gap markdown spells it with', () => {
-    // The blank blocks emit nothing at any count, so this is arithmetic on the
-    // newlines BETWEEN their emitting neighbours: N blank paragraphs is a gap
-    // of N+2. Serializing the changed block instead yields the empty string
-    // however many blanks there are, which leaves the run in the editor and
-    // out of the markdown — blank lines that survive a round trip through
-    // WYSIWYG and collapse to one the moment you look at the source.
     const rig = createRig('a\n\nb\n');
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
     expect(rig.ytext.toString()).toBe('a\n\n\nb\n');
@@ -304,7 +246,6 @@ describe('projection binding — blocks markdown cannot spell', () => {
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
     expect(rig.ytext.toString()).toBe('a\n\n\n\n\nb\n');
 
-    // And the run survives a re-projection — which is what a mode switch does.
     expect(md.parse(rig.ytext.toString()).content).toHaveLength(5);
     rig.destroy();
   });
@@ -312,9 +253,6 @@ describe('projection binding — blocks markdown cannot spell', () => {
   it('writes a trailing blank run only from the doc-edge floor up', () => {
     const rig = createRig('a\n');
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
-    // One trailing empty paragraph is indistinguishable from the type-here
-    // affordance the editor renders after the last block, so the parse side
-    // refuses to carry it and this side must not write it.
     expect(rig.ytext.toString()).toBe('a\n');
     expect(rig.editor.state.doc.childCount).toBe(2);
 
@@ -326,15 +264,11 @@ describe('projection binding — blocks markdown cannot spell', () => {
   });
 
   it('round-trips a blank run through a re-projection', () => {
-    // The user-visible claim: the blank lines the editor shows are the blank
-    // lines the source holds, not an artifact of the cached editor instance.
     const rig = createRig('a\n\nb\n');
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
     pressEnter(rig.editor, endOfBlock(rig.editor, 0));
     const source = rig.ytext.toString();
 
-    // A fresh projection of those bytes — what the other mode, or another
-    // client, or a reload would build — has the same blocks.
     const reprojected = md.parse(source) as { content: unknown[] };
     expect(reprojected.content).toHaveLength(rig.editor.state.doc.childCount);
     expect(source).toBe('a\n\n\n\nb\n');
@@ -342,18 +276,12 @@ describe('projection binding — blocks markdown cannot spell', () => {
   });
 
   it('removes an interior blank line again when it is deleted', () => {
-    // Deleting a blank reaches the write path as a deletion of a block that
-    // occupies no bytes, which the ordinary deletion branch declines. Only the
-    // gap path can write it; without one the editor shows one fewer blank line
-    // than the markdown holds, and the next re-projection hands the deleted
-    // line straight back.
     const rig = createRig('a\n\n\n\n\nb\n');
     expect(rig.editor.state.doc.childCount).toBe(5);
 
     for (const expected of ['a\n\n\n\nb\n', 'a\n\n\nb\n', 'a\n\nb\n']) {
       deleteBlock(rig.editor, 1);
       expect(rig.ytext.toString()).toBe(expected);
-      // The markdown and the document agree at every step.
       expect((md.parse(rig.ytext.toString()) as { content: unknown[] }).content).toHaveLength(
         rig.editor.state.doc.childCount,
       );
@@ -368,11 +296,6 @@ describe('projection binding — blocks markdown cannot spell', () => {
     deleteBlock(rig.editor, 1);
     expect(rig.ytext.toString()).toBe('a\n\n\n');
 
-    // Down to one trailing blank, which is below `MIN_CARRIED_EDGE_EMPTIES` and
-    // so unwritable. Writing NO run is the right answer: leaving the two-blank
-    // run in place would keep more blank lines in the markdown than the editor
-    // shows, and the next re-projection would give back a line the user just
-    // deleted.
     deleteBlock(rig.editor, 1);
     expect(rig.ytext.toString()).toBe('a\n');
     rig.destroy();
@@ -385,8 +308,6 @@ describe('projection binding — blocks markdown cannot spell', () => {
     rig.editor.view.dispatch(
       rig.editor.state.tr.delete(start + 1, start + doc.child(1).nodeSize - 1),
     );
-    // The block is still there and still renders as a line, so it must not be
-    // deleted from the markdown — it becomes the blank line it now looks like.
     expect(rig.ytext.toString()).toBe('a\n\n\nc\n');
     expect(rig.editor.state.doc.childCount).toBe(3);
     rig.destroy();
@@ -403,14 +324,10 @@ describe('projection binding — blocks markdown cannot spell', () => {
   it('keeps an outside write correct while an unspellable block is held', () => {
     const rig = createRig(DOC);
     pressEnter(rig.editor, endOfBlock(rig.editor, rig.editor.state.doc.childCount - 1));
-    // An agent writes while the editor holds a block the CRDT never saw. The
-    // reprojection is from the markdown, so the unwritten block goes — correct,
-    // since nothing anywhere recorded it.
     rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
     expect(rig.editor.state.doc.child(0).textContent).toBe('Preamble.');
     expect(rig.ytext.toString()).toBe(`Preamble.\n\n${DOC}`);
 
-    // And the editor still writes correctly afterwards.
     rig.editor.commands.insertContent('!');
     expect(rig.ytext.toString()).toContain('Preamble.');
     rig.destroy();
@@ -469,9 +386,6 @@ describe('projection binding — a keystroke does not re-parse the document', ()
     const before = rig.stats.rebuilds;
     for (let i = 0; i < 20; i++) appendToBlock(rig.editor, 1, 'x');
     expect(rig.stats.writes).toBe(20);
-    // The whole point of the block scoping: 20 keystrokes, zero document
-    // parses. A parse per keystroke costs 911 ms on a 488 KB document, 72% of
-    // the keystroke.
     expect(rig.stats.rebuilds).toBe(before);
     expect(rig.ytext.toString()).toContain(`inside.${'x'.repeat(20)}`);
     rig.destroy();
@@ -540,9 +454,6 @@ describe('the flag swaps out every extension that services the fragment binding'
       projection,
     }).map((extension) => extension.name);
     expect(names).toContain('okProjectionBinding');
-    // Each of these exists to service the fragment binding: y-sync itself, the
-    // cursor plugin that resolves positions through it, the guard for its Y→PM
-    // apply half, and the pre-warm currency guard.
     expect(names).not.toContain('collaboration');
     expect(names).not.toContain('collaborationCursor');
     expect(names).not.toContain('bindingStalenessGuard');
@@ -570,7 +481,6 @@ describe('the Pattern D constructor path builds from the projection', () => {
     };
   }
 
-  /** A clipboard fake carrying a real manager — the projection path parses with it. */
   const clipboardWithMd = { ...fakeClipboard, mdManager: md } as typeof fakeClipboard;
 
   it('injects the projection as the editor content, with no fragment walk', () => {
@@ -580,47 +490,20 @@ describe('the Pattern D constructor path builds from the projection', () => {
       clipboard: clipboardWithMd,
       ctorStart: 0,
     });
-    // `element: null` is load-bearing — omitting it would auto-mount and turn
-    // the deferred `editor.mount()` into a second mount.
     expect(options.element).toBeNull();
 
     const editor = { options: { content: undefined as unknown }, schema: undefined };
     options.onBeforeCreate?.({ editor } as never);
     const content = editor.options.content as { type: string; content: unknown[] };
     expect(content.type).toBe('doc');
-    // The projection of DOC. The provider's XmlFragment is empty, so a fragment
-    // walk would have yielded nothing here.
     expect(content.content).toHaveLength(4);
     cleanup();
   });
 });
 
-/**
- * A held empty paragraph must survive a projection REBUILD.
- *
- * An empty paragraph — what Enter produces before anything is typed into it —
- * has no markdown spelling, so the projection holds it with a zero-width span
- * and writes nothing. A rebuild re-parses the source, and a parse of those
- * bytes cannot produce a block the bytes do not spell, so `alignProjectionToDoc`
- * has to re-hold it or `map.blocks.length === doc.childCount` is false for the
- * rest of the session.
- *
- * Rebuilds are ordinary — a remote write, an agent edit, or the
- * `reprojectAgainst` fallback after a multi-block change — so this is reached
- * without doing anything unusual.
- *
- * Both consequences are silent. Edits at the tail become unplaceable and are
- * DISCARDED, and `rebaseProjection` refuses outright once the two disagree, so
- * every keystroke falls back to a whole-document parse — the cost the block
- * scoping exists to avoid. The symptom also lands one keystroke LATER than the
- * edit that misaligned the table, so it reads as "typing went to the wrong
- * place" rather than "the list exit was mishandled" (§7 of
- * `feature-specs/single-crdt-migration.md`).
- */
 describe('projection binding — a held block the source cannot spell', () => {
   const LIST_TAIL = '# Heading\n\nIntro.\n\n- one\n- two\n';
 
-  /** The table must carry one entry per document block, always. */
   function expectAligned(rig: Rig): void {
     const projection = rig.stats.projection as unknown as {
       map: { blocks: readonly unknown[] };
@@ -628,7 +511,6 @@ describe('projection binding — a held block the source cannot spell', () => {
     expect(projection.map.blocks.length).toBe(rig.editor.state.doc.childCount);
   }
 
-  /** Enter at the very end of the document — the everyday way to hold a block. */
   function enterAtEnd(rig: Rig): void {
     rig.editor.commands.focus('end');
     rig.editor.commands.insertContent('\n');
@@ -640,11 +522,8 @@ describe('projection binding — a held block the source cannot spell', () => {
     const held = rig.editor.state.doc.childCount;
     expectAligned(rig);
 
-    // Force a rebuild the way a remote write would: a foreign-origin change.
     rig.ydoc.transact(() => rig.ytext.insert(0, '<!-- x -->\n\n'), 'remote');
 
-    // The rebuild re-parses bytes that cannot spell the held block, so the
-    // table has to re-hold it rather than come back one entry short.
     expect(rig.editor.state.doc.childCount).toBeGreaterThanOrEqual(held);
     expectAligned(rig);
     rig.destroy();
@@ -658,9 +537,6 @@ describe('projection binding — a held block the source cannot spell', () => {
     const last = rig.editor.state.doc.childCount - 1;
     appendToBlock(rig.editor, last, 'X');
 
-    // With no table entry to anchor it, the splice resolves against the
-    // PREVIOUS block's span and the text lands at the end of the list's last
-    // item.
     expect(rig.ytext.toString()).not.toContain('twoX');
     expect(rig.ytext.toString()).toContain('X');
     expectAligned(rig);
@@ -675,15 +551,11 @@ describe('projection binding — a held block the source cannot spell', () => {
     appendToBlock(rig.editor, 1, 'a');
     const before = rig.stats.rebuilds;
     for (const ch of 'bcdefghij') appendToBlock(rig.editor, 1, ch);
-    // `rebaseProjection` refuses whenever the table and document disagree, so a
-    // misaligned table turns every keystroke into a whole-document parse.
     expect(rig.stats.rebuilds).toBe(before);
     rig.destroy();
   });
 
   it('survives Enter out of a list and types into the new paragraph', () => {
-    // A bullet, Enter for a second bullet, Enter again to leave the list, then
-    // type.
     const rig = createRig(LIST_TAIL);
     const editor = rig.editor;
     editor.commands.focus('end');
@@ -695,25 +567,12 @@ describe('projection binding — a held block the source cannot spell', () => {
     editor.commands.insertContent('after');
     expect(rig.ytext.toString()).not.toBe(beforeText);
     expect(rig.ytext.toString()).toContain('after');
-    // Not swallowed into the list's last item.
     expect(rig.ytext.toString()).not.toContain('twoafter');
     expectAligned(rig);
     rig.destroy();
   });
 });
 
-/**
- * A WYSIWYG edit INSIDE a JSX component must reach `Y.Text`.
- *
- * A `jsxComponent` serializes from the `sourceRaw` slice captured at parse
- * time, not from its children. So an edit inside one emits the stale capture
- * and is silently discarded: it stays on screen, never reaches the CRDT, and
- * disappears at the next mode switch or reload. Nothing reports it.
- *
- * The serialize runs on the client, so the client needs a manager with
- * `deriveStructuralFreshness` on. That is why the projection takes its own
- * (`getProjectionMarkdownManager`) rather than the clipboard's.
- */
 describe('projection binding — editing inside a JSX component', () => {
   const WITH_CALLOUT = [
     '# Title',
@@ -726,7 +585,6 @@ describe('projection binding — editing inside a JSX component', () => {
     '',
   ].join('\n');
 
-  /** Append text to the first text node matching `contains`. */
   function appendInside(editor: Editor, contains: string, text: string): void {
     let at = -1;
     editor.state.doc.descendants((node, pos) => {
@@ -745,9 +603,6 @@ describe('projection binding — editing inside a JSX component', () => {
   it('carries an edit inside the component into Y.Text', () => {
     const rig = createRig(WITH_CALLOUT);
     appendInside(rig.editor, 'Original callout text', ' EDITED');
-    // The silent-loss shape: without the freshness derive the serialize emits
-    // the captured `sourceRaw` verbatim, the splice is byte-identical, and
-    // nothing is written at all.
     expect(rig.ytext.toString()).toContain('EDITED');
     rig.destroy();
   });
@@ -761,39 +616,9 @@ describe('projection binding — editing inside a JSX component', () => {
   });
 });
 
-/**
- * A block rebuilt WITHOUT its markdown changing must not write.
- *
- * `link`, `wikiLink`, `jsxComponent`, `jsxInline` and `imageReference` are
- * configured per document and carry render-time attrs that are updated after
- * mount. That makes a block unequal to its predecessor while it serializes
- * byte-for-byte the same, so `changedProjectionBlocks` reports a change (the
- * nodes really do differ) and the splice describes a replacement whose text is
- * what is already on disk.
- *
- * Performing that replacement is not a harmless no-op. The transaction is
- * tracked by the shared undo manager, so it CLEARS THE REDO STACK and pushes an
- * undo item that retracts nothing — and it replaces the CRDT items for a range
- * nobody edited, disturbing other clients' cursors and undo attribution.
- *
- * The symptom is remote from the cause and document-shaped: redo stops working
- * after a mode switch, and ONLY on documents containing one of those node
- * types. A document of plain paragraphs cannot reproduce it, so it reads as
- * intermittent.
- */
 describe('projection binding — a rebuild that changes no bytes', () => {
   const WITH_LINK = '# Heading\n\nSee [docs](target.md) here.\n\nTail.\n';
 
-  /**
-   * Rebuild a block so it is NOT `eq()` to its predecessor while serializing to
-   * exactly the same bytes.
-   *
-   * The `sourceLiteral` mark carries the raw source a text run came from, so a
-   * run marked with its own text emits those same bytes. That is the shape the
-   * product reaches through provenance marks and render-time attrs; here it is
-   * constructed directly so the test does not depend on which extension
-   * happens to refresh a node on mount.
-   */
   function rebuildBlockSameBytes(editor: Editor, blockIndex: number): void {
     const { doc, schema, tr } = editor.state;
     let pos = 0;
@@ -817,7 +642,6 @@ describe('projection binding — a rebuild that changes no bytes', () => {
 
     rebuildBlockSameBytes(rig.editor, 1);
 
-    // The bytes are unchanged either way; what must not happen is the WRITE.
     expect(rig.ytext.toString()).toBe(before);
     expect(origins).toEqual([]);
     rig.destroy();
@@ -831,11 +655,8 @@ describe('projection binding — a rebuild that changes no bytes', () => {
     undoManager.undo();
     expect(undoManager.redoStack).toHaveLength(1);
 
-    // The rebuild a mode switch triggers on a doc holding a link.
     rebuildBlockSameBytes(rig.editor, 1);
 
-    // Yjs clears the redo stack on any tracked change that is not an undo or a
-    // redo, so writing identical bytes under a tracked origin would empty it.
     expect(undoManager.redoStack).toHaveLength(1);
     undoManager.redo();
     expect(rig.ytext.toString()).toContain('Tail.!');

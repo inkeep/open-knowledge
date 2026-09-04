@@ -1,23 +1,3 @@
-/**
- * The byte map the local WYSIWYG projection splices and places cursors through.
- *
- * Four properties, in the order the write path depends on them:
- *
- *  - the block table is index-aligned with the PM doc's top-level children, so
- *    a PM transaction's changed-block ordinal indexes it directly;
- *  - every top-level block's span is a *parse fact*, not an inherited guess,
- *    and slicing the source by it yields exactly that block;
- *  - spans nest and siblings stay disjoint, so the deepest-container search
- *    both directions rely on is well-defined;
- *  - and building a map does not change what `parse()` produces.
- *
- * Block correctness is asserted as *containment* (nothing outside the edited
- * block's range moves) rather than against a whole-document re-serialize, which
- * renormalizes untouched blocks and would score a correct implementation as a
- * partial failure. See §4's oracle trap in
- * `feature-specs/single-crdt-migration.md`.
- */
-
 import { describe, expect, it } from 'vitest';
 import { sharedExtensions } from '../extensions/shared.ts';
 import {
@@ -33,7 +13,6 @@ import type { PmSourceMap, PmSourceSpan } from './pm-source-map.ts';
 
 const md = new MarkdownManager({ extensions: sharedExtensions });
 
-/** Every span invariant the two lookup directions are built on. */
 function assertStructurallySound(map: PmSourceMap, source: string): void {
   const stack: PmSourceSpan[] = [];
   for (const span of map.spans) {
@@ -125,7 +104,6 @@ describe('parseWithSourceMap — block table', () => {
       const comment = map.blocks.find((b) => b.type === 'commentBlock');
       expect(comment, source).toBeDefined();
       expect((comment as PmSourceSpan).mapped).toBe(true);
-      // The span is the comment's own source, not the whole document.
       const text = source.slice(
         (comment as PmSourceSpan).sourceStart,
         (comment as PmSourceSpan).sourceEnd,
@@ -139,10 +117,6 @@ describe('parseWithSourceMap — block table', () => {
 
 describe('minting commentBlock positions', () => {
   it('lets the blank-run materializer see the gaps around a comment block', () => {
-    // A `commentBlock` is synthesized by the promoter, so its span is minted
-    // rather than parsed. `insertInteriorBlankRunParagraphs` skips any pair of
-    // siblings it cannot measure the gap between, so without that span a
-    // preserved blank run beside a comment is dropped on the way to disk.
     for (const source of [
       '# H\n\n\n\n%%\nnote\n%%\n\n\n\nAfter\n',
       '# H\n\n\n\n<!-- a -->\n\n\n\nB\n',
@@ -163,7 +137,6 @@ describe('parseWithSourceMap — offsets survive the pre-parse rewrites', () => 
       '# Title',
       'Body text',
     ]);
-    // A splice range must not swallow the BOM — dropping it is a byte diff.
     expect(map.blockRangeToSourceRange(0, 1)).toEqual({ from: 1, to: 8 });
   });
 
@@ -256,20 +229,12 @@ describe('parseWithSourceMap — a block splice touches only its own bytes', () 
       expect(range).not.toBeNull();
       const { from, to } = range as { from: number; to: number };
       const spliced = `${source.slice(0, from)}REPLACED${source.slice(to)}`;
-      // Containment: everything outside the edited block's line range is
-      // untouched, byte for byte. This is the assertion the whole-document
-      // serialize oracle cannot make.
       expect(spliced.slice(0, from)).toBe(source.slice(0, from));
       expect(spliced.slice(from + 'REPLACED'.length)).toBe(source.slice(to));
     }
   });
 });
 
-/**
- * Everything in the package that is a whole markdown document, including the
- * hazard shapes the bridge work collected: indented JSX, the built-in component
- * blocks, and the pinned component-block regressions.
- */
 function corpus(): string[] {
   return [
     loadLargeRealistic(),
@@ -293,7 +258,7 @@ describe('parseWithSourceMap — no behaviour change', () => {
       try {
         expected = md.parse(source);
       } catch {
-        continue; // the corpus includes inputs the parser rejects; not this test's subject
+        continue;
       }
       expect(md.parseWithSourceMap(source).doc.toJSON(), source).toEqual(expected);
       compared++;

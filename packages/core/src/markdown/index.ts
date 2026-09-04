@@ -172,18 +172,6 @@ export class MarkdownManager {
     }
   }
 
-  /**
-   * Parse to a ProseMirror doc together with the byte map back to `markdown`.
-   *
-   * The WYSIWYG projection needs this pairing, not the doc alone: a local edit
-   * is spliced back into the source by block range, and a cursor is carried
-   * across a mode switch by offset. `parse()` stays the cheap path — the map is
-   * only built for callers that ask for one.
-   *
-   * The empty-source shortcut mirrors `parse()`'s: the same filler doc, and a
-   * map whose single paragraph spans the (empty) source, so callers do not have
-   * to special-case a blank document.
-   */
   parseWithSourceMap(markdown: string, opts?: ParseContext): { doc: PmNode; map: PmSourceMap } {
     if (!markdown.trim()) {
       const doc = this.schema.nodeFromJSON({

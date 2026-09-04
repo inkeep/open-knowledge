@@ -11,7 +11,7 @@ import {
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import {
   OUTLINE_NAV_BREADCRUMB,
   OUTLINE_NAV_EVENT,

@@ -1,12 +1,3 @@
-/**
- * Undo is one global LIFO across both editing surfaces.
- *
- * Both views are real: a CodeMirror view bound by `yCollab` and a ProseMirror
- * view bound by the projection, over one `Y.Text` and one `Y.UndoManager`. The
- * claim under test is that the most recent edit retracts whichever view made
- * it, and that a frame spanning several edits comes back whole.
- */
-
 import { EditorState } from '@codemirror/state';
 import { EditorView as CmEditorView } from '@codemirror/view';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
@@ -33,7 +24,6 @@ interface CrossModeRig {
   source: CmEditorView;
   ytext: Y.Text;
   undoManager: Y.UndoManager;
-  /** Close the current undo frame so the next edit is its own stack item. */
   breakFrame(): void;
   destroy(): void;
 }
@@ -59,8 +49,6 @@ function createCrossModeRig(initial: string): CrossModeRig {
   const source = new CmEditorView({
     state: EditorState.create({
       doc: ytext.toString(),
-      // The manager is handed in, not created: `yCollab` would otherwise make
-      // its own, and two managers over one type is the defect in a new shape.
       extensions: [yCollab(ytext, null, { undoManager })],
     }),
     parent: sourceHost,
@@ -84,7 +72,6 @@ function createCrossModeRig(initial: string): CrossModeRig {
   };
 }
 
-/** Type at the end of a top-level WYSIWYG block. */
 function typeInWysiwyg(editor: Editor, blockIndex: number, text: string): void {
   const doc = editor.state.doc;
   let pos = 0;
@@ -92,7 +79,6 @@ function typeInWysiwyg(editor: Editor, blockIndex: number, text: string): void {
   editor.view.dispatch(editor.state.tr.insertText(text, pos - 1, pos - 1));
 }
 
-/** Type into the source view at a source offset. */
 function typeInSource(view: CmEditorView, at: number, text: string): void {
   view.dispatch({ changes: { from: at, to: at, insert: text } });
 }
@@ -109,8 +95,6 @@ describe('one undo stack across both surfaces', () => {
 
     expect(rig.ytext.toString()).toBe('# Heading from source\n\nBody paragraph. from wysiwyg\n');
 
-    // The WYSIWYG edit is the most recent, so it is what comes back, even
-    // though the undo is issued while source mode holds the caret.
     rig.undoManager.undo();
     expect(rig.ytext.toString()).toBe('# Heading from source\n\nBody paragraph.\n');
 
@@ -161,9 +145,6 @@ describe('one undo stack across both surfaces', () => {
   });
 
   it('retracts a multi-line source frame whole, even with a WYSIWYG edit interleaved', () => {
-    // A source frame spanning two lines with a WYSIWYG edit landing between
-    // them. One manager tracks all three, so the frame cannot be retracted in
-    // pieces.
     const rig = createCrossModeRig('one\n\ntwo\n');
     typeInSource(rig.source, 3, ' edited');
     typeInSource(rig.source, rig.ytext.toString().indexOf('two') + 3, ' edited');
@@ -175,7 +156,6 @@ describe('one undo stack across both surfaces', () => {
 
     rig.undoManager.undo();
     expect(rig.ytext.toString()).toBe('one edited\n\ntwo edited\n');
-    // The whole source frame retracts — both lines, together.
     rig.undoManager.undo();
     expect(rig.ytext.toString()).toBe('one\n\ntwo\n');
     rig.destroy();
@@ -189,29 +169,14 @@ describe('one undo stack across both surfaces', () => {
   });
 });
 
-/**
- * Frames merge across surfaces when nothing closes them.
- *
- * `Y.UndoManager` decides whether a transaction joins the open stack item by
- * ELAPSED TIME alone — `captureTimeout`, 500ms, Yjs's default. There is no
- * origin check, so a source edit and a WYSIWYG edit inside that window become
- * ONE stack item and a single undo retracts both.
- *
- * `EditorPane.handleModeChange` closes the frame on every mode switch, which is
- * what puts this out of reach in the product: getting to the other view means
- * passing through it. Every other row in this file calls `breakFrame()` between
- * edits and so cannot see the merge; these two rows pin both sides of it.
- */
 describe('undo frames across surfaces', () => {
   it('merges a source and a WYSIWYG edit when no boundary closes the frame', () => {
     const rig = createCrossModeRig(DOC);
     typeInSource(rig.source, rig.ytext.length, 'source');
-    // Deliberately NO breakFrame here — this is the unguarded shape.
     typeInWysiwyg(rig.wysiwyg, 1, 'wysiwyg');
 
     expect(rig.undoManager.undoStack).toHaveLength(1);
     rig.undoManager.undo();
-    // One undo, both edits gone: the defect.
     expect(rig.ytext.toString()).not.toContain('source');
     expect(rig.ytext.toString()).not.toContain('wysiwyg');
     rig.destroy();
@@ -220,13 +185,11 @@ describe('undo frames across surfaces', () => {
   it('keeps them separate once the boundary closes the frame', () => {
     const rig = createCrossModeRig(DOC);
     typeInSource(rig.source, rig.ytext.length, 'source');
-    // What `handleModeChange` does on every mode switch.
     rig.breakFrame();
     typeInWysiwyg(rig.wysiwyg, 1, 'wysiwyg');
 
     expect(rig.undoManager.undoStack).toHaveLength(2);
     rig.undoManager.undo();
-    // The most recent edit retracts, and only that one.
     expect(rig.ytext.toString()).not.toContain('wysiwyg');
     expect(rig.ytext.toString()).toContain('source');
     rig.destroy();
