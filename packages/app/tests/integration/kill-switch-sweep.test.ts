@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigSchema } from '@inkeep/open-knowledge-core';
+import { ConfigSchema, getLeafFieldMeta } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -16,36 +16,6 @@ interface MechanismRow {
 }
 
 const KILL_SWITCHES: readonly MechanismRow[] = [
-  {
-    leaf: 'bridge.deferGuard.enabled',
-    offFile: 'server/src/derive-timing-guard.test.ts',
-    offTitle: 'with the guard OFF the same drain stomps the keystroke',
-    onFile: 'server/src/derive-timing-guard.test.ts',
-    onTitle: 'an un-propagated WYSIWYG keystroke survives a drain-shaped re-derive',
-  },
-  {
-    leaf: 'bridge.lossDetector.enabled',
-    offFile: 'server/src/bridge-loss-detector.test.ts',
-    offTitle: 'does not trip when the loss-detector kill-switch is off',
-    onFile: 'server/src/bridge-loss-detector.test.ts',
-    onTitle: 'checkpoints + emits a detector-trip when an apply arm drops content',
-  },
-  {
-    leaf: 'bridge.fixedPoint.enabled',
-    offFile: 'server/src/derive-fixed-point-backstop.test.ts',
-    offTitle: 'kill-switch OFF: the loop churns unbounded with no trip; default-ON pinned',
-    onFile: 'server/src/derive-fixed-point-backstop.test.ts',
-    onTitle:
-      'a normalize-equal-but-byte-different loop is not treated as converged and trips the backstop loudly',
-  },
-  {
-    leaf: 'bridge.preDrain.enabled',
-    offFile: 'server/src/derive-pre-drain.test.ts',
-    offTitle: 'kill-switch OFF: the cross-block keystroke is NOT flushed (left for the floor)',
-    onFile: 'server/src/derive-pre-drain.test.ts',
-    onTitle:
-      'CROSS-BLOCK undo: the pending keystroke survives in Y.Text and the re-derived fragment',
-  },
   {
     leaf: 'bridge.flushOnHide.enabled',
     offFile: 'app/src/editor/provider-pool-flush-on-hide.test.ts',
@@ -63,12 +33,19 @@ const KILL_SWITCHES: readonly MechanismRow[] = [
   {
     leaf: 'lossCapture.enabled',
     offFile: 'app/tests/integration/loss-capture-killswitch.test.ts',
-    offTitle:
-      'OFF (lossCapture.enabled: false): the guard still defers but the ring records nothing',
+    offTitle: 'OFF (lossCapture.enabled: false): the same discard records nothing',
     onFile: 'app/tests/integration/loss-capture-killswitch.test.ts',
-    onTitle: 'ON (default): a defer lands a content-free guard-defer event in the ring',
+    onTitle:
+      'ON (default): a discarded edit lands a content-free checkpoint-write event in the ring',
   },
 ];
+
+const DEPRECATED_PREFIX = 'Deprecated';
+
+function isDeprecatedLeaf(dotted: string): boolean {
+  const meta = getLeafFieldMeta(ConfigSchema, dotted.split('.'));
+  return meta?.description?.startsWith(DEPRECATED_PREFIX) ?? false;
+}
 
 function readPath(obj: unknown, dotted: string): unknown {
   return dotted.split('.').reduce<unknown>((cur, key) => {
@@ -101,17 +78,35 @@ function fileContainsTitle(pkgRelPath: string, title: string): boolean {
 }
 
 describe('kill-switch sweep (H12)', () => {
-  test('every kill-switch leaf in the schema is a registered mechanism (fail-closed) and no rows are stale', () => {
+  test('every live kill-switch leaf is a registered mechanism (fail-closed) and no rows are stale', () => {
     const declared = enumerateKillSwitchLeaves();
+    const live = declared.filter((leaf) => !isDeprecatedLeaf(leaf));
     const registered = KILL_SWITCHES.map((m) => m.leaf).sort();
 
     expect(declared.length).toBeGreaterThanOrEqual(7);
+    expect(live.length).toBeGreaterThanOrEqual(3);
 
-    const unregistered = declared.filter((leaf) => !registered.includes(leaf));
+    const unregistered = live.filter((leaf) => !registered.includes(leaf));
     expect(unregistered).toEqual([]);
 
     const stale = registered.filter((leaf) => !declared.includes(leaf));
     expect(stale).toEqual([]);
+  });
+
+  test('a leaf marked deprecated in the schema carries no behavioral pair, and is still accepted', () => {
+    const deprecated = enumerateKillSwitchLeaves().filter(isDeprecatedLeaf);
+    expect(deprecated).toEqual([
+      'bridge.deferGuard.enabled',
+      'bridge.fixedPoint.enabled',
+      'bridge.lossDetector.enabled',
+      'bridge.preDrain.enabled',
+    ]);
+
+    const registered = KILL_SWITCHES.map((m) => m.leaf);
+    expect(deprecated.filter((leaf) => registered.includes(leaf))).toEqual([]);
+
+    const parsed = ConfigSchema.parse({});
+    for (const leaf of deprecated) expect(readPath(parsed, leaf)).toBe(true);
   });
 
   test.each(KILL_SWITCHES)('$leaf is default-ON and carries an OFF + ON behavioral pair', (m) => {

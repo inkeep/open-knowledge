@@ -10,7 +10,6 @@ import {
   createTestClient,
   pollUntil,
   type SyncWiredTestServer,
-  serializeFragment,
   type TestClient,
 } from './test-harness';
 
@@ -73,8 +72,8 @@ describe('sync-wired harness (S2 substrate)', () => {
       await awaitFileWatcherIndexed(server, 'briefing');
       const client = await createTestClient(server.port, 'briefing');
       clients.push(client);
-      await pollUntil(() => serializeFragment(client.fragment).includes('brand new upstream doc'));
-      expect(serializeFragment(client.fragment)).toContain('brand new upstream doc');
+      await pollUntil(() => client.ytext.toString().includes('brand new upstream doc'));
+      expect(client.ytext.toString()).toContain('brand new upstream doc');
     },
     HARNESS_BOOT_TIMEOUT_MS,
   );
@@ -123,7 +122,7 @@ describe('sync-wired harness (S2 substrate)', () => {
 
       const client = await createTestClient(server.port, 'guide');
       clients.push(client);
-      await pollUntil(() => serializeFragment(client.fragment).includes('version one'));
+      await pollUntil(() => client.ytext.toString().includes('version one'));
 
       await server.sync.pushToOrigin({ 'guide.md': '# Guide\n\nversion two from origin\n' });
       await engine.trigger('pull');
@@ -136,8 +135,8 @@ describe('sync-wired harness (S2 substrate)', () => {
         await revParse(server.contentDir, 'origin/main'),
       );
 
-      await pollUntil(() => serializeFragment(client.fragment).includes('version two from origin'));
-      expect(serializeFragment(client.fragment)).toContain('version two from origin');
+      await pollUntil(() => client.ytext.toString().includes('version two from origin'));
+      expect(client.ytext.toString()).toContain('version two from origin');
 
       expect(existsSync(join(server.contentDir, '.git', 'MERGE_HEAD'))).toBe(false);
       const { stdout: stashList } = await execFileAsync('git', ['stash', 'list'], {
@@ -192,7 +191,7 @@ describe('sync-wired harness (S2 substrate)', () => {
 
       const client = await createTestClient(server.port, 'guide');
       clients.push(client);
-      await pollUntil(() => serializeFragment(client.fragment).includes('LOCAL intro'));
+      await pollUntil(() => client.ytext.toString().includes('LOCAL intro'));
       const ytextRes = await fetch(`${base}?file=guide.md&source=ytext`);
       const ytextBody = (await ytextRes.json()) as { ours: string; lifecycleStatus: string | null };
       expect(ytextBody.ours).toContain('LOCAL intro');
@@ -250,8 +249,8 @@ describe('sync-wired harness (S2 substrate)', () => {
       );
       const client = await createTestClient(server.port, 'guide');
       clients.push(client);
-      await pollUntil(() => serializeFragment(client.fragment).includes('version two from origin'));
-      expect(serializeFragment(client.fragment)).toContain('version two from origin');
+      await pollUntil(() => client.ytext.toString().includes('version two from origin'));
+      expect(client.ytext.toString()).toContain('version two from origin');
     },
     HARNESS_BOOT_TIMEOUT_MS,
   );

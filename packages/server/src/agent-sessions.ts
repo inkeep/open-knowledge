@@ -31,7 +31,6 @@ export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
-import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { DocInConflictError, isDocInConflict } from './conflict-errors.ts';
 import {
@@ -399,7 +398,6 @@ interface SessionRecord {
   um: Y.UndoManager;
   agentId: string;
   docName: string;
-  bridgeLossReporter?: BridgeDeriveLossReporter;
   lastUsedAt: number;
 }
 
@@ -484,7 +482,6 @@ export class AgentSessionManager {
   private hocuspocus: Hocuspocus;
   private readonly maxSessions: number;
   private readonly minEvictableIdleMs: number;
-  private bridgeLossReporter?: BridgeDeriveLossReporter;
   private evictions = 0;
 
   constructor(
@@ -492,17 +489,11 @@ export class AgentSessionManager {
     options: {
       maxSessions?: number;
       minEvictableIdleMs?: number;
-      bridgeLossReporter?: BridgeDeriveLossReporter;
     } = {},
   ) {
     this.hocuspocus = hocuspocus;
     this.maxSessions = options.maxSessions ?? MAX_AGENT_SESSIONS;
     this.minEvictableIdleMs = options.minEvictableIdleMs ?? MIN_EVICTABLE_IDLE_MS;
-    this.bridgeLossReporter = options.bridgeLossReporter;
-  }
-
-  public attachBridgeLossReporter(reporter: BridgeDeriveLossReporter): void {
-    this.bridgeLossReporter = reporter;
   }
 
   public get liveSessionCount(): number {
@@ -660,7 +651,6 @@ export class AgentSessionManager {
       agentId,
       docName,
       lastUsedAt: Date.now(),
-      bridgeLossReporter: this.bridgeLossReporter,
     };
   }
 

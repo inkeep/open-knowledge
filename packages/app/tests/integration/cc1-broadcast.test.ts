@@ -339,7 +339,6 @@ describe('CC1 broadcast — L1 integration', () => {
 
   test('applyExternalChange(__system__, content) does not throw and does not mutate', () => {
     const systemDoc = server.instance.hocuspocus.documents.get(SYSTEM_DOC_NAME);
-    const beforeXmlLen = systemDoc?.getXmlFragment('default').length ?? 0;
     const beforeTextLen = systemDoc?.getText('source').length ?? 0;
 
     expect(() =>
@@ -351,10 +350,8 @@ describe('CC1 broadcast — L1 integration', () => {
       ),
     ).not.toThrow();
 
-    const afterXmlLen = systemDoc?.getXmlFragment('default').length ?? 0;
     const afterTextLen = systemDoc?.getText('source').length ?? 0;
 
-    expect(afterXmlLen).toBe(beforeXmlLen);
     expect(afterTextLen).toBe(beforeTextLen);
   });
 

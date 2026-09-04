@@ -70,7 +70,6 @@ export {
   fnv1aDigest,
   fragmentHoldsPendingContent,
   type InvariantViolation,
-  isParseEquivalentBridge,
   locateBridgeDivergence,
   MAX_FM_REGION_BYTES,
   type MergeBoundarySpace,

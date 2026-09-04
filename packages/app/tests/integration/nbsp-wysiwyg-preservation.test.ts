@@ -2,24 +2,23 @@
  * Document NBSP (U+00A0) preservation through a WYSIWYG edit.
  *
  * Agent writes land raw bytes into Y.Text verbatim (byte-sacred), so a document
- * NBSP is intact at rest. The XmlFragment is a re-parse of the body, and a WYSIWYG
- * edit triggers a server Observer A settlement that re-serializes the fragment
- * over the Y.Text region — so the NBSP must survive the full mdast<->PM
+ * NBSP is intact at rest. A WYSIWYG edit re-serializes the edited block through
+ * the projection splice, so the NBSP must survive the full mdast<->PM
  * round-trip, not just the write. Per precedent #57, an agent-authored byte the
- * human never touched must survive that settlement. Observer A fires on any
- * fragment change, so both a SAME-block and a DIFFERENT-block edit are covered;
- * the no-edit control pins the byte-sacred write path itself.
+ * human never touched must survive that splice — covered for a SAME-block and a
+ * DIFFERENT-block edit; the no-edit control pins the byte-sacred write path.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
+  applyProjectionEdit,
   awaitDocQuiescence,
   createTestClient,
   createTestServer,
   pollUntil,
+  projectionPosAfter,
   type TestClient,
   type TestServer,
 } from './test-harness';
@@ -36,28 +35,9 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-function findXmlTextContaining(
-  node: Y.XmlFragment | Y.XmlElement,
-  marker: string,
-): Y.XmlText | null {
-  const len = node.length;
-  for (let i = 0; i < len; i++) {
-    const child = node.get(i);
-    if (child instanceof Y.XmlText) {
-      if (child.toString().includes(marker)) return child;
-    } else if (child instanceof Y.XmlElement) {
-      const found = findXmlTextContaining(child, marker);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 async function seedThenMaybeEdit(opts: { body: string; editMarker?: string }): Promise<string> {
   const docName = `nbsp-${crypto.randomUUID()}`;
-  const client: TestClient = await createTestClient(server.port, docName, {
-    skipInvariantWatcher: true,
-  });
+  const client: TestClient = await createTestClient(server.port, docName);
   try {
     await agentWriteMd(server.port, opts.body, { docName, position: 'replace' });
     await pollUntil(() => client.ytext.toString().includes('bar'), 5000);
@@ -65,11 +45,10 @@ async function seedThenMaybeEdit(opts: { body: string; editMarker?: string }): P
     expect(client.ytext.toString()).toContain(NBSP);
 
     if (opts.editMarker !== undefined) {
-      const target = findXmlTextContaining(client.fragment, opts.editMarker);
-      if (!target) {
-        throw new Error(`edit marker not found in fragment: ${opts.editMarker}`);
-      }
-      target.insert(target.length, ' EDITWORD');
+      const marker = opts.editMarker;
+      applyProjectionEdit(client, (tr, doc) =>
+        tr.insertText(' EDITWORD', projectionPosAfter(doc, marker)),
+      );
       await pollUntil(() => client.ytext.toString().includes('EDITWORD'), 5000);
       await awaitDocQuiescence(client.doc);
       expect(client.ytext.toString()).toContain('EDITWORD');

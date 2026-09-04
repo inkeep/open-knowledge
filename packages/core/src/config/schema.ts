@@ -675,7 +675,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project',
               description:
-                'Detect content the bridge silently dropped at its reconciliation boundary (an Observer-A apply arm or a paired agent-undo derive) and write a recovery checkpoint plus a content-free loss event. Detection only — never blocks a write. Default ON — disable only to isolate a suspected regression.',
+                "Deprecated and no longer read. Gated the markdown bridge's derive-loss reporter, whose only caller was the paired agent-undo derive; that path has been removed. Persistence still detects reconciliation loss and writes recovery checkpoints unconditionally — see lossCapture.enabled for the ring. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.",
             })
             .default(true),
         })

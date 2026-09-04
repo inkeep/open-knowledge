@@ -1,8 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { JSDOM } from 'jsdom';
-import { Awareness } from 'y-protocols/awareness';
-import * as Y from 'yjs';
 import type { buildPatternDConstructorOptions } from './TiptapEditor';
 
 export function installDomGlobals(): () => void {
@@ -62,49 +58,6 @@ export const fakeClipboard = {
   drop: () => false,
   copy: () => false,
 } as unknown as ClipboardArg;
-
-export function seedFragmentParagraph(ydoc: Y.Doc, text: string): void {
-  const fragment = ydoc.getXmlFragment('default');
-  const paragraph = new Y.XmlElement('paragraph');
-  paragraph.insert(0, [new Y.XmlText(text)]);
-  fragment.insert(0, [paragraph]);
-}
-
-interface SeededPatternDProvider {
-  docName: string;
-  ydoc: Y.Doc;
-  fragment: Y.XmlFragment;
-  awareness: Awareness;
-  provider: HocuspocusProvider;
-  cleanup: () => void;
-}
-
-export function buildSeededPatternDProvider(
-  docNamePrefix: string,
-  seed: (ydoc: Y.Doc) => void = (ydoc) => seedFragmentParagraph(ydoc, 'hello world'),
-): SeededPatternDProvider {
-  const docName = `${docNamePrefix}-${randomUUID()}`;
-  const ydoc = new Y.Doc();
-  seed(ydoc);
-  const fragment = ydoc.getXmlFragment('default');
-  const awareness = new Awareness(ydoc);
-  const provider = {
-    document: ydoc,
-    configuration: { name: docName },
-    awareness,
-  } as unknown as HocuspocusProvider;
-  const cleanup = () => {
-    awareness.destroy();
-    ydoc.destroy();
-  };
-  return { docName, ydoc, fragment, awareness, provider, cleanup };
-}
-
-export function appendToFirstParagraph(fragment: Y.XmlFragment, text: string): void {
-  const paragraph = fragment.get(0) as Y.XmlElement;
-  const xmlText = paragraph.get(0) as Y.XmlText;
-  xmlText.insert(xmlText.length, text);
-}
 
 export async function flushMicrotasksAndTimers(): Promise<void> {
   for (let i = 0; i < 5; i += 1) {

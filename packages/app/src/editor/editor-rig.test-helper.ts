@@ -1,10 +1,11 @@
-import { LinkFidelity } from '@inkeep/open-knowledge-core';
+import { LinkFidelity, MarkdownManager } from '@inkeep/open-knowledge-core';
 import { Editor, type Extensions, isiOS, isMacOS } from '@tiptap/core';
 import Collaboration from '@tiptap/extension-collaboration';
 import StarterKit from '@tiptap/starter-kit';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import { sharedExtensions } from './extensions/shared';
+import { createProjectionBinding } from './projection-binding';
 
 export function mountLightEditor(options: { content?: string; extensions: Extensions }): Editor {
   const host = document.createElement('div');
@@ -40,6 +41,62 @@ export function mountCollabEditor(ydoc: Y.Doc, extensions: Extensions): Editor {
       ...extensions,
     ],
   });
+}
+
+const projectionMd = new MarkdownManager({
+  extensions: sharedExtensions,
+  deriveStructuralFreshness: true,
+});
+
+export interface ProjectionEditorRig {
+  editor: Editor;
+  ydoc: Y.Doc;
+  ytext: Y.Text;
+  undoManager: Y.UndoManager;
+  destroy(): void;
+}
+
+export function mountProjectionEditor(source: string, extensions: Extensions): ProjectionEditorRig {
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText('source');
+  ydoc.transact(() => ytext.insert(0, source), 'seed');
+  return mountProjectionEditorOn(ytext, extensions, () => {
+    ydoc.destroy();
+  });
+}
+
+export function mountProjectionEditorOn(
+  ytext: Y.Text,
+  extensions: Extensions,
+  onDestroy?: () => void,
+): ProjectionEditorRig {
+  const ydoc = ytext.doc;
+  if (ydoc === null) throw new Error('mountProjectionEditorOn: the Y.Text has no document');
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const binding = createProjectionBinding({ ytext, md: projectionMd });
+  const overridden = new Set(extensions.map((ext) => ext.name));
+  const editor = new Editor({
+    element: host,
+    content: binding.content,
+    extensions: [
+      ...sharedExtensions.filter((ext) => !overridden.has(ext.name)),
+      binding.extension,
+      ...extensions,
+    ],
+  });
+  return {
+    editor,
+    ydoc,
+    ytext,
+    undoManager: binding.undoManager,
+    destroy() {
+      editor.destroy();
+      host.remove();
+      onDestroy?.();
+    },
+  };
 }
 
 export function insertLocal(editor: Editor, text: string, at: number): void {

@@ -4,12 +4,12 @@ import { expect, test } from './_helpers';
 const AGENT_MARKER = 'AGENT-MARKER-XYZ';
 const USER_MARKER = 'USER-MARKER-PQR';
 
-test('QA-016: agent write + local WYSIWYG edit converge in DOM on both clients', async ({
+test('agent write + local WYSIWYG edit converge in Y.Text and DOM on both clients', async ({
   browser,
   api,
   baseURL,
 }) => {
-  const docName = `test-observer-a-${randomUUID().slice(0, 8)}`;
+  const docName = `test-agent-write-converge-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${docName}.md`);
   await api.testReset(docName);
 

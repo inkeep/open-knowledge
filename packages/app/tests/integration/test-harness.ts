@@ -12,13 +12,11 @@ export { wait };
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import type { LocalTransactionOrigin } from '@hocuspocus/server';
 import {
-  type BridgeInvariantViolation,
-  BridgeInvariantViolationError,
-  type InvariantViolation,
-  isParseEquivalentBridge,
+  buildProjection,
+  computeBlockSplice,
   LOCAL_DIR,
   MarkdownManager,
-  normalizeBridge,
+  type Projection,
   prependFrontmatter,
   ServerInfoSuccessSchema,
   type SyncMode,
@@ -26,22 +24,19 @@ import {
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
 
-export { type BridgeInvariantViolation, BridgeInvariantViolationError, type InvariantViolation };
-
 import {
   ConfigSchema,
   createMcpHttpHandler,
   createServer,
   ensureProjectGit,
   getLogger,
-  isPairedWriteOrigin,
   mountMcpAndApi,
-  OBSERVER_SYNC_ORIGIN,
   type ServerInstance,
   type ServerOptions,
 } from '@inkeep/open-knowledge-server';
 import { getSchema } from '@tiptap/core';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { Fragment, type Node as PmNode } from '@tiptap/pm/model';
+import { EditorState, type Transaction } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
@@ -220,7 +215,6 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
 export interface TestClient {
   doc: Y.Doc;
   ytext: Y.Text;
-  fragment: Y.XmlFragment;
   provider: HocuspocusProvider;
   cleanup: () => Promise<void>;
   docName: string;
@@ -230,7 +224,6 @@ export interface TestClient {
 }
 
 export interface CreateTestClientOptions {
-  skipInvariantWatcher?: boolean;
   syncControl?: boolean;
 }
 
@@ -243,7 +236,6 @@ export async function createTestClient(
 
   const doc = new Y.Doc();
   const ytext = doc.getText('source');
-  const fragment = doc.getXmlFragment('default');
 
   let controllableWs: ControllableWebSocket | undefined;
   const providerOpts: Record<string, unknown> = {
@@ -267,14 +259,9 @@ export async function createTestClient(
 
   await waitForSync(provider);
 
-  const watcherDetach = options?.skipInvariantWatcher
-    ? undefined
-    : attachBridgeInvariantWatcher(doc);
-
   return {
     doc,
     ytext,
-    fragment,
     provider,
     docName: resolvedDocName,
     pauseSync: () => {
@@ -290,7 +277,6 @@ export async function createTestClient(
       controllableWs.setDropOutbound(drop);
     },
     cleanup: async () => {
-      watcherDetach?.();
       try {
         await testReset(port, resolvedDocName);
       } catch {}
@@ -461,71 +447,12 @@ export async function awaitDocQuiescence(
   }
 }
 
-export function serializeFragment(fragment: Y.XmlFragment): string {
-  return mdManager.serialize(yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON());
-}
-
-function canonicalizeBodyForHarness(body: string): string {
-  return mdManager.serialize(mdManager.parseWithFallback(body));
-}
-
 export function stripTrailingWhitespace(s: string): string {
   return s
     .split('\n')
     .map((l) => l.trimEnd())
     .join('\n')
     .replace(/\n+$/, '');
-}
-
-/** Assert bridge invariant: normalized Y.Text === serialized XmlFragment,
- * with the parse-equivalence fallback for byte forms beyond every
- * normalizeBridge class whose parse matches the fragment (CommonMark lazy
- * continuations et al. — fragment ≡ parse(ytext) holds, precedent #38).
- * Normalization includes: blank-line count between blocks may normalize
- * (ProseMirror schema limitation). Collapse 3+ consecutive newlines to 2. */
-export function assertBridgeInvariant(ytext: Y.Text, fragment: Y.XmlFragment): void {
-  const ytextStr = ytext.toString();
-  const fragMd = serializeFragment(fragment);
-  const textNorm = normalizeBridge(ytextStr);
-  const fragNorm = normalizeBridge(fragMd);
-  if (
-    textNorm !== fragNorm &&
-    !isParseEquivalentBridge(ytextStr, fragMd, canonicalizeBodyForHarness)
-  ) {
-    throw new Error(
-      `Bridge invariant violated.\n` +
-        `  Y.Text (${textNorm.length} chars): ${textNorm.slice(0, 200)}...\n` +
-        `  Fragment (${fragNorm.length} chars): ${fragNorm.slice(0, 200)}...`,
-    );
-  }
-}
-
-export type FinalStateOutcome =
-  | { outcome: 'converged-late' }
-  | { outcome: 'stalled'; detail: string };
-
-export function classifyFinalState(
-  clients: ReadonlyArray<Pick<TestClient, 'ytext' | 'fragment'>>,
-): FinalStateOutcome {
-  const finalYtexts = clients.map((c) => c.ytext.toString());
-  const finalFragMds = clients.map((c) => serializeFragment(c.fragment));
-  const peersIdentical =
-    finalYtexts.every((t) => t === finalYtexts[0]) &&
-    finalFragMds.every((m) => m === finalFragMds[0]);
-  if (!peersIdentical) {
-    return { outcome: 'stalled', detail: 'peers diverged at budget exhaustion' };
-  }
-  for (const c of clients) {
-    try {
-      assertBridgeInvariant(c.ytext, c.fragment);
-    } catch (err) {
-      return {
-        outcome: 'stalled',
-        detail: `bridge invariant beyond tolerance at budget exhaustion: ${err instanceof Error ? err.message.slice(0, 200) : String(err)}`,
-      };
-    }
-  }
-  return { outcome: 'converged-late' };
 }
 
 export function readTestDoc(contentDir: string, docName = 'test-doc'): string {
@@ -537,6 +464,94 @@ export function readTestDoc(contentDir: string, docName = 'test-doc'): string {
     }
     throw err;
   }
+}
+
+export interface ProjectionEditTarget {
+  doc: Y.Doc;
+  ytext: Y.Text;
+}
+
+export function applyProjectionEdit(
+  target: ProjectionEditTarget,
+  mutate: (tr: Transaction, doc: PmNode) => Transaction | undefined,
+  origin?: unknown,
+): void {
+  const projection = buildProjection(target.ytext.toString(), mdManager);
+  const state = EditorState.create({ doc: projection.doc });
+  const mutated = mutate(state.tr, projection.doc);
+  writeProjectionSplice(target, projection, state.apply(mutated ?? state.tr).doc, origin);
+}
+
+export function applyProjectionDoc(
+  target: ProjectionEditTarget,
+  after: PmNode,
+  origin?: unknown,
+): void {
+  writeProjectionSplice(target, buildProjection(target.ytext.toString(), mdManager), after, origin);
+}
+
+function writeProjectionSplice(
+  target: ProjectionEditTarget,
+  projection: Projection,
+  after: PmNode,
+  origin?: unknown,
+): void {
+  const splice = computeBlockSplice(projection, after, mdManager);
+  if (splice === null) {
+    throw new Error('applyProjectionEdit: the mutation produced no source splice');
+  }
+  target.doc.transact(() => {
+    if (splice.to > splice.from) target.ytext.delete(splice.from, splice.to - splice.from);
+    if (splice.text.length > 0) target.ytext.insert(splice.from, splice.text);
+  }, origin);
+}
+
+export function projectionBlocks(doc: PmNode): PmNode[] {
+  const out: PmNode[] = [];
+  doc.forEach((child) => {
+    out.push(child);
+  });
+  return out;
+}
+
+export function editProjectionBlocks(
+  target: ProjectionEditTarget,
+  build: (blocks: PmNode[]) => PmNode[],
+  origin?: unknown,
+): void {
+  const { doc } = buildProjection(target.ytext.toString(), mdManager);
+  applyProjectionDoc(
+    target,
+    schema.topNodeType.create(doc.attrs, Fragment.fromArray(build(projectionBlocks(doc)))),
+    origin,
+  );
+}
+
+export function appendProjectionParagraph(
+  target: ProjectionEditTarget,
+  text: string,
+  origin?: unknown,
+): void {
+  editProjectionBlocks(
+    target,
+    (blocks) => [...blocks, schema.node('paragraph', null, schema.text(text))],
+    origin,
+  );
+}
+
+export function projectionPosAfter(doc: PmNode, marker: string): number {
+  let at = -1;
+  doc.descendants((node, pos) => {
+    if (at !== -1) return false;
+    const text = node.isText ? node.text : null;
+    if (text?.includes(marker)) {
+      at = pos + text.indexOf(marker) + marker.length;
+      return false;
+    }
+    return true;
+  });
+  if (at === -1) throw new Error(`projectionPosAfter: marker not found in projection: ${marker}`);
+  return at;
 }
 
 export async function agentWriteMd(
@@ -752,7 +767,6 @@ export async function awaitWipCommits(
 
 export type ServerDocState = {
   ytext: Y.Text;
-  fragment: Y.XmlFragment;
   md: string;
   fullMd: string;
   frontmatter: string;
@@ -766,97 +780,21 @@ export function getServerState(server: TestServer, docName: string): ServerDocSt
   if (!document) return null;
 
   const ytext = document.getText('source');
-  const fragment = document.getXmlFragment('default');
   const metaMap = document.getMap('metadata');
   const activityMap = document.getMap('agent-flash');
-  const frontmatter = stripFrontmatter(ytext.toString()).frontmatter;
-  const md = mdManager.serialize(yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON());
+  const { frontmatter, body } = stripFrontmatter(ytext.toString());
+  const md = body;
   const fullMd = prependFrontmatter(frontmatter, md);
   const connectionCount = document.getConnectionsCount?.() ?? 0;
 
   return {
     ytext,
-    fragment,
     md,
     fullMd,
     frontmatter,
     metaMap,
     activityMap,
     connectionCount,
-  };
-}
-
-const ORIGIN_TREE_TO_TEXT = {
-  source: 'local',
-  skipStoreHooks: false,
-  context: { origin: 'sync-from-tree' },
-} as const satisfies LocalTransactionOrigin;
-
-const ORIGIN_TEXT_TO_TREE = {
-  source: 'local',
-  skipStoreHooks: false,
-  context: { origin: 'sync-from-text' },
-} as const satisfies LocalTransactionOrigin;
-
-const BRIDGE_ENFORCING_NON_PAIRED_ORIGINS: Set<LocalTransactionOrigin> = new Set([
-  ORIGIN_TREE_TO_TEXT,
-  ORIGIN_TEXT_TO_TREE,
-  OBSERVER_SYNC_ORIGIN,
-]);
-
-export function attachBridgeInvariantWatcher(
-  doc: Y.Doc,
-  opts: {
-    onViolation?: (info: InvariantViolation) => void;
-    enforcingOrigins?: Set<unknown>;
-  } = {},
-): () => void {
-  const fragment = doc.getXmlFragment('default');
-  const ytext = doc.getText('source');
-  const extraNonPaired = opts.enforcingOrigins;
-
-  const afterAll = (_doc: Y.Doc, transactions: Array<Y.Transaction>): void => {
-    let enforcingTx: Y.Transaction | undefined;
-    for (const tx of transactions) {
-      const shouldEnforce =
-        isPairedWriteOrigin(tx.origin) ||
-        BRIDGE_ENFORCING_NON_PAIRED_ORIGINS.has(tx.origin as LocalTransactionOrigin) ||
-        extraNonPaired?.has(tx.origin);
-      if (shouldEnforce) {
-        enforcingTx = tx;
-        break;
-      }
-    }
-    if (!enforcingTx) return;
-
-    const ytextStr = ytext.toString();
-    const fm = stripFrontmatter(ytextStr).frontmatter;
-    const fragBody = mdManager.serialize(
-      yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON(),
-    );
-    const fragMd = prependFrontmatter(fm, fragBody);
-
-    const ytextNorm = normalizeBridge(ytextStr);
-    const fragNorm = normalizeBridge(fragMd);
-
-    if (ytextNorm === fragNorm) return;
-    if (isParseEquivalentBridge(ytextStr, fragMd, canonicalizeBodyForHarness)) return;
-
-    const info: InvariantViolation = {
-      site: 'test-harness',
-      origin: enforcingTx.origin,
-      ytextSnapshot: ytextStr,
-      fragmentMdSnapshot: fragMd,
-      unifiedDiff: `  ytext: ${ytextNorm.slice(0, 300)}\n  frag:  ${fragNorm.slice(0, 300)}`,
-      stack: new Error().stack,
-    };
-    opts.onViolation?.(info);
-    throw new BridgeInvariantViolationError(info);
-  };
-
-  doc.on('afterAllTransactions', afterAll);
-  return () => {
-    doc.off('afterAllTransactions', afterAll);
   };
 }
 
@@ -971,23 +909,14 @@ export async function assertAllConverged(
   const start = Date.now();
   while (Date.now() - start < timeout) {
     const ytexts = clients.map((c) => c.ytext.toString());
-    const fragMds = clients.map((c) => serializeFragment(c.fragment));
-    const allYtextSame = ytexts.every((t) => t === ytexts[0]);
-    const allFragSame = fragMds.every((m) => m === fragMds[0]);
-    if (allYtextSame && allFragSame) {
-      for (const c of clients) {
-        assertBridgeInvariant(c.ytext, c.fragment);
-      }
-      return;
-    }
+    if (ytexts.every((t) => t === ytexts[0])) return;
     await wait(pollMs);
   }
   const details = clients
     .map(
       (c, i) =>
         `  Client ${i} (${c.docName}):\n` +
-        `    ytext (${c.ytext.toString().length}): ${c.ytext.toString().slice(0, 200)}\n` +
-        `    frag  (${serializeFragment(c.fragment).length}): ${serializeFragment(c.fragment).slice(0, 200)}`,
+        `    ytext (${c.ytext.toString().length}): ${c.ytext.toString().slice(0, 200)}`,
     )
     .join('\n');
   throw new ClientConvergenceError(details);

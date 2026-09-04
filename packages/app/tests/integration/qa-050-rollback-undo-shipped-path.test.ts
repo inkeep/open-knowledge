@@ -1,12 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
-import type * as Y from 'yjs';
 
-import {
-  insertLocal,
-  mountCollabEditor,
-  readUndoManager,
-} from '../../src/editor/editor-rig.test-helper';
+import { insertLocal, mountProjectionEditorOn } from '../../src/editor/editor-rig.test-helper';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
 import {
   agentWriteMd,
@@ -79,11 +74,9 @@ describe('rollback on the shipped path leaves the client undo stack invariant', 
     try {
       await pollUntil(() => client.ytext.toString().includes('superseding body anchor'), 10_000);
 
-      const editor = mountCollabEditor(client.doc, []);
+      const rig = mountProjectionEditorOn(client.ytext, []);
+      const { editor, undoManager: um } = rig;
       try {
-        const um = readUndoManager(editor) as Y.UndoManager;
-        expect(um).not.toBeNull();
-
         insertLocal(editor, TYPED, 1);
         await pollUntil(() => client.ytext.toString().includes(TYPED), 10_000);
         const stackBefore = um.undoStack.length;
@@ -124,7 +117,7 @@ describe('rollback on the shipped path leaves the client undo stack invariant', 
         expect(ytextAfterUndo).not.toContain(TYPED);
         expect(countOccurrences(ytextAfterUndo, 'original body anchor')).toBe(1);
       } finally {
-        editor.destroy();
+        rig.destroy();
       }
     } finally {
       await client.cleanup();

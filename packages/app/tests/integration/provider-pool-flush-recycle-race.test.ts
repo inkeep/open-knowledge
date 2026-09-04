@@ -2,7 +2,6 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
-import * as Y from 'yjs';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
   createRestartableServer,
@@ -40,11 +39,8 @@ describe('flush-on-hide racing a mismatch recycle', () => {
 
     const doc = pool.getActive()?.provider.document;
     if (!doc) throw new Error('active provider missing');
-    const paragraph = new Y.XmlElement('paragraph');
-    const text = new Y.XmlText();
-    text.applyDelta([{ insert: MARKER }]);
-    paragraph.insert(0, [text]);
-    doc.getXmlFragment('default').push([paragraph]);
+    const source = doc.getText('source');
+    source.insert(source.length, `\n\n${MARKER}\n`);
     expect(pool.getActive()?.provider.unsyncedChanges).toBeGreaterThan(0);
 
     pool.flushOnHide();

@@ -1,5 +1,5 @@
+import { buildProjection } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
 import {
   installCmMeasurementStubs,
@@ -8,9 +8,14 @@ import {
   typeInSource,
 } from './source-undo-rig.test-helper';
 import {
+  applyProjectionEdit,
   awaitDocQuiescence,
   createTestClient,
   createTestServer,
+  editProjectionBlocks,
+  mdManager,
+  projectionBlocks,
+  schema,
   type TestClient,
   type TestServer,
   wait,
@@ -43,11 +48,8 @@ async function pollUntil(predicate: () => boolean, label: string, timeoutMs = 80
   throw new Error(`pollUntil timed out: ${label}`);
 }
 
-function paragraphTexts(fragment: Y.XmlFragment): string[] {
-  return fragment
-    .toArray()
-    .filter((n): n is Y.XmlElement => n instanceof Y.XmlElement)
-    .map((el) => el.toString().replace(/<[^>]+>/g, ''));
+function paragraphTexts(source: string): string[] {
+  return projectionBlocks(buildProjection(source, mdManager).doc).map((b) => b.textContent);
 }
 
 interface Mounted {
@@ -93,37 +95,37 @@ describe('source undo after a mode flip (real server observers + real provider)'
       expect(undoManager.undoStack.length).toBe(1);
 
       await pollUntil(
-        () => paragraphTexts(client.fragment).filter((t) => t.includes('hello bug')).length >= 2,
-        'Observer B derived the two paragraphs into the client fragment',
+        () =>
+          paragraphTexts(client.ytext.toString()).filter((t) => t.includes('hello bug')).length >=
+          2,
+        'the projection holds the two paragraphs',
       );
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
 
       setSourceModeActive(false);
 
-      client.doc.transact(() => {
-        const p = new Y.XmlElement('paragraph');
-        const t = new Y.XmlText();
-        t.insert(0, 'oops');
-        p.insert(0, [t]);
-        client.fragment.insert(1, [p]);
-      }, WYSIWYG_LOCAL_ORIGIN);
+      editProjectionBlocks(
+        client,
+        (blocks) => [
+          blocks[0],
+          schema.node('paragraph', null, schema.text('oops')),
+          ...blocks.slice(1),
+        ],
+        WYSIWYG_LOCAL_ORIGIN,
+      );
       await pollUntil(
         () => client.ytext.toString().includes('oops'),
-        'Observer A wrote the inserted paragraph back into Y.Text',
+        'the projection splice wrote the inserted paragraph into Y.Text',
       );
 
-      client.doc.transact(() => {
-        const paras = client.fragment
-          .toArray()
-          .filter((n): n is Y.XmlElement => n instanceof Y.XmlElement);
-        const last = paras[paras.length - 1];
-        const textNode = last?.get(0);
-        if (!(textNode instanceof Y.XmlText)) throw new Error('expected XmlText in paragraph');
-        textNode.insert(textNode.length, ' oops');
-      }, WYSIWYG_LOCAL_ORIGIN);
+      applyProjectionEdit(
+        client,
+        (tr, doc) => tr.insertText(' oops', doc.content.size - 1),
+        WYSIWYG_LOCAL_ORIGIN,
+      );
       await pollUntil(
         () => client.ytext.toString().includes('hello bug oops'),
-        'Observer A wrote the appended text back into Y.Text',
+        'the projection splice wrote the appended text into Y.Text',
       );
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
 
@@ -155,8 +157,10 @@ describe('source undo after a mode flip (real server observers + real provider)'
       expect(undoManager.undoStack.length).toBe(1);
 
       await pollUntil(
-        () => paragraphTexts(client.fragment).filter((t) => t.includes('hello bug')).length >= 2,
-        'Observer B derived the two paragraphs into the client fragment',
+        () =>
+          paragraphTexts(client.ytext.toString()).filter((t) => t.includes('hello bug')).length >=
+          2,
+        'the projection holds the two paragraphs',
       );
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
 

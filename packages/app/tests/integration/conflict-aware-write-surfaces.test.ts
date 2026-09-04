@@ -449,9 +449,7 @@ describe('on-load lifecycle seed from ConflictStore (runtime race fix)', () => {
         return data.documents?.some((d) => d.docName === docName) ?? false;
       }, 5_000);
 
-      const client = await createTestClient(server.port, docName, {
-        skipInvariantWatcher: true,
-      });
+      const client = await createTestClient(server.port, docName, {});
       cleanups.push(() => client.cleanup());
 
       const lifecycle = client.doc.getMap('lifecycle');

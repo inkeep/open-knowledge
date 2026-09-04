@@ -323,7 +323,6 @@ import {
   ManagedRenameSourceTypeMismatchError,
 } from './apply-managed-rename.ts';
 import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
-import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import {
   isReservedProjectStatePath,
@@ -1467,7 +1466,6 @@ export interface ApiExtensionOptions {
   getLinkPreviewsEnabled?: () => boolean;
   getConfigDiagnostics?: () => ConfigDiagnosticsReport;
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
   savedThemeLockTimeoutMs?: number;

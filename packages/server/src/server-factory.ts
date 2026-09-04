@@ -71,10 +71,6 @@ import {
 } from './auth-token-schema.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
 import {
-  type BridgeDeriveLossReporter,
-  createBridgeDeriveLossReporter,
-} from './bridge-loss-detector.ts';
-import {
   CC1Broadcaster,
   isConfigDoc,
   isManagedArtifactDoc,
@@ -748,7 +744,6 @@ export function createServer(options: ServerOptions): ServerInstance {
   let sessionManager: AgentSessionManager;
   let nativeApi: NativeApiHandle;
   let localApi: LocalApiDispatch;
-  let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
   let cc1Broadcaster: CC1Broadcaster | null = null;
   let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
   const IN_PLACE_RESCAN_DEBOUNCE_MS = 500;
@@ -1901,7 +1896,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       authStreamHeartbeatMs,
       projectDir,
       resolveEmbed,
-      getBridgeLossReporter: () => bridgeLossReporter,
       getPrincipal: () => loadedPrincipal,
       acpRegistry,
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
@@ -1942,16 +1936,6 @@ export function createServer(options: ServerOptions): ServerInstance {
           maxBytes: bridgeGuardConfig.value.lossCapture.maxBytes,
         })
       : undefined;
-
-    if (bridgeGuardConfig.value.bridge.lossDetector.enabled) {
-      bridgeLossReporter = createBridgeDeriveLossReporter({
-        shadow: () => shadowRef.current,
-        ring: lossRing,
-        getBranch: () => headWatcher?.getLastKnownBranch() ?? 'main',
-        contentRoot: contentRoot ?? '',
-      });
-      sessionManager.attachBridgeLossReporter(bridgeLossReporter);
-    }
 
     hocuspocus.configuration.extensions.push(createServerObserverExtension());
 

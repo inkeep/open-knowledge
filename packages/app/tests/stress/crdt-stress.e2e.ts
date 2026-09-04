@@ -59,15 +59,10 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
     const turnState = await page.evaluate(() => {
       const provider = window.__activeProvider;
       const ytext = provider?.document?.getText('source');
-      const frag = provider?.document?.getXmlFragment('default');
-      return {
-        ytextLen: ytext?.toString()?.length ?? 0,
-        fragChildren: frag?.length ?? 0,
-      };
+      return { ytextLen: ytext?.toString()?.length ?? 0 };
     });
     console.log(
-      `[Layer C] Turn complete: ytext=${turnState.ytextLen}, fragment=${turnState.fragChildren}, ` +
-        `grewFrom=${lengthBeforeWrite}`,
+      `[Layer C] Turn complete: ytext=${turnState.ytextLen}, grewFrom=${lengthBeforeWrite}`,
     );
   }
 

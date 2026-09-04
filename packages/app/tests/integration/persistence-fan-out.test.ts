@@ -11,7 +11,6 @@ import {
   swapContributors,
 } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 
 describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
   let tmpDir: string;
@@ -47,10 +46,8 @@ describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('fan-out integration test')]);
-      xmlFragment.insert(0, [paragraph]);
+      const source = doc.getText('source');
+      source.insert(source.length, 'fan-out integration test\n');
     });
 
     const doc = server.hocuspocus.documents.get('test-doc');
@@ -90,10 +87,8 @@ describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('service-writer fallback test')]);
-      xmlFragment.insert(0, [paragraph]);
+      const source = doc.getText('source');
+      source.insert(source.length, 'service-writer fallback test\n');
     });
 
     const doc = server.hocuspocus.documents.get('test-doc');
@@ -124,10 +119,8 @@ describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('fs-writer-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('initial content')]);
-      xmlFragment.insert(0, [paragraph]);
+      const source = doc.getText('source');
+      source.insert(source.length, 'initial content\n');
     });
 
     applyExternalChange(
@@ -168,10 +161,8 @@ describe('persistence L2 fan-out integration (US-014, FR-7)', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('concurrent-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('concurrent test')]);
-      xmlFragment.insert(0, [paragraph]);
+      const source = doc.getText('source');
+      source.insert(source.length, 'concurrent test\n');
     });
 
     recordContributor('concurrent-doc', 'agent-s1', 'Session 1', 'agent-s1');

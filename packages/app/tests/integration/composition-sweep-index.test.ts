@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigSchema } from '@inkeep/open-knowledge-core';
+import { ConfigSchema, getLeafFieldMeta } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -18,59 +18,18 @@ interface CompositionRow {
 }
 
 const SHIPPED_MECHANISMS = [
-  'defer-guard',
-  'defer-exhaustion',
-  'loss-detector',
-  'paired-intake-detect',
-  'fixed-point-backstop',
   'loss-capture-ring',
   'checkpoint-restore-floor',
   'durable-replay-outbox',
   'flush-on-hide',
   'desktop-background-throttle',
-  'pre-drain',
 ] as const;
 
 const COMPOSITION_ROWS: readonly CompositionRow[] = [
   {
-    mechanism: 'defer-guard',
-    file: 'app/tests/integration/derive-timing-guard-full-flow.test.ts',
-    title: 'the config-wired guard preserves an un-propagated keystroke on the real server',
-    rung: 'booted-server',
-  },
-  {
-    mechanism: 'defer-exhaustion',
-    file: 'server/src/derive-timing-exhaustion.test.ts',
-    title: 'sustained deferral preserves the keystroke until the guard force-resolves loudly',
-    rung: 'real-drain-rig',
-    residual:
-      '§9.5(1): the sustained-defer exhaustion trigger is not stageable through a pure public HTTP path.',
-  },
-  {
-    mechanism: 'loss-detector',
-    file: 'app/tests/integration/bridge-loss-injection.test.ts',
-    title: 'agent-write overwrite of un-propagated content trips the detector and checkpoints',
-    rung: 'booted-server',
-  },
-  {
-    mechanism: 'paired-intake-detect',
-    file: 'app/tests/integration/bridge-loss-injection.test.ts',
-    title: 'an out-of-band disk edit over un-propagated content trips the detector and checkpoints',
-    rung: 'booted-server',
-  },
-  {
-    mechanism: 'fixed-point-backstop',
-    file: 'server/src/derive-fixed-point-backstop.test.ts',
-    title:
-      'typing during a freeze persists — the user-edit path and Y.Text stay live while the B loop is frozen',
-    rung: 'real-drain-rig',
-    residual:
-      '§9.5(1): the backstop echo/oscillation topology is not reachable at the public rung; the real production drain is its rung.',
-  },
-  {
     mechanism: 'loss-capture-ring',
     file: 'app/tests/integration/loss-capture-killswitch.test.ts',
-    title: 'ON (default): a defer lands a content-free guard-defer event in the ring',
+    title: 'ON (default): a discarded edit lands a content-free checkpoint-write event in the ring',
     rung: 'booted-server',
   },
   {
@@ -102,23 +61,18 @@ const COMPOSITION_ROWS: readonly CompositionRow[] = [
     residual:
       '§9.5(3): Electron main-process mechanism — the behavioral observable rides the required desktop-smoke CI tier, which contains no throttle test today; only the keying predicate is merge-gated here.',
   },
-  {
-    mechanism: 'pre-drain',
-    file: 'app/tests/integration/pre-drain-composition.test.ts',
-    title: 'cross-block keystroke survives a paired derive while a client reconnects and resyncs',
-    rung: 'booted-server',
-  },
 ];
 
 const KILL_SWITCH_MECHANISM: Readonly<Record<string, string>> = {
   lossCapture: 'loss-capture-ring',
   'bridge.backgroundThrottle': 'desktop-background-throttle',
-  'bridge.deferGuard': 'defer-guard',
-  'bridge.lossDetector': 'loss-detector',
-  'bridge.fixedPoint': 'fixed-point-backstop',
-  'bridge.preDrain': 'pre-drain',
   'bridge.flushOnHide': 'flush-on-hide',
 };
+
+function isDeprecatedKillSwitch(path: string): boolean {
+  const meta = getLeafFieldMeta(ConfigSchema, [...path.split('.'), 'enabled']);
+  return meta?.description?.startsWith('Deprecated') ?? false;
+}
 
 interface ZodLike {
   shape?: Record<string, ZodLike>;
@@ -139,7 +93,7 @@ function shippedKillSwitchPaths(): string[] {
   const paths: string[] = [];
   if (root.lossCapture) paths.push('lossCapture');
   for (const key of Object.keys(objectShape(root.bridge) ?? {})) paths.push(`bridge.${key}`);
-  return paths.sort();
+  return paths.filter((p) => !isDeprecatedKillSwitch(p)).sort();
 }
 
 function uncoveredMechanisms(
@@ -205,9 +159,9 @@ describe('composition sweep index (H13)', () => {
     expect(staleRows(shipped, COMPOSITION_ROWS)).toEqual([]);
   });
 
-  test('every kill-switch in the production config schema maps to a covered mechanism', () => {
+  test('every live kill-switch in the production config schema maps to a covered mechanism', () => {
     const paths = shippedKillSwitchPaths();
-    expect(paths.length).toBeGreaterThanOrEqual(7);
+    expect(paths.length).toBeGreaterThanOrEqual(3);
 
     const unregistered = paths.filter((p) => KILL_SWITCH_MECHANISM[p] === undefined);
     expect(unregistered).toEqual([]);
@@ -230,15 +184,17 @@ describe('composition sweep index (H13)', () => {
     }
   });
 
-  test('the typing-during-freeze-persists row is present', () => {
-    const freeze = COMPOSITION_ROWS.find((r) => r.mechanism === 'fixed-point-backstop');
-    expect(freeze).toBeDefined();
-    if (!freeze) return;
-    expect(freeze.title).toContain('typing during a freeze persists');
-    const resolved = resolveCompositionTest(freeze.file, freeze.title);
-    expect(resolved.declared).toBe(true);
-    expect(resolved.disabled).toBe(false);
-    expect(resolved.assertions).toBeGreaterThan(0);
+  test('a deprecated kill-switch leaf needs no mechanism row', () => {
+    const root = objectShape(ConfigSchema as unknown as ZodLike) ?? {};
+    const all = Object.keys(objectShape(root.bridge) ?? {}).map((k) => `bridge.${k}`);
+    const deprecated = all.filter(isDeprecatedKillSwitch).sort();
+    expect(deprecated).toEqual([
+      'bridge.deferGuard',
+      'bridge.fixedPoint',
+      'bridge.lossDetector',
+      'bridge.preDrain',
+    ]);
+    expect(deprecated.filter((p) => KILL_SWITCH_MECHANISM[p] !== undefined)).toEqual([]);
   });
 
   test('the sweep bites: an uncovered mechanism, a stale row, a bogus title, and a disabled test', () => {

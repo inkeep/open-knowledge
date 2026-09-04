@@ -78,7 +78,7 @@ describe('template watcher capabilities — content pipeline parity (FR4)', () =
 
       await awaitPageIndexed(rig, docName);
 
-      const client = await createTestClient(rig.port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, docName);
       await pollUntil(() => client.ytext.toString() === src, 8000);
       expect(client.ytext.toString()).toBe(src);
 
@@ -101,7 +101,7 @@ describe('template watcher capabilities — content pipeline parity (FR4)', () =
       server = await createTestServer({ contentDir, debounce: 200, maxDebounce: 800 });
       const rig = server;
 
-      const client = await createTestClient(rig.port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, docName);
       await pollUntil(() => client.ytext.toString() === src, 8000);
 
       client.doc.transact(() => client.ytext.insert(client.ytext.length, 'pending edit\n'));
@@ -142,7 +142,7 @@ describe('template watcher capabilities — content pipeline parity (FR4)', () =
       server = await createTestServer({ contentDir, debounce: 100, maxDebounce: 400 });
       const rig = server;
 
-      const client = await createTestClient(rig.port, fromDoc, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, fromDoc);
       await pollUntil(() => client.ytext.toString() === src, 8000);
 
       renameSync(fromFile, toFile);
@@ -170,7 +170,7 @@ describe('template watcher capabilities — content pipeline parity (FR4)', () =
       server = await createTestServer({ contentDir, debounce: 100, maxDebounce: 400 });
       const rig = server;
 
-      const client = await createTestClient(rig.port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, docName);
       await pollUntil(() => client.ytext.toString() === clean, 8000);
 
       const conflicted =
