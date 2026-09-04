@@ -30,6 +30,7 @@ import type {
   ClaudeReadiness,
   CliReadiness,
   OkHeadBranchInfo as HeadBranchInfo,
+  OkAssetUploadResult,
   OkChromeColors,
   OkDesktopConfig,
   OkEditorActiveTargetSnapshot,
@@ -428,6 +429,7 @@ export interface RequestChannels {
       | OkBugReportScreenshot
       | OkBugReportListResult
       | OkBugReportDeleteResult
+      | OkAssetUploadResult
       | null;
   };
   'ok:project:list-recent': { args: []; result: RecentProject[] };

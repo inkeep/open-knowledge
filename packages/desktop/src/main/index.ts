@@ -255,6 +255,7 @@ import {
   type EditorPresenceProbes,
   registerIntegrationsSettings,
 } from './integrations-settings.ts';
+import { handleAssetUpload } from './ipc/asset-upload.ts';
 import {
   type BugReportScreenshotEntry,
   createBugReportScreenshotHold,
@@ -4522,6 +4523,17 @@ function registerIpcHandlers() {
             },
           },
           screenshotPngBytes: (reportId) => bugReportSendScreenshots.read(reportId),
+          attachmentBytes: (reportId) => bugReportSendScreenshots.readAttachments(reportId),
+        },
+        request,
+      );
+    }
+    if (request.kind === 'upload-image') {
+      return handleAssetUpload(
+        {
+          intakeBaseUrl: resolveBugReportIntakeUrl({
+            envUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+          }),
         },
         request,
       );
@@ -4579,6 +4591,16 @@ function registerIpcHandlers() {
         onScreenshotStaged: (reportId, png) => {
           const composedBy = event.sender.id;
           bugReportSendScreenshots.remember(reportId, png, composedBy);
+          if (bugReportSendScreenshotReapers.has(composedBy)) return;
+          bugReportSendScreenshotReapers.add(composedBy);
+          event.sender.once('destroyed', () => {
+            bugReportSendScreenshotReapers.delete(composedBy);
+            bugReportSendScreenshots.forgetOwner(composedBy);
+          });
+        },
+        onAttachmentsStaged: (reportId, attachments) => {
+          const composedBy = event.sender.id;
+          bugReportSendScreenshots.rememberAttachments(reportId, attachments, composedBy);
           if (bugReportSendScreenshotReapers.has(composedBy)) return;
           bugReportSendScreenshotReapers.add(composedBy);
           event.sender.once('destroyed', () => {

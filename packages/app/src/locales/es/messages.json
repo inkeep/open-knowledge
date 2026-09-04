@@ -2307,6 +2307,9 @@
     "PMyJ9C": ["Todavía no hay sesión de edición"],
     "PPFQ3o": ["Se instaló \"", ["0"], "\" en ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" no existe."],
+    "PR0_fn": [
+      "Añade hasta 3 capturas o fotos tuyas, como un diálogo del sistema, otro monitor o una foto del bloqueo hecha con el móvil. No se censuran, así que deja fuera cualquier cosa que no deba compartirse."
+    ],
     "PR9FSv": ["Ir al siguiente resultado de búsqueda del editor visual."],
     "PRgIJh": ["No se pudo actualizar ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["de ", ["0"]],
@@ -5283,6 +5286,7 @@
       "No se pudo reiniciar el servidor: se está ejecutando con otra cuenta. Reinicia el equipo para liberarlo y vuelve a abrir este proyecto."
     ],
     "uUCrBv": ["enlace simbólico"],
+    "uV3EYs": ["Tus imágenes"],
     "uVbUP8": ["Ajustes…"],
     "uX85yl": [
       "Los archivos de configuración incluyen: <0>.ok/</0>, las configuraciones MCP de las herramientas de IA (<1>.mcp.json</1> y los archivos de cada herramienta). Tus habilidades no están incluidas: siguen a git como cualquier otro archivo del proyecto.<2/><3>Compartido</3> los guarda en git, así que quien clone el repositorio tendrá la misma configuración. <4/><5>Solo yo</5> los mantiene fuera de git (mediante <6>.git/info/exclude</6>)."

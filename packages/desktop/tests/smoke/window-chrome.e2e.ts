@@ -178,12 +178,21 @@ test.describe('Editor header drag-region smoke', () => {
       const overflowRootRect = overflowRoot.getBoundingClientRect();
       const shareButtonRect = shareButton.getBoundingClientRect();
       const trailingActionsRect = trailingActions.getBoundingClientRect();
+      const leadingGapPx = overflowRootRect.left - leadingActionsRect.right;
+      const hasLeadingGap = leadingGapPx > 4;
+      const probeLeadingGapRegion = () => {
+        if (!hasLeadingGap) return true;
+        const probeX = leadingActionsRect.right + Math.min(4, leadingGapPx / 2);
+        const probeY = (leadingActionsRect.top + leadingActionsRect.bottom) / 2;
+        const probeElement = document.elementFromPoint(probeX, probeY);
+        if (!(probeElement instanceof HTMLElement)) return false;
+        return appRegion(probeElement) === 'drag';
+      };
 
       return {
         filesButton: appRegionFor('[data-editor-header-leading-actions] [data-sidebar="trigger"]'),
         headerCanvas: appRegionFor('header[data-electron-drag]'),
-        leadingGapIsDraggable:
-          overflowRootRect.left > leadingActionsRect.right && appRegion(paneTabs) === 'drag',
+        leadingGapIsDraggable: probeLeadingGapRegion(),
         leadingActions: appRegion(leadingActions),
         newTabButton: appRegionFor('[data-testid="editor-new-tab-button"]'),
         overflowRoot: appRegion(overflowRoot),

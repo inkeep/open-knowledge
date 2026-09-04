@@ -59,6 +59,41 @@ interface RaceResult {
   raceFired: boolean;
 }
 
+async function resolveLeftoverConflict(port: number, docName: string): Promise<void> {
+  const file = docName.endsWith('.md') ? docName : `${docName}.md`;
+  const res = await fetch(`http://localhost:${port}/api/sync/resolve-conflict`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ file, strategy: 'mine' }),
+  }).catch(() => null);
+  if (!res) return;
+  if (res.ok || res.status === 404 || res.status === 503) return;
+}
+
+async function seedProbeDocument(port: number, docName: string, markdown: string): Promise<void> {
+  await resolveLeftoverConflict(port, docName);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const seedRes = await fetch(`http://localhost:${port}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        docName,
+        markdown,
+        position: 'replace',
+        agentId: 'probe-seed',
+        agentName: 'probe-seed',
+      }),
+    });
+    if (seedRes.ok) return;
+    if (seedRes.status === 409 && attempt < 2) {
+      await resolveLeftoverConflict(port, docName);
+      await wait(250);
+      continue;
+    }
+    throw new Error(`Seed write failed: ${seedRes.status} ${await seedRes.text()}`);
+  }
+}
+
 async function executeRace(opts: {
   page: import('@playwright/test').Page;
   port: number;
@@ -73,24 +108,11 @@ async function executeRace(opts: {
     '# Probe\n\nBANANA is here in the first paragraph.\n\nSecond paragraph for diff-para variant.\n';
   expect(seedContent).not.toContain(HUMAN_SENTINEL);
   expect(AGENT_REPLACE).not.toContain(HUMAN_SENTINEL);
-  const seedRes = await fetch(`http://localhost:${port}/api/agent-write-md`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      docName,
-      markdown: seedContent,
-      position: 'replace',
-      agentId: `probe-seed`,
-      agentName: 'probe-seed',
-    }),
-  });
-  if (!seedRes.ok) {
-    throw new Error(`Seed write failed: ${seedRes.status} ${await seedRes.text()}`);
-  }
+  await seedProbeDocument(port, docName, seedContent);
 
-  await expect(
-    page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)'),
-  ).toContainText('BANANA is here', {
+  const editor = page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)');
+  await editor.waitFor({ state: 'visible', timeout: 10_000 });
+  await expect(editor).toContainText('BANANA is here', {
     timeout: 10_000,
   });
   let targetPara: import('@playwright/test').Locator;

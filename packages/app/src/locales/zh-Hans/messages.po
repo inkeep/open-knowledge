@@ -1550,6 +1550,10 @@ msgstr "添加到 {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "添加到词典"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "最多可添加 3 张你自己的截图或照片，比如系统对话框、另一台显示器，或者用手机拍下的卡顿画面。它们不会做隐去处理，所以请不要放入不该分享的内容。"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "添加值"
@@ -2005,7 +2009,7 @@ msgstr "资源：{title}"
 msgid "Attach a file"
 msgstr "附加文件"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "附加图片"
 
@@ -2015,6 +2019,7 @@ msgid "Attachments"
 msgstr "附件"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "附件总大小必须小于 3 MB。"
 
@@ -7925,7 +7930,7 @@ msgstr "markdownlint 规则"
 msgid "Match case"
 msgstr "区分大小写"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "最多 {MAX_ATTACHMENTS} 个附件"
 
@@ -9093,6 +9098,7 @@ msgid "Only modified"
 msgstr "仅显示已修改的"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "只允许 PNG、JPEG 或 WebP 图片。"
 
@@ -10116,6 +10122,7 @@ msgid "Please enter a valid email address."
 msgstr "请输入有效的电子邮件地址。"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "请输入有效的邮箱。"
 
@@ -10718,7 +10725,7 @@ msgstr "移除"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "移除 {0}"
 
@@ -11998,6 +12005,7 @@ msgid "Share URL"
 msgstr "共享 URL"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "留下你的邮箱以便我们跟进"
 
@@ -15100,6 +15108,7 @@ msgid "You can also manage this in Settings."
 msgstr "你也可以在「设置」中管理这一项。"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "你最多可以附加 {MAX_ATTACHMENTS} 张图片。"
 
@@ -15189,6 +15198,7 @@ msgid "You're subscribed!"
 msgstr "订阅成功！"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
@@ -15239,6 +15249,10 @@ msgstr "你的 GitHub 会话已过期——请重新登录以验证推送权限�
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "你的 GitHub 令牌缺少必需的权限范围。请尝试重新登录。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "你的图片"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

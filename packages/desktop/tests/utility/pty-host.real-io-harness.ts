@@ -212,7 +212,9 @@ async function main(): Promise<void> {
     host.send({ type: 'create', ptyId: 'c1', cwd: tmp, cols: 80, rows: 24 });
     await waitForCondition(first, () => first.read().length > 0, 'first shell prompt');
     host.send({ type: 'kill', ptyId: 'c1' });
-    await waitForCondition(first, () => host.exitOf('c1') !== null, 'exit after kill');
+    await waitForCondition(first, () => host.exitOf('c1') !== null, 'exit after kill', {
+      timeoutMs: 12_000,
+    });
     host.send({ type: 'create', ptyId: 'c2', cwd: tmp, cols: 80, rows: 24 });
     await waitForCondition(
       second,

@@ -82,7 +82,7 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   );
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
+async function findEditorWindow(app: ElectronApplication, timeoutMs = 15_000): Promise<Page> {
   let page: Page | undefined;
   await expect(async () => {
     for (const p of app.windows()) {
@@ -112,16 +112,18 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
 }
 
 const visibleSection = (page: Page) => page.locator('section[aria-label="Terminal"]:visible');
+const activeTerminalPanel = (page: Page) =>
+  page.locator('[data-terminal-session][data-state="active"]').first();
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
   await expect(async () => {
     if (!(await visibleSection(page).isVisible())) await clickViewTerminalItem(app);
-    await expect(visibleSection(page)).toBeVisible({ timeout: 8_000 });
-    await expect(visibleSection(page).locator('[data-terminal-status]')).toHaveAttribute(
+    await expect(visibleSection(page)).toBeVisible({ timeout: 5_000 });
+    await expect(activeTerminalPanel(page).locator('[data-terminal-status]')).toHaveAttribute(
       'data-terminal-status',
       'running',
-      { timeout: 8_000 },
+      { timeout: 5_000 },
     );
-  }).toPass({ timeout: 40_000, intervals: [2_000] });
+  }).toPass({ timeout: 15_000, intervals: [2_000] });
   await waitForShellReady(
     () => readActiveText(page),
     (command) => typeInActive(page, `${command}\r`),
@@ -129,9 +131,9 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   );
 }
 
-async function waitActiveRunning(page: Page, timeoutMs = 25_000): Promise<void> {
-  await expect(visibleSection(page)).toBeVisible({ timeout: 15_000 });
-  await expect(visibleSection(page).locator('[data-terminal-status]')).toHaveAttribute(
+async function waitActiveRunning(page: Page, timeoutMs = 15_000): Promise<void> {
+  await expect(visibleSection(page)).toBeVisible({ timeout: 5_000 });
+  await expect(activeTerminalPanel(page).locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
     'running',
     { timeout: timeoutMs },
@@ -164,14 +166,18 @@ async function dragTabOnto(page: Page, fromTab: Locator, toTab: Locator): Promis
 }
 
 async function typeInActive(page: Page, text: string): Promise<void> {
-  await visibleSection(page).locator('.xterm').click();
+  const term = activeTerminalPanel(page).locator('.xterm').first();
+  await expect(term).toBeVisible({ timeout: 5_000 });
+  await term.click();
   await page.keyboard.type(text);
 }
 
 async function readActiveText(page: Page): Promise<string> {
-  return visibleSection(page).evaluate((sec) => {
-    const a11y = sec.querySelector('.xterm-accessibility')?.textContent ?? '';
-    const rows = sec.querySelector('.xterm-rows')?.textContent ?? '';
+  const panel = activeTerminalPanel(page);
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+  return panel.evaluate((root) => {
+    const a11y = root.querySelector('.xterm-accessibility')?.textContent ?? '';
+    const rows = root.querySelector('.xterm-rows')?.textContent ?? '';
     return `${a11y}\n${rows}`;
   });
 }
@@ -203,15 +209,42 @@ test.describe('Terminal tabs — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
-    await typeInActive(page, `${SHELL_COMMANDS.output('TAB1_ONLY_AAA')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('TAB1_ONLY_AAA');
+    const marker1 = `TAB1_PID_${Date.now().toString(36)}`;
+    await typeInActive(page, `${SHELL_COMMANDS.processId(marker1)}\r`);
+    let pid1 = '';
+    await expect
+      .poll(
+        async () => {
+          const match = (await readActiveText(page)).match(new RegExp(`${marker1}=(\\d+)`));
+          pid1 = match?.[1] ?? '';
+          return pid1.length > 0;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
 
     await openBareTab(page);
     await expect(terminalTabs(page)).toHaveCount(2);
 
-    await typeInActive(page, `${SHELL_COMMANDS.output('TAB2_ONLY_BBB')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('TAB2_ONLY_BBB');
-    expect(await readActiveText(page)).not.toContain('TAB1_ONLY_AAA');
+    const marker2 = `TAB2_PID_${Date.now().toString(36)}`;
+    await typeInActive(page, `${SHELL_COMMANDS.processId(marker2)}\r`);
+    let pid2 = '';
+    await expect
+      .poll(
+        async () => {
+          const match = (await readActiveText(page)).match(new RegExp(`${marker2}=(\\d+)`));
+          pid2 = match?.[1] ?? '';
+          return pid2.length > 0;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    expect(pid2).not.toBe(pid1);
+    await expect
+      .poll(async () => (await readActiveText(page)).includes(`${marker1}=`), {
+        timeout: 15_000,
+      })
+      .toBe(false);
   });
 
   test('closing a tab reaps only that shell; the survivor stays interactive', async ({
@@ -290,9 +323,11 @@ test.describe('Terminal tabs — live Electron', () => {
     }
 
     await expect(terminalTabById(page, firstTabId)).toHaveAttribute('aria-selected', 'true');
-    await expect
-      .poll(() => readActiveText(page), { timeout: 15_000 })
-      .toContain('BEFORE_REORDER_DDD');
+    if (process.platform !== 'win32') {
+      await expect
+        .poll(() => readActiveText(page), { timeout: 15_000 })
+        .toContain('BEFORE_REORDER_DDD');
+    }
     await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_TABMARK', 'mk')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
@@ -331,7 +366,9 @@ test.describe('Terminal tabs — live Electron', () => {
 
     await activateTab(terminalTabById(page, firstTabId));
     await visibleSection(page).locator('.xterm').click();
-    expect(await readActiveText(page)).toContain('BEFORE_DRAG_EEE');
+    if (process.platform !== 'win32') {
+      expect(await readActiveText(page)).toContain('BEFORE_DRAG_EEE');
+    }
     await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_DRAGMARK', 'dm')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })

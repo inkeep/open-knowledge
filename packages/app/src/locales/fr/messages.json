@@ -2332,6 +2332,9 @@
     "PMyJ9C": ["Pas encore de session de modification"],
     "PPFQ3o": ["« ", ["0"], " » installé dans ", ["1"]],
     "PQCdtv": ["« ", ["docName"], " » n'existe pas."],
+    "PR0_fn": [
+      "Ajoutez jusqu'à 3 captures ou photos de votre choix : une boîte de dialogue système, un autre écran, ou une photo prise au téléphone d'un blocage. Elles ne sont pas masquées, alors laissez de côté tout ce qui ne doit pas être partagé."
+    ],
     "PR9FSv": ["Va au résultat de recherche suivant dans l'éditeur visuel."],
     "PRgIJh": ["Impossible de mettre à jour ", ["subRoot"], " : ", ["0"]],
     "PRnH8G": ["sur ", ["0"]],
@@ -5340,6 +5343,7 @@
       "Impossible de redémarrer le serveur — il s'exécute sous un autre compte. Redémarrez votre ordinateur pour le libérer, puis rouvrez ce projet."
     ],
     "uUCrBv": ["lien symbolique"],
+    "uV3EYs": ["Vos images"],
     "uVbUP8": ["Paramètres…"],
     "uX85yl": [
       "Les fichiers de configuration comprennent : <0>.ok/</0>, les configurations MCP des outils IA (<1>.mcp.json</1> et les fichiers propres à chaque outil). Vos compétences ne sont pas concernées : elles suivent git comme n'importe quel autre fichier du projet.<2/><3>Partagé</3> les valide dans git, donc toute personne qui clone le dépôt obtient la même configuration. <4/><5>Moi uniquement</5> les tient à l'écart de git (via <6>.git/info/exclude</6>)."

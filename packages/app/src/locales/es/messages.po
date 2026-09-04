@@ -1550,6 +1550,10 @@ msgstr "Añadir a {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Añadir al diccionario"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "Añade hasta 3 capturas o fotos tuyas, como un diálogo del sistema, otro monitor o una foto del bloqueo hecha con el móvil. No se censuran, así que deja fuera cualquier cosa que no deba compartirse."
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Añadir valor"
@@ -2005,7 +2009,7 @@ msgstr "Recurso: {title}"
 msgid "Attach a file"
 msgstr "Adjuntar un archivo"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "Adjuntar imágenes"
 
@@ -2015,6 +2019,7 @@ msgid "Attachments"
 msgstr "Adjuntos"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "Los adjuntos deben sumar menos de 3 MB."
 
@@ -7925,7 +7930,7 @@ msgstr "Reglas de markdownlint"
 msgid "Match case"
 msgstr "Distinguir mayúsculas"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "Máximo {MAX_ATTACHMENTS} adjuntos"
 
@@ -9093,6 +9098,7 @@ msgid "Only modified"
 msgstr "Solo los modificados"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "Solo se admiten imágenes PNG, JPEG o WebP."
 
@@ -10116,6 +10122,7 @@ msgid "Please enter a valid email address."
 msgstr "Escribe una dirección de correo válida."
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "Escribe un correo válido."
 
@@ -10718,7 +10725,7 @@ msgstr "Quitar"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "Quitar {0}"
 
@@ -11998,6 +12005,7 @@ msgid "Share URL"
 msgstr "URL para compartir"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "Comparte tu correo para que podamos hacer seguimiento"
 
@@ -15100,6 +15108,7 @@ msgid "You can also manage this in Settings."
 msgstr "También puedes gestionar esto en Ajustes."
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "Puedes adjuntar hasta {MAX_ATTACHMENTS} imágenes."
 
@@ -15189,6 +15198,7 @@ msgid "You're subscribed!"
 msgstr "¡Te has suscrito!"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "tu@empresa.com"
@@ -15239,6 +15249,10 @@ msgstr "Tu sesión de GitHub ha caducado: inicia sesión de nuevo para verificar
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "A tu token de GitHub le faltan ámbitos obligatorios. Prueba a iniciar sesión de nuevo."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "Tus imágenes"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

@@ -1546,6 +1546,10 @@ msgstr "{gitignorePath}-এ যোগ করুন"
 msgid "Add to Dictionary"
 msgstr "অভিধানে যোগ করুন"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+msgstr "নিজের সর্বোচ্চ ৩টি স্ক্রিনশট বা ছবি যোগ করুন, যেমন কোনো সিস্টেম ডায়ালগ, অন্য একটি মনিটর, বা অ্যাপ আটকে যাওয়ার সময় ফোনে তোলা ছবি। এগুলো থেকে গোপন তথ্য সরানো হয় না, তাই ভাগ করা উচিত নয় এমন কিছু রাখবেন না।"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "মান যোগ করুন"
@@ -2001,7 +2005,7 @@ msgstr "সম্পদ: {title}"
 msgid "Attach a file"
 msgstr "একটি ফাইল সংযুক্ত করুন"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attach images"
 msgstr "ছবি সংযুক্ত করুন"
 
@@ -2011,6 +2015,7 @@ msgid "Attachments"
 msgstr "সংযুক্তি"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Attachments must total under 3 MB."
 msgstr "সংযুক্তির মোট আকার ৩ MB-র কম হতে হবে।"
 
@@ -7921,7 +7926,7 @@ msgstr "markdownlint নিয়ম"
 msgid "Match case"
 msgstr "অক্ষরের ছাঁদ মেলান"
 
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Maximum {MAX_ATTACHMENTS} attachments"
 msgstr "সর্বোচ্চ {MAX_ATTACHMENTS}টি সংযুক্তি"
 
@@ -9089,6 +9094,7 @@ msgid "Only modified"
 msgstr "কেবল পরিবর্তিত"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Only PNG, JPEG, or WebP images are allowed."
 msgstr "কেবল PNG, JPEG বা WebP ছবি অনুমোদিত।"
 
@@ -10112,6 +10118,7 @@ msgid "Please enter a valid email address."
 msgstr "অনুগ্রহ করে একটি বৈধ ইমেইল ঠিকানা দিন।"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Please enter a valid email."
 msgstr "অনুগ্রহ করে একটি বৈধ ইমেইল দিন।"
 
@@ -10714,7 +10721,7 @@ msgstr "সরান"
 #. placeholder {0}: file.name
 #. placeholder {0}: image.name
 #: src/components/acp/ThreadView.tsx
-#: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "Remove {0}"
 msgstr "{0} সরান"
 
@@ -11994,6 +12001,7 @@ msgid "Share URL"
 msgstr "শেয়ার URL"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Share your email for followups"
 msgstr "পরবর্তী যোগাযোগের জন্য আপনার ইমেইল দিন"
 
@@ -15096,6 +15104,7 @@ msgid "You can also manage this in Settings."
 msgstr "আপনি এটি Settings-এও সামলাতে পারেন।"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ImageAttachments.tsx
 msgid "You can attach up to {MAX_ATTACHMENTS} images."
 msgstr "আপনি সর্বোচ্চ {MAX_ATTACHMENTS}টি ছবি সংযুক্ত করতে পারেন।"
 
@@ -15185,6 +15194,7 @@ msgid "You're subscribed!"
 msgstr "আপনি সদস্য হয়েছেন!"
 
 #: src/components/FeedbackForm.tsx
+#: src/components/ReportBugDialogBody.tsx
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "you@company.com"
 msgstr "you@company.com"
@@ -15235,6 +15245,10 @@ msgstr "আপনার GitHub সেশনের মেয়াদ শেষ �
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub token is missing required scopes. Try signing in again."
 msgstr "আপনার GitHub টোকেনে আবশ্যক স্কোপ নেই। আবার সাইন ইন করে দেখুন।"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "Your images"
+msgstr "আপনার ছবি"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your knowledge base is now on GitHub at <0>{ownerLogin}/{repoName}</0>."

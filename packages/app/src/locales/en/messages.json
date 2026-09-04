@@ -2003,6 +2003,9 @@
     "PMyJ9C": ["No edit session yet"],
     "PPFQ3o": ["Installed \"", ["0"], "\" into ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" doesn't exist."],
+    "PR0_fn": [
+      "Add up to 3 screenshots or photos of your own, like a system dialog, another monitor, or a phone photo of a hang. They aren't redacted, so leave out anything that shouldn't be shared."
+    ],
     "PR9FSv": ["Move to the next visual-editor find result."],
     "PRgIJh": ["Couldn't update ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["of ", ["0"]],
@@ -4591,6 +4594,7 @@
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
     "uUCrBv": ["symlink"],
+    "uV3EYs": ["Your images"],
     "uVbUP8": ["Settings…"],
     "uX85yl": [
       "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."

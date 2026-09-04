@@ -2271,6 +2271,9 @@
     "PMyJ9C": ["Ainda não há sessão de edição"],
     "PPFQ3o": ["\"", ["0"], "\" instalado em ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" não existe."],
+    "PR0_fn": [
+      "Adicione até 3 capturas ou fotos suas, como uma caixa de diálogo do sistema, outro monitor ou uma foto do travamento feita com o celular. Elas não são ocultadas, então deixe de fora qualquer coisa que não deva ser compartilhada."
+    ],
     "PR9FSv": ["Vai para o próximo resultado de busca do editor visual."],
     "PRgIJh": ["Não deu para atualizar ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["de ", ["0"]],
@@ -5180,6 +5183,7 @@
       "Não deu para reiniciar o servidor — ele está rodando em outra conta. Reinicie o computador para liberá-lo e abra este projeto de novo."
     ],
     "uUCrBv": ["link simbólico"],
+    "uV3EYs": ["Suas imagens"],
     "uVbUP8": ["Configurações…"],
     "uX85yl": [
       "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta). Suas habilidades não são incluídas: elas seguem o git como qualquer outro arquivo do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."

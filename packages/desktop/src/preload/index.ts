@@ -8,7 +8,6 @@ import type {
   OkBugReportListResult,
   OkBugReportScreenshot,
   OkBugReportSendResult,
-  ReportBundleLevel,
   WorktreeCreateRequest,
   WorktreeCreateResult,
   WorktreeListResult,
@@ -21,6 +20,8 @@ import {
   webUtils,
 } from 'electron';
 import type {
+  OkAssetUploadRequest,
+  OkAssetUploadResult,
   OkChromeColors,
   OkDesktopBridge,
   OkDesktopConfig,
@@ -538,18 +539,14 @@ const bridge: OkDesktopBridge = {
   slides: createSlidesBridge(invoke),
 
   bugReport: {
-    create: (request: {
-      level: ReportBundleLevel;
-      note?: string;
-      includeCrashDump?: boolean;
-      includeScreenshot?: boolean;
-    }) =>
+    create: (request: Parameters<OkDesktopBridge['bugReport']['create']>[0]) =>
       invoke('ok:bug-report:dispatch', {
         kind: 'create',
         level: request.level,
         note: request.note,
         includeCrashDump: request.includeCrashDump,
         includeScreenshot: request.includeScreenshot,
+        attachments: request.attachments,
       }) as Promise<OkBugReportCreateResult>,
     captureScreenshot: () =>
       invoke('ok:bug-report:dispatch', {
@@ -580,6 +577,16 @@ const bridge: OkDesktopBridge = {
       ipcRenderer.on('ok:bug-report:crash-detected', listener);
       return () => ipcRenderer.removeListener('ok:bug-report:crash-detected', listener);
     },
+  },
+
+  assetUpload: {
+    uploadImage: (request: OkAssetUploadRequest) =>
+      invoke('ok:bug-report:dispatch', {
+        kind: 'upload-image',
+        contentType: request.contentType,
+        bytes: request.bytes,
+        filename: request.filename,
+      }) as Promise<OkAssetUploadResult>,
   },
 
   fs: {

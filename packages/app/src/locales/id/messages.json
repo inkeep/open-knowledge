@@ -2019,6 +2019,9 @@
     "PMyJ9C": ["Belum ada sesi penyuntingan"],
     "PPFQ3o": ["\"", ["0"], "\" dipasang ke ", ["1"]],
     "PQCdtv": ["\"", ["docName"], "\" tidak ada."],
+    "PR0_fn": [
+      "Tambahkan hingga 3 tangkapan layar atau foto Anda sendiri, misalnya dialog sistem, monitor lain, atau foto ponsel saat aplikasi macet. Isinya tidak disunting, jadi jangan sertakan apa pun yang tidak boleh dibagikan."
+    ],
     "PR9FSv": ["Pergi ke hasil pencarian penyunting visual berikutnya."],
     "PRgIJh": [["subRoot"], " tidak bisa diperbarui: ", ["0"]],
     "PRnH8G": ["dari ", ["0"]],
@@ -4619,6 +4622,7 @@
       "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."
     ],
     "uUCrBv": ["symlink"],
+    "uV3EYs": ["Gambar Anda"],
     "uVbUP8": ["Pengaturan…"],
     "uX85yl": [
       "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat). Keterampilan Anda tidak termasuk: semuanya mengikuti git seperti berkas lain di proyek ini.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."

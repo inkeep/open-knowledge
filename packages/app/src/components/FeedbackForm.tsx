@@ -4,30 +4,26 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Paperclip, ThumbsDown, ThumbsUp, X } from 'lucide-react';
-import { type FC, type ReactNode, useEffect, useRef, useState } from 'react';
+import { ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { fileToFeedbackAttachment, submitFeedback } from '@/lib/feedback';
-import { cn } from '@/lib/utils';
+import { commitContactEmail, contactEmailStore } from '@/lib/contact-email-store';
+import { submitFeedback, toFeedbackAttachmentPayloads } from '@/lib/feedback';
 import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from './ui/attachment';
+  ACCEPTED_IMAGE_TYPES,
+  MAX_IMAGE_ATTACHMENTS,
+  MAX_IMAGE_ATTACHMENTS_TOTAL_BYTES,
+} from '@/lib/image-attachments';
+import { cn } from '@/lib/utils';
+import { ImageAttachmentList, ImageAttachmentPicker } from './ImageAttachments';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from './ui/form';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
-import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 const REASONS: { value: string; label: MessageDescriptor }[] = [
   { value: 'too-slow', label: msg`Too slow` },
@@ -38,38 +34,12 @@ const REASONS: { value: string; label: MessageDescriptor }[] = [
   { value: 'other', label: msg`Other` },
 ];
 
-const MAX_ATTACHMENTS = 3;
-const MAX_ATTACHMENTS_TOTAL_BYTES = 3 * 1024 * 1024;
-const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const MAX_ATTACHMENTS = MAX_IMAGE_ATTACHMENTS;
 
 const selectedStateClassName =
   'data-[state=on]:border-primary data-[state=on]:bg-primary/5 data-[state=on]:text-primary';
 
 const pillClassName = `rounded-full border border-input bg-transparent px-3 ${selectedStateClassName}`;
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function mergeAttachments(current: File[], picked: FileList | null): File[] {
-  const seen = new Set(current.map((f) => `${f.name}:${f.size}`));
-  const accepted = Array.from(picked ?? []).filter(
-    (f) => ACCEPTED_IMAGE_TYPES.includes(f.type) && !seen.has(`${f.name}:${f.size}`),
-  );
-  return [...current, ...accepted].slice(0, MAX_ATTACHMENTS);
-}
-
-const AttachmentImagePreview: FC<{ file: File }> = ({ file }) => {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => {
-    const objectUrl = URL.createObjectURL(file);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [file]);
-  return url ? <img src={url} alt="" className="size-full object-cover" /> : null;
-};
 
 export const FeedbackForm = ({
   onSuccess,
@@ -87,7 +57,6 @@ export const FeedbackForm = ({
   className?: string;
 }) => {
   const { t } = useLingui();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const schema = z
     .object({
@@ -98,11 +67,13 @@ export const FeedbackForm = ({
         .array(z.instanceof(File))
         .max(MAX_ATTACHMENTS, t`You can attach up to ${MAX_ATTACHMENTS} images.`)
         .refine(
-          (files) => files.every((f) => ACCEPTED_IMAGE_TYPES.includes(f.type)),
+          (files) =>
+            files.every((f) => (ACCEPTED_IMAGE_TYPES as readonly string[]).includes(f.type)),
           t`Only PNG, JPEG, or WebP images are allowed.`,
         )
         .refine(
-          (files) => files.reduce((total, f) => total + f.size, 0) <= MAX_ATTACHMENTS_TOTAL_BYTES,
+          (files) =>
+            files.reduce((total, f) => total + f.size, 0) <= MAX_IMAGE_ATTACHMENTS_TOTAL_BYTES,
           t`Attachments must total under 3 MB.`,
         ),
       shareEmail: z.boolean(),
@@ -113,6 +84,8 @@ export const FeedbackForm = ({
       message: t`Please enter a valid email.`,
     });
 
+  const rememberedEmail = contactEmailStore.getSnapshot().email;
+
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -120,8 +93,8 @@ export const FeedbackForm = ({
       reasons: [],
       message: '',
       attachments: [],
-      shareEmail: false,
-      email: '',
+      shareEmail: rememberedEmail !== null,
+      email: rememberedEmail ?? '',
     },
   });
 
@@ -131,28 +104,35 @@ export const FeedbackForm = ({
   const shareEmail = useWatch({ control: form.control, name: 'shareEmail' });
 
   const attachments = useWatch({ control: form.control, name: 'attachments' });
-  const atMaxAttachments = attachments.length >= MAX_ATTACHMENTS;
   const attachmentsError = form.formState.errors.attachments;
   const setAttachments = (files: File[]) =>
     form.setValue('attachments', files, { shouldValidate: true });
 
   const onSubmit = async (data: z.infer<typeof schema>) => {
     try {
-      const attachments = data.attachments.length
-        ? await Promise.all(data.attachments.map(fileToFeedbackAttachment))
-        : undefined;
+      const email = data.shareEmail && data.email ? data.email : undefined;
+      const attachments = await toFeedbackAttachmentPayloads(data.attachments);
       const result = await submitFeedback({
         kind: 'general',
         rating: data.rating,
         reasons: data.reasons,
         message: data.message.trim() || undefined,
-        email: data.shareEmail && data.email ? data.email : undefined,
-        attachments,
+        email,
+        ...attachments,
         source,
       });
       if (result.ok) {
         toast.success(t`Thanks for the feedback!`);
-        form.reset();
+        commitContactEmail(data.shareEmail, data.email);
+        const remembered = contactEmailStore.getSnapshot().email;
+        form.reset({
+          rating: undefined,
+          reasons: [],
+          message: '',
+          attachments: [],
+          shareEmail: remembered !== null,
+          email: remembered ?? '',
+        });
         onSuccess?.();
         return;
       }
@@ -292,48 +272,10 @@ export const FeedbackForm = ({
                             placeholder={t`Tell us more (optional)`}
                             className={cn('resize-none pb-9', compact ? 'min-h-16' : 'min-h-20')}
                           />
-                          <Tooltip>
-                            {}
-                            <TooltipTrigger asChild>
-                              <span
-                                className={cn(
-                                  'absolute bottom-1.5 left-1.5 inline-flex',
-                                  atMaxAttachments && 'cursor-not-allowed',
-                                )}
-                              >
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  disabled={atMaxAttachments}
-                                  onClick={() => fileInputRef.current?.click()}
-                                  className="size-7 text-muted-foreground"
-                                >
-                                  <Paperclip className="size-4" />
-                                  <span className="sr-only">
-                                    <Trans>Attach images</Trans>
-                                  </span>
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {atMaxAttachments ? (
-                                <Trans>Maximum {MAX_ATTACHMENTS} attachments</Trans>
-                              ) : (
-                                <Trans>Attach images</Trans>
-                              )}
-                            </TooltipContent>
-                          </Tooltip>
-                          <Input
-                            ref={fileInputRef}
-                            type="file"
-                            accept={ACCEPTED_IMAGE_TYPES.join(',')}
-                            multiple
-                            className="hidden"
-                            onChange={(e) => {
-                              setAttachments(mergeAttachments(attachments, e.target.files));
-                              e.target.value = '';
-                            }}
+                          <ImageAttachmentPicker
+                            files={attachments}
+                            onChange={setAttachments}
+                            className="absolute bottom-1.5 left-1.5"
                           />
                         </div>
                       </FormControl>
@@ -341,36 +283,11 @@ export const FeedbackForm = ({
                   )}
                 />
 
-                {attachments.length > 0 && (
-                  <AttachmentGroup>
-                    {attachments.map((file, index) => (
-                      <Attachment key={`${file.name}:${file.size}`} size="xs">
-                        <AttachmentMedia variant="image">
-                          <AttachmentImagePreview file={file} />
-                        </AttachmentMedia>
-                        <AttachmentContent>
-                          <AttachmentTitle>{file.name}</AttachmentTitle>
-                          <AttachmentDescription>{formatFileSize(file.size)}</AttachmentDescription>
-                        </AttachmentContent>
-                        <AttachmentActions>
-                          <AttachmentAction
-                            type="button"
-                            aria-label={t`Remove ${file.name}`}
-                            onClick={() =>
-                              setAttachments(attachments.filter((_, i) => i !== index))
-                            }
-                          >
-                            <X className="size-3.5" />
-                          </AttachmentAction>
-                        </AttachmentActions>
-                      </Attachment>
-                    ))}
-                  </AttachmentGroup>
-                )}
-
-                {attachmentsError?.message && (
-                  <p className="text-destructive text-sm">{attachmentsError.message}</p>
-                )}
+                <ImageAttachmentList
+                  files={attachments}
+                  onChange={setAttachments}
+                  error={attachmentsError?.message ?? null}
+                />
               </div>
             </div>
             <div className="space-y-2">

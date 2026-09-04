@@ -23,6 +23,7 @@ interface FakePty extends PtyProcessLike {
   writes: string[];
   resizes: Array<[number, number]>;
   killCount: number;
+  killSignals: Array<string | undefined>;
   killThrows: boolean;
   pauseCount: number;
   resumeCount: number;
@@ -53,8 +54,10 @@ function makeFakePty(): FakePty {
     resize(cols, rows) {
       this.resizes.push([cols, rows]);
     },
-    kill() {
+    killSignals: [] as Array<string | undefined>,
+    kill(signal?: string) {
       this.killCount += 1;
+      this.killSignals.push(signal);
       if (this.killThrows) throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
     },
     pause() {
@@ -353,6 +356,37 @@ describe('setupPtyHost — streaming', () => {
     const h = makeHarness({ pty });
     h.fire(CREATE());
     h.fire({ type: 'kill', ptyId: 'p1' });
+    expect(pty.killCount).toBe(1);
+  });
+
+  test('escalates a hung kill to SIGKILL when onExit never fires', async () => {
+    const pty = makeFakePty();
+    const h = makeHarness({ pty });
+    h.fire(CREATE());
+    h.fire({ type: 'kill', ptyId: 'p1' });
+    expect(pty.killCount).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(pty.killCount).toBe(2);
+    expect(pty.killSignals).toEqual([undefined, 'SIGKILL']);
+  });
+
+  test('cancels SIGKILL escalate after onExit', async () => {
+    const pty = makeFakePty();
+    const h = makeHarness({ pty });
+    h.fire(CREATE());
+    h.fire({ type: 'kill', ptyId: 'p1' });
+    pty.emitExit({ exitCode: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(pty.killCount).toBe(1);
+  });
+
+  test('does not escalate SIGKILL after killActiveSessions', async () => {
+    const pty = makeFakePty();
+    const h = makeHarness({ pty });
+    h.fire(CREATE());
+    h.handle.killActive();
+    expect(pty.killCount).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 300));
     expect(pty.killCount).toBe(1);
   });
 

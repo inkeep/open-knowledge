@@ -478,6 +478,9 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           delete: async () => ({ ok: true as const }),
           onCrashDetected: () => () => {},
         },
+        assetUpload: {
+          uploadImage: async () => ({ error: 'invalid-request' as const }),
+        },
         navigator: {
           open: async () => {},
         },

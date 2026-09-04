@@ -23,6 +23,7 @@ import {
 } from './support-file-write.ts';
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
+const KILL_ESCALATE_MS = 250;
 
 const STRIPPED_ENV_MARKERS = [
   'OK_ELECTRON_PROTOCOL_HOST',
@@ -560,6 +561,19 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const clearHostTimer = deps.clearTimer ?? clearTimeout;
   const materializeSupportFile = deps.materializeSupportFile ?? materializeSupportFileSync;
   const cachedWindowsPaths = new Map<string, string>();
+  const killEscalateTokens = new Map<string, ReturnType<typeof setHostTimer>>();
+
+  function clearKillEscalate(ptyId: string): void {
+    const token = killEscalateTokens.get(ptyId);
+    if (token === undefined) return;
+    killEscalateTokens.delete(ptyId);
+    clearHostTimer(token);
+  }
+
+  function clearAllKillEscalates(): void {
+    for (const token of killEscalateTokens.values()) clearHostTimer(token);
+    killEscalateTokens.clear();
+  }
 
   function probeWindowsShellPath(
     command: string,
@@ -578,9 +592,13 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     deps.parentPort?.postMessage(message);
   }
 
-  function safeKill(pty: PtyProcessLike): void {
+  function safeKill(pty: PtyProcessLike, signal?: string): void {
     try {
-      pty.kill();
+      if (signal === undefined) {
+        pty.kill();
+      } else {
+        pty.kill(signal);
+      }
     } catch (err) {
       const code = (err as { code?: string } | null)?.code;
       if (code !== 'ESRCH') {
@@ -730,6 +748,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       if (sessions.get(ptyId) === pty) post({ type: 'data', ptyId, data });
     });
     pty.onExit(({ exitCode, signal }) => {
+      clearKillEscalate(ptyId);
       if (sessions.get(ptyId) === pty) sessions.delete(ptyId);
       post({ type: 'exit', ptyId, exitCode, signal: signal ?? null });
       if (shuttingDown && sessions.size === 0) finishShutdown();
@@ -746,7 +765,18 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
 
   function handleKill(message: PtyKillMessage): void {
     const pty = sessions.get(message.ptyId);
-    if (pty) safeKill(pty);
+    if (!pty) return;
+    const ptyId = message.ptyId;
+    safeKill(pty);
+    if (sessions.get(ptyId) !== pty) return;
+    clearKillEscalate(ptyId);
+    const token = setHostTimer(() => {
+      killEscalateTokens.delete(ptyId);
+      if (sessions.get(ptyId) !== pty) return;
+      safeKill(pty, 'SIGKILL');
+    }, KILL_ESCALATE_MS);
+    if (typeof token.unref === 'function') token.unref();
+    killEscalateTokens.set(ptyId, token);
   }
 
   function handlePause(message: PtyPauseMessage): void {
@@ -758,6 +788,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   }
 
   function killActiveSessions(): void {
+    clearAllKillEscalates();
     for (const pty of sessions.values()) safeKill(pty);
     sessions.clear();
   }
@@ -769,6 +800,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   function finishShutdown(): void {
     if (hostExited) return;
     hostExited = true;
+    clearAllKillEscalates();
     if (shutdownToken !== null) {
       clearHostTimer(shutdownToken);
       shutdownToken = null;
@@ -781,6 +813,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   function handleShutdown(): void {
     if (shuttingDown) return;
     shuttingDown = true;
+    clearAllKillEscalates();
     for (const pty of sessions.values()) safeKill(pty);
     if (sessions.size === 0) {
       finishShutdown();
