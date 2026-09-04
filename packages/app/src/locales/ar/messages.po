@@ -10691,6 +10691,7 @@ msgstr "الصلة"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -13763,6 +13764,10 @@ msgstr "هذه معاينة لـ {boldName}، اكتُشفت في {boldHarness} 
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "هذه معاينة لـ {boldName}. ثبّتها في وكلائك."
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "يستغرق هذا وقتًا أطول من المعتاد. عادةً ما تؤدي إعادة تحميل النافذة إلى حل المشكلة."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"

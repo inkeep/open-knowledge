@@ -10687,6 +10687,7 @@ msgstr "প্রাসঙ্গিকতা"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -13759,6 +13760,10 @@ msgstr "এটি {boldName}-এর একটি প্রাকদর্শন,
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "এটি {boldName}-এর একটি প্রাকদর্শন। এটি আপনার এজেন্টগুলোতে ইনস্টল করুন।"
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "এটি স্বাভাবিকের চেয়ে বেশি সময় নিচ্ছে। উইন্ডোটি আবার লোড করলে সাধারণত এটি ঠিক হয়ে যায়।"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"

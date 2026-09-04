@@ -10691,6 +10691,7 @@ msgstr "관련성"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -13763,6 +13764,10 @@ msgstr "이것은 {boldName}의 미리보기입니다. {boldHarness}의 {boldLev
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "이것은 {boldName}의 미리보기입니다. 에이전트에 설치하세요."
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "평소보다 오래 걸리고 있습니다. 창을 새로 고치면 대개 해결됩니다."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"

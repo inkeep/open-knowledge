@@ -654,6 +654,24 @@ describe('TerminalPanel', () => {
     expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
   });
 
+  test('the starting notice keeps its Reload clickable under the click-through overlay', async () => {
+    vi.useFakeTimers();
+    try {
+      const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+      render(<TerminalPanel bridge={bridge} />);
+      const notice = await vi.waitFor(() => screen.getByTestId('terminal-starting-notice'));
+      expect(notice.className).toContain('pointer-events-none');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8_000);
+      });
+      const reload = screen.getByRole('button', { name: 'Reload' });
+      expect(notice.contains(reload)).toBe(true);
+      expect(reload.className).toContain('pointer-events-auto');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('forwards user keystrokes to the PTY via input', async () => {
     const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
     render(<TerminalPanel bridge={bridge} />);

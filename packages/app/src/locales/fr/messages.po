@@ -10691,6 +10691,7 @@ msgstr "Pertinence"
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
+#: src/components/TerminalStartingNotice.tsx
 #: src/lib/locale-load-failure-notice.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Reload"
@@ -13763,6 +13764,10 @@ msgstr "Ceci est un aperçu de {boldName}, détectée dans {boldHarness} au nive
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}. Install it into your agents."
 msgstr "Ceci est un aperçu de {boldName}. Installez-la dans vos agents."
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "This is taking longer than usual. Reloading the window usually clears it."
+msgstr "Cela prend plus de temps que d'habitude. Recharger la fenêtre suffit généralement à résoudre le problème."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "This isn’t a regular theme file"

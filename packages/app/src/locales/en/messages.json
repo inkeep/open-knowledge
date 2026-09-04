@@ -3372,6 +3372,7 @@
     "gITz7o": [
       "Move the cursor or extend selection through CodeMirror's standard source-editor navigation keymap."
     ],
+    "gJ5Yso": ["This is taking longer than usual. Reloading the window usually clears it."],
     "gJR87V": ["Could not create the project folder. Pick a different folder."],
     "gKi-a_": ["New project"],
     "gLCE2c": [
