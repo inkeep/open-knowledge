@@ -1150,8 +1150,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       'persistence.onStoreDocument',
       { attributes: { 'doc.name': documentName } },
       async () => {
-        const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
-
         const lifecycleStatus = frozenDocLifecycleStatus(document);
         if (lifecycleStatus !== null) {
           log.info(
@@ -1190,6 +1188,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           );
           incrementPersistenceForceFlushDuringBurst();
         }
+
+        const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
 
         const { sv: stateVectorAtRead, json } = captureDocSnapshotForPersistence(document);
         const ytextSnapshot = document.getText('source').toString();
@@ -1256,9 +1256,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
         let markdownSemanticallyUnchanged =
           currentBase !== undefined &&
-          normalizedMarkdown === normalizeBridge(currentBase) &&
-          !addsBlankLines(currentBase, markdown);
-        if (!markdownSemanticallyUnchanged && ephemeral && currentBase !== undefined) {
+          (agentTriggeredStore
+            ? markdown === currentBase
+            : normalizedMarkdown === normalizeBridge(currentBase) &&
+              !addsBlankLines(currentBase, markdown));
+        if (
+          !markdownSemanticallyUnchanged &&
+          !agentTriggeredStore &&
+          ephemeral &&
+          currentBase !== undefined
+        ) {
           const canonicalBase = canonicalizeForEphemeralBaseline(currentBase, documentName);
           if (canonicalBase !== null && normalizedMarkdown === canonicalBase) {
             markdownSemanticallyUnchanged = true;
