@@ -38,6 +38,7 @@ import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice'
 import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
 import { TerminalStartingNotice } from './TerminalStartingNotice';
+import { isRenderedContainer, shouldFitForResize } from './terminal-fit-gate';
 import { createTerminalFileLinkProvider } from './terminal-link-provider';
 import { createRecentOpenGuard, type TerminalLinkTarget } from './terminal-links';
 import { createSameFrameRepaint } from './terminal-render-flush';
@@ -336,7 +337,11 @@ function TerminalSession({
       }
     }
 
-    fit.fit();
+    if (
+      isRenderedContainer(container.getBoundingClientRect(), window.getComputedStyle(container))
+    ) {
+      fit.fit();
+    }
 
     const repaintSameFrame = createSameFrameRepaint(term);
 
@@ -521,7 +526,8 @@ function TerminalSession({
       ptyResizeThrottle = createResizeThrottle(() => {
         if (ptyId) bridge.terminal.resize(ptyId, term.cols, term.rows);
       }, PTY_RESIZE_THROTTLE_MS);
-      observer = new ResizeObserver(() => {
+      observer = new ResizeObserver((entries) => {
+        if (!shouldFitForResize(entries)) return;
         const colsBefore = term.cols;
         const rowsBefore = term.rows;
         fit.fit();
@@ -621,7 +627,6 @@ function TerminalSession({
           } else {
             markInteractive();
           }
-          bridge.terminal.resize(adoptPtyId, term.cols, term.rows);
           return;
         }
       }
