@@ -38,7 +38,6 @@
 
 import { Fragment, type Node as PmNode } from '@tiptap/pm/model';
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
-import { MIN_CARRIED_TRAILING_EMPTIES } from '../markdown/doc-edge-blank-runs.ts';
 import type { MarkdownManager } from '../markdown/index.ts';
 import {
   buildBlockSourceMap,
@@ -79,6 +78,8 @@ export interface ChangedBlocks {
  * full `Y.Text`. `bodyOffset` is the one place that difference is reconciled;
  * everything this module returns is already in full-source coordinates.
  */
+const MIN_WRITTEN_TRAILING_EMPTIES = 2;
+
 export interface Projection {
   /** The full `Y.Text('source')` string, frontmatter included. */
   readonly source: string;
@@ -435,7 +436,7 @@ function blankRunGapSplice(
       body,
       lineEnd(body, prev.sourceEnd),
       body.length,
-      '\n'.repeat(count >= MIN_CARRIED_TRAILING_EMPTIES ? count + 1 : 1),
+      '\n'.repeat(count >= MIN_WRITTEN_TRAILING_EMPTIES ? count + 1 : 1),
       shift,
     );
   }
