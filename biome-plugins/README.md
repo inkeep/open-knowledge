@@ -56,6 +56,25 @@ The rule does NOT catch:
 
 Plugin: [`biome-plugins/no-raw-html-interactive-element.grit`](no-raw-html-interactive-element.grit). Fixture: [`biome-plugins/__fixtures__/no-raw-html-interactive-element.fixture.tsx`](__fixtures__/no-raw-html-interactive-element.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-raw-html-interactive-element.test.ts`](../packages/app/tests/lint-plugins/no-raw-html-interactive-element.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
+### `no-themeless-pierre-diff.grit`
+
+`@pierre/diffs` render contract. Every `<MultiFileDiff>` construction site under `packages/app/src/**/*.tsx` (both the self-closing and the child-bearing JSX form) must pass an explicit `theme` and must set `diffStyle: 'unified'`. `new UnresolvedFile(...)` is covered by the `theme` half only — the constructor surfaces take no `diffStyle`.
+
+The `theme` check reads the `options` object, not the whole prop list, so a `theme` token elsewhere on the element (`data-theme="dark"`, a title string, a variable named `theme` passed to an unrelated prop) cannot suppress the diagnostic. The fixture pins that with a decoy case.
+
+Both halves are load-bearing. Pierre ships its own palette, so a themeless renderer paints in Pierre's colours instead of the app's and stops tracking the user's light/dark selection. And `diffStyle: 'split'` renders the two sides as separate DOM subtrees, so the change-stepper's DOM-order adjacency grouping counts roughly 2x the real groups — the displayed denominator desyncs from the anchors the stepper can actually reach.
+
+This rule replaces a `readFileSync` + regex meta-test that asserted the same invariant over source text. That test violated the AGENTS.md rule against asserting raw source text for props ("Source guards need proof runtime coverage is impossible" — it wasn't), and it carried a tautological self-test that ran a regex over its own string literals. The per-component half of its intent now lives in runtime assertions in `ActivityPanelDiffView.dom.test.tsx` (`pre[data-diff-type="single"]` for unified; the injected `:host` token block for theme). Lint is the right layer for the codebase-wide "no call site omits it" half — [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42).
+
+The rule does NOT catch:
+- a `@pierre/diffs` constructor other than `UnresolvedFile` — `new File(...)`, or any aliased import such as `File as PierreFile` in [`ConflictFilePreview.tsx`](../packages/app/src/components/ConflictFilePreview.tsx). GritQL matches the identifier as written, so a rename defeats it
+- a renamed `MultiFileDiff` import, for the same reason
+- a theme reaching the renderer through a spread or a variable (`options={{ ...baseOptions }}`, `options={opts}`) — the check reads the object literal, and there is no occurrence today
+
+Runtime complement: `packages/app/src/components/ActivityPanelDiffView.dom.test.tsx` asserts the rendered result on the one surface this migration adds — `pre[data-diff-type="single"]` for unified, and the injected `:host` token block for theme.
+
+Plugin: [`biome-plugins/no-themeless-pierre-diff.grit`](no-themeless-pierre-diff.grit). Fixture: [`biome-plugins/__fixtures__/no-themeless-pierre-diff.fixture.tsx`](__fixtures__/no-themeless-pierre-diff.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-themeless-pierre-diff.test.ts`](../packages/app/tests/lint-plugins/no-themeless-pierre-diff.test.ts).
+
 ### `no-resolved-value-theme-source.grit`
 
 1-way theme contract. Forbids resolving the user-intent theme value at the `bridge.setThemeSource(...)` call site. The contract is 1-way: pass the unresolved CRDT value (`'system' | 'light' | 'dark'`) verbatim. `'system'` delegates appearance tracking to macOS via `nativeTheme`; resolving at the call site (via `matchMedia` or a `prefersDark ? 'dark' : 'light'` ternary) loses tracking. See [PRECEDENTS.md #40(a)](../PRECEDENTS.md) for the renderer-state↔main-state contract.

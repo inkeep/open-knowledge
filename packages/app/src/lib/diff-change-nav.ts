@@ -1,26 +1,51 @@
 export const PROPERTY_CHANGE_ANCHOR_SELECTOR = '[data-property-change]';
 
-export function countChangeGroups(diff: string): number {
-  let count = 0;
-  let inChange = false;
-  for (const line of diff.split('\n')) {
-    const isChange =
-      (line.startsWith('+') && !line.startsWith('+++')) ||
-      (line.startsWith('-') && !line.startsWith('---'));
-    if (isChange && !inChange) count += 1;
-    inChange = isChange;
+const PIERRE_CHANGE_ROW_SELECTOR =
+  '[data-content] > [data-line-type="change-addition"], [data-content] > [data-line-type="change-deletion"]';
+
+function collectPierreChangeRows(container: HTMLElement): HTMLElement[] {
+  const rows: HTMLElement[] = [];
+  for (const host of container.querySelectorAll('diffs-container')) {
+    const root = (host as HTMLElement).shadowRoot;
+    if (!root) continue;
+    rows.push(...root.querySelectorAll<HTMLElement>(PIERRE_CHANGE_ROW_SELECTOR));
   }
-  return count;
+  return rows;
+}
+
+export interface PierreShadowWatcher {
+  sync(): void;
+  disconnect(): void;
+}
+
+export function watchPierreShadowRoots(
+  container: HTMLElement,
+  onMutation: () => void,
+): PierreShadowWatcher {
+  const observers = new Map<ShadowRoot, MutationObserver>();
+  return {
+    sync(): void {
+      for (const host of container.querySelectorAll('diffs-container')) {
+        const root = (host as HTMLElement).shadowRoot;
+        if (root === null || observers.has(root)) continue;
+        const observer = new MutationObserver(onMutation);
+        observer.observe(root, { childList: true, subtree: true });
+        observers.set(root, observer);
+      }
+    },
+    disconnect(): void {
+      for (const observer of observers.values()) observer.disconnect();
+      observers.clear();
+    },
+  };
 }
 
 export function collectChangeAnchors(container: HTMLElement): Element[] {
-  const cells = Array.from(container.querySelectorAll('.diff-code-insert, .diff-code-delete'));
+  const rows = collectPierreChangeRows(container);
   const anchors: Element[] = [];
   let prevRow: Element | null = null;
-  for (const cell of cells) {
-    const row = cell.closest('tr');
-    if (!row) continue;
-    if (prevRow === null || row.previousElementSibling !== prevRow) anchors.push(cell);
+  for (const row of rows) {
+    if (prevRow === null || row.previousElementSibling !== prevRow) anchors.push(row);
     prevRow = row;
   }
   return anchors;

@@ -1,0 +1,88 @@
+// no-themeless-pierre-diff — @pierre/diffs render-contract enforcement.
+//
+// Every `@pierre/diffs` construction site must pass an explicit `theme`
+// and must render unified. Both are load-bearing:
+//
+//   theme      — Pierre ships its own palette. Without a theme the pane
+//                renders in Pierre's colours, not the app's, and stops
+//                tracking the user's light/dark selection.
+//   diffStyle  — 'split' renders the two sides as separate DOM subtrees,
+//                so the change-stepper's DOM-order adjacency grouping
+//                counts roughly 2x the real groups and desyncs the
+//                displayed denominator from the anchors it can reach.
+//
+// The theme half is scoped to the `options` object (and, for constructor
+// sites, to the argument list), so a `theme` token elsewhere in the props
+// — `data-theme="dark"`, a title string — cannot suppress it.
+//
+// This replaces a `readFileSync` + regex meta-test that asserted the same
+// invariant over source text. That test violated the AGENTS.md rule
+// against asserting raw source text for props, and its per-component
+// intent is now covered at runtime in
+// `ActivityPanelDiffView.dom.test.tsx` (`pre[data-diff-type="single"]`
+// and the injected `:host` token block). Lint is the right layer for the
+// codebase-wide "no call site omits it" half — precedent #42.
+//
+// Coverage gaps are recorded in biome-plugins/README.md.
+//
+// Suppress a deliberate exception with:
+//   // biome-ignore lint/plugin/no-themeless-pierre-diff: <reason>
+
+language js
+
+or {
+    `<MultiFileDiff $props />` as $el where {
+        or {
+            $props <: not contains `options={$_ignored}`,
+            and {
+                $props <: contains `options={$opts}`,
+                $opts <: not r"(?s).*\btheme\s*:.*"
+            }
+        },
+        register_diagnostic(
+            span = $el,
+            message = "@pierre/diffs render contract: this renderer passes no theme — add `theme: okPierreTheme()` to its options so the pane uses app tokens and tracks light/dark. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-themeless-pierre-diffgrit"
+        )
+    },
+    `<MultiFileDiff $props>$_children</MultiFileDiff>` as $el where {
+        or {
+            $props <: not contains `options={$_ignored}`,
+            and {
+                $props <: contains `options={$opts}`,
+                $opts <: not r"(?s).*\btheme\s*:.*"
+            }
+        },
+        register_diagnostic(
+            span = $el,
+            message = "@pierre/diffs render contract: this renderer passes no theme — add `theme: okPierreTheme()` to its options so the pane uses app tokens and tracks light/dark. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-themeless-pierre-diffgrit"
+        )
+    },
+    `new UnresolvedFile($args)` as $el where {
+        $args <: not r"(?s).*\btheme\s*:.*",
+        register_diagnostic(
+            span = $el,
+            message = "@pierre/diffs render contract: this renderer passes no theme — add `theme: okPierreTheme()` to its options so the pane uses app tokens and tracks light/dark. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-themeless-pierre-diffgrit"
+        )
+    },
+    `new PierreFile($args)` as $el where {
+        $args <: not r"(?s).*\btheme\s*:.*",
+        register_diagnostic(
+            span = $el,
+            message = "@pierre/diffs render contract: this renderer passes no theme — add `theme: okPierreTheme()` to its options so the pane uses app tokens and tracks light/dark. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-themeless-pierre-diffgrit"
+        )
+    },
+    `<MultiFileDiff $props />` as $el where {
+        $props <: not r"(?s).*diffStyle:\s*['\"]unified['\"].*",
+        register_diagnostic(
+            span = $el,
+            message = "@pierre/diffs render contract: this renderer does not set diffStyle: 'unified' — add it to its options; 'split' desyncs the change stepper. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-themeless-pierre-diffgrit"
+        )
+    },
+    `<MultiFileDiff $props>$_children</MultiFileDiff>` as $el where {
+        $props <: not r"(?s).*diffStyle:\s*['\"]unified['\"].*",
+        register_diagnostic(
+            span = $el,
+            message = "@pierre/diffs render contract: this renderer does not set diffStyle: 'unified' — add it to its options; 'split' desyncs the change stepper. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-themeless-pierre-diffgrit"
+        )
+    }
+}

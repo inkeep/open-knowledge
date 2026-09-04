@@ -2983,11 +2983,6 @@ Homepage: https://github.com/nodejs/cjs-module-lexer#readme
 
 Copyright (C) 2018-2020 Guy Bedford
 
-### `classnames@2.5.1`
-Homepage: https://github.com/JedWatson/classnames
-
-Copyright (c) 2018 Jed Watson
-
 ### `cli-boxes@4.0.1`
 Homepage: https://github.com/sindresorhus/cli-boxes
 
@@ -3630,11 +3625,6 @@ Homepage: https://github.com/sindresorhus/get-stream
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `gitdiff-parser@0.3.1`
-Homepage: https://github.com/ecomfe/gitdiff-parser
-
-Copyright (c) 2020 Baidu EFE
-
 ### `github-from-package@0.0.0`
 Homepage: https://github.com/substack/github-from-package
 
@@ -4156,11 +4146,6 @@ Copyright (c) 2024 Nick Frasser
 Homepage: https://github.com/sindresorhus/locate-path
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
-
-### `lodash@4.18.1`
-Homepage: https://lodash.com/
-
-Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
 ### `lodash-es@4.18.1`
 Homepage: https://lodash.com/custom-builds
@@ -5129,11 +5114,6 @@ Homepage: https://daypicker.dev
 
 Copyright (c) 2014-2025 Giampaolo Bellavite <io@gpbl.dev> and contributors
 
-### `react-diff-view@3.3.3`
-Homepage: https://github.com/otakustay/react-diff-view#readme
-
-Copyright (c) 2017 Gray Zhang
-
 ### `react-dom@19.2.5`
 Homepage: https://react.dev/
 
@@ -5422,11 +5402,6 @@ Copyright (c) 2010 Sencha Inc. Copyright (c) 2011 LearnBoost Copyright (c) 2011 
 Homepage: https://github.com/shadcn-ui/ui
 
 Copyright (c) 2023 shadcn
-
-### `shallow-equal@3.1.0`
-Homepage: https://github.com/moroshko/shallow-equal
-
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
 ### `shebang-command@2.0.0`
 Homepage: https://github.com/kevva/shebang-command
@@ -5914,11 +5889,6 @@ Copyright (c) Microsoft
 Homepage: https://github.com/marijnh/w3c-keyname#readme
 
 Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
-
-### `warning@4.0.3`
-Homepage: https://github.com/BerkeleyTrue/warning
-
-Copyright (c) 2013-present, Facebook, Inc.
 
 ### `weakmap-polyfill@2.0.4`
 Homepage: https://github.com/polygonplanet/weakmap-polyfill

@@ -21,8 +21,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   collectChangeAnchors,
-  countChangeGroups,
   PROPERTY_CHANGE_ANCHOR_SELECTOR,
+  watchPierreShadowRoots,
 } from '@/lib/diff-change-nav';
 import { LruStringCache } from '@/lib/lru-string-cache';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -57,6 +57,8 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
   const abortRef = useRef<AbortController | null>(null);
   const diffBodyRef = useRef<HTMLDivElement>(null);
   const [currentChange, setCurrentChange] = useState(0);
+  const [pierreChangeCount, setPierreChangeCount] = useState(0);
+  const [pierreSettled, setPierreSettled] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   const result = useTimelineEntryDiff(sha, docName, cache, 'vs-parent', parentSha);
 
@@ -74,7 +76,9 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
       ? 0
       : usingRendered && rendered?.ok
         ? countRenderedDiffAnchors(rendered)
-        : countChangeGroups(result.diff);
+        : pierreSettled
+          ? pierreChangeCount
+          : 0;
   const propertyAnchorCount =
     properties === null
       ? 0
@@ -92,7 +96,9 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
       ...container.querySelectorAll<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR),
       ...(usingRendered
         ? Array.from(container.querySelectorAll<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR))
-        : collectChangeAnchors(container)),
+        : pierreSettled
+          ? collectChangeAnchors(container)
+          : []),
     ];
     if (anchors.length === 0) return;
     const clamped = (next + anchors.length) % anchors.length;
@@ -109,44 +115,60 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
     const container = diffBodyRef.current;
     if (diffKey === '' || !container) return;
     setCurrentChange(0);
+    setPierreChangeCount(0);
+    setPierreSettled(false);
 
-    let done = false;
+    let hasScrolled = false;
     let observer: MutationObserver | null = null;
     let settleTimer: ReturnType<typeof setTimeout> | undefined;
     let rafId: number | undefined;
 
-    const scrollToFirstChange = (): void => {
-      if (done) return;
+    const measureChanges = (): Element[] => {
+      shadowWatcher.sync();
+      const pierreAnchors = collectChangeAnchors(container);
+      setPierreChangeCount(pierreAnchors.length);
+      setPierreSettled(true);
+      return pierreAnchors;
+    };
+
+    const measureAndMaybeScroll = (): void => {
+      const pierreAnchors = measureChanges();
+      if (hasScrolled) return;
       const el =
         container.querySelector<HTMLElement>(PROPERTY_CHANGE_ANCHOR_SELECTOR) ??
         container.querySelector<HTMLElement>(RENDERED_DIFF_CHANGE_SELECTOR) ??
-        collectChangeAnchors(container)[0];
+        pierreAnchors[0];
       if (!el) return;
-      done = true;
-      observer?.disconnect();
+      hasScrolled = true;
       const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
     };
 
     const settleMs = 120;
     const scheduleAfterSettle = (): void => {
-      if (done) return;
       if (settleTimer !== undefined) clearTimeout(settleTimer);
       settleTimer = setTimeout(() => {
         if (rafId !== undefined) cancelAnimationFrame(rafId);
         rafId = requestAnimationFrame(() => {
-          rafId = requestAnimationFrame(scrollToFirstChange);
+          rafId = requestAnimationFrame(measureAndMaybeScroll);
         });
       }, settleMs);
     };
+
+    const shadowWatcher = watchPierreShadowRoots(container, scheduleAfterSettle);
 
     observer = new MutationObserver(scheduleAfterSettle);
     observer.observe(container, { childList: true, subtree: true });
     scheduleAfterSettle();
 
-    const failsafe = setTimeout(() => observer?.disconnect(), 5000);
+    const failsafe = setTimeout(() => {
+      measureChanges();
+      observer?.disconnect();
+      shadowWatcher.disconnect();
+    }, 5000);
     return () => {
       observer?.disconnect();
+      shadowWatcher.disconnect();
       if (settleTimer !== undefined) clearTimeout(settleTimer);
       if (rafId !== undefined) cancelAnimationFrame(rafId);
       clearTimeout(failsafe);
@@ -418,7 +440,11 @@ export function TimelineDiffPane({ view, isPanelCollapsed, onTogglePanel }: Time
                 </div>
               }
             >
-              <LazyActivityPanelDiffView diff={result.diff} viewType="unified" />
+              <LazyActivityPanelDiffView
+                before={result.before}
+                after={result.after}
+                cacheKey={`${docName}@${sha}`}
+              />
             </Suspense>
           ))}
       </div>

@@ -8,80 +8,6 @@
 @import "./color-themes.generated.css";
 @plugin "tailwind-scrollbar";
 
-/* --- Activity Panel unified-diff styling (react-diff-view) ---
-   The library renders diff hunks with `.diff-code-insert`, `.diff-code-delete`,
-   `.diff-gutter-insert`, `.diff-gutter-delete` class roots. Scoping under
-   `.activity-panel-diff` keeps the tokens from leaking into the main conflict
-   surface (a different DOM entirely). */
-.activity-panel-diff .diff {
-  width: 100%;
-  table-layout: fixed;
-}
-
-.activity-panel-diff .diff-line,
-.activity-panel-diff .diff-decoration-content {
-  font-family: var(--font-mono);
-  line-height: 1.25rem;
-}
-
-.activity-panel-diff .diff-gutter {
-  color: var(--muted-foreground);
-  font-size: 10px;
-}
-
-.activity-panel-diff .diff-code {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1.25rem;
-}
-
-.activity-panel-diff .diff-code-insert {
-  background-color: color-mix(in oklab, var(--color-green-100) 60%, transparent);
-  color: var(--color-green-900);
-}
-
-.activity-panel-diff .diff-code-delete {
-  background-color: color-mix(in oklab, var(--color-red-100) 60%, transparent);
-  color: var(--color-red-900);
-}
-
-.dark .activity-panel-diff .diff-code-insert {
-  background-color: color-mix(in oklab, var(--color-green-900) 40%, transparent);
-  color: var(--color-green-200);
-}
-
-.dark .activity-panel-diff .diff-code-delete {
-  background-color: color-mix(in oklab, var(--color-red-900) 40%, transparent);
-  color: var(--color-red-200);
-}
-
-.activity-panel-diff .diff-gutter-insert {
-  background-color: color-mix(in oklab, var(--color-green-100) 40%, transparent);
-  color: var(--color-green-800);
-}
-
-.activity-panel-diff .diff-gutter-delete {
-  background-color: color-mix(in oklab, var(--color-red-100) 40%, transparent);
-  color: var(--color-red-800);
-}
-
-.dark .activity-panel-diff .diff-gutter-insert {
-  background-color: color-mix(in oklab, var(--color-green-900) 30%, transparent);
-  color: var(--color-green-300);
-}
-
-.dark .activity-panel-diff .diff-gutter-delete {
-  background-color: color-mix(in oklab, var(--color-red-900) 30%, transparent);
-  color: var(--color-red-300);
-}
-
-.activity-panel-diff .diff-hunk-header {
-  background-color: var(--muted);
-  color: var(--muted-foreground);
-  font-size: 10px;
-  line-height: 1.25rem;
-}
-
 /* react-medium-image-zoom hardcodes rgba(255,255,255,1) for the visible
    overlay — the lightbox flashes white in dark mode without this override.
    The unprefixed library rule remains correct for light mode (white ≈ the
@@ -1163,9 +1089,33 @@
    is the `<diffs-container>` host it renders into — the CodeMirror rule this
    replaces (`.diff-view .cm-content`) went away with the merge view and had no
    successor until now. The var is 0 when the composer is collapsed or hidden,
-   so the space is reclaimed on its own. */
+   so the space is reclaimed on its own.
+
+   Scoped to `.conflict-view` deliberately: the inset exists for surfaces that
+   sit under the floating ask composer. A Pierre diff inside a dialog has no
+   composer to clear. */
+/* Pierre renders into a `<diffs-container>` custom element. Undefined/custom
+   elements get no UA display styling and default to `display: inline`, and
+   @pierre/diffs@1.3.6 never sets `display` on `:host` (its `:host` block is
+   custom properties only; every `display: block` in its shadow stylesheet
+   targets inner nodes -- `pre, code, [data-error-wrapper]`,
+   `[data-unmodified-lines]`, `&:before`). An inline host ignores width,
+   padding and block layout, which is what the `padding-bottom` rule below
+   depends on.
+
+   Both selectors are needed because the class lands in different places.
+   `MultiFileDiff` forwards `className` ONTO the host, so for the panel and
+   dialog surfaces `.pierre-diff` IS the `<diffs-container>`. `ConflictView`
+   and `ConflictFilePreview` instead put `conflict-view` on a wrapper and
+   render the host inside it, so there it is a descendant. A single
+   `.pierre-diff diffs-container` descendant rule matches NEITHER group's
+   host for the first three surfaces and was silently dead. */
+.pierre-diff,
 .conflict-view diffs-container {
   display: block;
+}
+
+.conflict-view diffs-container {
   padding-bottom: var(--ask-composer-height, 0px);
 }
 
@@ -6489,7 +6439,7 @@ html.electron-mode [data-slot="sidebar-inner"] {
   background-color: var(--comment-reveal-fill);
 }
 
-/* Pierre conflict view CHROME — maps Pierre's --diffs-* custom properties to
+/* Pierre diff surface CHROME — maps Pierre's --diffs-* custom properties to
    the app's existing design tokens. These properties inherit through the open
    shadow root of <diffs-container>, so no unsafeCSS injection is needed for
    colour theming. The underlying --diff-added / --diff-removed tokens already
@@ -6500,7 +6450,10 @@ html.electron-mode [data-slot="sidebar-inner"] {
    below (--diffs-fg, --diffs-bg, --diffs-addition-color,
    --diffs-deletion-color) are also written by Pierre at :host from that
    theme's colors, and :host wins over this rule — the two are kept resolving
-   to the same tokens deliberately, so neither can silently take over. */
+   to the same tokens deliberately, so neither can silently take over.
+
+   Both surfaces use Pierre as their renderer and share this custom-property block. */
+.pierre-diff,
 .conflict-view {
   --diffs-bg: var(--background);
   --diffs-fg: var(--foreground);
@@ -6548,7 +6501,36 @@ html.electron-mode [data-slot="sidebar-inner"] {
 
   --diffs-fg-conflict-marker: var(--muted-foreground);
   --diffs-marker-bg: var(--muted);
+  /* Separator background and foreground (--diffs-fg-number above) match the
+     muted palette so the "N unmodified lines" widget blends with the gutters. */
   --diffs-bg-separator: var(--muted);
+
+  /* Changed-row gutter numbers use --diffs-fg (= --foreground, WCAG-vetted on
+     every registered palette) so the line-number contrast meets 4.5:1. Context
+     numbers stay muted via --diffs-fg-number. The background hooks tint the
+     gutter column lighter than the body row (10% vs 15%); opaque var(--background)
+     as mix base avoids premultiplied-alpha collapse on Pierre's second mix pass. */
+  --diffs-fg-number-addition-override: var(--diffs-fg);
+  --diffs-fg-number-deletion-override: var(--diffs-fg);
+  --diffs-bg-addition-number-override: color-mix(
+    in oklab,
+    var(--diff-added) 10%,
+    var(--background)
+  );
+  --diffs-bg-deletion-number-override: color-mix(
+    in oklab,
+    var(--diff-removed) 10%,
+    var(--background)
+  );
+}
+
+/* Activity-panel typography: Pierre defaults to 13px sans-serif; the panel uses
+   12px mono throughout to match the text-xs treatment of the rest of the panel.
+   Setting on the outer wrapper lets the vars inherit through the open shadow root
+   of <diffs-container>. */
+.activity-panel-diff {
+  --diffs-font-size: 0.75rem;
+  --diffs-font-family: var(--font-mono);
 }
 
 /* Pointer marker drawn into the frame a bug-report screenshot is taken on.
