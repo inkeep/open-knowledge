@@ -265,6 +265,7 @@ import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
 
 export interface ServerOptions {
+  acpRegistryFetchImpl?: typeof fetch;
   ingressPolicy?: IngressPolicy;
   port?: number;
   host?: string;
@@ -698,7 +699,11 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const lockDir = getLocalDir(projectDir);
 
-  const acpRegistry = new AcpRegistry({ localDir: lockDir, log: getLogger('acp-registry') });
+  const acpRegistry = new AcpRegistry({
+    localDir: lockDir,
+    log: getLogger('acp-registry'),
+    fetchImpl: options.acpRegistryFetchImpl,
+  });
   const acpPermissions = new AcpPermissionStore(lockDir, getLogger('acp-permissions'));
 
   acquireServerLock(lockDir, {

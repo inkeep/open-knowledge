@@ -179,6 +179,7 @@ export interface BootServerOptions
     | 'singleDocRelPath'
     | 'ephemeral'
     | 'configHomedirOverride'
+    | 'acpRegistryFetchImpl'
   > {
   config: Config;
   skipAutoInit?: boolean;
@@ -405,6 +406,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
 
   const serverInstance = createServer({
     getCollabClientCount: () => collabClientCounter?.getCount() ?? 0,
+    acpRegistryFetchImpl: opts.acpRegistryFetchImpl,
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
     ingressPolicy,

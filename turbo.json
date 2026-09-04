@@ -98,7 +98,14 @@
     "@inkeep/open-knowledge#test": {
       "dependsOn": ["^build", "build"],
       "cache": true,
-      "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "tests/contract/**/*.ts"]
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.json",
+        "tests/contract/**/*.ts",
+        "vitest.config.ts",
+        "../../test-support/*.ts"
+      ]
     },
     "@inkeep/open-knowledge-desktop#test": {
       "dependsOn": ["^build"],

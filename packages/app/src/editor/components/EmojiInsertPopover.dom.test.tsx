@@ -1,9 +1,11 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { Editor } from '@tiptap/core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { sharedExtensions } from '../extensions/shared';
 import { openEmojiPickerForEditor } from '../slash-command/emoji-picker-event';
 import { EmojiInsertPopover, insertEmojiAtCaret } from './EmojiInsertPopover';
+
+vi.mock('@/components/emoji-picker', () => ({ FrimousseEmojiPicker: () => null }));
 
 function mountEditor(): { editor: Editor; container: HTMLDivElement } {
   const container = document.createElement('div');

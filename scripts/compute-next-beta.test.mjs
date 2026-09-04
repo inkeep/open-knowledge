@@ -438,4 +438,8 @@ describe('parseFrontmatterBumpType', () => {
   test('returns null when there is no frontmatter', () => {
     expect(parseFrontmatterBumpType('no frontmatter here')).toBeNull();
   });
+
+  test('returns null for an empty changeset, which declares no bump for any package', () => {
+    expect(parseFrontmatterBumpType('---\n---\n\nNo release.\n')).toBeNull();
+  });
 });

@@ -11,7 +11,8 @@
  *    instead of `src/` — tests would then run against stale build output. The
  *    SSR resolver is the operative one for inlined workspace symlinks; the
  *    client-side `resolve.conditions` is set too for safety.
- *  - `test.setupFiles` installs the `Bun` global facade before any test runs.
+ *  - `test.setupFiles` installs the `Bun` global facade and the hermetic-test
+ *    network guard (`no-net-connect.ts`) before any test runs.
  *
  * `import.meta.dir` (bun-only, no trailing slash) is rewritten at transform time
  * to the Node-equivalent directory expression. Node's own `import.meta.dirname`
@@ -68,7 +69,19 @@ export const importMetaDirPlugin: Plugin = {
   },
 };
 
-export const bunGlobalShimPath = fileURLToPath(new URL('./bun-global-shim.ts', import.meta.url));
+const bunGlobalShimPath = fileURLToPath(new URL('./bun-global-shim.ts', import.meta.url));
+
+const noNetConnectPath = fileURLToPath(new URL('./no-net-connect.ts', import.meta.url));
+
+// A project's `setupFiles` must be the base array: either spread into a new one
+// (`[...okVitestBase.test.setupFiles, mine]`) or handed straight through. Not a
+// hand-listed array, not one entry picked out of the base, not a filtered copy —
+// each of those silently drops whichever guard the author left out, and the loss
+// is invisible because the tests still pass. The two paths above stay unexported
+// so the hand-rolled spelling is not reachable from outside this module, and
+// `setup-files-contract.test.ts` imports every vitest project's config and fails
+// any whose RESOLVED array omits an entry this base installs, so no spelling can
+// route around it.
 
 export const okVitestBase = {
   plugins: [importMetaDirPlugin],
@@ -91,7 +104,7 @@ export const okVitestBase = {
     // that wants to exercise the reporter injects its own `fetchImpl` and
     // `env`, so this never hides the behavior under test.
     env: { DO_NOT_TRACK: '1' },
-    setupFiles: [bunGlobalShimPath],
+    setupFiles: [bunGlobalShimPath, noNetConnectPath],
     include: ['**/*.test.ts?(x)'],
     exclude: [...configDefaults.exclude, '**/*.spec.*', '**/*.e2e.*', '**/*.dom.test.ts?(x)'],
     // Vitest 4 flattened the pool sizing knobs to top-level `maxWorkers`/

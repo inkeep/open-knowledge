@@ -16,6 +16,10 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  REFUSED_LOOPBACK_ORIGIN,
+  REFUSED_LOOPBACK_ORIGIN_ALT,
+} from '../../../../../test-support/refused-loopback.test-helper.ts';
 
 const startedSpanNames: string[] = [];
 vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
@@ -2674,7 +2678,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
 
     const result = await handleBugReportSend(
       {
-        ...makeSendDeps('https://intake.invalid-tld-for-test.invalid', dir),
+        ...makeSendDeps(REFUSED_LOOPBACK_ORIGIN, dir),
         sidecar: store.sendHooks,
       },
       { kind: 'send', zipPath, metadata: SEND_METADATA },
@@ -2684,12 +2688,12 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.lastError).toMatchObject({
       reason: 'mint-network-error',
-      errorCode: 'ENOTFOUND',
+      errorCode: 'ECONNREFUSED',
     });
     expect(sidecar?.attempts?.at(-1)).toMatchObject({
       outcome: 'failed',
       error: 'mint-network-error',
-      errorCode: 'ENOTFOUND',
+      errorCode: 'ECONNREFUSED',
     });
     expect(JSON.stringify(sidecar)).not.toContain('fetch failed');
   });
@@ -2771,8 +2775,8 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
     return line;
   }
 
-  test('an unresolvable intake names the step, the errno, and the host', async () => {
-    const { deps, zipPath } = makeSendRig('https://intake.invalid-tld-for-test.invalid');
+  test('an unreachable intake names the step, the errno, and the host', async () => {
+    const { deps, zipPath } = makeSendRig(REFUSED_LOOPBACK_ORIGIN);
 
     const lines = await captureIpcErrors(() =>
       handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
@@ -2780,16 +2784,17 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
 
     const details = dispatchFailure(lines).details as Record<string, unknown>;
     expect(details.step).toBe('mint');
-    expect(details.host).toBe('intake.invalid-tld-for-test.invalid');
+    expect(details.host).toBe(new URL(REFUSED_LOOPBACK_ORIGIN).host);
     expect(details.errName).toBe('TypeError');
-    expect(details.errCode).toBe('ENOTFOUND');
+    expect(details.errCode).toBe('ECONNREFUSED');
   });
 
   test('a failing upload names the storage host without leaking the signature', async () => {
+    const storageOrigin = REFUSED_LOOPBACK_ORIGIN;
     const stub = await startIntakeStub({
       mintBody: {
-        uploadUrl: 'https://storage.example.invalid/dest?X-Signature=SUPERSECRETSIG&exp=99',
-        assetUrl: 'https://uploads.example.invalid/asset/dest',
+        uploadUrl: `${storageOrigin}/dest?X-Signature=SUPERSECRETSIG&exp=99`,
+        assetUrl: `${REFUSED_LOOPBACK_ORIGIN_ALT}/asset/dest`,
         headers: {},
       },
     });
@@ -2802,7 +2807,7 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
     const line = dispatchFailure(lines);
     const details = line.details as Record<string, unknown>;
     expect(details.step).toBe('upload');
-    expect(details.host).toBe('storage.example.invalid');
+    expect(details.host).toBe(new URL(storageOrigin).host);
     expect(JSON.stringify(line)).not.toContain('SUPERSECRETSIG');
   });
 
@@ -2819,7 +2824,7 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
   });
 
   test('a transport throw names its leg in the reason, not just in the details', async () => {
-    const { deps, zipPath } = makeSendRig('https://intake.invalid-tld-for-test.invalid');
+    const { deps, zipPath } = makeSendRig(REFUSED_LOOPBACK_ORIGIN);
 
     const lines = await captureIpcErrors(() =>
       handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
