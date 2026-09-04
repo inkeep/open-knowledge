@@ -412,7 +412,7 @@ describe('mapOffsetThroughDelta', () => {
   });
 });
 
-describe('the flag swaps out every extension that services the fragment binding', () => {
+describe('the extension list services the projection, never a fragment binding', () => {
   function makeProvider() {
     const ydoc = new Y.Doc();
     ydoc.transact(() => ydoc.getText('source').insert(0, DOC), 'seed');
@@ -432,19 +432,7 @@ describe('the flag swaps out every extension that services the fragment binding'
     };
   }
 
-  it('binds y-sync, its cursor plugin and its staleness guard by default', () => {
-    const { provider, cleanup } = makeProvider();
-    const names = buildExtensionList({ provider, clipboard: fakeClipboard, ctorStart: 0 }).map(
-      (extension) => extension.name,
-    );
-    expect(names).toContain('collaboration');
-    expect(names).toContain('collaborationCursor');
-    expect(names).toContain('bindingStalenessGuard');
-    expect(names).not.toContain('okProjectionBinding');
-    cleanup();
-  });
-
-  it('binds the projection instead, and drops all three with the fragment', () => {
+  it('binds the projection, and none of the extensions the fragment needed', () => {
     const { provider, ydoc, cleanup } = makeProvider();
     const projection = createProjectionBinding({ ytext: ydoc.getText('source'), md });
     const names = buildExtensionList({

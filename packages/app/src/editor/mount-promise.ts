@@ -4,8 +4,8 @@
  * [yield → construct → yield → mount] so the longest synchronous task drops
  * below the perception band on PROJECT-class docs. The pre-construct yield
  * is load-bearing for sibling-subtree paint (sidebar, top bar) — without it,
- * construct()'s synchronous initProseMirrorDoc walk shares a task with the
- * entry-setup microtask and blocks paint for the whole window.
+ * construct()'s synchronous whole-document buildProjection parse shares a task
+ * with the entry-setup microtask and blocks paint for the whole window.
  *
  * Mirrors precedent #18(d) (`sync-promise.ts`) shape — one Suspense-async
  * substrate for "wait for one-shot lifecycle event" across the codebase, not

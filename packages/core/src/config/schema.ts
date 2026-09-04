@@ -660,7 +660,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project',
               description:
-                'Defer a drain-shaped Observer B re-derive when the WYSIWYG fragment holds an un-propagated keystroke Y.Text lacks, so the keystroke survives instead of being stomped. Default ON — disable only to isolate a suspected regression.',
+                'Deprecated and no longer read. Guarded a re-derive deferral in the markdown bridge, which has been removed — Y.Text is now the only synced replica, so there is no second replica to defer against. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.',
             })
             .default(true),
         })
@@ -690,7 +690,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project',
               description:
-                'Bound the Y.Text→WYSIWYG re-derive loop with a drain-count backstop: a run of re-derive drains that never reaches a raw-byte fixed point freezes the re-derive loop and writes a recovery checkpoint plus a content-free loss event, instead of churning unbounded. Default ON — disable only to isolate a suspected regression.',
+                'Deprecated and no longer read. Bounded the Y.Text→WYSIWYG re-derive loop in the markdown bridge, which has been removed — each client now derives its ProseMirror document locally, so there is no re-derive loop to bound. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.',
             })
             .default(true),
         })
@@ -705,7 +705,7 @@ export const ConfigSchema = z.looseObject({
               reload: 'live',
               defaultScope: 'project',
               description:
-                'Before an agent write or undo rebuilds the WYSIWYG fragment, flush an un-propagated keystroke that provably does not overlap the operation into Y.Text so the keystroke survives instead of needing recovery; overlapping or unmodellable cases fall back to the checkpoint floor. Scope: appending writes and single-frame undos — a write that replaces the whole body (replace / edit) overwrites the keystroke either way, so those always take the checkpoint floor. Default ON — disable only to isolate a suspected regression.',
+                'Deprecated and no longer read. Flushed an un-propagated keystroke into Y.Text before an agent write rebuilt the WYSIWYG fragment; the fragment and its rebuild are gone, so a keystroke already lands in the only synced replica. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.',
             })
             .default(true),
         })

@@ -16,10 +16,6 @@ import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
 
-export function projectionBindingEnabled(): boolean {
-  return true;
-}
-
 const projectionBindingKey = new PluginKey('okProjectionBinding');
 
 interface ProjectionBindingOptions {

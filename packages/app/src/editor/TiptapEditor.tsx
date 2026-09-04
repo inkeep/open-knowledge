@@ -2,7 +2,6 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   type AgentFlashEntry,
   sharedExtensions as coreExtensions,
-  deriveIconColor,
   evictStaleEntries,
   FLASH_DEBOUNCE_MS,
   FLASH_DURATION_MS,
@@ -12,10 +11,9 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension } from '@tiptap/core';
-import Collaboration from '@tiptap/extension-collaboration';
 import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent } from '@tiptap/react';
-import { initProseMirrorDoc, yCursorPlugin, ySyncPluginKey } from '@tiptap/y-tiptap';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { type FC, use, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SelectionAnnouncer } from '@/components/editor/SelectionAnnouncer';
@@ -53,7 +51,6 @@ import { registerEditor, unregisterEditor } from './active-editor';
 import { applyLintFixes } from './apply-lint-fix.ts';
 import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
-import { bindingStalenessGuardPlugin, type WedgeDetail } from './binding-staleness-guard';
 import { BubbleMenuBar } from './bubble-menu/BubbleMenuBar';
 import {
   createClipboardHtmlSerializer,
@@ -86,11 +83,7 @@ import {
   createAgentInsertFlashPlugin,
 } from './plugins/agent-insert-flash';
 import { isUserIntentPmTransaction, requestPreviewTabPromotion } from './preview-tab-promotion';
-import {
-  createProjectionBinding,
-  type ProjectionBinding,
-  projectionBindingEnabled,
-} from './projection-binding';
+import { createProjectionBinding, type ProjectionBinding } from './projection-binding';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
@@ -106,22 +99,6 @@ import { TableCellHandles } from './table-controls/TableCellHandles';
 import { attachTypingBurstDetector } from './typing-burst-detector';
 import { getEditorView } from './utils/get-editor-view';
 import { getProjectionMarkdownManager } from './utils/md-singleton';
-import { walkCurrencyExtension } from './walk-currency-extension';
-
-function renderCursor(user: Record<string, string>): HTMLElement {
-  const cursor = document.createElement('span');
-  cursor.classList.add('collaboration-cursor__caret');
-  cursor.style.borderColor = user.color;
-
-  const label = document.createElement('div');
-  label.classList.add('collaboration-cursor__label');
-  label.style.backgroundColor = user.color;
-  label.style.color = deriveIconColor(user.color);
-  label.textContent = user.name;
-  cursor.append(label);
-
-  return cursor;
-}
 
 interface AgentFlashState {
   state: 'idle' | 'editing' | 'settled';
@@ -201,8 +178,6 @@ function repairDetachedEditorContent(editor: Editor, portalTarget: HTMLElement):
   return true;
 }
 
-type ProsemirrorMapping = ReturnType<typeof initProseMirrorDoc>['mapping'];
-
 function buildClipboardState() {
   const mdManager = new MarkdownManager({ extensions: coreExtensions });
   return {
@@ -220,46 +195,11 @@ interface BuildEditorOptionsArgs {
   placeholder?: string;
   clipboard: ClipboardState;
   ctorStart: number;
-  prebuiltMapping?: ProsemirrorMapping;
-  onWedged?: (detail: WedgeDetail) => void;
-  projection?: ProjectionBinding;
-}
-
-interface PrewarmBoundCollaboration {
-  collaboration: AnyExtension;
-  guard: AnyExtension[];
-}
-
-function buildPrewarmBoundCollaboration(
-  provider: HocuspocusProvider,
-  prebuiltMapping: ProsemirrorMapping | undefined,
-  projection: ProjectionBinding | undefined,
-): PrewarmBoundCollaboration {
-  if (projection) return { collaboration: projection.extension, guard: [] };
-  if (!prebuiltMapping) {
-    return { collaboration: Collaboration.configure({ document: provider.document }), guard: [] };
-  }
-  return {
-    collaboration: Collaboration.configure({
-      document: provider.document,
-      ySyncOptions: { mapping: prebuiltMapping },
-    }),
-    guard: [
-      walkCurrencyExtension({
-        fragment: provider.document.getXmlFragment('default'),
-        docName: provider.configuration.name ?? '',
-      }),
-    ],
-  };
+  projection: ProjectionBinding;
 }
 
 export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[] {
-  const { provider, placeholder, prebuiltMapping, onWedged, projection } = args;
-  const { collaboration, guard } = buildPrewarmBoundCollaboration(
-    provider,
-    prebuiltMapping,
-    projection,
-  );
+  const { provider, placeholder, projection } = args;
   return [
     ...sharedExtensions.map((ext) => {
       if (
@@ -279,50 +219,13 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
       showOnlyCurrent: true,
     }),
     SkillPathLinks.configure({ docName: provider.configuration.name ?? '' }),
-    collaboration,
+    projection.extension,
     Extension.create({
       name: 'imageUploadDecoration',
       addProseMirrorPlugins() {
         return [uploadDecorationPlugin];
       },
     }),
-    ...(projection
-      ? []
-      : [
-          Extension.create({
-            name: 'collaborationCursor',
-            addProseMirrorPlugins() {
-              const awareness = provider.awareness;
-              if (!awareness) {
-                throw new Error(
-                  '[TiptapEditor] HocuspocusProvider has no awareness instance — cursor plugin cannot initialize',
-                );
-              }
-              return [
-                yCursorPlugin(awareness, {
-                  cursorBuilder: renderCursor,
-                }),
-              ];
-            },
-          }),
-        ]),
-    ...(projection
-      ? []
-      : [
-          Extension.create({
-            name: 'bindingStalenessGuard',
-            addProseMirrorPlugins() {
-              return [
-                bindingStalenessGuardPlugin({
-                  fragment: provider.document.getXmlFragment('default'),
-                  docName: provider.configuration.name ?? '',
-                  onWedged: onWedged ?? (() => {}),
-                }),
-              ];
-            },
-          }),
-        ]),
-    ...guard,
     FrozenTableHeaders,
     MarkdownLintDecorations.configure({
       docName: provider.configuration.name ?? '',
@@ -381,7 +284,6 @@ interface BuildPatternDConstructorOptionsArgs {
   placeholder?: string;
   clipboard: ClipboardState;
   ctorStart: number;
-  onWedged?: (detail: WedgeDetail) => void;
 }
 
 type PatternDConstructorOptions = Partial<EditorOptions> & { element: null };
@@ -389,51 +291,24 @@ type PatternDConstructorOptions = Partial<EditorOptions> & { element: null };
 export function buildPatternDConstructorOptions(
   args: BuildPatternDConstructorOptionsArgs,
 ): PatternDConstructorOptions {
-  const { provider, placeholder, clipboard, ctorStart, onWedged } = args;
-  const fragment = provider.document.getXmlFragment('default');
-  if (projectionBindingEnabled()) {
-    const projection = createProjectionBinding({
-      ytext: provider.document.getText('source'),
-      md: getProjectionMarkdownManager(),
-    });
-    const baseOptions = buildEditorOptions({
-      provider,
-      placeholder,
-      clipboard,
-      ctorStart,
-      onWedged,
-      projection,
-    });
-    const baseOnBeforeCreate = baseOptions.onBeforeCreate;
-    return {
-      ...baseOptions,
-      onBeforeCreate: (props) => {
-        baseOnBeforeCreate?.(props);
-        props.editor.options.content = projection.content;
-      },
-      element: null,
-    };
-  }
-  const prebuiltMapping: ProsemirrorMapping = new Map();
+  const { provider, placeholder, clipboard, ctorStart } = args;
+  const projection = createProjectionBinding({
+    ytext: provider.document.getText('source'),
+    md: getProjectionMarkdownManager(),
+  });
   const baseOptions = buildEditorOptions({
     provider,
     placeholder,
     clipboard,
     ctorStart,
-    prebuiltMapping,
-    onWedged,
+    projection,
   });
   const baseOnBeforeCreate = baseOptions.onBeforeCreate;
   return {
     ...baseOptions,
     onBeforeCreate: (props) => {
       baseOnBeforeCreate?.(props);
-      const { editor } = props;
-      const { doc, mapping } = initProseMirrorDoc(fragment, editor.schema);
-      mapping.forEach((node, key) => {
-        prebuiltMapping.set(key, node);
-      });
-      editor.options.content = doc.toJSON();
+      props.editor.options.content = projection.content;
     },
     element: null,
   };
@@ -478,7 +353,7 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const flashStateRef = useRef(INITIAL_FLASH_STATE);
   const identity = useIdentity();
-  const { principal, activeDocName, recycleDocument } = useDocumentContext();
+  const { principal, activeDocName } = useDocumentContext();
   const docName = provider.configuration.name ?? '';
 
   const [clipboard] = useState(buildClipboardState);
@@ -491,10 +366,6 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
         placeholder,
         clipboard,
         ctorStart,
-        onWedged: ({ externalSeq, appliedSeq }) => {
-          mark('ok/editor/binding-wedge-recycle', { docName, externalSeq, appliedSeq });
-          recycleDocument(docName);
-        },
       }),
     );
     return {

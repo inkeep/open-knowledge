@@ -128,10 +128,6 @@ const NON_CONTENT_ORIGINS: Record<string, string> = {
     'Config-doc plane file-watcher intake; markdown bridge bypassed, not content.',
   PARK_SNAPSHOT_ORIGIN:
     'Read-only serializeDoc wrapper; paired only so observers self-short-circuit, performs no content mutation.',
-  ORIGIN_TREE_TO_TEXT:
-    'Client observer-direction baseline marker; the client cross-CRDT write path is deleted (precedent #14), so it drives no content write.',
-  ORIGIN_TEXT_TO_TREE:
-    'Client observer-direction baseline marker; the client cross-CRDT write path is deleted (precedent #14), so it drives no content write.',
   SELECTION_ORIGIN_META_KEY:
     'A ProseMirror selection transaction-meta key, not a Y.Doc transaction origin.',
   DEFAULT_INTAKE_ORIGIN:

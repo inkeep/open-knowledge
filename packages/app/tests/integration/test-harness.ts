@@ -43,7 +43,6 @@ import {
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
-import { ORIGIN_TEXT_TO_TREE, ORIGIN_TREE_TO_TEXT } from '../../src/editor/observers';
 import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
@@ -786,6 +785,18 @@ export function getServerState(server: TestServer, docName: string): ServerDocSt
     connectionCount,
   };
 }
+
+const ORIGIN_TREE_TO_TEXT = {
+  source: 'local',
+  skipStoreHooks: false,
+  context: { origin: 'sync-from-tree' },
+} as const satisfies LocalTransactionOrigin;
+
+const ORIGIN_TEXT_TO_TREE = {
+  source: 'local',
+  skipStoreHooks: false,
+  context: { origin: 'sync-from-text' },
+} as const satisfies LocalTransactionOrigin;
 
 const BRIDGE_ENFORCING_NON_PAIRED_ORIGINS: Set<LocalTransactionOrigin> = new Set([
   ORIGIN_TREE_TO_TEXT,
