@@ -1607,7 +1607,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         forceStore: (document, documentName) => persistence.forceStore(document, documentName),
         getBase: (documentName) => durabilityState.getReconciledBase(documentName),
         isBatchActive: () => durabilityState.isBatchInProgress(),
-        peekInFlight: (documentName) => durabilityState.peekInFlightFlush(documentName),
+        hasInFlight: (documentName) => durabilityState.inFlightFlushCount(documentName) > 0,
         readDiskBytes: (documentName) => {
           const requestedPath = safeContentPath(documentName, contentDir);
           let canonical: string;
@@ -2312,15 +2312,15 @@ export function createServer(options: ServerOptions): ServerInstance {
           const { oldDocName, newDocName, content } = event;
           const document = hocuspocus.documents.get(oldDocName);
 
-          deleteReconciledBase(oldDocName);
-          setReconciledBase(newDocName, content);
-          await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
-
           if (document) {
             const lifecycleMap = document.getMap('lifecycle');
             lifecycleMap.set('status', 'renamed');
             lifecycleMap.set('newPath', newDocName);
           }
+
+          deleteReconciledBase(oldDocName);
+          setReconciledBase(newDocName, content);
+          await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
 
           log.info({ oldDocName, newDocName }, `[reconcile] rename: ${oldDocName} → ${newDocName}`);
           signalChannel('files');

@@ -250,22 +250,23 @@ export function reconcileDiskBeforeAgentWrite(
     return NOT_RECONCILED;
   }
 
-  if (normalizeBridge(diskContent) === normalizeBridge(base)) return NOT_RECONCILED;
+  const normalizedDisk = normalizeBridge(diskContent);
+  if (normalizedDisk === normalizeBridge(base)) return NOT_RECONCILED;
 
-  const inFlightFlush = durabilityState.peekInFlightFlush(docName);
-  if (inFlightFlush !== undefined) {
-    if (normalizeBridge(diskContent) === inFlightFlush) {
+  const pendingFlushes = durabilityState.inFlightFlushCount(docName);
+  if (pendingFlushes > 0) {
+    if (durabilityState.hasInFlightFlush(docName, normalizedDisk)) {
       incrementReconcileOwnFlushSkips();
       getLogger('reconcile').debug(
-        { docName, diskBytes: diskContent.length },
+        { docName, diskBytes: diskContent.length, pendingFlushes },
         `[reconcile] disk matches own in-flight flush for ${docName}; skipping reconcile`,
       );
       return NOT_RECONCILED;
     }
     incrementReconcileInFlightFallthroughs();
     getLogger('reconcile').warn(
-      { docName, diskBytes: diskContent.length },
-      `[reconcile] in-flight flush present but disk differs from snapshot for ${docName}; falling through to merge`,
+      { docName, diskBytes: diskContent.length, pendingFlushes },
+      `[reconcile] disk matches none of ${pendingFlushes} in-flight flush snapshot(s) for ${docName}; falling through to merge`,
     );
   }
 

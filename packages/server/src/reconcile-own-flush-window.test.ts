@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
@@ -254,5 +254,118 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
 
     await laterFlush;
     expect(durabilityState.peekInFlightFlush(docName)).toBeUndefined();
+  });
+});
+
+describe('reconcileDiskBeforeAgentWrite — overlapping own flushes are not foreign divergence', () => {
+  let tmpDir: string;
+  let document: Y.Doc;
+  let durabilityState: DocumentDurabilityState;
+
+  beforeEach(() => {
+    tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-own-flush-overlap-')));
+    mkdirSync(tmpDir, { recursive: true });
+    durabilityState = new DocumentDurabilityState();
+    document = new Y.Doc();
+  });
+
+  afterEach(() => {
+    document.destroy();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  async function driveOverlapWindow(
+    docName: string,
+    options: { diskContentInWindow?: string } = {},
+  ): Promise<{
+    diskAtWindow: string;
+    pendingAtWindow: number;
+    headAtWindow: string | undefined;
+    diskMatchedPendingAtWindow: boolean;
+    result: ReconcileBeforeWriteResult | undefined;
+    conflictAfterGuard: boolean | undefined;
+  }> {
+    const docPath = join(tmpDir, `${docName}.md`);
+    writeFileSync(docPath, BASE_CONTENT, 'utf-8');
+
+    const OVERLAP_PARAGRAPHS = ['alpha', 'beta gamma epsilon'];
+    let windowFired = false;
+    let laterFlush: Promise<void> | undefined;
+    let diskAtWindow = '';
+    let pendingAtWindow = 0;
+    let headAtWindow: string | undefined;
+    let diskMatchedPendingAtWindow = false;
+    let result: ReconcileBeforeWriteResult | undefined;
+    let conflictAfterGuard: boolean | undefined;
+
+    const persistence = createPersistenceExtension({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      gitEnabled: false,
+      durabilityState,
+      onDiskFlush: (name) => {
+        if (name !== docName || windowFired) return;
+        windowFired = true;
+        document.transact(() => replaceDocParagraphs(document, OVERLAP_PARAGRAPHS), BROWSER_ORIGIN);
+        laterFlush = storeDocument(persistence, document, docName);
+        if (options.diskContentInWindow !== undefined) {
+          writeFileSync(docPath, options.diskContentInWindow, 'utf-8');
+        }
+        diskAtWindow = readFileSync(docPath, 'utf-8');
+        pendingAtWindow = durabilityState.inFlightFlushCount(docName);
+        headAtWindow = durabilityState.peekInFlightFlush(docName);
+        diskMatchedPendingAtWindow = durabilityState.hasInFlightFlush(
+          docName,
+          normalizeBridge(diskAtWindow),
+        );
+        result = reconcileDiskBeforeAgentWrite(
+          durabilityState,
+          fakeHocuspocusWith(docName, document),
+          docName,
+          tmpDir,
+        );
+        conflictAfterGuard = isDocInConflict(document as never);
+      },
+    });
+
+    await loadDocument(persistence, document, docName);
+    document.transact(() => replaceDocParagraphs(document, FLUSHED_PARAGRAPHS), BROWSER_ORIGIN);
+    await storeDocument(persistence, document, docName);
+    await laterFlush;
+
+    expect(windowFired).toBe(true);
+    expect(pendingAtWindow).toBeGreaterThanOrEqual(2);
+    return {
+      diskAtWindow,
+      pendingAtWindow,
+      headAtWindow,
+      diskMatchedPendingAtWindow,
+      result,
+      conflictAfterGuard,
+    };
+  }
+
+  test('an agent write landing between two overlapping own flushes does not latch lifecycle conflict', async () => {
+    const probe = await driveOverlapWindow('overlap-window-clean');
+
+    expect(normalizeBridge(probe.diskAtWindow)).toBe(normalizeBridge(FLUSHED_CONTENT));
+    expect(probe.diskMatchedPendingAtWindow).toBe(true);
+    expect(probe.headAtWindow).not.toBe(normalizeBridge(probe.diskAtWindow));
+    expect(probe.conflictAfterGuard).toBe(false);
+    expect(isDocInConflict(document as never)).toBe(false);
+    expect(document.getMap('lifecycle').get('reason')).toBeUndefined();
+    expect(probe.result?.reconciled).toBe(false);
+  });
+
+  test('a FOREIGN disk edit landing in the overlap window still reconciles', async () => {
+    const probe = await driveOverlapWindow('overlap-window-foreign', {
+      diskContentInWindow: 'alpha FOREIGN EDIT\n\nbeta\n',
+    });
+
+    expect(probe.diskMatchedPendingAtWindow).toBe(false);
+    expect(probe.result?.reconciled).toBe(true);
+    expect(probe.result?.mergeOutcome).toBe('merged');
+    expect(probe.conflictAfterGuard).toBe(false);
+    expect(isDocInConflict(document as never)).toBe(false);
   });
 });
