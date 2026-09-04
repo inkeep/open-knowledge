@@ -1,10 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { blankComments, readGlobalsCssWithoutComments } from './globals-css.test-helper';
 
-const RAW_CSS = readFileSync(join(__dirname, 'globals.css'), 'utf8');
-
-const CSS = RAW_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+const CSS = readGlobalsCssWithoutComments();
 
 interface RuleBlock {
   selector: string;
@@ -103,7 +102,7 @@ describe('globals.css content-visibility paint-lock deferral contract', () => {
       const content = readFileSync(filePath, 'utf8');
       const isCss = entry.name.endsWith('.css');
       const hit = isCss
-        ? CV_HIDDEN.test(content.replace(/\/\*[\s\S]*?\*\//g, ''))
+        ? CV_HIDDEN.test(blankComments(content))
         : TAILWIND_CV_HIDDEN.test(content) ||
           STYLE_PROP_CV_HIDDEN.test(content) ||
           SET_PROPERTY_CV_HIDDEN.test(content);

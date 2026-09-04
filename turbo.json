@@ -66,6 +66,7 @@
         "src/**/*.ts",
         "src/**/*.tsx",
         "src/**/*.json",
+        "src/**/*.css",
         "tests/contract/**/*.ts",
         "vitest.config.ts",
         "vite.dedupe.ts",
@@ -168,6 +169,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",
@@ -190,6 +192,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",
@@ -212,6 +215,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",
@@ -234,6 +238,7 @@
       "inputs": [
         "src/**/*.ts",
         "src/**/*.tsx",
+        "src/**/*.css",
         "tests/**/*.ts",
         "tests/**/*.tsx",
         "scripts/**",

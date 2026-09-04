@@ -1,9 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { readGlobalsCssWithoutComments } from './globals-css.test-helper';
 
-const RAW_CSS = readFileSync(join(__dirname, 'globals.css'), 'utf8');
-const CSS = RAW_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+const CSS = readGlobalsCssWithoutComments();
 
 function markerDeclarations(): string {
   const block = CSS.match(/(?:^|[}\s])\.ok-pointer-marker\s*\{([^{}]*)\}/);
