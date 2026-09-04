@@ -150,6 +150,10 @@ export async function selectText(page: Page, text: string): Promise<void> {
  * Requires `window.__activeEditor` exposure from `DocumentContext.tsx`
  * (DEV-gated — tree-shaken from production bundles). Category C per
  * precedent #20(a).
+ *
+ * WARN: walks `$from` ancestors, so it can never match a NodeSelection —
+ * there the selected node is `selection.node`, not an ancestor of `$from`.
+ * A caller arming a NodeSelection needs its own predicate.
  */
 export async function waitForPmSelectionInNode(
   page: Page,
