@@ -4,11 +4,16 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { SpawnPty } from '../../src/utility/pty-host.ts';
-import { terminalSmokeShellCommands } from '../smoke/_helpers/terminal-smoke-shell.ts';
+import {
+  buildInputReadyProbe,
+  terminalSmokeShellCommands,
+} from '../smoke/_helpers/terminal-smoke-shell.ts';
 import {
   buildCwdFileProofCommand,
   createPtyHostProbe,
+  INPUT_READY_RESET,
   waitForCondition,
+  waitForEvaluatedInput,
   waitForShellReady,
 } from '../support/pty-readiness.test-helper.ts';
 
@@ -48,38 +53,31 @@ const shellCommands = terminalSmokeShellCommands();
 const CWD_PROOF_FILE = '.ok-pty-cwd-proof';
 const WINDOWS_LAUNCH_WAIT = { timeoutMs: 20_000 } as const;
 
-function createWindowsReadinessLaunch(): {
-  marker: string;
-  launchCommand: { executable: string; args: string[] };
-} | null {
-  if (process.platform !== 'win32') return null;
-  const marker = `OK_SHELL_READY_${randomUUID().replaceAll('-', '')}`;
-  return {
-    marker,
-    launchCommand: { executable: 'cmd.exe', args: ['/d', '/c', 'echo', marker] },
-  };
+async function waitForWindowsInputReady(
+  host: ReturnType<typeof createHost>,
+  ptyId: string,
+  label: string,
+): Promise<void> {
+  const probe = buildInputReadyProbe();
+  const attempts = await waitForEvaluatedInput(
+    host.streamOf(ptyId),
+    (data) => host.send({ type: 'input', ptyId, data }),
+    { input: `${probe.command}\r`, marker: probe.marker, reset: INPUT_READY_RESET },
+    label,
+  );
+  console.log(`INPUT_READY ${label} attempts=${attempts}`);
 }
 
 async function waitForInteractiveShellReady(
   host: ReturnType<typeof createHost>,
   ptyId: string,
   label: string,
-  windowsLaunchMarker: string | null,
 ): Promise<void> {
-  const stream = host.streamOf(ptyId);
   if (process.platform === 'win32') {
-    if (windowsLaunchMarker === null) {
-      throw new Error('Windows input-driven scenarios require a startup launch marker');
-    }
-    await waitForCondition(
-      stream,
-      () => stream.read().includes(windowsLaunchMarker),
-      label,
-      WINDOWS_LAUNCH_WAIT,
-    );
+    await waitForWindowsInputReady(host, ptyId, label);
     return;
   }
-  await waitForShellReady(stream, label);
+  await waitForShellReady(host.streamOf(ptyId), label);
 }
 
 async function main(): Promise<void> {
@@ -92,22 +90,9 @@ async function main(): Promise<void> {
     writeFileSync(join(tmp, CWD_PROOF_FILE), cwdToken, 'utf8');
     const host = createHost(BASE_ENV);
     const io = host.streamOf('io');
-    const readiness = createWindowsReadinessLaunch();
     try {
-      host.send({
-        type: 'create',
-        ptyId: 'io',
-        cwd: tmp,
-        cols: 80,
-        rows: 24,
-        ...(readiness === null ? {} : { launchCommand: readiness.launchCommand }),
-      });
-      await waitForInteractiveShellReady(
-        host,
-        'io',
-        'interactive shell ready at project root',
-        readiness?.marker ?? null,
-      );
+      host.send({ type: 'create', ptyId: 'io', cwd: tmp, cols: 80, rows: 24 });
+      await waitForInteractiveShellReady(host, 'io', 'interactive shell ready at project root');
       host.send({
         type: 'input',
         ptyId: 'io',
@@ -140,21 +125,12 @@ async function main(): Promise<void> {
       OK_LOCK_KIND: 'interactive',
     });
     const env = host.streamOf('env');
-    const readiness = createWindowsReadinessLaunch();
     try {
-      host.send({
-        type: 'create',
-        ptyId: 'env',
-        cwd: tmp,
-        cols: 80,
-        rows: 24,
-        ...(readiness === null ? {} : { launchCommand: readiness.launchCommand }),
-      });
+      host.send({ type: 'create', ptyId: 'env', cwd: tmp, cols: 80, rows: 24 });
       await waitForInteractiveShellReady(
         host,
         'env',
         'interactive shell ready with desktop markers stripped',
-        readiness?.marker ?? null,
       );
       host.send({
         type: 'input',
@@ -215,17 +191,10 @@ async function main(): Promise<void> {
           'PowerShell EncodedCommand output',
           WINDOWS_LAUNCH_WAIT,
         );
-        const interactiveToken = `OK_INTERACTIVE_${randomUUID().replaceAll('-', '')}`;
-        host.send({
-          type: 'input',
-          ptyId: 'launch',
-          data: `${shellCommands.arithmetic(interactiveToken, 6, 7, 'READY')}\r`,
-        });
-        await waitForCondition(
-          launch,
-          () => launch.read().includes(`${interactiveToken}_42_READY`),
+        await waitForWindowsInputReady(
+          host,
+          'launch',
           'PowerShell remains interactive after EncodedCommand',
-          WINDOWS_LAUNCH_WAIT,
         );
         if (host.errorOf('launch') !== null) {
           throw new Error(`PowerShell launch failed: ${host.errorOf('launch')}`);

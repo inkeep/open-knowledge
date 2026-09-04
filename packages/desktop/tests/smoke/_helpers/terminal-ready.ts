@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { expect } from '@playwright/test';
-import { terminalSmokeShellCommands } from './terminal-smoke-shell';
+import { buildInputReadyProbe } from './terminal-smoke-shell';
 
-const WINDOWS_SETTLE_TIMEOUT_MS = 10_000;
+const WINDOWS_SETTLE_BUDGET_DIVISOR = 3;
 
 export async function waitForShellReady(
   readTerminalText: () => Promise<string>,
@@ -20,16 +19,14 @@ export async function waitForShellReady(
       throw new Error('Windows shell readiness requires resetTerminalInput');
     }
     const startedAt = Date.now();
-    await waitForQuietTerminalText(
+    await settleTerminalTextBestEffort(
       readTerminalText,
-      Math.min(timeout, WINDOWS_SETTLE_TIMEOUT_MS),
+      Math.floor(timeout / WINDOWS_SETTLE_BUDGET_DIVISOR),
       quietPolls,
       interval,
     );
 
-    const token = `OK_INPUT_READY_${randomUUID().replaceAll('-', '')}`;
-    const marker = `${token}_42_READY`;
-    const probe = terminalSmokeShellCommands('win32').arithmetic(token, 6, 7, 'READY');
+    const { marker, command: probe } = buildInputReadyProbe('win32');
     let attempted = false;
     const remainingTimeout = Math.max(interval, timeout - (Date.now() - startedAt));
     await expect(async () => {
@@ -46,6 +43,19 @@ export async function waitForShellReady(
   }
 
   await waitForQuietTerminalText(readTerminalText, timeout, quietPolls, interval);
+}
+
+async function settleTerminalTextBestEffort(
+  readTerminalText: () => Promise<string>,
+  timeout: number,
+  quietPolls: number,
+  interval: number,
+): Promise<void> {
+  try {
+    await waitForQuietTerminalText(readTerminalText, timeout, quietPolls, interval);
+  } catch {
+    return;
+  }
 }
 
 async function waitForQuietTerminalText(

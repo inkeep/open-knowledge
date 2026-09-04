@@ -101,6 +101,9 @@ describe('PTY host — real shell I/O (Node runtime)', () => {
       const outputDir = mkdtempSync(join(tmpdir(), 'ok-real-pty-wrapper-'));
       try {
         const output = await runHarness(outputDir);
+        for (const line of output.split(/\r?\n/u).filter((l) => l.startsWith('INPUT_READY '))) {
+          console.log(line);
+        }
         expect(output).toContain(SUCCESS_RESULT);
       } finally {
         removeTempDirBestEffort(outputDir);

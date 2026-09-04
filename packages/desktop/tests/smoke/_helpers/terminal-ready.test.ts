@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import { waitForShellReady } from './terminal-ready';
 
+function evaluateArithmeticProbe(command: string): string {
+  return command.replace(/\$\(\((\d+)\*(\d+)\)\)/u, (_match, left, right) =>
+    String(Number(left) * Number(right)),
+  );
+}
+
 describe('terminal smoke shell readiness', () => {
   test('requires evaluated Windows output instead of accepting the echoed probe', async () => {
     let text = '\u001b]0;C:\\Program Files\\PowerShell\\7\\pwsh.exe\u0007';
@@ -19,9 +25,7 @@ describe('terminal smoke shell readiness', () => {
           continuationPrompt = true;
         } else {
           text += `\r\n${command}`;
-          text += `\r\n${command.replace(/\$\(\((\d+)\*(\d+)\)\)/u, (_match, left, right) =>
-            String(Number(left) * Number(right)),
-          )}`;
+          text += `\r\n${evaluateArithmeticProbe(command)}`;
         }
         return Promise.resolve();
       },
@@ -53,11 +57,7 @@ describe('terminal smoke shell readiness', () => {
         if (command === '') return Promise.resolve('PowerShell startup');
         readsAfterSend += 1;
         if (readsAfterSend === 1) return Promise.resolve(command);
-        return Promise.resolve(
-          command.replace(/\$\(\((\d+)\*(\d+)\)\)/u, (_match, left, right) =>
-            String(Number(left) * Number(right)),
-          ),
-        );
+        return Promise.resolve(evaluateArithmeticProbe(command));
       },
       (nextCommand) => {
         commandsSent += 1;
@@ -92,9 +92,7 @@ describe('terminal smoke shell readiness', () => {
       },
       (command) => {
         commandSentAtRead = reads;
-        text += `\r\n${command.replace(/\$\(\((\d+)\*(\d+)\)\)/u, (_match, left, right) =>
-          String(Number(left) * Number(right)),
-        )}`;
+        text += `\r\n${evaluateArithmeticProbe(command)}`;
         return Promise.resolve();
       },
       {
@@ -109,6 +107,35 @@ describe('terminal smoke shell readiness', () => {
     expect(commandSentAtRead).toBe(5);
   });
 
+  test('probes anyway when rendered Windows output never settles', async () => {
+    let text = 'PowerShell starting';
+    let reads = 0;
+    const commands: string[] = [];
+
+    await waitForShellReady(
+      () => {
+        reads += 1;
+        text += ` tick${reads}`;
+        return Promise.resolve(text);
+      },
+      (command) => {
+        commands.push(command);
+        if (commands.length > 1) {
+          text += `\r\n${evaluateArithmeticProbe(command)}`;
+        }
+        return Promise.resolve();
+      },
+      {
+        platform: 'win32',
+        interval: 5,
+        timeout: 1_000,
+        resetTerminalInput: () => Promise.resolve(),
+      },
+    );
+
+    expect(commands).toHaveLength(2);
+  });
+
   test('fails loud when a Windows caller omits the line reset', async () => {
     await expect(
       waitForShellReady(
@@ -119,6 +146,43 @@ describe('terminal smoke shell readiness', () => {
         },
       ),
     ).rejects.toThrow(/requires resetTerminalInput/u);
+  });
+
+  test('still fails loud when the Windows probe is never evaluated', async () => {
+    let text = 'PowerShell starting';
+    const commands: string[] = [];
+    await expect(
+      waitForShellReady(
+        () => Promise.resolve(text),
+        (command) => {
+          commands.push(command);
+          text += `\r\n${command}`;
+          return Promise.resolve();
+        },
+        {
+          platform: 'win32',
+          interval: 5,
+          timeout: 200,
+          resetTerminalInput: () => Promise.resolve(),
+        },
+      ),
+    ).rejects.toThrow();
+    expect(commands).not.toHaveLength(0);
+  });
+
+  test('still fails loud on POSIX when the buffer never settles', async () => {
+    let reads = 0;
+    await expect(
+      waitForShellReady(
+        () => {
+          reads += 1;
+          return Promise.resolve(`zsh tick${reads}`);
+        },
+        () => Promise.resolve(),
+        { platform: 'darwin', interval: 5, timeout: 200 },
+      ),
+    ).rejects.toThrow();
+    expect(reads).toBeGreaterThan(1);
   });
 
   test('retains the quiet-buffer readiness contract on POSIX', async () => {
