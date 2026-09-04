@@ -35,6 +35,9 @@ export function blockIndexForLine(spans: SourceBlockSpans['spans'], line: number
   return candidate;
 }
 
+/* STOP: a tripwire, not a proof. serialize is non-injective at the top level, so equal counts
+   do not establish that ordinals align. When this disagrees with the block table, refuse the
+   pass or re-locate by content — never index a block ordinal across the boundary anyway. */
 export function comparableChildCount(doc: PmNode): number {
   let trailingEmpty = 0;
   for (let i = doc.childCount - 1; i >= 0; i--) {

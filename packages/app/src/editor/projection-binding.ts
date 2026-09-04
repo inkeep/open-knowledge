@@ -30,6 +30,9 @@ interface ProjectionBindingOptions {
   origin: unknown;
 }
 
+/* STOP: one delete plus one insert, so changed lines land as a single fresh contiguous run.
+   Narrowing this to a character-minimal diff trades a cost win for the content-loss class
+   external-change-stale-anchor-interleave.test.ts exists to pin. */
 function applyToYText(ytext: Y.Text, splice: SourceSplice): void {
   if (splice.to > splice.from) ytext.delete(splice.from, splice.to - splice.from);
   if (splice.text !== '') ytext.insert(splice.from, splice.text);
@@ -66,6 +69,9 @@ function reprojectAgainst(source: string, doc: PmNode, md: MarkdownManager): Pro
   return { ...rebuilt, doc };
 }
 
+/* WARN: MarkdownManager owns a separate Schema instance, and ProseMirror matches content by
+   NodeType identity. Nodes inserted without this conversion compare unequal to byte-identical
+   ones and are silently dropped on the first incremental rebuild. */
 function intoEditorSchema(view: EditorView, doc: PmNode): PmNode {
   return doc.type.schema === view.state.schema ? doc : view.state.schema.nodeFromJSON(doc.toJSON());
 }

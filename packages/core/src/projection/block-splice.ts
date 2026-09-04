@@ -297,6 +297,10 @@ export function rebaseProjection(
   if (changed.after.to - changed.after.from > 1) return null;
 
   const oldBlocks = projection.map.blocks;
+  /* STOP: map.blocks.length === doc.childCount is the contract every splice indexes through.
+     A block whose source spells nothing must be held with a zero-width span
+     (alignProjectionToDoc) rather than left out of the table, and a write that was declined
+     must not be reported as made. A violation loses the NEXT keystroke, not this one. */
   if (oldBlocks.length !== projection.doc.childCount) return null;
 
   const source = applySplice(projection.source, splice);
