@@ -1064,9 +1064,10 @@
   padding-bottom: calc(var(--ask-composer-height, 0px) + var(--ok-trailing-zone, 0px));
 }
 
-/* Standalone Mermaid docs render OUTSIDE `.editor-doc-scroll` — a diagram +
-   source pane, not a ProseMirror/CM scroll surface — so the inset above never
-   reaches them. Reserve the composer height on the whole editor so a full-page
+/* Standalone Mermaid docs render inside `.editor-doc-scroll` like every other
+   pool branch, but the host itself is a diagram + source pane rather than a
+   `.ProseMirror` / `.cm-content` element, so the inset above never selects it.
+   Reserve the composer height on the whole editor so a full-page
    panzoom diagram (which does not scroll) and the source pane's last lines clear
    the floating card. The var is 0 when the composer is collapsed/hidden, so the
    space is reclaimed with no class to fall out of sync. */
@@ -2755,14 +2756,27 @@ body[data-editor-tab-dragging] * {
   padding: 0;
 }
 
-/* Restore the floating Ask AI composer's bottom inset for full-page source mode.
+/* Restore the floating Ask AI composer's bottom inset for two full-page
+   CodeMirror surfaces: markdown source mode (`.source-editor`) and editable text
+   docs (`[data-text-doc-editor]`, the `.ts` / `.json` / `.txt` editor).
    The `padding: 0` reset above ties on specificity with the shared
    `.editor-doc-scroll :is(.ProseMirror, .cm-content)` inset rule and, being
-   later, zeroes it — so those surfaces' last lines would sit under the composer
-   while WYSIWYG clears. Scoped to `.source-editor` (not `.cm-editor`) so nested
-   code-block CM inside the WYSIWYG body is never padded; declared after the
-   reset so it wins the tie. */
-.source-editor .cm-content {
+   later, zeroes it, so those surfaces' last lines would sit under the composer
+   while WYSIWYG clears. Both hosts scroll inside CodeMirror's own `.cm-scroller`
+   (each sets `height: 100%` on the editor), so the room has to come from padding
+   the CONTENT: padding the host would shrink the editor box, cutting the gutter
+   and the scrollbar off above the composer instead of running them behind it.
+   `[data-mermaid-doc-editor]` takes the host route because the same wrapper also
+   hosts its non-scrolling diagram pane. Its source mode knowingly ends the
+   gutter and scrollbar above the composer, preserving one inset across that
+   diagram-first surface's mode switch. Scoped to these two hosts (not
+   `.cm-editor`) so nested code-block CM inside the WYSIWYG body is never padded,
+   and declared after the reset so it wins the tie. A full-page CM surface needs
+   EITHER this content restore OR a host-level `padding-bottom` like
+   `[data-mermaid-doc-editor]` above, never both, or it reserves two composer
+   heights and the last line floats a card above the composer. */
+.source-editor .cm-content,
+[data-text-doc-editor] .cm-content {
   padding-bottom: var(--ask-composer-height, 0px);
 }
 

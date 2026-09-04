@@ -14,6 +14,7 @@ import {
   type OutlineNavDetail,
 } from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
+import { FULL_PAGE_CM_HOST_SELECTORS } from '@/globals-css.test-helper';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
 import type { LandingHandle } from './landing-controller';
@@ -132,6 +133,25 @@ function setPlatform(platform: string): void {
     configurable: true,
   });
 }
+
+describe('SourceEditor host contract', () => {
+  afterEach(() => {
+    cleanup();
+    for (const docName of mountedDocNames) {
+      evictCmEditor(docName);
+    }
+    mountedDocNames.clear();
+  });
+
+  test('renders the host class used by the composer-inset selector', async () => {
+    const { provider, ytext } = makeProvider('source-composer-inset-host');
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+
+    await findCmContent(container);
+
+    expect(container.querySelector(FULL_PAGE_CM_HOST_SELECTORS.sourceEditor)).not.toBeNull();
+  });
+});
 
 describe('SourceEditor word-wrap preference wiring', () => {
   beforeEach(() => {
